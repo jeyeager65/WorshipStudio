@@ -23,4 +23,6 @@ export interface LibrarySettings {
 export interface MachineSettings {
   thisComputerName: string
   darkMode: boolean
+  /** Local filesystem path to the synced library root on this machine. */
+  libraryPath: string
 }

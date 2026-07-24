@@ -11,4 +11,11 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  server: {
+    watch: {
+      // Rust build output — concurrent writes here (e.g. under `tauri dev`) can hit
+      // Windows file locks (EBUSY) if Vite's watcher is also touching these files.
+      ignored: ['**/src-tauri/target/**'],
+    },
+  },
 })

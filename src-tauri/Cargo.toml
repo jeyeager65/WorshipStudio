@@ -6,7 +6,7 @@ authors = ["Jason Yeager"]
 license = ""
 repository = ""
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.85"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -23,3 +23,9 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.11.3" }
 tauri-plugin-log = "2"
+chrono = { version = "0.4.45", features = ["serde"] }
+uuid = { version = "1.20.0", features = ["v4"] }
+gethostname = "1.1.0"
+
+[dev-dependencies]
+tempfile = "3.27.0"

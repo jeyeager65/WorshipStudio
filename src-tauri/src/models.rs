@@ -1,0 +1,251 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SongBlock {
+    pub id: String,
+    pub label: String,
+    pub text: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Arrangement {
+    pub sequence: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SongCollectionEntry {
+    pub collection_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub number: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Usage {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_used_at: Option<String>,
+    pub uses_past_year: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Song {
+    pub id: String,
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ccli: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub copyright: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tempo: Option<String>,
+    #[serde(default)]
+    pub collections: Vec<SongCollectionEntry>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+    #[serde(default)]
+    pub blocks: Vec<SongBlock>,
+    pub default_arrangement: Arrangement,
+    pub usage: Usage,
+    pub updated_at: String,
+    pub updated_by_device: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "kebab-case")]
+pub enum DisplayMode {
+    Full,
+    ReferenceOnly,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum MediaFit {
+    Cover,
+    Contain,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(
+    tag = "type",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
+pub enum ServiceItemContent {
+    Song {
+        song_id: String,
+        arrangement: Arrangement,
+    },
+    Scripture {
+        reference: String,
+        translation: String,
+        display_mode: DisplayMode,
+    },
+    SlideRef {
+        slide_id: String,
+    },
+    TextSlide {
+        slides: Vec<SongBlock>,
+    },
+    Media {
+        media_id: String,
+        fit: MediaFit,
+    },
+    Video {
+        media_id: String,
+    },
+    Audio {
+        media_id: String,
+    },
+    ExternalApp {
+        profile_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        file: Option<String>,
+    },
+    Countdown {
+        target_time: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        text: Option<String>,
+    },
+    Qr {
+        url: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        caption: Option<String>,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceItem {
+    pub id: String,
+    #[serde(flatten)]
+    pub content: ServiceItemContent,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub person: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RoleAssignment {
+    pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub volunteer_id: Option<String>,
+    pub tentative: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Service {
+    pub id: String,
+    pub date: String,
+    #[serde(rename = "type")]
+    pub service_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preacher: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sermon_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_passage: Option<String>,
+    #[serde(default)]
+    pub items: Vec<ServiceItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presenter_notes: Option<std::collections::HashMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub volunteer_roster: Option<Vec<RoleAssignment>>,
+    pub updated_at: String,
+    pub updated_by_device: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CountdownOverlay {
+    pub target_time: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct LoopConfig {
+    pub enabled: bool,
+    pub seconds_per_slide: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub countdown_overlay: Option<CountdownOverlay>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SlideLibraryItem {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub slides: Vec<SongBlock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub background_id: Option<String>,
+    #[serde(rename = "loop", skip_serializing_if = "Option::is_none")]
+    pub loop_config: Option<LoopConfig>,
+    pub usage: Usage,
+    pub updated_at: String,
+    pub updated_by_device: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Branding {
+    pub church_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logo_media_id: Option<String>,
+    pub primary_color: String,
+    pub secondary_color: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BibleTranslationConfig {
+    pub code: String,
+    pub source: String,
+    pub label: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct LibrarySettings {
+    #[serde(default)]
+    pub service_types: Vec<String>,
+    #[serde(default)]
+    pub preachers: Vec<String>,
+    #[serde(default)]
+    pub collections: Vec<String>,
+    #[serde(default)]
+    pub volunteer_roles: Vec<String>,
+    pub branding: Branding,
+    #[serde(default)]
+    pub bible_translations: Vec<BibleTranslationConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_translation_code: Option<String>,
+    pub media_max_synced_file_size_mb: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineSettings {
+    pub this_computer_name: String,
+    pub dark_mode: bool,
+    /// Local filesystem path to the synced library root on this machine.
+    pub library_path: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ManifestEntry {
+    pub id: String,
+    pub kind: String,
+    pub label: String,
+    pub updated_at: String,
+}

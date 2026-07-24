@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-  worship_studio_lib::run();
+    worship_studio_lib::run();
 }

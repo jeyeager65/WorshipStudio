@@ -7,9 +7,10 @@ import type { LibrarySettings, MachineSettings } from '@/models/settings'
 
 /**
  * Real adapter — thin wrapper over Rust commands (src-tauri/src/commands).
- * Command names are placeholders; wired up incrementally as each Rust command
- * lands (see docs/architecture-plan.md milestone M1 onward). Every method here
- * exists so the frontend can be built against the interface today.
+ * songs/services/slides/settings are wired to real file-backed commands (M1).
+ * Everything else below is still a placeholder command name, to be implemented
+ * as its milestone lands (see docs/architecture-plan.md) — every method exists
+ * now so the frontend can be built against the full interface today.
  */
 export function createTauriAdapter(): StudioAdapter {
   return {

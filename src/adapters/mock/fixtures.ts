@@ -62,4 +62,5 @@ export const seedLibrarySettings: LibrarySettings = {
 export const seedMachineSettings: MachineSettings = {
   thisComputerName: 'Demo Machine',
   darkMode: true,
+  libraryPath: '',
 }
