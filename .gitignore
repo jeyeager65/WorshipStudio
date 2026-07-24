@@ -1,0 +1,27 @@
+node_modules/
+dist/
+dist-ssr/
+coverage/
+*.local
+*.tsbuildinfo
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Tauri
+src-tauri/target/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local-only media / synced library, once a real church folder is pointed at this checkout
+.env
+
+# Design handoff and OpenSong migration source — kept locally, not tracked in git
+# (design/ is reference material from the planning conversation; OpenSong/ is ~278MB
+# of real church data/media, too large and not appropriate for version control)
+design/
+OpenSong/
