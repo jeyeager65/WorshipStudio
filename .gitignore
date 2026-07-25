@@ -30,6 +30,13 @@ OpenSong/
 # artifacts, not project content
 .playwright-mcp/
 
+# Ad-hoc screenshots dropped at the repo root during manual/Playwright verification —
+# root-only (leading slash) so it doesn't affect real image assets living in subdirectories
+# like src/assets/ or src-tauri/icons/.
+/*.png
+/*.jpg
+/*.jpeg
+
 # Local MCP server config (e.g. Playwright, set up ad hoc for debugging) — a personal dev
 # convenience, not a deliberate part of the project's testing toolchain (that's
 # WebdriverIO + tauri-driver, see docs/architecture-plan.md). Revisit intentionally if we

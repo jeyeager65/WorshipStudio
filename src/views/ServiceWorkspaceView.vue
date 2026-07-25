@@ -1,23 +1,26 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRoute } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
 import { getAdapter } from '@/adapters'
 import { useServicesStore } from '@/stores/services'
 import { useSongsStore } from '@/stores/songs'
+import { useLiveSessionStore } from '@/stores/liveSession'
 import { flattenService, type FlatSlide } from '@/utils/flattenService'
+import { colorForBlockLabel, colorForItemType } from '@/utils/contentColors'
 import type { Service, ServiceItem } from '@/models/service'
 import type { Song } from '@/models/song'
 
 const route = useRoute()
 const servicesStore = useServicesStore()
 const songsStore = useSongsStore()
+const { isPresenting } = storeToRefs(useLiveSessionStore())
 
 const service = ref<Service>()
 const selectedItemIndex = ref(0)
 /** -1 = nothing live yet; equal to flatSlides.length = live but past the last slide (blank). */
 const flatIndex = ref(-1)
-const isPresenting = ref(false)
 
 const addDialogOpen = ref(false)
 const addQuery = ref('')
@@ -27,7 +30,13 @@ onMounted(async () => {
   service.value = await getAdapter().services.get(route.params.id as string)
   window.addEventListener('keydown', onKeydown)
 })
-onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown)
+  // Safety net: the router guard (router/index.ts) is what normally prevents leaving while
+  // presenting, but if this view ever unmounts some other way, don't leave the app
+  // permanently believing a torn-down workspace is still live.
+  isPresenting.value = false
+})
 
 const songsById = computed(() => new Map(songsStore.songs.map((song) => [song.id, song])))
 const flatSlides = computed<FlatSlide[]>(() => (service.value ? flattenService(service.value, songsById.value) : []))
@@ -69,6 +78,25 @@ function itemLabel(item: ServiceItem): string {
   if (item.type === 'scripture') return item.reference
   if (item.type === 'text-slide') return 'Text Slide'
   return item.type
+}
+
+function itemColor(item: ServiceItem): string {
+  return colorForItemType(item.type)
+}
+
+function blockLabelFor(blockId: string): string {
+  return selectedSong.value?.blocks.find((block) => block.id === blockId)?.label ?? ''
+}
+
+/** Category color when browsing; red (the "this is live" signal) takes priority over it. */
+function slideRowStyle(blockId: string, isLive: boolean) {
+  if (isLive) return undefined
+  const color = colorForBlockLabel(blockLabelFor(blockId))
+  return {
+    background: `rgba(var(--v-theme-${color}), 0.08)`,
+    borderLeft: `3px solid rgb(var(--v-theme-${color}))`,
+    paddingLeft: '9px',
+  }
 }
 
 function itemHasLive(index: number): boolean {
@@ -208,7 +236,6 @@ function updatePresenterNote(itemId: string, note: string) {
 <template>
   <div v-if="service">
     <v-toolbar density="compact" elevation="0" class="border-b px-2">
-      <v-btn variant="text" prepend-icon="mdi-chevron-left" to="/">Home</v-btn>
       <div class="d-flex flex-column ml-3" style="line-height: 1.2">
         <span class="text-body-2 font-weight-bold">{{ service.type }} — {{ service.date }}</span>
         <span class="text-caption text-medium-emphasis">{{ service.sermonTitle }}</span>
@@ -226,11 +253,13 @@ function updatePresenterNote(itemId: string, note: string) {
             :class="{ 'service-item--selected': index === selectedItemIndex, 'service-item--live': itemHasLive(index) }"
             @click="selectedItemIndex = index"
           >
-            <v-icon :icon="itemIcon(item)" size="small" />
+            <v-icon :icon="itemIcon(item)" :color="itemColor(item)" size="small" />
             <span class="text-truncate">{{ itemLabel(item) }}</span>
           </div>
         </div>
-        <v-btn variant="text" prepend-icon="mdi-plus" class="ma-2" @click="addDialogOpen = true">Add to Service</v-btn>
+        <v-btn variant="tonal" color="primary" class="btn-bordered ma-2" prepend-icon="mdi-plus" @click="addDialogOpen = true">
+          Add to Service
+        </v-btn>
       </div>
 
       <div class="center-panel">
@@ -256,6 +285,7 @@ function updatePresenterNote(itemId: string, note: string) {
                 :key="index"
                 class="slide-row"
                 :class="{ 'slide-row--live': itemHasLive(selectedItemIndex) && flatIndex === index }"
+                :style="slideRowStyle(blockId, itemHasLive(selectedItemIndex) && flatIndex === index)"
                 @click="goLive(index)"
               >
                 <v-icon icon="mdi-drag-vertical" class="drag-handle" size="small" style="cursor: grab" />
@@ -269,10 +299,11 @@ function updatePresenterNote(itemId: string, note: string) {
                 </div>
                 <v-btn
                   icon="mdi-close"
-                  variant="text"
+                  variant="tonal"
+                  color="error"
+                  class="btn-bordered row-remove"
                   density="compact"
                   size="x-small"
-                  class="row-remove"
                   @click.stop="removeFromArrangement(index)"
                 />
               </div>
@@ -284,14 +315,14 @@ function updatePresenterNote(itemId: string, note: string) {
                 v-for="block in selectedSong.blocks"
                 :key="block.id"
                 variant="outlined"
-                color="primary"
+                :color="colorForBlockLabel(block.label)"
                 size="small"
                 class="cursor-pointer"
                 @click="addToArrangement(block.id)"
               >
                 {{ block.label }}
               </v-chip>
-              <v-btn variant="text" size="small" class="text-medium-emphasis" @click="resetArrangementToDefault">
+              <v-btn variant="tonal" color="primary" class="btn-bordered" size="small" @click="resetArrangementToDefault">
                 Reset to song default
               </v-btn>
             </div>
@@ -301,7 +332,16 @@ function updatePresenterNote(itemId: string, note: string) {
             <div
               class="slide-row"
               :class="{ 'slide-row--live': itemHasLive(selectedItemIndex) }"
-              style="max-width: 460px"
+              :style="[
+                { maxWidth: '460px' },
+                itemHasLive(selectedItemIndex)
+                  ? {}
+                  : {
+                      background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                      borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                      paddingLeft: '9px',
+                    },
+              ]"
               @click="goLive(flatSlides.findIndex((s) => s.itemIndex === selectedItemIndex))"
             >
               <div class="text-body-2">Click to make this item live.</div>
@@ -339,13 +379,15 @@ function updatePresenterNote(itemId: string, note: string) {
       <div class="d-flex ga-3">
         <div class="d-flex flex-column align-center">
           <span class="text-caption text-medium-emphasis text-truncate" style="max-width: 140px">{{ prevPreviewLabel }}</span>
-          <v-btn variant="outlined" color="error" size="small" prepend-icon="mdi-chevron-left" @click="previous">
+          <v-btn variant="tonal" color="error" class="btn-bordered" size="small" prepend-icon="mdi-chevron-left" @click="previous">
             Previous
           </v-btn>
         </div>
         <div class="d-flex flex-column align-center">
           <span class="text-caption text-medium-emphasis text-truncate" style="max-width: 140px">{{ nextPreviewLabel }}</span>
-          <v-btn variant="outlined" color="error" size="small" append-icon="mdi-chevron-right" @click="next">Next</v-btn>
+          <v-btn variant="tonal" color="error" class="btn-bordered" size="small" append-icon="mdi-chevron-right" @click="next">
+            Next
+          </v-btn>
         </div>
       </div>
     </div>
@@ -374,7 +416,7 @@ function updatePresenterNote(itemId: string, note: string) {
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="addDialogOpen = false">Cancel</v-btn>
+          <v-btn variant="tonal" class="btn-bordered" @click="addDialogOpen = false">Cancel</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

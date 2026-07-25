@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
 import { getAdapter } from '@/adapters'
 import { useSongsStore } from '@/stores/songs'
+import { colorForBlockLabel } from '@/utils/contentColors'
 import type { Song, SongBlock } from '@/models/song'
 import type { LibrarySettings } from '@/models/settings'
 
@@ -70,7 +71,7 @@ function removeFromArrangement(index: number) {
 <template>
   <div v-if="song">
     <v-toolbar density="compact" elevation="0" class="border-b px-2">
-      <v-btn variant="text" prepend-icon="mdi-chevron-left" @click="router.push('/library/songs')">
+      <v-btn variant="tonal" color="primary" class="btn-bordered" prepend-icon="mdi-chevron-left" @click="router.push('/library/songs')">
         Song Library
       </v-btn>
     </v-toolbar>
@@ -79,14 +80,16 @@ function removeFromArrangement(index: number) {
       <div class="editor-panel">
         <v-text-field
           v-model="song.title"
-          variant="plain"
-          class="text-h5 font-weight-bold"
+          variant="filled"
           density="compact"
+          rounded="lg"
+          class="text-h5 font-weight-bold mb-1 song-title-field"
           hide-details
           @blur="persist"
         />
 
-        <div class="d-flex flex-wrap ga-4 mt-2 mb-6 align-end">
+        <div class="text-overline text-medium-emphasis mb-2 mt-2">General</div>
+        <div class="d-flex flex-wrap ga-4 mb-1 align-end">
           <v-text-field v-model="song.key" label="Key" variant="outlined" density="compact" style="width: 100px" @blur="persist" />
           <v-text-field v-model="song.tempo" label="Tempo" variant="outlined" density="compact" style="width: 120px" @blur="persist" />
           <v-text-field v-model="song.ccli" label="CCLI #" variant="outlined" density="compact" style="width: 130px" @blur="persist" />
@@ -102,8 +105,8 @@ function removeFromArrangement(index: number) {
             style="min-width: 220px"
             @update:model-value="persist"
           />
-          <span class="text-caption text-medium-emphasis ml-auto mb-2">{{ usageLabel }}</span>
         </div>
+        <p class="text-caption text-medium-emphasis mb-6">{{ usageLabel }}</p>
 
         <div class="text-overline text-medium-emphasis mb-2">Collections</div>
         <div v-for="(entry, index) in song.collections" :key="index" class="d-flex ga-3 mb-2" style="max-width: 480px">
@@ -124,31 +127,63 @@ function removeFromArrangement(index: number) {
             style="width: 90px"
             @blur="persist"
           />
-          <v-btn icon="mdi-close" variant="text" density="compact" @click="removeCollection(index)" />
+          <v-btn icon="mdi-close" variant="tonal" color="error" class="btn-bordered" density="compact" @click="removeCollection(index)" />
         </div>
-        <v-btn variant="text" prepend-icon="mdi-plus" size="small" class="mb-6" @click="addCollection">
+        <v-btn variant="tonal" color="primary" class="btn-bordered mb-6" prepend-icon="mdi-plus" size="small" @click="addCollection">
           Add to Another Collection
         </v-btn>
 
         <div class="text-overline text-medium-emphasis mb-2">Song Blocks</div>
         <VueDraggable v-model="song.blocks" handle=".drag-handle" :animation="150" class="d-flex flex-column ga-3" @end="persist">
-          <v-card v-for="(block, index) in song.blocks" :key="block.id" variant="outlined" rounded="lg">
+          <v-card
+            v-for="(block, index) in song.blocks"
+            :key="block.id"
+            variant="outlined"
+            rounded="lg"
+            :style="{
+              borderColor: `rgb(var(--v-theme-${colorForBlockLabel(block.label)}))`,
+              '--block-accent': `rgb(var(--v-theme-${colorForBlockLabel(block.label)}))`,
+              '--block-accent-rgb': `var(--v-theme-${colorForBlockLabel(block.label)})`,
+            }"
+          >
             <div class="d-flex align-center ga-2 px-3 py-2 border-b block-header">
               <v-icon icon="mdi-drag-vertical" class="drag-handle" style="cursor: grab" />
               <v-text-field
                 v-model="block.label"
-                variant="plain"
+                variant="filled"
                 density="compact"
+                rounded="lg"
                 hide-details
-                class="font-weight-bold flex-grow-1"
+                :color="colorForBlockLabel(block.label)"
+                class="font-weight-bold flex-grow-1 block-label-field"
                 @blur="persist"
               />
-              <v-btn variant="text" size="small" @click="removeBlock(index)">Remove</v-btn>
+              <v-btn
+                variant="tonal"
+                color="error"
+                class="btn-bordered"
+                size="small"
+                prepend-icon="mdi-trash-can-outline"
+                @click="removeBlock(index)"
+              >
+                Remove
+              </v-btn>
             </div>
-            <v-textarea v-model="block.text" variant="plain" density="compact" rows="3" auto-grow hide-details class="px-3 py-2" @blur="persist" />
+            <v-textarea
+              v-model="block.text"
+              variant="filled"
+              density="compact"
+              rows="3"
+              auto-grow
+              hide-details
+              class="px-3 py-2 block-text-field"
+              @blur="persist"
+            />
           </v-card>
         </VueDraggable>
-        <v-btn variant="outlined" prepend-icon="mdi-plus" class="mt-3 mb-6" @click="addBlock">Add Block</v-btn>
+        <v-btn variant="tonal" color="primary" class="btn-bordered mt-3 mb-6" prepend-icon="mdi-plus" @click="addBlock">
+          Add Block
+        </v-btn>
 
         <div class="text-overline text-medium-emphasis mb-2">Notes</div>
         <v-textarea
@@ -177,10 +212,22 @@ function removeFromArrangement(index: number) {
             v-for="(id, index) in song.defaultArrangement.sequence"
             :key="index"
             class="d-flex align-center ga-1 pa-2 border rounded-lg arrangement-item"
+            :style="{
+              background: `rgba(var(--v-theme-${colorForBlockLabel(blockLabel(id))}), 0.1)`,
+              borderLeft: `3px solid rgb(var(--v-theme-${colorForBlockLabel(blockLabel(id))}))`,
+            }"
           >
             <v-icon icon="mdi-drag-vertical" class="drag-handle" size="small" style="cursor: grab" />
             <span class="text-body-2 flex-grow-1">{{ blockLabel(id) }}</span>
-            <v-btn icon="mdi-close" variant="text" density="compact" size="x-small" @click="removeFromArrangement(index)" />
+            <v-btn
+              icon="mdi-close"
+              variant="tonal"
+              color="error"
+              class="btn-bordered"
+              density="compact"
+              size="x-small"
+              @click="removeFromArrangement(index)"
+            />
           </div>
         </VueDraggable>
 
@@ -191,7 +238,7 @@ function removeFromArrangement(index: number) {
               v-for="block in song.blocks"
               :key="block.id"
               variant="outlined"
-              color="primary"
+              :color="colorForBlockLabel(block.label)"
               size="small"
               class="cursor-pointer"
               @click="addToArrangement(block)"
@@ -222,10 +269,74 @@ function removeFromArrangement(index: number) {
   border-left: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   min-height: calc(100vh - 49px);
 }
+/* arrangement-item backgrounds are set inline per block category — see colorForBlockLabel
+   in src/utils/contentColors.ts. block-header uses --block-accent-rgb (set inline on the
+   parent v-card, see below) since it also needs to reach the sibling lyric textarea. */
 .block-header {
-  background: rgba(var(--v-theme-secondary), 0.1);
+  background: rgba(var(--block-accent-rgb), 0.12);
 }
-.arrangement-item {
-  background: rgba(var(--v-theme-primary), 0.08);
+
+/* Vuetify's color prop tints the underline but not the typed text itself; --block-accent
+   (set inline on the block's v-card) pierces into the field's actual input element via
+   :deep() so the label text picks up the category color too. */
+.block-label-field :deep(.v-field__input) {
+  color: var(--block-accent);
+}
+/* The header row already has a category-tinted background; the field's own default fill
+   either blends into it (too subtle) or, with a flat gray/white box, reads as a foreign
+   element dropped onto an otherwise color-themed block. A stronger tint of the block's own
+   category color (via --block-accent) stays visually part of the block while still reading
+   as a distinct, editable box — Vuetify's own "filled" variant renders a white
+   .v-field__overlay on top at partial opacity, which would wash out a custom color
+   underneath, so that overlay is suppressed here in favor of our own. */
+.block-label-field :deep(.v-field) {
+  background: rgba(var(--block-accent-rgb), 0.3);
+  border: 1px solid rgba(var(--block-accent-rgb), 0.6);
+}
+.block-label-field :deep(.v-field__overlay) {
+  opacity: 0;
+}
+/* Filled/underlined variants render their own bottom line via .v-field__outline — redundant
+   and a bit odd now that the field already has a full border. Suppress it, but make the
+   focus state bold so it's still obvious which field is being edited. */
+.block-label-field :deep(.v-field__outline),
+.song-title-field :deep(.v-field__outline) {
+  display: none;
+}
+.block-label-field :deep(.v-field--focused) {
+  border-width: 2px;
+  border-color: var(--block-accent);
+}
+
+/* Lyric text box: same "this is editable" language (visible fill, border, bold on focus)
+   as the label field, but explicitly neutral — the block's category color stays on the
+   label/border/chips; the actual lyric text stays plain and readable, not tinted. */
+.block-text-field :deep(.v-field) {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.block-text-field :deep(.v-field__overlay) {
+  opacity: 0;
+}
+.block-text-field :deep(.v-field__outline) {
+  display: none;
+}
+.block-text-field :deep(.v-field--focused) {
+  border-width: 2px;
+  border-color: var(--block-accent);
+}
+
+/* Song title: same "colored box" language as the block label fields (primary, since the
+   song itself is the default/primary content type), just without a per-block accent. */
+.song-title-field :deep(.v-field) {
+  background: rgba(var(--v-theme-primary), 0.3);
+  border: 1px solid rgba(var(--v-theme-primary), 0.6);
+}
+.song-title-field :deep(.v-field__overlay) {
+  opacity: 0;
+}
+.song-title-field :deep(.v-field--focused) {
+  border-width: 2px;
+  border-color: rgb(var(--v-theme-primary));
 }
 </style>

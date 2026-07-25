@@ -50,7 +50,9 @@ async function createService() {
 
 <template>
   <v-container class="py-8" style="max-width: 560px">
-    <v-btn variant="text" prepend-icon="mdi-chevron-left" to="/" class="mb-4">Back to Home</v-btn>
+    <v-btn variant="tonal" color="primary" class="btn-bordered mb-4" prepend-icon="mdi-chevron-left" to="/">
+      Back to Home
+    </v-btn>
 
     <h1 class="text-h5 font-weight-bold mb-1">Create New Service</h1>
     <p class="text-medium-emphasis text-body-2 mb-6">
@@ -99,7 +101,7 @@ async function createService() {
       </v-row>
 
       <div class="d-flex ga-3 mt-2">
-        <v-btn variant="outlined" to="/" class="flex-grow-1">Cancel</v-btn>
+        <v-btn variant="tonal" class="btn-bordered flex-grow-1" to="/">Cancel</v-btn>
         <v-btn color="primary" class="flex-grow-1" :loading="saving" :disabled="saving" @click="createService">
           Create &amp; Open Service →
         </v-btn>

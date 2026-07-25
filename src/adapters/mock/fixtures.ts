@@ -11,7 +11,7 @@ export const seedSongs: Song[] = [
     id: 'song-amazing-grace',
     title: 'Amazing Grace',
     author: 'John Newton',
-    collections: [{ collectionId: 'hymns-of-grace', number: '184' }],
+    collections: [{ collectionId: 'Hymns of Grace', number: '184' }],
     tags: ['hymn', 'grace'],
     blocks: [
       { id: 'v1', label: 'Verse 1', text: 'Amazing grace, how sweet the sound\nThat saved a wretch like me.' },
