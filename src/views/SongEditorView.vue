@@ -6,6 +6,7 @@ import { VueDraggable } from 'vue-draggable-plus'
 import { getAdapter } from '@/adapters'
 import { useSongsStore } from '@/stores/songs'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
+import { useUndoStore } from '@/stores/undo'
 import { colorForBlockLabel } from '@/utils/contentColors'
 import type { Song, SongBlock } from '@/models/song'
 import type { LibrarySettings } from '@/models/settings'
@@ -14,6 +15,7 @@ const route = useRoute()
 const router = useRouter()
 const store = useSongsStore()
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
+const undoStore = useUndoStore()
 
 const song = ref<Song>()
 const librarySettings = ref<LibrarySettings>()
@@ -88,7 +90,10 @@ function addCollection() {
   song.value?.collections.push({ collectionId: '' })
 }
 function removeCollection(index: number) {
-  song.value?.collections.splice(index, 1)
+  if (!song.value) return
+  const [removed] = song.value.collections.splice(index, 1)
+  if (!removed) return
+  undoStore.push(`Removed "${removed.collectionId || 'collection'}"`, () => song.value?.collections.splice(index, 0, removed))
 }
 
 function addBlock() {
@@ -97,9 +102,14 @@ function addBlock() {
 function removeBlock(index: number) {
   if (!song.value) return
   const [removed] = song.value.blocks.splice(index, 1)
-  if (removed) {
-    song.value.defaultArrangement.sequence = song.value.defaultArrangement.sequence.filter((id) => id !== removed.id)
-  }
+  if (!removed) return
+  const previousSequence = [...song.value.defaultArrangement.sequence]
+  song.value.defaultArrangement.sequence = previousSequence.filter((id) => id !== removed.id)
+  undoStore.push(`Removed "${removed.label}"`, () => {
+    if (!song.value) return
+    song.value.blocks.splice(index, 0, removed)
+    song.value.defaultArrangement.sequence = previousSequence
+  })
 }
 function blockLabel(id: string): string {
   return song.value?.blocks.find((block) => block.id === id)?.label ?? id
@@ -108,7 +118,12 @@ function addToArrangement(block: SongBlock) {
   song.value?.defaultArrangement.sequence.push(block.id)
 }
 function removeFromArrangement(index: number) {
-  song.value?.defaultArrangement.sequence.splice(index, 1)
+  if (!song.value) return
+  const sequence = song.value.defaultArrangement.sequence
+  const removed = sequence[index]
+  const label = blockLabel(removed)
+  sequence.splice(index, 1)
+  undoStore.push(`Removed "${label}" from Default Arrangement`, () => sequence.splice(index, 0, removed))
 }
 </script>
 

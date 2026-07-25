@@ -22,5 +22,10 @@ export const useServicesStore = defineStore('services', () => {
     await load()
   }
 
-  return { services, loaded, load, save, draftService }
+  async function remove(id: string) {
+    await getAdapter().services.delete(id)
+    await load()
+  }
+
+  return { services, loaded, load, save, remove, draftService }
 })

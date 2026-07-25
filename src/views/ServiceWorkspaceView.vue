@@ -9,6 +9,7 @@ import { useSongsStore } from '@/stores/songs'
 import { useSlidesStore } from '@/stores/slides'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
+import { useUndoStore } from '@/stores/undo'
 import { flattenService, type FlatSlide } from '@/utils/flattenService'
 import { colorForBlockLabel, colorForItemType } from '@/utils/contentColors'
 import { formatReference, getBookNames, getChapterCount, getVerseCount, isValidReference, parseReference } from '@/utils/scriptureReference'
@@ -24,6 +25,7 @@ const songsStore = useSongsStore()
 const slidesStore = useSlidesStore()
 const { isPresenting } = storeToRefs(useLiveSessionStore())
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
+const undoStore = useUndoStore()
 
 const service = ref<Service>()
 const selectedItemIndex = ref(0)
@@ -79,6 +81,9 @@ onMounted(async () => {
   // The Save button itself lives in the persistent app bar (App.vue), not a per-page
   // toolbar that would scroll out of view — this view just supplies the action.
   saveHandler.value = saveService
+  // Keeps undo toasts from covering the live-transport footer's Previous/Next buttons,
+  // which need to stay clickable even while a toast is showing during a live service.
+  undoStore.bottomOffsetPx = 70
 })
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeydown)
@@ -88,6 +93,7 @@ onUnmounted(() => {
   isPresenting.value = false
   isDirty.value = false
   saveHandler.value = undefined
+  undoStore.bottomOffsetPx = 0
 })
 
 async function saveService() {
@@ -175,6 +181,17 @@ function itemColor(item: ServiceItem): string {
   return colorForItemType(item.type)
 }
 
+function removeServiceItem(index: number) {
+  if (!service.value) return
+  const [removed] = service.value.items.splice(index, 1)
+  if (!removed) return
+  const label = itemLabel(removed)
+  if (selectedItemIndex.value >= service.value.items.length) {
+    selectedItemIndex.value = Math.max(0, service.value.items.length - 1)
+  }
+  undoStore.push(`Removed "${label}" from the service`, () => service.value?.items.splice(index, 0, removed))
+}
+
 function blockLabelFor(blockId: string): string {
   return selectedSong.value?.blocks.find((block) => block.id === blockId)?.label ?? ''
 }
@@ -200,7 +217,10 @@ function itemHasLive(index: number): boolean {
 function removeFromArrangement(index: number) {
   const item = selectedItem.value
   if (item?.type !== 'song') return
+  const blockId = item.arrangement.sequence[index]
+  const label = blockLabelFor(blockId)
   item.arrangement.sequence.splice(index, 1)
+  undoStore.push(`Removed "${label}" from arrangement`, () => item.arrangement.sequence.splice(index, 0, blockId))
 }
 function addToArrangement(blockId: string) {
   const item = selectedItem.value
@@ -519,7 +539,15 @@ function updatePresenterNote(itemId: string, note: string) {
             @click="selectedItemIndex = index"
           >
             <v-icon :icon="itemIcon(item)" :color="itemColor(item)" size="small" />
-            <span class="text-truncate">{{ itemLabel(item) }}</span>
+            <span class="text-truncate flex-grow-1">{{ itemLabel(item) }}</span>
+            <v-btn
+              icon="mdi-trash-can-outline"
+              variant="flat"
+              color="error"
+              class="row-remove"
+              size="x-small"
+              @click.stop="removeServiceItem(index)"
+            />
           </div>
         </div>
         <v-btn variant="flat" color="primary" class="ma-2" prepend-icon="mdi-plus" @click="addDialogOpen = true">
@@ -979,7 +1007,8 @@ function updatePresenterNote(itemId: string, note: string) {
 .row-remove {
   opacity: 0;
 }
-.slide-row:hover .row-remove {
+.slide-row:hover .row-remove,
+.service-item:hover .row-remove {
   opacity: 1;
 }
 .live-footer {

@@ -5,6 +5,7 @@ import { useTheme } from 'vuetify'
 import { getAdapter } from '@/adapters'
 import { useSettingsStore } from '@/stores/settings'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
+import { useUndoStore } from '@/stores/undo'
 import { needsSingleMonitorFallback } from '@/utils/displaySetup'
 import ManagedStringList from '@/components/settings/ManagedStringList.vue'
 import type { DisplayInfo, DisplayRole } from '@/adapters/types'
@@ -13,6 +14,7 @@ import type { LibrarySettings } from '@/models/settings'
 const store = useSettingsStore()
 const { librarySettings, machineSettings } = storeToRefs(store)
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
+const undoStore = useUndoStore()
 
 type Section = 'general' | 'display' | 'service-types' | 'preachers' | 'collections' | 'bible-translations'
 const activeSection = ref<Section>('general')
@@ -127,9 +129,16 @@ function addTranslation() {
 function removeTranslation(index: number) {
   if (!librarySettings.value) return
   const [removed] = librarySettings.value.bibleTranslations.splice(index, 1)
-  if (removed && librarySettings.value.defaultTranslationCode === removed.code) {
+  if (!removed) return
+  const wasDefault = librarySettings.value.defaultTranslationCode === removed.code
+  if (wasDefault) {
     librarySettings.value.defaultTranslationCode = librarySettings.value.bibleTranslations[0]?.code
   }
+  undoStore.push(`Removed "${removed.label}"`, () => {
+    if (!librarySettings.value) return
+    librarySettings.value.bibleTranslations.splice(index, 0, removed)
+    if (wasDefault) librarySettings.value.defaultTranslationCode = removed.code
+  })
 }
 </script>
 

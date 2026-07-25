@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useTheme } from 'vuetify'
 import { getAdapter } from '@/adapters'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import UndoToastStack from '@/components/UndoToastStack.vue'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 
@@ -71,5 +72,6 @@ onMounted(async () => {
     </v-snackbar>
 
     <ConfirmDialog />
+    <UndoToastStack />
   </v-app>
 </template>

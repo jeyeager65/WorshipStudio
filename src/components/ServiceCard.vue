@@ -6,6 +6,7 @@ const props = defineProps<{
   service: Service
   badge?: string
 }>()
+const emit = defineEmits<{ delete: [] }>()
 
 const dateLabel = computed(() =>
   new Date(`${props.service.date}T00:00:00`).toLocaleDateString(undefined, {
@@ -34,8 +35,18 @@ const statusLabel = computed(() => (props.service.items.length === 0 ? 'not yet 
     :class="{ 'service-card--highlight': badge }"
   >
     <v-card-item>
-      <template v-if="badge" #append>
-        <v-chip color="secondary" size="small" variant="outlined" class="font-weight-medium">{{ badge }}</v-chip>
+      <template #append>
+        <v-chip v-if="badge" color="secondary" size="small" variant="outlined" class="font-weight-medium mr-2">
+          {{ badge }}
+        </v-chip>
+        <v-btn
+          icon="mdi-trash-can-outline"
+          variant="flat"
+          color="error"
+          size="small"
+          class="row-remove"
+          @click.stop.prevent="emit('delete')"
+        />
       </template>
       <v-card-title class="text-body-1 font-weight-bold">{{ service.type }} — {{ dateLabel }}</v-card-title>
       <v-card-subtitle v-if="subtitle" class="text-primary opacity-100">{{ subtitle }}</v-card-subtitle>
@@ -56,5 +67,11 @@ const statusLabel = computed(() => (props.service.items.length === 0 ? 'not yet 
 .service-card--highlight {
   background: rgba(var(--v-theme-primary), 0.06);
   border-color: rgba(var(--v-theme-primary), 0.5);
+}
+.row-remove {
+  opacity: 0;
+}
+.service-card:hover .row-remove {
+  opacity: 1;
 }
 </style>

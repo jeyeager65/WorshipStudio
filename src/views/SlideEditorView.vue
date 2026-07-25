@@ -6,12 +6,14 @@ import { VueDraggable } from 'vue-draggable-plus'
 import { getAdapter } from '@/adapters'
 import { useSlidesStore } from '@/stores/slides'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
+import { useUndoStore } from '@/stores/undo'
 import type { SlideLibraryItem } from '@/models/library'
 
 const route = useRoute()
 const router = useRouter()
 const store = useSlidesStore()
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
+const undoStore = useUndoStore()
 
 const item = ref<SlideLibraryItem>()
 
@@ -77,7 +79,10 @@ function addSlide() {
   item.value?.slides.push({ id: `slide-part-${crypto.randomUUID()}`, label: `Slide ${(item.value.slides.length ?? 0) + 1}`, text: '' })
 }
 function removeSlide(index: number) {
-  item.value?.slides.splice(index, 1)
+  if (!item.value) return
+  const [removed] = item.value.slides.splice(index, 1)
+  if (!removed) return
+  undoStore.push(`Removed "${removed.label}"`, () => item.value?.slides.splice(index, 0, removed))
 }
 
 const loopEnabled = computed({

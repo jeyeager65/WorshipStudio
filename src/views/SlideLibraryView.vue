@@ -1,12 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSlidesStore } from '@/stores/slides'
+import { useUndoStore } from '@/stores/undo'
+import type { SlideLibraryItem } from '@/models/library'
 
 const router = useRouter()
 const store = useSlidesStore()
+const undoStore = useUndoStore()
 
 const query = ref('')
+// Deletion is soft until the undo toast expires (spec section 16) — see SongLibraryView for
+// the same pattern and its rationale.
+const pendingDeleteIds = reactive(new Set<string>())
 
 onMounted(() => {
   if (!store.loaded) store.load()
@@ -14,10 +20,22 @@ onMounted(() => {
 
 const filteredSlides = computed(() => {
   const q = query.value.trim().toLowerCase()
-  const sorted = [...store.slides].sort((a, b) => a.label.localeCompare(b.label))
+  const sorted = [...store.slides].filter((item) => !pendingDeleteIds.has(item.id)).sort((a, b) => a.label.localeCompare(b.label))
   if (!q) return sorted
   return sorted.filter((item) => item.label.toLowerCase().includes(q))
 })
+
+function deleteSlide(item: SlideLibraryItem) {
+  pendingDeleteIds.add(item.id)
+  undoStore.push(
+    `Deleted "${item.label}"`,
+    () => pendingDeleteIds.delete(item.id),
+    async () => {
+      await store.remove(item.id)
+      pendingDeleteIds.delete(item.id)
+    },
+  )
+}
 
 // The new item only exists in memory until the editor's Save button is used (see
 // SlideEditorView) — creating it here immediately would leave a blank file on disk the
@@ -52,10 +70,18 @@ function createSlide() {
         :title="item.label"
         :subtitle="item.slides.length === 1 ? '1 slide' : `${item.slides.length} slides`"
         rounded="lg"
-        class="border mb-2"
+        class="border mb-2 slide-row-item"
       >
         <template #append>
-          <span class="text-caption text-medium-emphasis">{{ item.usage.usesPastYear }}x this year</span>
+          <span class="text-caption text-medium-emphasis mr-2">{{ item.usage.usesPastYear }}x this year</span>
+          <v-btn
+            icon="mdi-trash-can-outline"
+            variant="flat"
+            color="error"
+            size="small"
+            class="row-remove"
+            @click.stop.prevent="deleteSlide(item)"
+          />
         </template>
       </v-list-item>
     </v-list>
@@ -63,3 +89,12 @@ function createSlide() {
     <p v-if="filteredSlides.length === 0" class="text-medium-emphasis text-body-2">No slides found.</p>
   </v-container>
 </template>
+
+<style scoped>
+.row-remove {
+  opacity: 0;
+}
+.slide-row-item:hover .row-remove {
+  opacity: 1;
+}
+</style>
