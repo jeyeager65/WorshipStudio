@@ -6,19 +6,22 @@ import { VueDraggable } from 'vue-draggable-plus'
 import { getAdapter } from '@/adapters'
 import { useServicesStore } from '@/stores/services'
 import { useSongsStore } from '@/stores/songs'
+import { useSlidesStore } from '@/stores/slides'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { flattenService, type FlatSlide } from '@/utils/flattenService'
 import { colorForBlockLabel, colorForItemType } from '@/utils/contentColors'
 import { formatReference, getBookNames, getChapterCount, getVerseCount, isValidReference, parseReference } from '@/utils/scriptureReference'
 import type { Service, ServiceItem } from '@/models/service'
-import type { Song } from '@/models/song'
+import type { Song, SongBlock } from '@/models/song'
+import type { SlideLibraryItem } from '@/models/library'
 import type { ScripturePassage, ScriptureTranslation } from '@/adapters/types'
 import type { ScriptureReference } from '@/models/scripture'
 
 const route = useRoute()
 const servicesStore = useServicesStore()
 const songsStore = useSongsStore()
+const slidesStore = useSlidesStore()
 const { isPresenting } = storeToRefs(useLiveSessionStore())
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 
@@ -48,6 +51,7 @@ async function resolveScriptureItem(item: ServiceItem) {
 
 onMounted(async () => {
   if (!songsStore.loaded) await songsStore.load()
+  if (!slidesStore.loaded) await slidesStore.load()
   // A just-created service arrives via the store instead of disk — see CreateServiceView —
   // so it's never persisted until Save is actually pressed.
   const isDraft = servicesStore.draftService?.id === route.params.id
@@ -98,8 +102,9 @@ async function saveService() {
 }
 
 const songsById = computed(() => new Map(songsStore.songs.map((song) => [song.id, song])))
+const slidesById = computed(() => new Map(slidesStore.slides.map((item) => [item.id, item])))
 const flatSlides = computed<FlatSlide[]>(() =>
-  service.value ? flattenService(service.value, songsById.value, scriptureById) : [],
+  service.value ? flattenService(service.value, songsById.value, scriptureById, slidesById.value) : [],
 )
 
 const selectedItem = computed<ServiceItem | undefined>(() => service.value?.items[selectedItemIndex.value])
@@ -107,6 +112,19 @@ const selectedSong = computed<Song | undefined>(() => {
   const item = selectedItem.value
   return item?.type === 'song' ? songsById.value.get(item.songId) : undefined
 })
+// Covers both slide-ref (resolved via the library) and text-slide (service-owned data) —
+// both are just a named sequence of slides, played in order, no per-service arrangement
+// override (unlike songs) since spec section 1 has the whole group inserted as-is.
+const selectedSlideGroup = computed<SongBlock[] | undefined>(() => {
+  const item = selectedItem.value
+  if (!item) return undefined
+  if (item.type === 'text-slide') return item.slides
+  if (item.type === 'slide-ref') return slidesById.value.get(item.slideId)?.slides
+  return undefined
+})
+function slideFlatIndex(itemId: string, subIndex: number): number {
+  return flatSlides.value.findIndex((s) => s.key === `${itemId}:${subIndex}`)
+}
 const selectedScripturePassage = computed<ScripturePassage | undefined>(() => {
   const item = selectedItem.value
   return item?.type === 'scripture' ? scriptureById.get(item.id) : undefined
@@ -149,6 +167,7 @@ function itemLabel(item: ServiceItem): string {
   if (item.type === 'song') return songsById.value.get(item.songId)?.title ?? 'Unknown Song'
   if (item.type === 'scripture') return item.reference
   if (item.type === 'text-slide') return 'Text Slide'
+  if (item.type === 'slide-ref') return slidesById.value.get(item.slideId)?.label ?? 'Unknown Slide'
   return item.type
 }
 
@@ -262,10 +281,11 @@ function onKeydown(event: KeyboardEvent) {
   }
 }
 
-// "+ Add to Service" — tabbed picker (spec section 2): Songs (search) and Scripture (a
-// reference builder rather than a browsable list, since scripture isn't a library). The
-// full unified fuzzy search across songs/scripture/slides/media is a later slice.
-const addTab = ref<'songs' | 'scripture'>('songs')
+// "+ Add to Service" — tabbed picker (spec section 2): Songs (search), Scripture (a
+// reference builder rather than a browsable list, since scripture isn't a library), and
+// Slides (pick from the library, or quick-create service-only text slides). The full
+// unified fuzzy search across songs/scripture/slides/media is a later slice.
+const addTab = ref<'songs' | 'scripture' | 'slides'>('songs')
 
 const filteredSongsForAdd = computed(() => {
   const q = addQuery.value.trim().toLowerCase()
@@ -405,6 +425,52 @@ async function addScriptureToService() {
   }
 }
 
+// Slides sub-picker (spec section 1/2): pick an existing library item (whole group
+// inserted in order), or quick-create service-only text slides — same card-based
+// label/text editing as the Slide Library editor, but the result belongs to this service
+// only, never saved as a shared library entry (mirrors a song's per-service arrangement
+// being separate from the library default).
+const slidesSubMode = ref<'pick' | 'new'>('pick')
+const slideQuery = ref('')
+const addingSlideRef = ref(false)
+const newTextSlideBlocks = ref<SongBlock[]>([])
+
+const filteredSlidesForAdd = computed(() => {
+  const q = slideQuery.value.trim().toLowerCase()
+  return slidesStore.slides.filter((item) => !q || item.label.toLowerCase().includes(q))
+})
+
+async function addSlideRefToService(slideItem: SlideLibraryItem) {
+  if (!service.value || addingSlideRef.value) return
+  addingSlideRef.value = true
+  try {
+    const item: ServiceItem = { id: `item-${crypto.randomUUID()}`, type: 'slide-ref', slideId: slideItem.id }
+    service.value.items.push(item)
+    selectedItemIndex.value = service.value.items.length - 1
+    closeAddDialog()
+  } finally {
+    addingSlideRef.value = false
+  }
+}
+
+function addNewTextSlideBlock() {
+  newTextSlideBlocks.value.push({ id: `slide-part-${crypto.randomUUID()}`, label: `Slide ${newTextSlideBlocks.value.length + 1}`, text: '' })
+}
+function removeNewTextSlideBlock(index: number) {
+  newTextSlideBlocks.value.splice(index, 1)
+}
+function addTextSlideToService() {
+  if (!service.value || newTextSlideBlocks.value.length === 0) return
+  const item: ServiceItem = {
+    id: `item-${crypto.randomUUID()}`,
+    type: 'text-slide',
+    slides: newTextSlideBlocks.value.map((block) => ({ ...block })),
+  }
+  service.value.items.push(item)
+  selectedItemIndex.value = service.value.items.length - 1
+  closeAddDialog()
+}
+
 function closeAddDialog() {
   addDialogOpen.value = false
   addQuery.value = ''
@@ -416,6 +482,9 @@ function closeAddDialog() {
   scriptureEndVerse.value = undefined
   scripturePreview.value = undefined
   scripturePreviewError.value = undefined
+  slideQuery.value = ''
+  slidesSubMode.value = 'pick'
+  newTextSlideBlocks.value = []
 }
 
 function updatePresenterNote(itemId: string, note: string) {
@@ -547,6 +616,35 @@ function updatePresenterNote(itemId: string, note: string) {
             </div>
           </template>
 
+          <template v-else-if="selectedItem.type === 'slide-ref' || selectedItem.type === 'text-slide'">
+            <p v-if="!selectedSlideGroup || selectedSlideGroup.length === 0" class="text-medium-emphasis">
+              {{ selectedItem.type === 'slide-ref' ? 'Slide not found in the library.' : 'No slides yet.' }}
+            </p>
+            <div v-else class="d-flex flex-column ga-1" style="max-width: 460px">
+              <div
+                v-for="(slide, index) in selectedSlideGroup"
+                :key="slide.id"
+                class="slide-row"
+                :class="{ 'slide-row--live': flatIndex === slideFlatIndex(selectedItem.id, index) }"
+                :style="
+                  flatIndex === slideFlatIndex(selectedItem.id, index)
+                    ? undefined
+                    : {
+                        background: 'rgba(var(--v-theme-amber), 0.08)',
+                        borderLeft: '3px solid rgb(var(--v-theme-amber))',
+                        paddingLeft: '9px',
+                      }
+                "
+                @click="goLive(slideFlatIndex(selectedItem.id, index))"
+              >
+                <div class="flex-grow-1" style="min-width: 0">
+                  <div class="text-body-2 font-weight-bold">{{ slide.label }}</div>
+                  <div class="text-body-2" style="white-space: pre-line; opacity: 0.75">{{ slide.text }}</div>
+                </div>
+              </div>
+            </div>
+          </template>
+
           <template v-else>
             <div
               class="slide-row"
@@ -607,6 +705,7 @@ function updatePresenterNote(itemId: string, note: string) {
         <v-tabs v-model="addTab" density="compact" class="border-b">
           <v-tab value="songs">Songs</v-tab>
           <v-tab value="scripture">Scripture</v-tab>
+          <v-tab value="slides">Slides</v-tab>
         </v-tabs>
         <v-card-text>
           <v-window v-model="addTab">
@@ -728,6 +827,73 @@ function updatePresenterNote(itemId: string, note: string) {
               >
                 Add Scripture
               </v-btn>
+            </v-window-item>
+
+            <v-window-item value="slides">
+              <v-btn-toggle v-model="slidesSubMode" mandatory density="compact" divided class="mb-4">
+                <v-btn value="pick" size="small">Pick from Library</v-btn>
+                <v-btn value="new" size="small">+ New Text Slides</v-btn>
+              </v-btn-toggle>
+
+              <template v-if="slidesSubMode === 'pick'">
+                <v-text-field
+                  v-model="slideQuery"
+                  label="Search slides…"
+                  variant="outlined"
+                  density="comfortable"
+                  prepend-inner-icon="mdi-magnify"
+                  autofocus
+                />
+                <v-list :disabled="addingSlideRef">
+                  <v-list-item
+                    v-for="slideItem in filteredSlidesForAdd"
+                    :key="slideItem.id"
+                    :title="slideItem.label"
+                    :subtitle="slideItem.slides.length === 1 ? '1 slide' : `${slideItem.slides.length} slides`"
+                    @click="addSlideRefToService(slideItem)"
+                  />
+                </v-list>
+                <p v-if="filteredSlidesForAdd.length === 0" class="text-medium-emphasis text-body-2">No slides found.</p>
+              </template>
+
+              <template v-else>
+                <p class="text-caption text-medium-emphasis mb-3">
+                  Saved with this service only — not added to the Slide Library.
+                </p>
+                <VueDraggable
+                  v-model="newTextSlideBlocks"
+                  handle=".drag-handle"
+                  :animation="150"
+                  class="d-flex flex-column ga-2 mb-3"
+                >
+                  <v-card v-for="(block, index) in newTextSlideBlocks" :key="block.id" variant="outlined" rounded="lg">
+                    <div class="d-flex align-center ga-2 px-2 py-1 border-b">
+                      <v-icon icon="mdi-drag-vertical" class="drag-handle" size="small" style="cursor: grab" />
+                      <v-text-field v-model="block.label" variant="filled" density="compact" hide-details class="flex-grow-1" />
+                      <v-btn
+                        icon="mdi-trash-can-outline"
+                        variant="flat"
+                        color="error"
+                        size="small"
+                        @click="removeNewTextSlideBlock(index)"
+                      />
+                    </div>
+                    <v-textarea v-model="block.text" variant="filled" density="compact" rows="2" auto-grow hide-details class="px-2 py-1" />
+                  </v-card>
+                </VueDraggable>
+                <v-btn variant="flat" color="primary" class="mb-3" prepend-icon="mdi-plus" @click="addNewTextSlideBlock">
+                  Add Slide
+                </v-btn>
+                <v-btn
+                  variant="flat"
+                  color="primary"
+                  block
+                  :disabled="newTextSlideBlocks.length === 0"
+                  @click="addTextSlideToService"
+                >
+                  Add to Service
+                </v-btn>
+              </template>
             </v-window-item>
           </v-window>
         </v-card-text>

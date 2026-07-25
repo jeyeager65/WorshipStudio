@@ -11,6 +11,8 @@ const router = createRouter({
     { path: '/service/:id', name: 'service-workspace', component: () => import('@/views/ServiceWorkspaceView.vue') },
     { path: '/library/songs', name: 'song-library', component: () => import('@/views/SongLibraryView.vue') },
     { path: '/library/songs/:id', name: 'song-editor', component: () => import('@/views/SongEditorView.vue') },
+    { path: '/library/slides', name: 'slide-library', component: () => import('@/views/SlideLibraryView.vue') },
+    { path: '/library/slides/:id', name: 'slide-editor', component: () => import('@/views/SlideEditorView.vue') },
     { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
   ],
 })

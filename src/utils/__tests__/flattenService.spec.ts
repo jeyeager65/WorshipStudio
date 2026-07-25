@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { flattenService } from '@/utils/flattenService'
 import type { Service } from '@/models/service'
 import type { Song } from '@/models/song'
+import type { SlideLibraryItem } from '@/models/library'
 import type { ScripturePassage } from '@/adapters/types'
 
 function makeSong(overrides: Partial<Song> = {}): Song {
@@ -98,6 +99,15 @@ describe('flattenService', () => {
     expect(flat[0].itemLabel).toBe('Video')
   })
 
+  it('falls back gracefully when a slide-ref cannot be resolved', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'slide-ref', slideId: 'missing-slide' }],
+    })
+    const flat = flattenService(service, new Map())
+    expect(flat).toHaveLength(1)
+    expect(flat[0]).toMatchObject({ itemLabel: 'Unknown Slide', subLabel: '', text: '' })
+  })
+
   it('preserves item order across mixed item types', () => {
     const song = makeSong()
     const service = makeService({
@@ -157,5 +167,42 @@ describe('flattenService — scripture', () => {
     const flat = flattenService(service, new Map(), new Map([['item-1', makePassage()]]))
     expect(flat).toHaveLength(1)
     expect(flat[0]).toMatchObject({ itemLabel: 'John 3:16-17', subLabel: 'Reference Only', text: '' })
+  })
+})
+
+describe('flattenService — slide-ref', () => {
+  function makeSlideItem(overrides: Partial<SlideLibraryItem> = {}): SlideLibraryItem {
+    return {
+      id: 'slide-1',
+      label: 'Announcements',
+      slides: [
+        { id: 'a', label: 'Slide 1', text: 'Welcome!' },
+        { id: 'b', label: 'Slide 2', text: 'Potluck this Friday' },
+      ],
+      usage: { usesPastYear: 0 },
+      updatedAt: '',
+      updatedByDevice: '',
+      ...overrides,
+    }
+  }
+
+  it('expands a slide-ref into one flat slide per slide in the referenced library item', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'slide-ref', slideId: 'slide-1' }],
+    })
+    const flat = flattenService(service, new Map(), new Map(), new Map([['slide-1', makeSlideItem()]]))
+    expect(flat).toHaveLength(2)
+    expect(flat.every((s) => s.itemLabel === 'Announcements')).toBe(true)
+    expect(flat.map((s) => s.subLabel)).toEqual(['Slide 1', 'Slide 2'])
+    expect(flat[1].text).toBe('Potluck this Friday')
+  })
+
+  it('produces a placeholder for a referenced item with no slides', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'slide-ref', slideId: 'slide-1' }],
+    })
+    const flat = flattenService(service, new Map(), new Map(), new Map([['slide-1', makeSlideItem({ slides: [] })]]))
+    expect(flat).toHaveLength(1)
+    expect(flat[0]).toMatchObject({ itemLabel: 'Announcements', subLabel: '(empty)' })
   })
 })

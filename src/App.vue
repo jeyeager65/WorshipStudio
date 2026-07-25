@@ -38,6 +38,9 @@ window.addEventListener('beforeunload', (event) => {
       <v-btn to="/library/songs" variant="flat" color="secondary" class="mr-2" prepend-icon="mdi-bookshelf">
         Library
       </v-btn>
+      <v-btn to="/library/slides" variant="flat" color="secondary" class="mr-2" prepend-icon="mdi-image-multiple">
+        Slides
+      </v-btn>
       <v-btn to="/settings" variant="flat" color="secondary" class="mr-3" prepend-icon="mdi-cog">
         Settings
       </v-btn>

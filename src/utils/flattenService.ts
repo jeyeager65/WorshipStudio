@@ -1,5 +1,6 @@
 import type { Service, ServiceItem } from '@/models/service'
 import type { Song } from '@/models/song'
+import type { SlideLibraryItem } from '@/models/library'
 import type { ScripturePassage } from '@/adapters/types'
 
 export interface FlatSlide {
@@ -16,8 +17,6 @@ export interface FlatSlide {
 
 function labelForOtherType(item: ServiceItem): string {
   switch (item.type) {
-    case 'slide-ref':
-      return 'Slide'
     case 'media':
       return 'Media'
     case 'video':
@@ -40,15 +39,17 @@ function labelForOtherType(item: ServiceItem): string {
  * sequence (spec section 3). Songs and text-slides expand to one flat entry per block;
  * scripture becomes one slide per resolved passage (see scriptureById below) — real
  * per-verse auto-fit splitting (spec section 1) is still a later slice, so for now a
- * passage that resolved fits on a single slide regardless of length; every other item type
- * (slide-ref, media, video, audio, external-app, countdown, qr) is still a
- * work-in-progress content type (M6/v1.1), so each becomes a single placeholder slide for
- * now rather than being left out of the sequence entirely.
+ * passage that resolved fits on a single slide regardless of length; slide-ref items expand
+ * to one flat entry per slide in the referenced library item (see slidesById below), same
+ * shape as text-slide; every other item type (media, video, audio, external-app, countdown,
+ * qr) is still a work-in-progress content type (v1.1), so each becomes a single placeholder
+ * slide for now rather than being left out of the sequence entirely.
  */
 export function flattenService(
   service: Service,
   songsById: Map<string, Song>,
   scriptureById: Map<string, ScripturePassage> = new Map(),
+  slidesById: Map<string, SlideLibraryItem> = new Map(),
 ): FlatSlide[] {
   const flat: FlatSlide[] = []
 
@@ -101,6 +102,29 @@ export function flattenService(
           itemLabel: passage?.reference ?? item.reference,
           subLabel: passage?.translation ?? item.translation,
           text: passage ? passage.verses.map((v) => `${v.number} ${v.text}`).join('\n') : '',
+        })
+      }
+    } else if (item.type === 'slide-ref') {
+      const slideItem = slidesById.get(item.slideId)
+      if (!slideItem || slideItem.slides.length === 0) {
+        flat.push({
+          key: `${item.id}:0`,
+          itemIndex,
+          itemId: item.id,
+          itemLabel: slideItem?.label ?? 'Unknown Slide',
+          subLabel: slideItem ? '(empty)' : '',
+          text: '',
+        })
+      } else {
+        slideItem.slides.forEach((slide, subIndex) => {
+          flat.push({
+            key: `${item.id}:${subIndex}`,
+            itemIndex,
+            itemId: item.id,
+            itemLabel: slideItem.label,
+            subLabel: slide.label,
+            text: slide.text,
+          })
         })
       }
     } else {
