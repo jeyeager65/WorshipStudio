@@ -33,6 +33,7 @@ window.addEventListener('beforeunload', (event) => {
       >
         Save
       </v-btn>
+      <v-divider v-if="saveHandler" vertical inset class="mr-3" />
       <v-btn to="/" variant="flat" color="secondary" class="mr-2" prepend-icon="mdi-home">Home</v-btn>
       <v-btn to="/library/songs" variant="flat" color="secondary" class="mr-2" prepend-icon="mdi-bookshelf">
         Library
