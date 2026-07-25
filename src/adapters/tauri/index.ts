@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { open } from '@tauri-apps/plugin-dialog'
 import type { StudioAdapter, ScripturePassage, DisplayInfo, DisplayRole, RemoteDevice, SyncStatus } from '@/adapters/types'
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
@@ -21,6 +22,17 @@ export function createTauriAdapter(): StudioAdapter {
       save: (song) => invoke('save_song', { song }),
       delete: (id) => invoke('delete_song', { id }),
       importFromOpenSongXml: (xml) => invoke<Song>('import_song_opensong_xml', { xml }),
+      importFromOpenSongFiles: async () => {
+        const selection = await open({ multiple: true, title: 'Import OpenSong Songs' })
+        if (!selection) return []
+        const paths = Array.isArray(selection) ? selection : [selection]
+        const created: Song[] = []
+        for (const path of paths) {
+          const xml = await invoke<string>('read_text_file', { path })
+          created.push(await invoke<Song>('import_song_opensong_xml', { xml }))
+        }
+        return created
+      },
     },
     services: {
       list: () => invoke<Service[]>('list_services'),

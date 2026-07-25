@@ -14,6 +14,8 @@ export interface SongPort {
   save(song: Song): Promise<void>
   delete(id: string): Promise<void>
   importFromOpenSongXml(xml: string): Promise<Song>
+  /** Opens a native/browser file picker, imports each selected OpenSong file, and returns the created songs. */
+  importFromOpenSongFiles(): Promise<Song[]>
 }
 
 export interface ServicePort {

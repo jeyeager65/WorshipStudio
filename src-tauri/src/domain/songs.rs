@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use crate::models::{Arrangement, Song, Usage};
+use crate::domain::opensong;
+use crate::models::{Song, Usage};
 
 use super::{delete_file_if_exists, read_json_dir, read_json_file, write_json_file};
 
@@ -31,9 +32,6 @@ pub fn delete(root: &Path, id: &str) -> std::io::Result<()> {
     delete_file_if_exists(&song_path(root, id))
 }
 
-/// Minimal structure extraction from OpenSong's XML song format — pulls the title
-/// so the import command path can be exercised end-to-end; full lyric/block
-/// parsing is the OpenSong-import feature itself (not this milestone's scope).
 pub fn import_from_opensong_xml(
     root: &Path,
     xml: &str,
@@ -41,20 +39,20 @@ pub fn import_from_opensong_xml(
     device: &str,
     now: &str,
 ) -> std::io::Result<Song> {
-    let title = extract_tag(xml, "title").unwrap_or_else(|| "Imported Song".to_string());
+    let parsed = opensong::parse(xml);
     let song = Song {
         id,
-        title,
-        ccli: None,
-        author: None,
-        copyright: None,
-        key: None,
+        title: parsed.title,
+        ccli: parsed.ccli,
+        author: parsed.author,
+        copyright: parsed.copyright,
+        key: parsed.key,
         tempo: None,
         collections: vec![],
         tags: vec![],
         notes: None,
-        blocks: vec![],
-        default_arrangement: Arrangement { sequence: vec![] },
+        blocks: parsed.blocks,
+        default_arrangement: parsed.arrangement,
         usage: Usage {
             last_used_at: None,
             uses_past_year: 0,
@@ -66,22 +64,10 @@ pub fn import_from_opensong_xml(
     Ok(song)
 }
 
-fn extract_tag(xml: &str, tag: &str) -> Option<String> {
-    let open = format!("<{tag}>");
-    let close = format!("</{tag}>");
-    let start = xml.find(&open)? + open.len();
-    let end = xml[start..].find(&close)? + start;
-    let value = xml[start..end].trim();
-    if value.is_empty() {
-        None
-    } else {
-        Some(value.to_string())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::Arrangement;
 
     fn sample_song(id: &str) -> Song {
         Song {

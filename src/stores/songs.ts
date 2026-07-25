@@ -17,5 +17,16 @@ export const useSongsStore = defineStore('songs', () => {
     await load()
   }
 
-  return { songs, loaded, load, save }
+  async function remove(id: string) {
+    await getAdapter().songs.delete(id)
+    await load()
+  }
+
+  async function importFromOpenSong() {
+    const imported = await getAdapter().songs.importFromOpenSongFiles()
+    if (imported.length > 0) await load()
+    return imported
+  }
+
+  return { songs, loaded, load, save, remove, importFromOpenSong }
 })

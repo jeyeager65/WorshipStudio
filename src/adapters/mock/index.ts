@@ -18,6 +18,8 @@ import {
   seedLibrarySettings,
   seedMachineSettings,
 } from './fixtures'
+import { parseOpenSongXml } from './opensongParser'
+import { pickFilesInBrowser } from './pickFiles'
 
 function newId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`
@@ -43,6 +45,26 @@ export function createMockAdapter(): StudioAdapter {
   ]
   const mockRemoteDevices: RemoteDevice[] = []
 
+  async function importOpenSongXml(xml: string): Promise<Song> {
+    const parsed = parseOpenSongXml(xml)
+    const song: Song = {
+      id: newId('song'),
+      title: parsed.title,
+      author: parsed.author,
+      copyright: parsed.copyright,
+      ccli: parsed.ccli,
+      key: parsed.key,
+      collections: [],
+      tags: [],
+      blocks: parsed.blocks,
+      defaultArrangement: parsed.arrangement,
+      usage: { usesPastYear: 0 },
+      ...nowStamp(),
+    }
+    await songs.save(song)
+    return song
+  }
+
   return {
     kind: 'mock',
     songs: {
@@ -50,20 +72,14 @@ export function createMockAdapter(): StudioAdapter {
       get: (id) => songs.get(id) as Promise<Song | undefined>,
       save: (song) => songs.save({ ...song, ...nowStamp() }),
       delete: (id) => songs.delete(id),
-      importFromOpenSongXml: async (xml) => {
-        const titleMatch = /<title>(.*?)<\/title>/.exec(xml)
-        const song: Song = {
-          id: newId('song'),
-          title: titleMatch?.[1] ?? 'Imported Song',
-          collections: [],
-          tags: [],
-          blocks: [],
-          defaultArrangement: { sequence: [] },
-          usage: { usesPastYear: 0 },
-          ...nowStamp(),
+      importFromOpenSongXml: importOpenSongXml,
+      importFromOpenSongFiles: async () => {
+        const files = await pickFilesInBrowser()
+        const created: Song[] = []
+        for (const file of files) {
+          created.push(await importOpenSongXml(await file.text()))
         }
-        await songs.save(song)
-        return song
+        return created
       },
     },
     services: {
