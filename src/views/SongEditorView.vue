@@ -143,7 +143,7 @@ function removeFromArrangement(index: number) {
             class="flex-grow-1"
           />
           <v-text-field v-model="entry.number" label="#" variant="outlined" density="compact" style="width: 90px" />
-          <v-btn icon="mdi-close" variant="flat" color="error" density="compact" @click="removeCollection(index)" />
+          <v-btn icon="mdi-trash-can-outline" variant="flat" color="error" size="small" @click="removeCollection(index)" />
         </div>
         <v-btn variant="flat" color="primary" class="mb-6" prepend-icon="mdi-plus" @click="addCollection">
           Add To Collection
@@ -224,14 +224,7 @@ function removeFromArrangement(index: number) {
           >
             <v-icon icon="mdi-drag-vertical" class="drag-handle" size="small" style="cursor: grab" />
             <span class="text-body-2 flex-grow-1">{{ blockLabel(id) }}</span>
-            <v-btn
-              icon="mdi-close"
-              variant="flat"
-              color="error"
-              density="compact"
-              size="x-small"
-              @click="removeFromArrangement(index)"
-            />
+            <v-btn icon="mdi-trash-can-outline" variant="flat" color="error" size="small" @click="removeFromArrangement(index)" />
           </div>
         </VueDraggable>
 

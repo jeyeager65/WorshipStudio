@@ -488,12 +488,11 @@ function updatePresenterNote(itemId: string, note: string) {
                   </div>
                 </div>
                 <v-btn
-                  icon="mdi-close"
+                  icon="mdi-trash-can-outline"
                   variant="flat"
                   color="error"
                   class="row-remove"
-                  density="compact"
-                  size="x-small"
+                  size="small"
                   @click.stop="removeFromArrangement(index)"
                 />
               </div>
