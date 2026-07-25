@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { reactive } from 'vue'
-import { MockCollection } from '@/adapters/mock/collection'
+import { MockCollection, MockSingleton } from '@/adapters/mock/collection'
 
 interface Item {
   id: string
@@ -38,5 +38,31 @@ describe('MockCollection', () => {
     item.title = 'Mutated after save'
 
     expect((await collection.get('a'))?.title).toBe('A')
+  })
+})
+
+describe('MockSingleton', () => {
+  it('returns the seed value until saved', async () => {
+    const singleton = new MockSingleton<{ name: string }>(`test-${crypto.randomUUID()}`, { name: 'seed' })
+    expect(await singleton.get()).toEqual({ name: 'seed' })
+  })
+
+  it('persists a saved value across a fresh instance reading the same storage key (simulates a page reload)', async () => {
+    const key = `test-${crypto.randomUUID()}`
+    const first = new MockSingleton<{ name: string }>(key, { name: 'seed' })
+    await first.save({ name: 'updated' })
+
+    const second = new MockSingleton<{ name: string }>(key, { name: 'seed' })
+    expect(await second.get()).toEqual({ name: 'updated' })
+  })
+
+  it('save() stores a copy — later mutating the caller-supplied object does not change stored data', async () => {
+    const singleton = new MockSingleton<{ name: string }>(`test-${crypto.randomUUID()}`, { name: 'seed' })
+    const value = reactive({ name: 'A' })
+    await singleton.save(value)
+
+    value.name = 'Mutated after save'
+
+    expect((await singleton.get()).name).toBe('A')
   })
 })

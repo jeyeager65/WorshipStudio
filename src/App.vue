@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
+import { useTheme } from 'vuetify'
+import { getAdapter } from '@/adapters'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
@@ -11,6 +14,15 @@ const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 // tab/window entirely, which a route guard can't intercept.
 window.addEventListener('beforeunload', (event) => {
   if (isDirty.value) event.preventDefault()
+})
+
+// Dark mode (Settings → General) is a per-machine preference, applied once at startup
+// here rather than re-read on every screen — SettingsView just needs to update
+// theme.global.name itself when the user flips the toggle.
+const theme = useTheme()
+onMounted(async () => {
+  const machineSettings = await getAdapter().settings.getMachineSettings()
+  theme.change(machineSettings.darkMode ? 'worshipDark' : 'worshipLight')
 })
 </script>
 

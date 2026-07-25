@@ -8,7 +8,7 @@ import type {
 } from '@/adapters/types'
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
-import { MockCollection } from './collection'
+import { MockCollection, MockSingleton } from './collection'
 import {
   seedSongs,
   seedServices,
@@ -38,13 +38,16 @@ export function createMockAdapter(): StudioAdapter {
   const media = new MockCollection('media', seedMedia)
   const themes = new MockCollection('themes', seedThemes)
 
-  let librarySettings = seedLibrarySettings
-  let machineSettings = seedMachineSettings
+  const librarySettingsStore = new MockSingleton('library-settings', seedLibrarySettings)
+  const machineSettingsStore = new MockSingleton('machine-settings', seedMachineSettings)
   let liveIndex = -1
-  const mockDisplays: DisplayInfo[] = [
+  // Real hardware enumeration would refresh id/name/resolution from the OS each time and
+  // look up only the role from per-machine storage; the mock's "hardware" is fake and
+  // stable either way, so persisting the whole record is equivalent and simpler.
+  const displays = new MockCollection<DisplayInfo>('displays', [
     { id: 'display-1', name: 'Built-in Display', resolution: '1920x1080', role: 'operator' },
     { id: 'display-2', name: 'Preview (simulated audience)', resolution: '1920x1080', role: 'audience' },
-  ]
+  ])
   const mockRemoteDevices: RemoteDevice[] = []
 
   async function importOpenSongXml(xml: string): Promise<Song> {
@@ -124,14 +127,10 @@ export function createMockAdapter(): StudioAdapter {
       delete: (id) => themes.delete(id),
     },
     settings: {
-      getLibrarySettings: async () => structuredClone(librarySettings),
-      saveLibrarySettings: async (next) => {
-        librarySettings = next
-      },
-      getMachineSettings: async () => structuredClone(machineSettings),
-      saveMachineSettings: async (next) => {
-        machineSettings = next
-      },
+      getLibrarySettings: () => librarySettingsStore.get(),
+      saveLibrarySettings: (next) => librarySettingsStore.save(next),
+      getMachineSettings: () => machineSettingsStore.get(),
+      saveMachineSettings: (next) => machineSettingsStore.save(next),
     },
     scripture: {
       resolve: async (reference, translation): Promise<ScripturePassage> => {
@@ -176,10 +175,10 @@ export function createMockAdapter(): StudioAdapter {
       },
     },
     displays: {
-      list: async () => structuredClone(mockDisplays),
+      list: () => displays.list(),
       assignRole: async (displayId, role: DisplayRole) => {
-        const display = mockDisplays.find((d) => d.id === displayId)
-        if (display) display.role = role
+        const display = await displays.get(displayId)
+        if (display) await displays.save({ ...display, role })
       },
       identify: async () => {},
     },

@@ -55,3 +55,30 @@ export class MockCollection<T extends { id: string }> {
     this.persist()
   }
 }
+
+/**
+ * Same localStorage-backed persistence as MockCollection, but for a single JSON document
+ * rather than a list — used by ports that manage one settings object (library-settings.json,
+ * machine-settings.json) instead of a collection of records.
+ */
+export class MockSingleton<T> {
+  private key: string
+  private value: T
+
+  constructor(storageKey: string, seed: T) {
+    this.key = `worship-studio:mock:${storageKey}`
+    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(this.key) : null
+    this.value = stored ? (JSON.parse(stored) as T) : seed
+  }
+
+  async get(): Promise<T> {
+    return clone(this.value)
+  }
+
+  async save(next: T): Promise<void> {
+    this.value = clone(next)
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(this.key, JSON.stringify(this.value))
+    }
+  }
+}
