@@ -21,8 +21,6 @@ export interface Song {
   ccli?: string
   author?: string
   copyright?: string
-  key?: string
-  tempo?: string
   collections: SongCollectionEntry[]
   tags: string[]
   /** Library-level notes (arrangement tips, key changes) — distinct from per-service presenter notes. */

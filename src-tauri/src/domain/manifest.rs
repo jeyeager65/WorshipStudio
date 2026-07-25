@@ -60,8 +60,6 @@ mod tests {
                 ccli: None,
                 author: None,
                 copyright: None,
-                key: None,
-                tempo: None,
                 collections: vec![],
                 tags: vec![],
                 notes: None,

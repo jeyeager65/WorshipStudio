@@ -103,7 +103,6 @@ interface Arrangement { sequence: string[] }  // block IDs, repeats allowed
 
 interface Song {
   id: string; title: string; ccli?: string; author?: string; copyright?: string;
-  key?: string; tempo?: string;
   collections: { collectionId: string; number?: string }[];  // number is per-collection
   tags: string[];
   notes?: string;             // library-level notes, not per-service

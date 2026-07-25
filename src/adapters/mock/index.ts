@@ -55,7 +55,6 @@ export function createMockAdapter(): StudioAdapter {
       author: parsed.author,
       copyright: parsed.copyright,
       ccli: parsed.ccli,
-      key: parsed.key,
       collections: [],
       tags: [],
       blocks: parsed.blocks,

@@ -7,7 +7,6 @@ pub struct ParsedSong {
     pub author: Option<String>,
     pub copyright: Option<String>,
     pub ccli: Option<String>,
-    pub key: Option<String>,
     pub blocks: Vec<SongBlock>,
     pub arrangement: Arrangement,
 }
@@ -20,7 +19,6 @@ pub fn parse(xml: &str) -> ParsedSong {
     let author = extract_tag(xml, "author");
     let copyright = extract_tag(xml, "copyright");
     let ccli = extract_tag(xml, "ccli");
-    let key = extract_tag(xml, "key");
     let presentation = extract_tag(xml, "presentation");
     let (blocks, lyrics_arrangement) = extract_tag(xml, "lyrics")
         .map(|lyrics| parse_lyrics(&lyrics))
@@ -52,7 +50,6 @@ pub fn parse(xml: &str) -> ParsedSong {
         author,
         copyright,
         ccli,
-        key,
         blocks,
         arrangement,
     }
@@ -387,7 +384,6 @@ mod tests {
         assert_eq!(parsed.title, "Great Are You Lord");
         assert_eq!(parsed.author.as_deref(), Some("Leonard, MacIntyre, Jordan"));
         assert_eq!(parsed.ccli.as_deref(), Some("7036939"));
-        assert_eq!(parsed.key.as_deref(), Some("A"));
     }
 
     #[test]

@@ -11,7 +11,6 @@ export interface ParsedOpenSongSong {
   author?: string
   copyright?: string
   ccli?: string
-  key?: string
   blocks: SongBlock[]
   arrangement: Arrangement
 }
@@ -170,7 +169,6 @@ export function parseOpenSongXml(xml: string): ParsedOpenSongSong {
   const author = extractTag(xml, 'author')
   const copyright = extractTag(xml, 'copyright')
   const ccli = extractTag(xml, 'ccli')
-  const key = extractTag(xml, 'key')
   const presentation = extractTag(xml, 'presentation')
   const lyrics = extractTag(xml, 'lyrics')
   const { blocks, sequence: lyricsSequence } = lyrics ? parseLyrics(lyrics) : { blocks: [], sequence: [] }
@@ -185,5 +183,5 @@ export function parseOpenSongXml(xml: string): ParsedOpenSongSong {
     if (ids.length > 0) sequence = ids
   }
 
-  return { title, author, copyright, ccli, key, blocks, arrangement: { sequence } }
+  return { title, author, copyright, ccli, blocks, arrangement: { sequence } }
 }

@@ -41,10 +41,6 @@ pub struct Song {
     pub author: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub copyright: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tempo: Option<String>,
     #[serde(default)]
     pub collections: Vec<SongCollectionEntry>,
     #[serde(default)]

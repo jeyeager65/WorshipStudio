@@ -117,8 +117,6 @@ function removeFromArrangement(index: number) {
 
         <div class="text-overline text-medium-emphasis mb-2 mt-2">General</div>
         <div class="d-flex flex-wrap ga-4 mb-1 align-end">
-          <v-text-field v-model="song.key" label="Key" variant="outlined" density="compact" style="width: 100px" />
-          <v-text-field v-model="song.tempo" label="Tempo" variant="outlined" density="compact" style="width: 120px" />
           <v-text-field v-model="song.ccli" label="CCLI #" variant="outlined" density="compact" style="width: 130px" />
           <v-text-field v-model="song.author" label="Author" variant="outlined" density="compact" style="width: 220px" />
           <v-combobox
@@ -147,8 +145,8 @@ function removeFromArrangement(index: number) {
           <v-text-field v-model="entry.number" label="#" variant="outlined" density="compact" style="width: 90px" />
           <v-btn icon="mdi-close" variant="flat" color="error" density="compact" @click="removeCollection(index)" />
         </div>
-        <v-btn variant="flat" color="primary" class="mb-6" prepend-icon="mdi-plus" size="small" @click="addCollection">
-          Add to Another Collection
+        <v-btn variant="flat" color="primary" class="mb-6" prepend-icon="mdi-plus" @click="addCollection">
+          Add To Collection
         </v-btn>
 
         <div class="text-overline text-medium-emphasis mb-2">Song Blocks</div>
