@@ -8,8 +8,15 @@ import { ref } from 'vue'
  * obviously visible to the user, so edits stay in-memory until Save is pressed. This flag
  * is what the router guard (router/index.ts) and the tab-close warning (App.vue) check to
  * avoid silently losing unsaved work.
+ *
+ * saveHandler/saving let the current screen's Save action live in the persistent app bar
+ * (App.vue) instead of a per-page toolbar that would scroll out of view — whichever view is
+ * mounted registers its own save function here and clears it on unmount, so the app bar
+ * only shows a Save button when a screen actually has one.
  */
 export const useUnsavedChangesStore = defineStore('unsavedChanges', () => {
   const isDirty = ref(false)
-  return { isDirty }
+  const saving = ref(false)
+  const saveHandler = ref<(() => void | Promise<void>) | undefined>()
+  return { isDirty, saving, saveHandler }
 })

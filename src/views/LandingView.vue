@@ -41,6 +41,7 @@ const browseResults = computed(() => {
 <template>
   <v-container class="py-8" style="max-width: 720px">
     <div class="text-center mb-6">
+      <img src="@/assets/logo-dark.png" alt="Worship Studio" class="landing-logo mb-4" />
       <p class="text-medium-emphasis">Select a service to continue, or create a new one</p>
     </div>
 
@@ -82,3 +83,10 @@ const browseResults = computed(() => {
     </v-window>
   </v-container>
 </template>
+
+<style scoped>
+.landing-logo {
+  height: 100px;
+  width: auto;
+}
+</style>

@@ -50,10 +50,6 @@ async function createService() {
 
 <template>
   <v-container class="py-8" style="max-width: 560px">
-    <v-btn variant="flat" color="secondary" class="mb-4" prepend-icon="mdi-chevron-left" to="/">
-      Back to Home
-    </v-btn>
-
     <h1 class="text-h5 font-weight-bold mb-1">Create New Service</h1>
     <p class="text-medium-emphasis text-body-2 mb-6">
       Start with the basics — you'll add songs, scripture, and slides once inside the service.

@@ -56,10 +56,6 @@ async function importFromOpenSong() {
 
 <template>
   <v-container class="py-8" style="max-width: 720px">
-    <v-btn variant="flat" color="secondary" class="mb-4" prepend-icon="mdi-chevron-left" to="/">
-      Back to Home
-    </v-btn>
-
     <div class="d-flex align-center mb-6 ga-3">
       <h1 class="text-h5 font-weight-bold flex-grow-1">Song Library</h1>
       <v-btn variant="flat" color="secondary" prepend-icon="mdi-file-import" :loading="importing" @click="importFromOpenSong">

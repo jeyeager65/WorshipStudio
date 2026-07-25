@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
 import { getAdapter } from '@/adapters'
 import { useSongsStore } from '@/stores/songs'
@@ -11,13 +11,11 @@ import type { Song, SongBlock } from '@/models/song'
 import type { LibrarySettings } from '@/models/settings'
 
 const route = useRoute()
-const router = useRouter()
 const store = useSongsStore()
-const { isDirty } = storeToRefs(useUnsavedChangesStore())
+const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 
 const song = ref<Song>()
 const librarySettings = ref<LibrarySettings>()
-const saving = ref(false)
 
 onMounted(async () => {
   const [loadedSong, settings] = await Promise.all([
@@ -31,9 +29,15 @@ onMounted(async () => {
   // assignment above — a single deep watch instead of wiring a dirty-flag handler onto
   // every field individually.
   watch(song, () => (isDirty.value = true), { deep: true })
+  // The Save button itself lives in the persistent app bar (App.vue), not a per-page
+  // toolbar that would scroll out of view — this view just supplies the action.
+  saveHandler.value = saveSong
 })
 
-onUnmounted(() => (isDirty.value = false))
+onUnmounted(() => {
+  isDirty.value = false
+  saveHandler.value = undefined
+})
 
 async function saveSong() {
   if (!song.value || saving.value) return
@@ -84,26 +88,6 @@ function removeFromArrangement(index: number) {
 
 <template>
   <div v-if="song">
-    <v-toolbar density="compact" elevation="0" class="border-b px-2">
-      <v-btn variant="flat" color="secondary" prepend-icon="mdi-chevron-left" @click="router.push('/library/songs')">
-        Song Library
-      </v-btn>
-      <v-spacer />
-      <span class="text-caption text-medium-emphasis mr-3">
-        {{ saving ? 'Saving…' : isDirty ? 'Unsaved changes' : 'All changes saved' }}
-      </span>
-      <v-btn
-        variant="flat"
-        color="primary"
-        prepend-icon="mdi-content-save"
-        :loading="saving"
-        :disabled="!isDirty"
-        @click="saveSong"
-      >
-        Save
-      </v-btn>
-    </v-toolbar>
-
     <div class="editor-layout">
       <div class="editor-panel">
         <v-text-field

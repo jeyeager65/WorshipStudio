@@ -20,13 +20,12 @@ const route = useRoute()
 const servicesStore = useServicesStore()
 const songsStore = useSongsStore()
 const { isPresenting } = storeToRefs(useLiveSessionStore())
-const { isDirty } = storeToRefs(useUnsavedChangesStore())
+const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 
 const service = ref<Service>()
 const selectedItemIndex = ref(0)
 /** -1 = nothing live yet; equal to flatSlides.length = live but past the last slide (blank). */
 const flatIndex = ref(-1)
-const saving = ref(false)
 
 const addDialogOpen = ref(false)
 const addQuery = ref('')
@@ -61,6 +60,9 @@ onMounted(async () => {
   // (flatIndex/isPresenting) is intentionally NOT part of this watch, since navigating
   // live isn't "unsaved content".
   watch(service, () => (isDirty.value = true), { deep: true })
+  // The Save button itself lives in the persistent app bar (App.vue), not a per-page
+  // toolbar that would scroll out of view — this view just supplies the action.
+  saveHandler.value = saveService
 })
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeydown)
@@ -69,6 +71,7 @@ onUnmounted(() => {
   // permanently believing a torn-down workspace is still live.
   isPresenting.value = false
   isDirty.value = false
+  saveHandler.value = undefined
 })
 
 async function saveService() {
@@ -412,26 +415,10 @@ function updatePresenterNote(itemId: string, note: string) {
 
 <template>
   <div v-if="service">
-    <v-toolbar density="compact" elevation="0" class="border-b px-2">
-      <div class="d-flex flex-column ml-3" style="line-height: 1.2">
-        <span class="text-body-2 font-weight-bold">{{ service.type }} — {{ service.date }}</span>
-        <span class="text-caption text-medium-emphasis">{{ service.sermonTitle }}</span>
-      </div>
-      <v-spacer />
-      <span class="text-caption text-medium-emphasis mr-3">
-        {{ saving ? 'Saving…' : isDirty ? 'Unsaved changes' : 'All changes saved' }}
-      </span>
-      <v-btn
-        variant="flat"
-        color="primary"
-        prepend-icon="mdi-content-save"
-        :loading="saving"
-        :disabled="!isDirty"
-        @click="saveService"
-      >
-        Save
-      </v-btn>
-    </v-toolbar>
+    <div class="d-flex flex-column px-4 py-2 border-b" style="line-height: 1.2">
+      <span class="text-body-2 font-weight-bold">{{ service.type }} — {{ service.date }}</span>
+      <span class="text-caption text-medium-emphasis">{{ service.sermonTitle }}</span>
+    </div>
 
     <div class="workspace-layout">
       <div class="service-panel">
