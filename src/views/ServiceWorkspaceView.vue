@@ -8,10 +8,7 @@ const route = useRoute()
 const service = ref<Service | undefined>()
 
 onMounted(async () => {
-  const id = route.params.id as string
-  if (id !== 'new') {
-    service.value = await getAdapter().services.get(id)
-  }
+  service.value = await getAdapter().services.get(route.params.id as string)
 })
 </script>
 
