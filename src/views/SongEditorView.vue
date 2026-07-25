@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
 import { getAdapter } from '@/adapters'
 import { useSongsStore } from '@/stores/songs'
+import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { colorForBlockLabel } from '@/utils/contentColors'
 import type { Song, SongBlock } from '@/models/song'
 import type { LibrarySettings } from '@/models/settings'
@@ -11,9 +13,11 @@ import type { LibrarySettings } from '@/models/settings'
 const route = useRoute()
 const router = useRouter()
 const store = useSongsStore()
+const { isDirty } = storeToRefs(useUnsavedChangesStore())
 
 const song = ref<Song>()
 const librarySettings = ref<LibrarySettings>()
+const saving = ref(false)
 
 onMounted(async () => {
   const [loadedSong, settings] = await Promise.all([
@@ -22,10 +26,24 @@ onMounted(async () => {
   ])
   song.value = loadedSong
   librarySettings.value = settings
+  isDirty.value = false
+  // Registered after the initial load so it only reacts to actual user edits, not the
+  // assignment above — a single deep watch instead of wiring a dirty-flag handler onto
+  // every field individually.
+  watch(song, () => (isDirty.value = true), { deep: true })
 })
 
-async function persist() {
-  if (song.value) await store.save(song.value)
+onUnmounted(() => (isDirty.value = false))
+
+async function saveSong() {
+  if (!song.value || saving.value) return
+  saving.value = true
+  try {
+    await store.save(song.value)
+    isDirty.value = false
+  } finally {
+    saving.value = false
+  }
 }
 
 const usageLabel = computed(() => {
@@ -41,7 +59,6 @@ function addCollection() {
 }
 function removeCollection(index: number) {
   song.value?.collections.splice(index, 1)
-  persist()
 }
 
 function addBlock() {
@@ -53,26 +70,37 @@ function removeBlock(index: number) {
   if (removed) {
     song.value.defaultArrangement.sequence = song.value.defaultArrangement.sequence.filter((id) => id !== removed.id)
   }
-  persist()
 }
 function blockLabel(id: string): string {
   return song.value?.blocks.find((block) => block.id === id)?.label ?? id
 }
 function addToArrangement(block: SongBlock) {
   song.value?.defaultArrangement.sequence.push(block.id)
-  persist()
 }
 function removeFromArrangement(index: number) {
   song.value?.defaultArrangement.sequence.splice(index, 1)
-  persist()
 }
 </script>
 
 <template>
   <div v-if="song">
     <v-toolbar density="compact" elevation="0" class="border-b px-2">
-      <v-btn variant="tonal" color="primary" class="btn-bordered" prepend-icon="mdi-chevron-left" @click="router.push('/library/songs')">
+      <v-btn variant="flat" color="secondary" prepend-icon="mdi-chevron-left" @click="router.push('/library/songs')">
         Song Library
+      </v-btn>
+      <v-spacer />
+      <span class="text-caption text-medium-emphasis mr-3">
+        {{ saving ? 'Saving…' : isDirty ? 'Unsaved changes' : 'All changes saved' }}
+      </span>
+      <v-btn
+        variant="flat"
+        color="primary"
+        prepend-icon="mdi-content-save"
+        :loading="saving"
+        :disabled="!isDirty"
+        @click="saveSong"
+      >
+        Save
       </v-btn>
     </v-toolbar>
 
@@ -85,15 +113,14 @@ function removeFromArrangement(index: number) {
           rounded="lg"
           class="text-h5 font-weight-bold mb-1 song-title-field"
           hide-details
-          @blur="persist"
         />
 
         <div class="text-overline text-medium-emphasis mb-2 mt-2">General</div>
         <div class="d-flex flex-wrap ga-4 mb-1 align-end">
-          <v-text-field v-model="song.key" label="Key" variant="outlined" density="compact" style="width: 100px" @blur="persist" />
-          <v-text-field v-model="song.tempo" label="Tempo" variant="outlined" density="compact" style="width: 120px" @blur="persist" />
-          <v-text-field v-model="song.ccli" label="CCLI #" variant="outlined" density="compact" style="width: 130px" @blur="persist" />
-          <v-text-field v-model="song.author" label="Author" variant="outlined" density="compact" style="width: 220px" @blur="persist" />
+          <v-text-field v-model="song.key" label="Key" variant="outlined" density="compact" style="width: 100px" />
+          <v-text-field v-model="song.tempo" label="Tempo" variant="outlined" density="compact" style="width: 120px" />
+          <v-text-field v-model="song.ccli" label="CCLI #" variant="outlined" density="compact" style="width: 130px" />
+          <v-text-field v-model="song.author" label="Author" variant="outlined" density="compact" style="width: 220px" />
           <v-combobox
             v-model="song.tags"
             label="Tags"
@@ -103,7 +130,6 @@ function removeFromArrangement(index: number) {
             chips
             closable-chips
             style="min-width: 220px"
-            @update:model-value="persist"
           />
         </div>
         <p class="text-caption text-medium-emphasis mb-6">{{ usageLabel }}</p>
@@ -117,24 +143,16 @@ function removeFromArrangement(index: number) {
             variant="outlined"
             density="compact"
             class="flex-grow-1"
-            @update:model-value="persist"
           />
-          <v-text-field
-            v-model="entry.number"
-            label="#"
-            variant="outlined"
-            density="compact"
-            style="width: 90px"
-            @blur="persist"
-          />
-          <v-btn icon="mdi-close" variant="tonal" color="error" class="btn-bordered" density="compact" @click="removeCollection(index)" />
+          <v-text-field v-model="entry.number" label="#" variant="outlined" density="compact" style="width: 90px" />
+          <v-btn icon="mdi-close" variant="flat" color="error" density="compact" @click="removeCollection(index)" />
         </div>
-        <v-btn variant="tonal" color="primary" class="btn-bordered mb-6" prepend-icon="mdi-plus" size="small" @click="addCollection">
+        <v-btn variant="flat" color="primary" class="mb-6" prepend-icon="mdi-plus" size="small" @click="addCollection">
           Add to Another Collection
         </v-btn>
 
         <div class="text-overline text-medium-emphasis mb-2">Song Blocks</div>
-        <VueDraggable v-model="song.blocks" handle=".drag-handle" :animation="150" class="d-flex flex-column ga-3" @end="persist">
+        <VueDraggable v-model="song.blocks" handle=".drag-handle" :animation="150" class="d-flex flex-column ga-3">
           <v-card
             v-for="(block, index) in song.blocks"
             :key="block.id"
@@ -156,16 +174,8 @@ function removeFromArrangement(index: number) {
                 hide-details
                 :color="colorForBlockLabel(block.label)"
                 class="font-weight-bold flex-grow-1 block-label-field"
-                @blur="persist"
               />
-              <v-btn
-                variant="tonal"
-                color="error"
-                class="btn-bordered"
-                size="small"
-                prepend-icon="mdi-trash-can-outline"
-                @click="removeBlock(index)"
-              >
+              <v-btn variant="flat" color="error" size="small" prepend-icon="mdi-trash-can-outline" @click="removeBlock(index)">
                 Remove
               </v-btn>
             </div>
@@ -177,11 +187,10 @@ function removeFromArrangement(index: number) {
               auto-grow
               hide-details
               class="px-3 py-2 block-text-field"
-              @blur="persist"
             />
           </v-card>
         </VueDraggable>
-        <v-btn variant="tonal" color="primary" class="btn-bordered mt-3 mb-6" prepend-icon="mdi-plus" @click="addBlock">
+        <v-btn variant="flat" color="primary" class="mt-3 mb-6" prepend-icon="mdi-plus" @click="addBlock">
           Add Block
         </v-btn>
 
@@ -191,7 +200,6 @@ function removeFromArrangement(index: number) {
           variant="outlined"
           placeholder="Notes about this song — arrangement tips, key changes, performance reminders…"
           rows="3"
-          @blur="persist"
         />
       </div>
 
@@ -206,7 +214,6 @@ function removeFromArrangement(index: number) {
           handle=".drag-handle"
           :animation="150"
           class="d-flex flex-column ga-2"
-          @end="persist"
         >
           <div
             v-for="(id, index) in song.defaultArrangement.sequence"
@@ -221,9 +228,8 @@ function removeFromArrangement(index: number) {
             <span class="text-body-2 flex-grow-1">{{ blockLabel(id) }}</span>
             <v-btn
               icon="mdi-close"
-              variant="tonal"
+              variant="flat"
               color="error"
-              class="btn-bordered"
               density="compact"
               size="x-small"
               @click="removeFromArrangement(index)"

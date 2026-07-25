@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
@@ -7,6 +7,7 @@ import { getAdapter } from '@/adapters'
 import { useServicesStore } from '@/stores/services'
 import { useSongsStore } from '@/stores/songs'
 import { useLiveSessionStore } from '@/stores/liveSession'
+import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { flattenService, type FlatSlide } from '@/utils/flattenService'
 import { colorForBlockLabel, colorForItemType } from '@/utils/contentColors'
 import type { Service, ServiceItem } from '@/models/service'
@@ -16,11 +17,13 @@ const route = useRoute()
 const servicesStore = useServicesStore()
 const songsStore = useSongsStore()
 const { isPresenting } = storeToRefs(useLiveSessionStore())
+const { isDirty } = storeToRefs(useUnsavedChangesStore())
 
 const service = ref<Service>()
 const selectedItemIndex = ref(0)
 /** -1 = nothing live yet; equal to flatSlides.length = live but past the last slide (blank). */
 const flatIndex = ref(-1)
+const saving = ref(false)
 
 const addDialogOpen = ref(false)
 const addQuery = ref('')
@@ -29,6 +32,13 @@ onMounted(async () => {
   if (!songsStore.loaded) await songsStore.load()
   service.value = await getAdapter().services.get(route.params.id as string)
   window.addEventListener('keydown', onKeydown)
+  isDirty.value = false
+  // Registered after the initial load so it only reacts to actual edits, not the load
+  // itself — content edits (arrangement, presenter notes) use an explicit Save button
+  // rather than auto-save (see stores/unsavedChanges.ts); live-transport state
+  // (flatIndex/isPresenting) is intentionally NOT part of this watch, since navigating
+  // live isn't "unsaved content".
+  watch(service, () => (isDirty.value = true), { deep: true })
 })
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeydown)
@@ -36,7 +46,19 @@ onUnmounted(() => {
   // presenting, but if this view ever unmounts some other way, don't leave the app
   // permanently believing a torn-down workspace is still live.
   isPresenting.value = false
+  isDirty.value = false
 })
+
+async function saveService() {
+  if (!service.value || saving.value) return
+  saving.value = true
+  try {
+    await servicesStore.save(service.value)
+    isDirty.value = false
+  } finally {
+    saving.value = false
+  }
+}
 
 const songsById = computed(() => new Map(songsStore.songs.map((song) => [song.id, song])))
 const flatSlides = computed<FlatSlide[]>(() => (service.value ? flattenService(service.value, songsById.value) : []))
@@ -104,30 +126,23 @@ function itemHasLive(index: number): boolean {
   return !!slide && slide.itemIndex === index
 }
 
-async function persist() {
-  if (service.value) await servicesStore.save(service.value)
-}
-
 // In-workspace arrangement editing — edits only this service item's own copy of the
 // arrangement (spec section 3), never the library song's defaultArrangement.
 function removeFromArrangement(index: number) {
   const item = selectedItem.value
   if (item?.type !== 'song') return
   item.arrangement.sequence.splice(index, 1)
-  persist()
 }
 function addToArrangement(blockId: string) {
   const item = selectedItem.value
   if (item?.type !== 'song') return
   item.arrangement.sequence.push(blockId)
-  persist()
 }
 function resetArrangementToDefault() {
   const item = selectedItem.value
   const song = selectedSong.value
   if (item?.type !== 'song' || !song) return
   item.arrangement.sequence = [...song.defaultArrangement.sequence]
-  persist()
 }
 
 // Live transport — flattened Next/Prev across the whole service (spec section 3).
@@ -216,7 +231,6 @@ async function addSongToService(song: Song) {
       arrangement: { sequence: [...song.defaultArrangement.sequence] },
     }
     service.value.items.push(item)
-    await persist()
     selectedItemIndex.value = service.value.items.length - 1
     addDialogOpen.value = false
     addQuery.value = ''
@@ -229,7 +243,6 @@ function updatePresenterNote(itemId: string, note: string) {
   if (!service.value) return
   if (!service.value.presenterNotes) service.value.presenterNotes = {}
   service.value.presenterNotes[itemId] = note
-  persist()
 }
 </script>
 
@@ -240,6 +253,20 @@ function updatePresenterNote(itemId: string, note: string) {
         <span class="text-body-2 font-weight-bold">{{ service.type }} — {{ service.date }}</span>
         <span class="text-caption text-medium-emphasis">{{ service.sermonTitle }}</span>
       </div>
+      <v-spacer />
+      <span class="text-caption text-medium-emphasis mr-3">
+        {{ saving ? 'Saving…' : isDirty ? 'Unsaved changes' : 'All changes saved' }}
+      </span>
+      <v-btn
+        variant="flat"
+        color="primary"
+        prepend-icon="mdi-content-save"
+        :loading="saving"
+        :disabled="!isDirty"
+        @click="saveService"
+      >
+        Save
+      </v-btn>
     </v-toolbar>
 
     <div class="workspace-layout">
@@ -257,7 +284,7 @@ function updatePresenterNote(itemId: string, note: string) {
             <span class="text-truncate">{{ itemLabel(item) }}</span>
           </div>
         </div>
-        <v-btn variant="tonal" color="primary" class="btn-bordered ma-2" prepend-icon="mdi-plus" @click="addDialogOpen = true">
+        <v-btn variant="flat" color="primary" class="ma-2" prepend-icon="mdi-plus" @click="addDialogOpen = true">
           Add to Service
         </v-btn>
       </div>
@@ -278,7 +305,6 @@ function updatePresenterNote(itemId: string, note: string) {
               :animation="150"
               class="d-flex flex-column ga-1"
               style="max-width: 460px"
-              @end="persist"
             >
               <div
                 v-for="(blockId, index) in selectedItem.arrangement.sequence"
@@ -299,9 +325,9 @@ function updatePresenterNote(itemId: string, note: string) {
                 </div>
                 <v-btn
                   icon="mdi-close"
-                  variant="tonal"
+                  variant="flat"
                   color="error"
-                  class="btn-bordered row-remove"
+                  class="row-remove"
                   density="compact"
                   size="x-small"
                   @click.stop="removeFromArrangement(index)"
@@ -322,7 +348,7 @@ function updatePresenterNote(itemId: string, note: string) {
               >
                 {{ block.label }}
               </v-chip>
-              <v-btn variant="tonal" color="primary" class="btn-bordered" size="small" @click="resetArrangementToDefault">
+              <v-btn variant="flat" color="secondary" size="small" @click="resetArrangementToDefault">
                 Reset to song default
               </v-btn>
             </div>
@@ -379,13 +405,13 @@ function updatePresenterNote(itemId: string, note: string) {
       <div class="d-flex ga-3">
         <div class="d-flex flex-column align-center">
           <span class="text-caption text-medium-emphasis text-truncate" style="max-width: 140px">{{ prevPreviewLabel }}</span>
-          <v-btn variant="tonal" color="error" class="btn-bordered" size="small" prepend-icon="mdi-chevron-left" @click="previous">
+          <v-btn variant="flat" color="error" size="small" prepend-icon="mdi-chevron-left" @click="previous">
             Previous
           </v-btn>
         </div>
         <div class="d-flex flex-column align-center">
           <span class="text-caption text-medium-emphasis text-truncate" style="max-width: 140px">{{ nextPreviewLabel }}</span>
-          <v-btn variant="tonal" color="error" class="btn-bordered" size="small" append-icon="mdi-chevron-right" @click="next">
+          <v-btn variant="flat" color="error" size="small" append-icon="mdi-chevron-right" @click="next">
             Next
           </v-btn>
         </div>
@@ -416,7 +442,7 @@ function updatePresenterNote(itemId: string, note: string) {
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="tonal" class="btn-bordered" @click="addDialogOpen = false">Cancel</v-btn>
+          <v-btn variant="flat" color="secondary" @click="addDialogOpen = false">Cancel</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

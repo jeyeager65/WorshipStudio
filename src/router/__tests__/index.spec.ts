@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { shouldBlockLeavingWorkspace } from '@/router'
+import { shouldBlockLeavingWorkspace, shouldConfirmUnsavedChanges } from '@/router'
 
 describe('shouldBlockLeavingWorkspace', () => {
   it('blocks leaving the workspace while presenting', () => {
@@ -22,5 +22,19 @@ describe('shouldBlockLeavingWorkspace', () => {
 
   it('does not block when not presenting, regardless of origin', () => {
     expect(shouldBlockLeavingWorkspace('song-library', 'service-workspace', false)).toBe(false)
+  })
+})
+
+describe('shouldConfirmUnsavedChanges', () => {
+  it('confirms when navigating to a different path with unsaved changes', () => {
+    expect(shouldConfirmUnsavedChanges('/library/songs/a', '/library/songs', true)).toBe(true)
+  })
+
+  it('does not confirm when there are no unsaved changes', () => {
+    expect(shouldConfirmUnsavedChanges('/library/songs/a', '/library/songs', false)).toBe(false)
+  })
+
+  it('does not confirm for a same-path navigation (e.g. a no-op link click)', () => {
+    expect(shouldConfirmUnsavedChanges('/library/songs/a', '/library/songs/a', true)).toBe(false)
   })
 })

@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useLiveSessionStore } from '@/stores/liveSession'
+import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -34,6 +36,26 @@ router.beforeEach((to, from) => {
     liveSession.blockedMessage = 'Stop presenting before leaving this screen.'
     return false
   }
+  return true
+})
+
+/**
+ * Pure decision logic for the unsaved-changes prompt, same testability reasoning as
+ * shouldBlockLeavingWorkspace above.
+ */
+export function shouldConfirmUnsavedChanges(fromPath: string, toPath: string, isDirty: boolean): boolean {
+  return isDirty && fromPath !== toPath
+}
+
+// Song Editor and the workspace's arrangement/notes editing use an explicit Save button
+// rather than auto-save (see stores/unsavedChanges.ts) — warn before silently discarding
+// in-memory edits that were never written to disk.
+router.beforeEach(async (to, from) => {
+  const unsavedChanges = useUnsavedChangesStore()
+  if (!shouldConfirmUnsavedChanges(from.path, to.path, unsavedChanges.isDirty)) return true
+  const confirmed = await useConfirmDialogStore().confirm('You have unsaved changes. Leave without saving?')
+  if (!confirmed) return false
+  unsavedChanges.isDirty = false
   return true
 })
 

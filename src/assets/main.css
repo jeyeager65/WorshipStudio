@@ -1,8 +1,0 @@
-/* Vuetify's "tonal" variant gives a button a visible, colored background (not just
-   transparent) but no border; "outlined" gives a border but a transparent background —
-   which is the same as whatever's behind it. Buttons should never blend into the page
-   background, so this combines both. currentColor picks up whatever color the button
-   already has (from its `color` prop), so this one class works for every color. */
-.btn-bordered {
-  border: 1px solid currentColor;
-}

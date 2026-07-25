@@ -60,7 +60,7 @@ const browseResults = computed(() => {
         <ServiceCard v-for="service in upcomingServices" :key="service.id" :service="service" />
         <p v-if="upcomingServices.length === 0" class="text-medium-emphasis text-body-2">No upcoming services yet.</p>
 
-        <v-btn color="primary" size="large" block class="mt-6" prepend-icon="mdi-plus" to="/create-service">
+        <v-btn variant="flat" color="primary" size="large" block class="mt-6" prepend-icon="mdi-plus" to="/create-service">
           Create New Service
         </v-btn>
       </v-window-item>
