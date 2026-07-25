@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
 import { getAdapter } from '@/adapters'
 import { useSongsStore } from '@/stores/songs'
@@ -11,20 +11,43 @@ import type { Song, SongBlock } from '@/models/song'
 import type { LibrarySettings } from '@/models/settings'
 
 const route = useRoute()
+const router = useRouter()
 const store = useSongsStore()
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 
 const song = ref<Song>()
 const librarySettings = ref<LibrarySettings>()
 
+// "New Song" (SongLibraryView) navigates straight here with id "new" rather than saving a
+// blank file first — nothing is written to disk until Save is pressed, so backing out
+// without saving leaves no trace.
+function blankSong(): Song {
+  return {
+    id: `song-${crypto.randomUUID()}`,
+    title: 'New Song',
+    collections: [],
+    tags: [],
+    blocks: [],
+    defaultArrangement: { sequence: [] },
+    usage: { usesPastYear: 0 },
+    updatedAt: '',
+    updatedByDevice: '',
+  }
+}
+
 onMounted(async () => {
+  const isNew = route.params.id === 'new'
   const [loadedSong, settings] = await Promise.all([
-    getAdapter().songs.get(route.params.id as string),
+    isNew ? Promise.resolve(blankSong()) : getAdapter().songs.get(route.params.id as string),
     getAdapter().settings.getLibrarySettings(),
   ])
   song.value = loadedSong
   librarySettings.value = settings
-  isDirty.value = false
+  // A freshly created song is inherently unsaved — starting dirty (rather than false, as
+  // for an existing song) enables the Save button and the router guard's
+  // leave-without-saving warning immediately, so it's never silently lost with no way to
+  // recover it.
+  isDirty.value = isNew
   // Registered after the initial load so it only reacts to actual user edits, not the
   // assignment above — a single deep watch instead of wiring a dirty-flag handler onto
   // every field individually.
@@ -45,6 +68,9 @@ async function saveSong() {
   try {
     await store.save(song.value)
     isDirty.value = false
+    // First save of a new song — swap the placeholder URL for the real id so refresh and
+    // any subsequent save target the actual persisted song.
+    if (route.params.id === 'new') await router.replace(`/library/songs/${song.value.id}`)
   } finally {
     saving.value = false
   }

@@ -48,12 +48,24 @@ async function resolveScriptureItem(item: ServiceItem) {
 
 onMounted(async () => {
   if (!songsStore.loaded) await songsStore.load()
-  service.value = await getAdapter().services.get(route.params.id as string)
+  // A just-created service arrives via the store instead of disk — see CreateServiceView —
+  // so it's never persisted until Save is actually pressed.
+  const isDraft = servicesStore.draftService?.id === route.params.id
+  if (isDraft) {
+    service.value = servicesStore.draftService
+    servicesStore.draftService = undefined
+  } else {
+    service.value = await getAdapter().services.get(route.params.id as string)
+  }
   scriptureTranslations.value = await getAdapter().scripture.listTranslations()
   if (scriptureTranslations.value.length > 0) scriptureTranslationCode.value = scriptureTranslations.value[0].code
   await Promise.all((service.value?.items ?? []).map(resolveScriptureItem))
   window.addEventListener('keydown', onKeydown)
-  isDirty.value = false
+  // A freshly created service is inherently unsaved — starting dirty (rather than false, as
+  // for an existing service) enables the Save button and the router guard's
+  // leave-without-saving warning immediately, so it's never silently lost with no way to
+  // recover it.
+  isDirty.value = isDraft
   // Registered after the initial load so it only reacts to actual edits, not the load
   // itself — content edits (arrangement, presenter notes) use an explicit Save button
   // rather than auto-save (see stores/unsavedChanges.ts); live-transport state
@@ -414,10 +426,16 @@ function updatePresenterNote(itemId: string, note: string) {
 </script>
 
 <template>
-  <div v-if="service">
-    <div class="d-flex flex-column px-4 py-2 border-b" style="line-height: 1.2">
-      <span class="text-body-2 font-weight-bold">{{ service.type }} — {{ service.date }}</span>
-      <span class="text-caption text-medium-emphasis">{{ service.sermonTitle }}</span>
+  <div v-if="service" class="workspace-root">
+    <div class="d-flex align-center justify-space-between px-4 py-2 border-b">
+      <div class="d-flex flex-column" style="line-height: 1.2">
+        <span class="text-body-2 font-weight-bold">{{ service.type }} — {{ service.date }}</span>
+        <span class="text-caption text-medium-emphasis">{{ service.sermonTitle }}</span>
+      </div>
+      <v-btn :color="isPresenting ? 'error' : 'primary'" variant="flat" @click="togglePresenting">
+        <v-icon :icon="isPresenting ? 'mdi-stop' : 'mdi-play'" start />
+        {{ isPresenting ? 'Stop Presenting' : 'Start Presenting' }}
+      </v-btn>
     </div>
 
     <div class="workspace-layout">
@@ -566,10 +584,10 @@ function updatePresenterNote(itemId: string, note: string) {
     </div>
 
     <div class="live-footer">
-      <v-btn :color="isPresenting ? 'error' : 'primary'" variant="flat" @click="togglePresenting">
-        <v-icon :icon="isPresenting ? 'mdi-stop' : 'mdi-play'" start />
-        {{ isPresenting ? 'Stop Presenting' : 'Start Presenting' }}
-      </v-btn>
+      <div class="d-flex align-center ga-3">
+        <v-btn variant="flat" color="error" prepend-icon="mdi-chevron-left" @click="previous">Previous</v-btn>
+        <span class="text-caption text-medium-emphasis text-truncate" style="max-width: 140px">{{ prevPreviewLabel }}</span>
+      </div>
 
       <div class="live-status" :class="{ 'text-error': isPresenting }">
         <span v-if="isPresenting" class="live-blink" />
@@ -577,19 +595,9 @@ function updatePresenterNote(itemId: string, note: string) {
         <span class="text-medium-emphasis text-truncate">{{ liveContextSnippet }}</span>
       </div>
 
-      <div class="d-flex ga-3">
-        <div class="d-flex flex-column align-center">
-          <span class="text-caption text-medium-emphasis text-truncate" style="max-width: 140px">{{ prevPreviewLabel }}</span>
-          <v-btn variant="flat" color="error" size="small" prepend-icon="mdi-chevron-left" @click="previous">
-            Previous
-          </v-btn>
-        </div>
-        <div class="d-flex flex-column align-center">
-          <span class="text-caption text-medium-emphasis text-truncate" style="max-width: 140px">{{ nextPreviewLabel }}</span>
-          <v-btn variant="flat" color="error" size="small" append-icon="mdi-chevron-right" @click="next">
-            Next
-          </v-btn>
-        </div>
+      <div class="d-flex align-center ga-3">
+        <span class="text-caption text-medium-emphasis text-truncate" style="max-width: 140px">{{ nextPreviewLabel }}</span>
+        <v-btn variant="flat" color="error" append-icon="mdi-chevron-right" @click="next">Next</v-btn>
       </div>
     </div>
 
@@ -736,16 +744,28 @@ function updatePresenterNote(itemId: string, note: string) {
 </template>
 
 <style scoped>
+/* Fills the space below the persistent app bar (49px, see App.vue) exactly, so the
+   sticky-feeling live-footer and the Add-to-Service button never depend on the page
+   itself scrolling — only the panels that actually need it (service list, center
+   content) scroll internally. */
+.workspace-root {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 49px);
+  overflow: hidden;
+}
 .workspace-layout {
   display: grid;
   grid-template-columns: 260px 1fr;
-  align-items: start;
+  grid-template-rows: minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
 }
 .service-panel {
   display: flex;
   flex-direction: column;
   border-right: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  min-height: calc(100vh - 105px);
+  min-height: 0;
 }
 .service-item {
   display: flex;
@@ -771,6 +791,8 @@ function updatePresenterNote(itemId: string, note: string) {
 }
 .center-panel {
   padding: 20px 24px;
+  overflow-y: auto;
+  min-height: 0;
 }
 .slide-row {
   display: flex;
@@ -795,8 +817,7 @@ function updatePresenterNote(itemId: string, note: string) {
   opacity: 1;
 }
 .live-footer {
-  position: sticky;
-  bottom: 0;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 16px;

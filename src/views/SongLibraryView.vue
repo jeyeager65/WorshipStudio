@@ -2,14 +2,12 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSongsStore } from '@/stores/songs'
-import type { Song } from '@/models/song'
 
 const router = useRouter()
 const store = useSongsStore()
 
 const query = ref('')
 const importing = ref(false)
-const creating = ref(false)
 
 onMounted(() => {
   if (!store.loaded) store.load()
@@ -22,26 +20,11 @@ const filteredSongs = computed(() => {
   return sorted.filter((song) => [song.title, song.author].some((field) => field?.toLowerCase().includes(q)))
 })
 
-async function createSong() {
-  if (creating.value) return
-  creating.value = true
-  try {
-    const song: Song = {
-      id: `song-${crypto.randomUUID()}`,
-      title: 'New Song',
-      collections: [],
-      tags: [],
-      blocks: [],
-      defaultArrangement: { sequence: [] },
-      usage: { usesPastYear: 0 },
-      updatedAt: '',
-      updatedByDevice: '',
-    }
-    await store.save(song)
-    await router.push(`/library/songs/${song.id}`)
-  } finally {
-    creating.value = false
-  }
+// The new song only exists in memory until the editor's Save button is used (see
+// SongEditorView) — creating it here immediately would leave a blank file on disk the
+// moment this button is clicked, even if the user backs out without entering anything.
+function createSong() {
+  router.push('/library/songs/new')
 }
 
 async function importFromOpenSong() {
@@ -61,9 +44,7 @@ async function importFromOpenSong() {
       <v-btn variant="flat" color="secondary" prepend-icon="mdi-file-import" :loading="importing" @click="importFromOpenSong">
         Import from OpenSong
       </v-btn>
-      <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" :loading="creating" :disabled="creating" @click="createSong">
-        New Song
-      </v-btn>
+      <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSong">New Song</v-btn>
     </div>
 
     <v-text-field

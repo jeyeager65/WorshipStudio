@@ -14,7 +14,6 @@ const type = ref('')
 const sermonTitle = ref('')
 const keyPassage = ref('')
 const preacher = ref('')
-const saving = ref(false)
 
 const librarySettings = ref<LibrarySettings>()
 
@@ -25,31 +24,28 @@ onMounted(async () => {
   }
 })
 
-async function createService() {
-  if (saving.value) return
-  saving.value = true
-  try {
-    const service: Service = {
-      id: `service-${crypto.randomUUID()}`,
-      date: date.value,
-      type: type.value,
-      preacher: preacher.value || undefined,
-      sermonTitle: sermonTitle.value || undefined,
-      keyPassage: keyPassage.value || undefined,
-      items: [],
-      updatedAt: '',
-      updatedByDevice: '',
-    }
-    await store.save(service)
-    await router.push(`/service/${service.id}`)
-  } finally {
-    saving.value = false
+// Handed to the workspace via the store rather than saved here — nothing is written to
+// disk until its Save button is used, so backing out of a just-created service without
+// saving leaves no trace (see ServiceWorkspaceView, which consumes and clears this).
+function createService() {
+  const service: Service = {
+    id: `service-${crypto.randomUUID()}`,
+    date: date.value,
+    type: type.value,
+    preacher: preacher.value || undefined,
+    sermonTitle: sermonTitle.value || undefined,
+    keyPassage: keyPassage.value || undefined,
+    items: [],
+    updatedAt: '',
+    updatedByDevice: '',
   }
+  store.draftService = service
+  router.push(`/service/${service.id}`)
 }
 </script>
 
 <template>
-  <v-container class="py-8" style="max-width: 560px">
+  <v-container class="py-8" style="max-width: 720px">
     <h1 class="text-h5 font-weight-bold mb-1">Create New Service</h1>
     <p class="text-medium-emphasis text-body-2 mb-6">
       Start with the basics — you'll add songs, scripture, and slides once inside the service.
@@ -98,9 +94,7 @@ async function createService() {
 
       <div class="d-flex ga-3 mt-2">
         <v-btn variant="flat" color="secondary" class="flex-grow-1" to="/">Cancel</v-btn>
-        <v-btn variant="flat" color="primary" class="flex-grow-1" :loading="saving" :disabled="saving" @click="createService">
-          Create &amp; Open Service →
-        </v-btn>
+        <v-btn variant="flat" color="primary" class="flex-grow-1" @click="createService">Create &amp; Open Service →</v-btn>
       </div>
     </v-card>
   </v-container>
