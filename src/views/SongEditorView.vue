@@ -173,7 +173,7 @@ function removeFromArrangement(index: number) {
                 :color="colorForBlockLabel(block.label)"
                 class="font-weight-bold flex-grow-1 block-label-field"
               />
-              <v-btn variant="flat" color="error" size="small" prepend-icon="mdi-trash-can-outline" @click="removeBlock(index)">
+              <v-btn variant="flat" color="error" prepend-icon="mdi-trash-can-outline" @click="removeBlock(index)">
                 Remove
               </v-btn>
             </div>
