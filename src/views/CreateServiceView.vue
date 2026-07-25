@@ -26,20 +26,25 @@ onMounted(async () => {
 })
 
 async function createService() {
+  if (saving.value) return
   saving.value = true
-  const service: Service = {
-    id: `service-${crypto.randomUUID()}`,
-    date: date.value,
-    type: type.value,
-    preacher: preacher.value || undefined,
-    sermonTitle: sermonTitle.value || undefined,
-    keyPassage: keyPassage.value || undefined,
-    items: [],
-    updatedAt: '',
-    updatedByDevice: '',
+  try {
+    const service: Service = {
+      id: `service-${crypto.randomUUID()}`,
+      date: date.value,
+      type: type.value,
+      preacher: preacher.value || undefined,
+      sermonTitle: sermonTitle.value || undefined,
+      keyPassage: keyPassage.value || undefined,
+      items: [],
+      updatedAt: '',
+      updatedByDevice: '',
+    }
+    await store.save(service)
+    await router.push(`/service/${service.id}`)
+  } finally {
+    saving.value = false
   }
-  await store.save(service)
-  router.push(`/service/${service.id}`)
 }
 </script>
 
@@ -95,7 +100,7 @@ async function createService() {
 
       <div class="d-flex ga-3 mt-2">
         <v-btn variant="outlined" to="/" class="flex-grow-1">Cancel</v-btn>
-        <v-btn color="primary" class="flex-grow-1" :loading="saving" @click="createService">
+        <v-btn color="primary" class="flex-grow-1" :loading="saving" :disabled="saving" @click="createService">
           Create &amp; Open Service →
         </v-btn>
       </div>

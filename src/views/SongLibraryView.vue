@@ -9,6 +9,7 @@ const store = useSongsStore()
 
 const query = ref('')
 const importing = ref(false)
+const creating = ref(false)
 
 onMounted(() => {
   if (!store.loaded) store.load()
@@ -22,19 +23,25 @@ const filteredSongs = computed(() => {
 })
 
 async function createSong() {
-  const song: Song = {
-    id: `song-${crypto.randomUUID()}`,
-    title: 'New Song',
-    collections: [],
-    tags: [],
-    blocks: [],
-    defaultArrangement: { sequence: [] },
-    usage: { usesPastYear: 0 },
-    updatedAt: '',
-    updatedByDevice: '',
+  if (creating.value) return
+  creating.value = true
+  try {
+    const song: Song = {
+      id: `song-${crypto.randomUUID()}`,
+      title: 'New Song',
+      collections: [],
+      tags: [],
+      blocks: [],
+      defaultArrangement: { sequence: [] },
+      usage: { usesPastYear: 0 },
+      updatedAt: '',
+      updatedByDevice: '',
+    }
+    await store.save(song)
+    await router.push(`/library/songs/${song.id}`)
+  } finally {
+    creating.value = false
   }
-  await store.save(song)
-  router.push(`/library/songs/${song.id}`)
 }
 
 async function importFromOpenSong() {
@@ -56,7 +63,9 @@ async function importFromOpenSong() {
       <v-btn variant="outlined" prepend-icon="mdi-file-import" :loading="importing" @click="importFromOpenSong">
         Import from OpenSong
       </v-btn>
-      <v-btn color="primary" prepend-icon="mdi-plus" @click="createSong">New Song</v-btn>
+      <v-btn color="primary" prepend-icon="mdi-plus" :loading="creating" :disabled="creating" @click="createSong">
+        New Song
+      </v-btn>
     </div>
 
     <v-text-field

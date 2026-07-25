@@ -6,9 +6,19 @@ use crate::paths::{self, library_root, load_machine_settings};
 
 const LIBRARY_SETTINGS_FILE: &str = "library-settings.json";
 
+// Real, non-fake starting values for a fresh install — there's no Settings UI yet (that's
+// milestone M7) to let a church configure these, so an empty list would leave the app
+// genuinely unusable (e.g. Create Service's Type dropdown would have nothing to pick).
+// service_types mirrors the common categories shown in design/sketches/create-service.html;
+// preachers/collections/volunteer_roles are left empty since there's no reasonable default
+// for church-specific people or names.
 fn default_library_settings() -> LibrarySettings {
     LibrarySettings {
-        service_types: vec![],
+        service_types: vec![
+            "Sunday Morning Worship".to_string(),
+            "Wednesday Bible Study".to_string(),
+            "Other".to_string(),
+        ],
         preachers: vec![],
         collections: vec![],
         volunteer_roles: vec![],
@@ -27,7 +37,16 @@ fn default_library_settings() -> LibrarySettings {
 #[tauri::command]
 pub fn get_library_settings(app: AppHandle) -> Result<LibrarySettings, String> {
     let path = library_root(&app).join(LIBRARY_SETTINGS_FILE);
-    Ok(read_json_file(&path).unwrap_or_else(default_library_settings))
+    match read_json_file(&path) {
+        Some(settings) => Ok(settings),
+        None => {
+            // Persist on first read, same pattern as machine-settings.json (paths.rs) — the
+            // file should exist on disk from first run, not be silently recomputed forever.
+            let defaults = default_library_settings();
+            write_json_file(&path, &defaults).map_err(|e| e.to_string())?;
+            Ok(defaults)
+        }
+    }
 }
 
 #[tauri::command]

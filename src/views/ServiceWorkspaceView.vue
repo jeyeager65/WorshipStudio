@@ -176,19 +176,25 @@ const filteredSongsForAdd = computed(() => {
   const q = addQuery.value.trim().toLowerCase()
   return songsStore.songs.filter((song) => !q || song.title.toLowerCase().includes(q))
 })
+const addingSong = ref(false)
 async function addSongToService(song: Song) {
-  if (!service.value) return
-  const item: ServiceItem = {
-    id: `item-${crypto.randomUUID()}`,
-    type: 'song',
-    songId: song.id,
-    arrangement: { sequence: [...song.defaultArrangement.sequence] },
+  if (!service.value || addingSong.value) return
+  addingSong.value = true
+  try {
+    const item: ServiceItem = {
+      id: `item-${crypto.randomUUID()}`,
+      type: 'song',
+      songId: song.id,
+      arrangement: { sequence: [...song.defaultArrangement.sequence] },
+    }
+    service.value.items.push(item)
+    await persist()
+    selectedItemIndex.value = service.value.items.length - 1
+    addDialogOpen.value = false
+    addQuery.value = ''
+  } finally {
+    addingSong.value = false
   }
-  service.value.items.push(item)
-  await persist()
-  selectedItemIndex.value = service.value.items.length - 1
-  addDialogOpen.value = false
-  addQuery.value = ''
 }
 
 function updatePresenterNote(itemId: string, note: string) {
@@ -356,7 +362,7 @@ function updatePresenterNote(itemId: string, note: string) {
             prepend-inner-icon="mdi-magnify"
             autofocus
           />
-          <v-list>
+          <v-list :disabled="addingSong">
             <v-list-item
               v-for="song in filteredSongsForAdd"
               :key="song.id"

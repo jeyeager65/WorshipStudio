@@ -25,3 +25,13 @@ Thumbs.db
 # of real church data/media, too large and not appropriate for version control)
 design/
 OpenSong/
+
+# Playwright MCP session output (console logs, page snapshots) — transient debugging
+# artifacts, not project content
+.playwright-mcp/
+
+# Local MCP server config (e.g. Playwright, set up ad hoc for debugging) — a personal dev
+# convenience, not a deliberate part of the project's testing toolchain (that's
+# WebdriverIO + tauri-driver, see docs/architecture-plan.md). Revisit intentionally if we
+# ever want this shared with every Claude Code session on the repo.
+.mcp.json
