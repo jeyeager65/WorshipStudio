@@ -64,10 +64,17 @@ export interface ScripturePassage {
   verses: ScripturePassageVerse[]
 }
 
+export interface ScriptureTranslation {
+  code: string
+  name: string
+}
+
 export interface ScripturePort {
   resolve(reference: string, translationCode: string): Promise<ScripturePassage>
   /** Book/chapter/verse-count reference table — used for validation and reference-only wayfinding, no API call. */
   getBookList(): Promise<string[]>
+  /** Translations actually available to resolve against (configured API key or imported file) — spec section 2. */
+  listTranslations(): Promise<ScriptureTranslation[]>
 }
 
 export type DisplayRole = 'operator' | 'audience' | 'not-used'

@@ -1,6 +1,14 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { StudioAdapter, ScripturePassage, DisplayInfo, DisplayRole, RemoteDevice, SyncStatus } from '@/adapters/types'
+import type {
+  StudioAdapter,
+  ScripturePassage,
+  ScriptureTranslation,
+  DisplayInfo,
+  DisplayRole,
+  RemoteDevice,
+  SyncStatus,
+} from '@/adapters/types'
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
 import type { SlideLibraryItem, MediaItem, Theme } from '@/models/library'
@@ -68,6 +76,7 @@ export function createTauriAdapter(): StudioAdapter {
       resolve: (reference, translationCode) =>
         invoke<ScripturePassage>('resolve_scripture', { reference, translationCode }),
       getBookList: () => invoke<string[]>('get_scripture_book_list'),
+      listTranslations: () => invoke<ScriptureTranslation[]>('list_scripture_translations'),
     },
     live: {
       startPresenting: () => invoke('start_presenting'),

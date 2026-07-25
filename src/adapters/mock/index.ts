@@ -20,6 +20,8 @@ import {
 } from './fixtures'
 import { parseOpenSongXml } from './opensongParser'
 import { pickFilesInBrowser } from './pickFiles'
+import { availableTranslations, kjvSample } from './scriptureFixtures'
+import { formatReference, getBookNames, isValidReference, parseReference } from '@/utils/scriptureReference'
 
 function newId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`
@@ -133,12 +135,29 @@ export function createMockAdapter(): StudioAdapter {
       },
     },
     scripture: {
-      resolve: async (reference, translation): Promise<ScripturePassage> => ({
-        reference,
-        translation,
-        verses: [{ number: 1, text: `[Demo passage text for ${reference}, ${translation}]` }],
-      }),
-      getBookList: async () => ['Genesis', 'Exodus', 'Matthew', 'Mark', 'Luke', 'John'],
+      resolve: async (reference, translation): Promise<ScripturePassage> => {
+        const parsed = parseReference(reference)
+        if (!parsed || !isValidReference(parsed)) throw new Error(`"${reference}" isn't a valid scripture reference.`)
+
+        const bookData = kjvSample[parsed.book]
+        const verses: ScripturePassage['verses'] = []
+        for (let chapter = parsed.startChapter; chapter <= parsed.endChapter; chapter++) {
+          const verseFrom = chapter === parsed.startChapter ? parsed.startVerse : 1
+          const verseTo = chapter === parsed.endChapter ? parsed.endVerse : Number.MAX_SAFE_INTEGER
+          const chapterData = bookData?.[chapter] ?? {}
+          for (const [verseNumber, text] of Object.entries(chapterData)) {
+            const number = Number(verseNumber)
+            if (number >= verseFrom && number <= verseTo) verses.push({ number, text })
+          }
+        }
+
+        if (verses.length === 0) {
+          throw new Error(`No sample text available for ${formatReference(parsed)} in this demo build.`)
+        }
+        return { reference: formatReference(parsed), translation, verses }
+      },
+      getBookList: async () => getBookNames(),
+      listTranslations: async () => availableTranslations,
     },
     live: {
       startPresenting: async () => {

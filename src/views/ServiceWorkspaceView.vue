@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
@@ -10,8 +10,11 @@ import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { flattenService, type FlatSlide } from '@/utils/flattenService'
 import { colorForBlockLabel, colorForItemType } from '@/utils/contentColors'
+import { formatReference, getBookNames, getChapterCount, getVerseCount, isValidReference, parseReference } from '@/utils/scriptureReference'
 import type { Service, ServiceItem } from '@/models/service'
 import type { Song } from '@/models/song'
+import type { ScripturePassage, ScriptureTranslation } from '@/adapters/types'
+import type { ScriptureReference } from '@/models/scripture'
 
 const route = useRoute()
 const servicesStore = useServicesStore()
@@ -28,9 +31,28 @@ const saving = ref(false)
 const addDialogOpen = ref(false)
 const addQuery = ref('')
 
+// Resolved scripture passages, keyed by service item id — reactive() rather than ref() so
+// Map.set()/.delete() are tracked directly without reassigning the whole map.
+const scriptureById = reactive(new Map<string, ScripturePassage>())
+const scriptureErrors = reactive(new Map<string, string>())
+
+async function resolveScriptureItem(item: ServiceItem) {
+  if (item.type !== 'scripture' || item.displayMode === 'reference-only') return
+  try {
+    const passage = await getAdapter().scripture.resolve(item.reference, item.translation)
+    scriptureById.set(item.id, passage)
+    scriptureErrors.delete(item.id)
+  } catch (e) {
+    scriptureErrors.set(item.id, e instanceof Error ? e.message : 'Failed to resolve passage.')
+  }
+}
+
 onMounted(async () => {
   if (!songsStore.loaded) await songsStore.load()
   service.value = await getAdapter().services.get(route.params.id as string)
+  scriptureTranslations.value = await getAdapter().scripture.listTranslations()
+  if (scriptureTranslations.value.length > 0) scriptureTranslationCode.value = scriptureTranslations.value[0].code
+  await Promise.all((service.value?.items ?? []).map(resolveScriptureItem))
   window.addEventListener('keydown', onKeydown)
   isDirty.value = false
   // Registered after the initial load so it only reacts to actual edits, not the load
@@ -61,12 +83,25 @@ async function saveService() {
 }
 
 const songsById = computed(() => new Map(songsStore.songs.map((song) => [song.id, song])))
-const flatSlides = computed<FlatSlide[]>(() => (service.value ? flattenService(service.value, songsById.value) : []))
+const flatSlides = computed<FlatSlide[]>(() =>
+  service.value ? flattenService(service.value, songsById.value, scriptureById) : [],
+)
 
 const selectedItem = computed<ServiceItem | undefined>(() => service.value?.items[selectedItemIndex.value])
 const selectedSong = computed<Song | undefined>(() => {
   const item = selectedItem.value
   return item?.type === 'song' ? songsById.value.get(item.songId) : undefined
+})
+const selectedScripturePassage = computed<ScripturePassage | undefined>(() => {
+  const item = selectedItem.value
+  return item?.type === 'scripture' ? scriptureById.get(item.id) : undefined
+})
+const selectedScriptureText = computed(() =>
+  selectedScripturePassage.value ? selectedScripturePassage.value.verses.map((v) => `${v.number} ${v.text}`).join('\n') : '',
+)
+const selectedScriptureError = computed<string | undefined>(() => {
+  const item = selectedItem.value
+  return item?.type === 'scripture' ? scriptureErrors.get(item.id) : undefined
 })
 
 function itemIcon(item: ServiceItem): string {
@@ -212,9 +247,11 @@ function onKeydown(event: KeyboardEvent) {
   }
 }
 
-// Minimal "+ Add to Service" — just enough to add a song for now. The full picker (search
-// across songs/scripture/slides/media, scripture sub-picker) is spec section 2's own
-// feature, scoped separately from this milestone.
+// "+ Add to Service" — tabbed picker (spec section 2): Songs (search) and Scripture (a
+// reference builder rather than a browsable list, since scripture isn't a library). The
+// full unified fuzzy search across songs/scripture/slides/media is a later slice.
+const addTab = ref<'songs' | 'scripture'>('songs')
+
 const filteredSongsForAdd = computed(() => {
   const q = addQuery.value.trim().toLowerCase()
   return songsStore.songs.filter((song) => !q || song.title.toLowerCase().includes(q))
@@ -232,11 +269,138 @@ async function addSongToService(song: Song) {
     }
     service.value.items.push(item)
     selectedItemIndex.value = service.value.items.length - 1
-    addDialogOpen.value = false
-    addQuery.value = ''
+    closeAddDialog()
   } finally {
     addingSong.value = false
   }
+}
+
+// Scripture sub-picker (spec section 2): "Type a reference" free text, or "Choose fields"
+// cascading dropdowns bounded by the reference table so an invalid reference can't be
+// selected. Both feed the same activeReference/preview pipeline below.
+const scriptureEntryMode = ref<'type' | 'fields'>('type')
+const scriptureRefText = ref('')
+const scriptureBook = ref<string>()
+const scriptureStartChapter = ref<number>()
+const scriptureStartVerse = ref<number>()
+const scriptureEndChapter = ref<number>()
+const scriptureEndVerse = ref<number>()
+const scriptureDisplayMode = ref<'full' | 'reference-only'>('full')
+const scriptureTranslationCode = ref<string>()
+const scriptureTranslations = ref<ScriptureTranslation[]>([])
+const scripturePreview = ref<ScripturePassage>()
+const scripturePreviewText = computed(() =>
+  scripturePreview.value ? scripturePreview.value.verses.map((v) => `${v.number} ${v.text}`).join(' ') : '',
+)
+const scripturePreviewError = ref<string>()
+const scripturePreviewLoading = ref(false)
+const addingScripture = ref(false)
+
+const bookNames = getBookNames()
+
+function range(start: number, end: number): number[] {
+  return Array.from({ length: Math.max(0, end - start + 1) }, (_, i) => start + i)
+}
+const startChapterOptions = computed(() => (scriptureBook.value ? range(1, getChapterCount(scriptureBook.value)) : []))
+const startVerseOptions = computed(() =>
+  scriptureBook.value && scriptureStartChapter.value ? range(1, getVerseCount(scriptureBook.value, scriptureStartChapter.value)) : [],
+)
+const endChapterOptions = computed(() =>
+  scriptureBook.value && scriptureStartChapter.value ? range(scriptureStartChapter.value, getChapterCount(scriptureBook.value)) : [],
+)
+const endVerseOptions = computed(() => {
+  if (!scriptureBook.value || !scriptureEndChapter.value) return []
+  const minVerse = scriptureEndChapter.value === scriptureStartChapter.value ? (scriptureStartVerse.value ?? 1) : 1
+  return range(minVerse, getVerseCount(scriptureBook.value, scriptureEndChapter.value))
+})
+
+// Picking a new book/start point resets anything downstream that could now be invalid, and
+// defaults the end of the range to match the start (a single verse) so "Choose fields"
+// always represents a complete, addable reference as soon as a start verse is picked.
+watch(scriptureBook, () => {
+  scriptureStartChapter.value = undefined
+  scriptureStartVerse.value = undefined
+  scriptureEndChapter.value = undefined
+  scriptureEndVerse.value = undefined
+})
+watch(scriptureStartChapter, (chapter) => {
+  scriptureStartVerse.value = undefined
+  scriptureEndChapter.value = chapter
+  scriptureEndVerse.value = undefined
+})
+watch(scriptureStartVerse, (verse) => {
+  scriptureEndVerse.value = verse
+})
+watch(scriptureEndChapter, () => {
+  scriptureEndVerse.value = undefined
+})
+
+const activeReference = computed<ScriptureReference | undefined>(() => {
+  if (scriptureEntryMode.value === 'type') return parseReference(scriptureRefText.value)
+  if (!scriptureBook.value || !scriptureStartChapter.value || !scriptureStartVerse.value) return undefined
+  return {
+    book: scriptureBook.value,
+    startChapter: scriptureStartChapter.value,
+    startVerse: scriptureStartVerse.value,
+    endChapter: scriptureEndChapter.value ?? scriptureStartChapter.value,
+    endVerse: scriptureEndVerse.value ?? scriptureStartVerse.value,
+  }
+})
+const activeReferenceValid = computed(() => !!activeReference.value && isValidReference(activeReference.value))
+const activeReferenceText = computed(() => (activeReference.value ? formatReference(activeReference.value) : ''))
+
+// Live preview, re-fetched whenever the resolved reference/translation changes. A request
+// token guards against an in-flight fetch for a since-superseded reference overwriting a
+// newer one's result.
+let scripturePreviewToken = 0
+watch([activeReferenceText, scriptureTranslationCode, scriptureDisplayMode], async () => {
+  scripturePreview.value = undefined
+  scripturePreviewError.value = undefined
+  if (scriptureDisplayMode.value === 'reference-only' || !activeReferenceValid.value || !scriptureTranslationCode.value) return
+  const token = ++scripturePreviewToken
+  scripturePreviewLoading.value = true
+  try {
+    const passage = await getAdapter().scripture.resolve(activeReferenceText.value, scriptureTranslationCode.value)
+    if (token === scripturePreviewToken) scripturePreview.value = passage
+  } catch (e) {
+    if (token === scripturePreviewToken) scripturePreviewError.value = e instanceof Error ? e.message : 'Failed to load passage.'
+  } finally {
+    if (token === scripturePreviewToken) scripturePreviewLoading.value = false
+  }
+})
+
+async function addScriptureToService() {
+  if (!service.value || !activeReferenceValid.value || addingScripture.value) return
+  if (scriptureDisplayMode.value === 'full' && (!scriptureTranslationCode.value || scripturePreviewError.value)) return
+  addingScripture.value = true
+  try {
+    const item: ServiceItem = {
+      id: `item-${crypto.randomUUID()}`,
+      type: 'scripture',
+      reference: activeReferenceText.value,
+      translation: scriptureTranslationCode.value ?? '',
+      displayMode: scriptureDisplayMode.value,
+    }
+    service.value.items.push(item)
+    if (scripturePreview.value && scriptureDisplayMode.value === 'full') scriptureById.set(item.id, scripturePreview.value)
+    selectedItemIndex.value = service.value.items.length - 1
+    closeAddDialog()
+  } finally {
+    addingScripture.value = false
+  }
+}
+
+function closeAddDialog() {
+  addDialogOpen.value = false
+  addQuery.value = ''
+  scriptureRefText.value = ''
+  scriptureBook.value = undefined
+  scriptureStartChapter.value = undefined
+  scriptureStartVerse.value = undefined
+  scriptureEndChapter.value = undefined
+  scriptureEndVerse.value = undefined
+  scripturePreview.value = undefined
+  scripturePreviewError.value = undefined
 }
 
 function updatePresenterNote(itemId: string, note: string) {
@@ -354,6 +518,31 @@ function updatePresenterNote(itemId: string, note: string) {
             </div>
           </template>
 
+          <template v-else-if="selectedItem.type === 'scripture'">
+            <div
+              class="slide-row"
+              :class="{ 'slide-row--live': itemHasLive(selectedItemIndex) }"
+              :style="[
+                { maxWidth: '460px', whiteSpace: 'pre-line' },
+                itemHasLive(selectedItemIndex)
+                  ? {}
+                  : {
+                      background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                      borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                      paddingLeft: '9px',
+                    },
+              ]"
+              @click="goLive(flatSlides.findIndex((s) => s.itemIndex === selectedItemIndex))"
+            >
+              <div v-if="selectedItem.displayMode === 'reference-only'" class="text-body-2 text-medium-emphasis">
+                Reference only — no verse text shown.
+              </div>
+              <div v-else-if="selectedScriptureError" class="text-body-2 text-error">{{ selectedScriptureError }}</div>
+              <div v-else-if="selectedScripturePassage" class="text-body-2">{{ selectedScriptureText }}</div>
+              <div v-else class="text-body-2 text-medium-emphasis">Loading…</div>
+            </div>
+          </template>
+
           <template v-else>
             <div
               class="slide-row"
@@ -418,31 +607,139 @@ function updatePresenterNote(itemId: string, note: string) {
       </div>
     </div>
 
-    <v-dialog v-model="addDialogOpen" max-width="480">
+    <v-dialog v-model="addDialogOpen" max-width="560">
       <v-card>
         <v-card-title>Add to Service</v-card-title>
+        <v-tabs v-model="addTab" density="compact" class="border-b">
+          <v-tab value="songs">Songs</v-tab>
+          <v-tab value="scripture">Scripture</v-tab>
+        </v-tabs>
         <v-card-text>
-          <v-text-field
-            v-model="addQuery"
-            label="Search songs…"
-            variant="outlined"
-            density="comfortable"
-            prepend-inner-icon="mdi-magnify"
-            autofocus
-          />
-          <v-list :disabled="addingSong">
-            <v-list-item
-              v-for="song in filteredSongsForAdd"
-              :key="song.id"
-              :title="song.title"
-              :subtitle="song.author"
-              @click="addSongToService(song)"
-            />
-          </v-list>
+          <v-window v-model="addTab">
+            <v-window-item value="songs">
+              <v-text-field
+                v-model="addQuery"
+                label="Search songs…"
+                variant="outlined"
+                density="comfortable"
+                prepend-inner-icon="mdi-magnify"
+                autofocus
+              />
+              <v-list :disabled="addingSong">
+                <v-list-item
+                  v-for="song in filteredSongsForAdd"
+                  :key="song.id"
+                  :title="song.title"
+                  :subtitle="song.author"
+                  @click="addSongToService(song)"
+                />
+              </v-list>
+            </v-window-item>
+
+            <v-window-item value="scripture">
+              <v-btn-toggle v-model="scriptureEntryMode" mandatory density="compact" divided class="mb-4">
+                <v-btn value="type" size="small">Type a Reference</v-btn>
+                <v-btn value="fields" size="small">Choose Fields</v-btn>
+              </v-btn-toggle>
+
+              <v-text-field
+                v-if="scriptureEntryMode === 'type'"
+                v-model="scriptureRefText"
+                label="Reference"
+                placeholder="e.g. John 3:16-17"
+                variant="outlined"
+                density="comfortable"
+                autofocus
+                :error="!!scriptureRefText && !activeReferenceValid"
+                :error-messages="scriptureRefText && !activeReferenceValid ? ['Not a recognized reference'] : []"
+              />
+
+              <template v-else>
+                <v-select v-model="scriptureBook" :items="bookNames" label="Book" variant="outlined" density="comfortable" />
+                <div class="d-flex ga-3">
+                  <v-select
+                    v-model="scriptureStartChapter"
+                    :items="startChapterOptions"
+                    label="Start Chapter"
+                    variant="outlined"
+                    density="comfortable"
+                    :disabled="!scriptureBook"
+                  />
+                  <v-select
+                    v-model="scriptureStartVerse"
+                    :items="startVerseOptions"
+                    label="Start Verse"
+                    variant="outlined"
+                    density="comfortable"
+                    :disabled="!scriptureStartChapter"
+                  />
+                </div>
+                <div class="d-flex ga-3">
+                  <v-select
+                    v-model="scriptureEndChapter"
+                    :items="endChapterOptions"
+                    label="End Chapter"
+                    variant="outlined"
+                    density="comfortable"
+                    :disabled="!scriptureStartChapter"
+                  />
+                  <v-select
+                    v-model="scriptureEndVerse"
+                    :items="endVerseOptions"
+                    label="End Verse"
+                    variant="outlined"
+                    density="comfortable"
+                    :disabled="!scriptureEndChapter"
+                  />
+                </div>
+              </template>
+
+              <v-btn-toggle v-model="scriptureDisplayMode" mandatory density="compact" divided class="my-3">
+                <v-btn value="full" size="small">Show Full Text</v-btn>
+                <v-btn value="reference-only" size="small">Reference Only</v-btn>
+              </v-btn-toggle>
+
+              <v-select
+                v-if="scriptureDisplayMode === 'full'"
+                v-model="scriptureTranslationCode"
+                :items="scriptureTranslations"
+                item-title="name"
+                item-value="code"
+                label="Translation"
+                variant="outlined"
+                density="comfortable"
+              />
+
+              <div v-if="scriptureDisplayMode === 'full'" class="mb-2" style="min-height: 24px">
+                <span v-if="scripturePreviewLoading" class="text-medium-emphasis text-body-2">Loading preview…</span>
+                <span v-else-if="scripturePreviewError" class="text-error text-body-2">{{ scripturePreviewError }}</span>
+                <div v-else-if="scripturePreview">
+                  <div class="text-caption text-medium-emphasis mb-1">
+                    {{ scripturePreview.reference }} ({{ scripturePreview.translation }})
+                  </div>
+                  <p class="text-body-2">{{ scripturePreviewText }}</p>
+                </div>
+              </div>
+              <p v-else-if="activeReferenceValid" class="text-body-2 text-medium-emphasis mb-2">
+                {{ activeReferenceText }} — reference only, no verse text shown.
+              </p>
+
+              <v-btn
+                variant="flat"
+                color="primary"
+                block
+                :disabled="!activeReferenceValid || (scriptureDisplayMode === 'full' && (!scriptureTranslationCode || !!scripturePreviewError))"
+                :loading="addingScripture"
+                @click="addScriptureToService"
+              >
+                Add Scripture
+              </v-btn>
+            </v-window-item>
+          </v-window>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="flat" color="secondary" @click="addDialogOpen = false">Cancel</v-btn>
+          <v-btn variant="flat" color="secondary" @click="closeAddDialog">Cancel</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

@@ -1,5 +1,6 @@
 import type { Service, ServiceItem } from '@/models/service'
 import type { Song } from '@/models/song'
+import type { ScripturePassage } from '@/adapters/types'
 
 export interface FlatSlide {
   /** Unique across the whole flattened sequence. */
@@ -15,8 +16,6 @@ export interface FlatSlide {
 
 function labelForOtherType(item: ServiceItem): string {
   switch (item.type) {
-    case 'scripture':
-      return `Scripture: ${item.reference}`
     case 'slide-ref':
       return 'Slide'
     case 'media':
@@ -39,11 +38,18 @@ function labelForOtherType(item: ServiceItem): string {
 /**
  * Walks a service's items into one continuous run of slides — the flattened Next/Prev
  * sequence (spec section 3). Songs and text-slides expand to one flat entry per block;
- * every other item type (scripture, slide-ref, media, video, audio, external-app,
- * countdown, qr) is still a work-in-progress content type (M5/M6/v1.1), so each becomes a
- * single placeholder slide for now rather than being left out of the sequence entirely.
+ * scripture becomes one slide per resolved passage (see scriptureById below) — real
+ * per-verse auto-fit splitting (spec section 1) is still a later slice, so for now a
+ * passage that resolved fits on a single slide regardless of length; every other item type
+ * (slide-ref, media, video, audio, external-app, countdown, qr) is still a
+ * work-in-progress content type (M6/v1.1), so each becomes a single placeholder slide for
+ * now rather than being left out of the sequence entirely.
  */
-export function flattenService(service: Service, songsById: Map<string, Song>): FlatSlide[] {
+export function flattenService(
+  service: Service,
+  songsById: Map<string, Song>,
+  scriptureById: Map<string, ScripturePassage> = new Map(),
+): FlatSlide[] {
   const flat: FlatSlide[] = []
 
   service.items.forEach((item, itemIndex) => {
@@ -79,6 +85,22 @@ export function flattenService(service: Service, songsById: Map<string, Song>): 
             subLabel: slide.label,
             text: slide.text,
           })
+        })
+      }
+    } else if (item.type === 'scripture') {
+      if (item.displayMode === 'reference-only') {
+        // No verse text needed at all in this mode (spec section 1) — no API/local-file
+        // lookup, just the reference itself as a single wayfinding slide.
+        flat.push({ key: `${item.id}:0`, itemIndex, itemId: item.id, itemLabel: item.reference, subLabel: 'Reference Only', text: '' })
+      } else {
+        const passage = scriptureById.get(item.id)
+        flat.push({
+          key: `${item.id}:0`,
+          itemIndex,
+          itemId: item.id,
+          itemLabel: passage?.reference ?? item.reference,
+          subLabel: passage?.translation ?? item.translation,
+          text: passage ? passage.verses.map((v) => `${v.number} ${v.text}`).join('\n') : '',
         })
       }
     } else {

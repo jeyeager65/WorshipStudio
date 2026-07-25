@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { flattenService } from '@/utils/flattenService'
 import type { Service } from '@/models/service'
 import type { Song } from '@/models/song'
+import type { ScripturePassage } from '@/adapters/types'
 
 function makeSong(overrides: Partial<Song> = {}): Song {
   return {
@@ -90,15 +91,11 @@ describe('flattenService', () => {
 
   it('treats not-yet-fully-built item types as a single placeholder slide', () => {
     const service = makeService({
-      items: [
-        { id: 'item-1', type: 'scripture', reference: 'John 3:16', translation: 'ESV', displayMode: 'full' },
-        { id: 'item-2', type: 'video', mediaId: 'media-1' },
-      ],
+      items: [{ id: 'item-1', type: 'video', mediaId: 'media-1' }],
     })
     const flat = flattenService(service, new Map())
-    expect(flat).toHaveLength(2)
-    expect(flat[0].itemLabel).toBe('Scripture: John 3:16')
-    expect(flat[1].itemLabel).toBe('Video')
+    expect(flat).toHaveLength(1)
+    expect(flat[0].itemLabel).toBe('Video')
   })
 
   it('preserves item order across mixed item types', () => {
@@ -107,15 +104,58 @@ describe('flattenService', () => {
       items: [
         { id: 'item-1', type: 'text-slide', slides: [{ id: 'w', label: 'Welcome', text: 'Hi!' }] },
         { id: 'item-2', type: 'song', songId: 'song-1', arrangement: { sequence: ['v1'] } },
-        { id: 'item-3', type: 'scripture', reference: 'John 3:16', translation: 'ESV', displayMode: 'full' },
+        { id: 'item-3', type: 'scripture', reference: 'John 3:16', translation: 'KJV', displayMode: 'full' },
       ],
     })
     const flat = flattenService(service, new Map([['song-1', song]]))
     expect(flat.map((s) => s.itemIndex)).toEqual([0, 1, 2])
-    expect(flat.map((s) => s.itemLabel)).toEqual(['Text Slide', 'Amazing Grace', 'Scripture: John 3:16'])
+    expect(flat.map((s) => s.itemLabel)).toEqual(['Text Slide', 'Amazing Grace', 'John 3:16'])
   })
 
   it('returns an empty array for a service with no items', () => {
     expect(flattenService(makeService(), new Map())).toEqual([])
+  })
+})
+
+describe('flattenService — scripture', () => {
+  function makePassage(overrides: Partial<ScripturePassage> = {}): ScripturePassage {
+    return {
+      reference: 'John 3:16-17',
+      translation: 'KJV',
+      verses: [
+        { number: 16, text: 'For God so loved the world...' },
+        { number: 17, text: 'For God sent not his Son...' },
+      ],
+      ...overrides,
+    }
+  }
+
+  it('falls back to the raw reference as a placeholder before the passage resolves', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'scripture', reference: 'John 3:16-17', translation: 'KJV', displayMode: 'full' }],
+    })
+    const flat = flattenService(service, new Map(), new Map())
+    expect(flat).toHaveLength(1)
+    expect(flat[0]).toMatchObject({ itemLabel: 'John 3:16-17', text: '' })
+  })
+
+  it('renders resolved verse text with verse numbers on a single slide', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'scripture', reference: 'John 3:16-17', translation: 'KJV', displayMode: 'full' }],
+    })
+    const flat = flattenService(service, new Map(), new Map([['item-1', makePassage()]]))
+    expect(flat).toHaveLength(1)
+    expect(flat[0].itemLabel).toBe('John 3:16-17')
+    expect(flat[0].subLabel).toBe('KJV')
+    expect(flat[0].text).toBe('16 For God so loved the world...\n17 For God sent not his Son...')
+  })
+
+  it('shows no verse text in reference-only mode, even if a passage happens to be resolved', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'scripture', reference: 'John 3:16-17', translation: 'KJV', displayMode: 'reference-only' }],
+    })
+    const flat = flattenService(service, new Map(), new Map([['item-1', makePassage()]]))
+    expect(flat).toHaveLength(1)
+    expect(flat[0]).toMatchObject({ itemLabel: 'John 3:16-17', subLabel: 'Reference Only', text: '' })
   })
 })
