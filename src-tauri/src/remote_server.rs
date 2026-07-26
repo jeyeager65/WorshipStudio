@@ -10,9 +10,10 @@
 //! rest of live-presentation state already lives.
 
 use std::net::{IpAddr, SocketAddr, UdpSocket};
+use std::path::Path;
 use std::sync::Arc;
 
-use axum::extract::{Query, State};
+use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
@@ -21,9 +22,9 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::RwLock;
 
-use crate::domain::remote;
+use crate::domain::{media, remote};
 use crate::models::LiveSlideContent;
-use crate::paths::remote_devices_path;
+use crate::paths::{library_root, local_media_root, remote_devices_path};
 
 /// Fixed rather than configurable — simpler to reason about and to put in front of the
 /// operator ("point your phone at http://<ip>:47823"), and nothing else on a home/church
@@ -193,12 +194,59 @@ async fn post_action(
     StatusCode::OK
 }
 
+/// Best-effort by extension — good enough for the browser to know how to render/play what
+/// follows; not a security boundary (the browser also sniffs), so an unknown extension just
+/// falls back to a generic binary type rather than erroring.
+fn guess_content_type(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase()
+        .as_str()
+    {
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "mp4" | "m4v" => "video/mp4",
+        "mov" => "video/quicktime",
+        "webm" => "video/webm",
+        _ => "application/octet-stream",
+    }
+}
+
+/// Serves the actual media file bytes to a paired phone (spec section 4's confidence-monitor
+/// mirror) — a `convertFileSrc` URL only resolves inside this app's own webviews, so the
+/// mirror needs its own real, network-reachable way to fetch the same content. No Range/206
+/// support yet (a whole-file read per request) — fine for a confidence monitor watching along,
+/// not built for scrubbing/seeking.
+async fn get_media(
+    State(handle): State<RemoteServerHandle>,
+    headers: HeaderMap,
+    AxumPath(id): AxumPath<String>,
+) -> Response {
+    if device_from_headers(&headers, &handle.app).is_none() {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let root = library_root(&handle.app);
+    let Some(item) = media::get(&root, &id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let path = media::file_path(&root, &local_media_root(&handle.app), &item);
+    match tokio::fs::read(&path).await {
+        Ok(bytes) => ([(header::CONTENT_TYPE, guess_content_type(&path))], bytes).into_response(),
+        Err(_) => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
 fn router(handle: RemoteServerHandle) -> Router {
     Router::new()
         .route("/", get(index_page))
         .route("/pair", get(pair))
         .route("/api/state", get(get_state))
         .route("/api/action", post(post_action))
+        .route("/api/media/{id}", get(get_media))
         .with_state(handle)
 }
 
@@ -277,5 +325,21 @@ mod tests {
     fn qr_data_url_produces_a_real_png_data_url() {
         let url = qr_data_url("http://192.168.1.50:47823/pair?token=abc").unwrap();
         assert!(url.starts_with("data:image/png;base64,"));
+    }
+
+    #[test]
+    fn guess_content_type_recognizes_common_image_and_video_extensions() {
+        assert_eq!(guess_content_type(Path::new("sunset.JPG")), "image/jpeg");
+        assert_eq!(guess_content_type(Path::new("sunset.png")), "image/png");
+        assert_eq!(guess_content_type(Path::new("clip.mp4")), "video/mp4");
+        assert_eq!(guess_content_type(Path::new("clip.MOV")), "video/quicktime");
+    }
+
+    #[test]
+    fn guess_content_type_falls_back_for_an_unknown_extension() {
+        assert_eq!(
+            guess_content_type(Path::new("mystery.xyz")),
+            "application/octet-stream"
+        );
     }
 }

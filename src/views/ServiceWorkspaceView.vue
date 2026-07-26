@@ -394,7 +394,10 @@ const liveContentPayload = computed<LiveSlideContent | undefined>(() => {
     subLabel: slide.subLabel,
     text: slide.text,
     wayfindingBooks: slide.wayfindingBooks,
-    media: mediaUrl && slide.mediaKind && slide.mediaFit ? { url: mediaUrl, kind: slide.mediaKind, fit: slide.mediaFit } : undefined,
+    media:
+      mediaUrl && slide.mediaId && slide.mediaKind && slide.mediaFit
+        ? { url: mediaUrl, mediaId: slide.mediaId, kind: slide.mediaKind, fit: slide.mediaFit }
+        : undefined,
     countdown: slide.countdown,
   }
 })

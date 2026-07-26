@@ -152,6 +152,8 @@ export interface DisplayPort {
 export interface LiveMediaRef {
   /** A `convertFileSrc` URL, already resolved by the operator window — usable directly as an `<img>`/`<video>` src. */
   url: string
+  /** The raw MediaItem id — what the confidence-monitor mirror uses via its own `/api/media/:id` endpoint, since a `convertFileSrc` URL is meaningless off-device. */
+  mediaId: string
   kind: 'image' | 'video'
   fit: 'cover' | 'contain'
 }

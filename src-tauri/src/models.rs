@@ -459,12 +459,16 @@ pub struct WayfindingBook {
     pub distance: i32,
 }
 
-/// Opaque to Rust — just a `convertFileSrc` URL string the frontend already resolved, carried
-/// through so the confidence-monitor mirror (remote_page.html) can display it too.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct LiveMediaRef {
+    /// A `convertFileSrc` URL — only meaningful inside this app's own webviews (the operator
+    /// window's own live-content display), never reachable from a phone's browser.
     pub url: String,
+    /// The raw MediaItem id — what the confidence-monitor mirror (remote_page.html) actually
+    /// uses, via its own `/api/media/:id` endpoint, since a `convertFileSrc` URL means nothing
+    /// off-device.
+    pub media_id: String,
     /// "image" | "video"
     pub kind: String,
     /// "cover" | "contain"
