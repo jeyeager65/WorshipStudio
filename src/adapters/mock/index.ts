@@ -173,6 +173,8 @@ export function createMockAdapter(): StudioAdapter {
       previous: async () => {
         liveIndex = Math.max(0, liveIndex - 1)
       },
+      // No real second window exists in the browser demo, so there's nothing to broadcast to.
+      setLiveContent: async () => {},
     },
     displays: {
       list: () => displays.list(),

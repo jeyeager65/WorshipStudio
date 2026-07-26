@@ -16,7 +16,7 @@ import { formatReference, getBookNames, getChapterCount, getVerseCount, isValidR
 import type { Service, ServiceItem } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
 import type { SlideLibraryItem } from '@/models/library'
-import type { ScripturePassage, ScriptureTranslation } from '@/adapters/types'
+import type { ScripturePassage, ScriptureTranslation, LiveSlideContent } from '@/adapters/types'
 import type { ScriptureReference } from '@/models/scripture'
 
 const route = useRoute()
@@ -63,9 +63,6 @@ onMounted(async () => {
   } else {
     service.value = await getAdapter().services.get(route.params.id as string)
   }
-  scriptureTranslations.value = await getAdapter().scripture.listTranslations()
-  if (scriptureTranslations.value.length > 0) scriptureTranslationCode.value = scriptureTranslations.value[0].code
-  await Promise.all((service.value?.items ?? []).map(resolveScriptureItem))
   window.addEventListener('keydown', onKeydown)
   // A freshly created service is inherently unsaved — starting dirty (rather than false, as
   // for an existing service) enables the Save button and the router guard's
@@ -84,12 +81,25 @@ onMounted(async () => {
   // Keeps undo toasts from covering the live-transport footer's Previous/Next buttons,
   // which need to stay clickable even while a toast is showing during a live service.
   undoStore.bottomOffsetPx = 70
+
+  // Scripture resolution isn't wired to a real command on the native Tauri backend yet
+  // (README's adapter-status note) — best-effort and last, so a rejected invoke() here can
+  // never take down the wiring above it and silently break Save for every service.
+  try {
+    scriptureTranslations.value = await getAdapter().scripture.listTranslations()
+    if (scriptureTranslations.value.length > 0) scriptureTranslationCode.value = scriptureTranslations.value[0].code
+    await Promise.all((service.value?.items ?? []).map(resolveScriptureItem))
+  } catch (e) {
+    console.error('Failed to load scripture translations/passages:', e)
+  }
 })
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeydown)
   // Safety net: the router guard (router/index.ts) is what normally prevents leaving while
   // presenting, but if this view ever unmounts some other way, don't leave the app
-  // permanently believing a torn-down workspace is still live.
+  // permanently believing a torn-down workspace is still live — or a presentation window
+  // open with nothing left able to close it.
+  if (isPresenting.value) getAdapter().live.stopPresenting()
   isPresenting.value = false
   isDirty.value = false
   saveHandler.value = undefined
@@ -259,6 +269,10 @@ function togglePresenting() {
   if (isPresenting.value) {
     if (flatIndex.value === -1 && flatSlides.value.length > 0) flatIndex.value = 0
     getAdapter().live.startPresenting()
+    // Explicit send in addition to the watch below — if flatIndex was already at this value
+    // (e.g. the operator had already clicked this slide before pressing Start Presenting),
+    // the watch alone wouldn't fire since liveContentPayload wouldn't actually change.
+    getAdapter().live.setLiveContent(liveContentPayload.value)
   } else {
     getAdapter().live.stopPresenting()
   }
@@ -267,6 +281,14 @@ function togglePresenting() {
 const liveSlide = computed(() =>
   flatIndex.value >= 0 && flatIndex.value < flatSlides.value.length ? flatSlides.value[flatIndex.value] : undefined,
 )
+const liveContentPayload = computed<LiveSlideContent | undefined>(() =>
+  liveSlide.value
+    ? { itemLabel: liveSlide.value.itemLabel, subLabel: liveSlide.value.subLabel, text: liveSlide.value.text }
+    : undefined,
+)
+watch(liveContentPayload, (content) => {
+  if (isPresenting.value) getAdapter().live.setLiveContent(content)
+})
 const liveStatusText = computed(() => {
   if (!isPresenting.value) return 'Not Presenting'
   if (!liveSlide.value) return 'LIVE: Blank'

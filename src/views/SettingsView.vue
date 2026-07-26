@@ -88,7 +88,14 @@ const roleOptions: { title: string; value: DisplayRole }[] = [
   { title: 'Not Used', value: 'not-used' },
 ]
 async function loadDisplays() {
-  displays.value = (await getAdapter().displays?.list()) ?? []
+  // Not wired to a real command on the native Tauri backend yet (README's adapter-status
+  // note) — falls back to "no displays detected" rather than leaving an unhandled rejection.
+  try {
+    displays.value = (await getAdapter().displays?.list()) ?? []
+  } catch (e) {
+    console.error('Failed to list displays:', e)
+    displays.value = []
+  }
 }
 // Role assignment is an immediate hardware-config action, not a staged edit like the rest
 // of this screen — there's nothing meaningful to "revert" before Save, so it applies (and

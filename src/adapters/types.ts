@@ -93,12 +93,26 @@ export interface DisplayPort {
   identify(displayId: string): Promise<void>
 }
 
+export interface LiveSlideContent {
+  itemLabel: string
+  subLabel: string
+  text: string
+}
+
 export interface LivePresentationPort {
+  /**
+   * Opens the audience-facing presentation window and positions it relative to the operator
+   * window: split left/right on a single monitor, or fullscreen on a second monitor when one
+   * is available. No-ops in the mock/browser adapter — there's no second window to open there.
+   */
   startPresenting(): Promise<void>
+  /** Closes the presentation window and restores the operator window to where it was. */
   stopPresenting(): Promise<void>
   goToIndex(flattenedIndex: number): Promise<void>
   next(): Promise<void>
   previous(): Promise<void>
+  /** Broadcasts the current slide (or `undefined` for blank) to the presentation window. */
+  setLiveContent(content: LiveSlideContent | undefined): Promise<void>
 }
 
 /** Windows-only (Win32 window hand-off) — absent port on the macOS/demo build. */

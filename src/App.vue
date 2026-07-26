@@ -2,14 +2,25 @@
 import { onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useTheme } from 'vuetify'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { getAdapter } from '@/adapters'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import UndoToastStack from '@/components/UndoToastStack.vue'
+import PresentationView from '@/views/PresentationView.vue'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 
 const { blockedMessage } = storeToRefs(useLiveSessionStore())
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
+
+// The presentation window (see src/adapters/tauri/index.ts's `live` port) loads this same
+// app bundle in a second native window labeled "presentation" — never reached through
+// routing, since it isn't the main window at all. Everything else below (app-bar, nav,
+// router-view) is only ever what the operator window shows. Checking the Tauri window
+// label rather than the URL avoids any question of whether a query string/path survives
+// however Tauri serves the bundled frontend to a freshly created window.
+const isPresentationWindow =
+  typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__ && getCurrentWindow().label === 'presentation'
 
 // The router guard (router/index.ts) covers in-app navigation; this covers closing the
 // tab/window entirely, which a route guard can't intercept.
@@ -28,7 +39,8 @@ onMounted(async () => {
 </script>
 
 <template>
-  <v-app>
+  <PresentationView v-if="isPresentationWindow" />
+  <v-app v-else>
     <v-app-bar density="compact" elevation="0" class="border-b">
       <v-spacer />
       <span v-if="saveHandler" class="text-caption text-medium-emphasis mr-3">

@@ -1,11 +1,15 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
+import { getCurrentWindow, availableMonitors, primaryMonitor, LogicalPosition, LogicalSize } from '@tauri-apps/api/window'
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type {
   StudioAdapter,
   ScripturePassage,
   ScriptureTranslation,
   DisplayInfo,
   DisplayRole,
+  LiveSlideContent,
   RemoteDevice,
   SyncStatus,
 } from '@/adapters/types'
@@ -22,6 +26,100 @@ import type { LibrarySettings, MachineSettings } from '@/models/settings'
  * now so the frontend can be built against the full interface today.
  */
 export function createTauriAdapter(): StudioAdapter {
+  // Presentation-window state — see the `live` port below. Kept in this closure rather than
+  // module scope since each Tauri window runs its own copy of the frontend (its own call to
+  // createTauriAdapter()), so this is naturally scoped to whichever window is the operator.
+  let presentationWindow: WebviewWindow | undefined
+  let restoreOperatorBounds: { position: LogicalPosition; size: LogicalSize } | undefined
+  let lastLiveContent: LiveSlideContent | null = null
+  let unlistenPresentationReady: UnlistenFn | undefined
+
+  async function openPresentationWindow() {
+    const operatorWindow = getCurrentWindow()
+    const [outerPosition, innerSize, scaleFactor] = await Promise.all([
+      operatorWindow.outerPosition(),
+      operatorWindow.innerSize(),
+      operatorWindow.scaleFactor(),
+    ])
+    restoreOperatorBounds = {
+      position: outerPosition.toLogical(scaleFactor),
+      size: innerSize.toLogical(scaleFactor),
+    }
+
+    const monitors = await availableMonitors()
+    let x: number, y: number, width: number, height: number
+
+    if (monitors.length <= 1) {
+      // Single monitor (or none reported): split its work area — excluding the
+      // taskbar/dock, not the full physical resolution, or windows would get clipped by it —
+      // left (operator) / right (presentation) rather than overlapping windows, since
+      // there's nowhere else to put the second one.
+      const monitor = monitors[0]
+      if (!monitor) return
+      const workAreaPosition = monitor.workArea.position.toLogical(monitor.scaleFactor)
+      const workAreaSize = monitor.workArea.size.toLogical(monitor.scaleFactor)
+      const halfWidth = Math.floor(workAreaSize.width / 2)
+
+      await operatorWindow.setPosition(new LogicalPosition(workAreaPosition.x, workAreaPosition.y))
+      await operatorWindow.setSize(new LogicalSize(halfWidth, workAreaSize.height))
+
+      x = workAreaPosition.x + halfWidth
+      y = workAreaPosition.y
+      width = workAreaSize.width - halfWidth
+      height = workAreaSize.height
+    } else {
+      // 2+ monitors: presentation goes fullscreen (within its work area — see above) on the
+      // first monitor that isn't the primary/operator one. Targeting a specific monitor by
+      // its Settings-assigned role (Display Setup) is a follow-up, once the displays port is
+      // backed by real OS monitor enumeration rather than today's placeholder invoke stub.
+      const primary = await primaryMonitor()
+      const secondary =
+        monitors.find((m) => m.position.x !== primary?.position.x || m.position.y !== primary?.position.y) ??
+        monitors[1] ??
+        monitors[0]
+      const workAreaPosition = secondary.workArea.position.toLogical(secondary.scaleFactor)
+      const workAreaSize = secondary.workArea.size.toLogical(secondary.scaleFactor)
+      x = workAreaPosition.x
+      y = workAreaPosition.y
+      width = workAreaSize.width
+      height = workAreaSize.height
+    }
+
+    presentationWindow = new WebviewWindow('presentation', {
+      url: 'index.html',
+      x,
+      y,
+      width,
+      height,
+      title: 'Worship Studio — Presentation',
+      resizable: false,
+      focus: false,
+    })
+
+    // The presentation window's own app instance signals readiness (see PresentationView.vue)
+    // once it's actually listening — Tauri events aren't queued/replayed, so sending content
+    // before that would otherwise be silently dropped and leave it blank until the next cue.
+    unlistenPresentationReady = await listen('presentation:ready', () => {
+      void emit('live:slide-changed', lastLiveContent)
+    })
+  }
+
+  async function closePresentationWindow() {
+    unlistenPresentationReady?.()
+    unlistenPresentationReady = undefined
+    lastLiveContent = null
+    if (presentationWindow) {
+      await presentationWindow.close()
+      presentationWindow = undefined
+    }
+    if (restoreOperatorBounds) {
+      const operatorWindow = getCurrentWindow()
+      await operatorWindow.setPosition(restoreOperatorBounds.position)
+      await operatorWindow.setSize(restoreOperatorBounds.size)
+      restoreOperatorBounds = undefined
+    }
+  }
+
   return {
     kind: 'tauri',
     songs: {
@@ -79,11 +177,15 @@ export function createTauriAdapter(): StudioAdapter {
       listTranslations: () => invoke<ScriptureTranslation[]>('list_scripture_translations'),
     },
     live: {
-      startPresenting: () => invoke('start_presenting'),
-      stopPresenting: () => invoke('stop_presenting'),
+      startPresenting: () => openPresentationWindow(),
+      stopPresenting: () => closePresentationWindow(),
       goToIndex: (flattenedIndex) => invoke('go_to_index', { flattenedIndex }),
       next: () => invoke('presentation_next'),
       previous: () => invoke('presentation_previous'),
+      setLiveContent: async (content) => {
+        lastLiveContent = content ?? null
+        await emit('live:slide-changed', lastLiveContent)
+      },
     },
     // displays/externalApps are Windows-only in practice (live-presentation role
     // assignment, Win32 window hand-off). They're wired up unconditionally here for now;
