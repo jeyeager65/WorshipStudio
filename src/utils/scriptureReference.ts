@@ -89,6 +89,33 @@ export function parseReference(text: string): ScriptureReference | undefined {
   return { book: book.name, startChapter, startVerse, endChapter, endVerse }
 }
 
+export interface WayfindingBook {
+  name: string
+  /** Signed distance in books from the current one: 0 = current, negative = before, positive = after. */
+  distance: number
+}
+
+/**
+ * The ordered run of books surrounding `bookName`, `radius` in each direction — for
+ * reference-only mode's "wayfinding" live-slide visual (spec section 1), which mirrors the
+ * physical experience of flipping through a Bible and seeing nearby book names. Always one
+ * book per fade level regardless of length, so this is purely positional in the canonical
+ * 66-book order, not a verse/page-count-weighted distance.
+ */
+export function getWayfindingBooks(bookName: string, radius = 2): WayfindingBook[] {
+  const names = getBookNames()
+  const currentIndex = names.findIndex((name) => name === findBook(bookName)?.name)
+  if (currentIndex === -1) return []
+
+  const books: WayfindingBook[] = []
+  for (let distance = -radius; distance <= radius; distance++) {
+    const index = currentIndex + distance
+    if (index < 0 || index >= names.length) continue
+    books.push({ name: names[index]!, distance })
+  }
+  return books
+}
+
 export function formatReference(ref: ScriptureReference): string {
   const wholeChapter = ref.startVerse === 1 && ref.endChapter === ref.startChapter && ref.endVerse === getVerseCount(ref.book, ref.startChapter)
   if (wholeChapter) return `${ref.book} ${ref.startChapter}`

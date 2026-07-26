@@ -11,7 +11,7 @@ describe('Worship Studio (native)', () => {
     await expect(heading).toBeExisting()
   })
 
-  it('creates a service and shows all three Add-to-Service tabs without any large library present', async () => {
+  it('creates a service and shows all five Add-to-Service tabs without any large library present', async () => {
     const createLink = await $('a*=Create New Service')
     await createLink.waitForExist({ timeout: 10000 })
     await createLink.click()
@@ -28,7 +28,7 @@ describe('Worship Studio (native)', () => {
 
     // Regression check for the flexbox-shrink bug (fixed in commit 3997ac6): the tabs bar
     // must stay visible regardless of song-library size, not just when the library is small.
-    for (const label of ['Songs', 'Scripture', 'Slides']) {
+    for (const label of ['Songs', 'Scripture', 'Slides', 'Media', 'Video']) {
       const tab = await $(`.v-tab*=${label}`)
       await tab.waitForExist({ timeout: 10000 })
       await expect(tab).toBeDisplayed()

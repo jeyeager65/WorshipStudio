@@ -4,6 +4,7 @@ import {
   formatReference,
   getChapterCount,
   getVerseCount,
+  getWayfindingBooks,
   isValidReference,
   parseReference,
 } from '@/utils/scriptureReference'
@@ -98,6 +99,37 @@ describe('isValidReference', () => {
 
   it('rejects an unknown book', () => {
     expect(isValidReference({ book: 'Not A Book', startChapter: 1, startVerse: 1, endChapter: 1, endVerse: 1 })).toBe(false)
+  })
+})
+
+describe('getWayfindingBooks', () => {
+  it('returns the current book at distance 0, flanked by neighbors within the radius', () => {
+    const books = getWayfindingBooks('John', 2)
+    expect(books.map((b) => [b.name, b.distance])).toEqual([
+      ['Mark', -2],
+      ['Luke', -1],
+      ['John', 0],
+      ['Acts', 1],
+      ['Romans', 2],
+    ])
+  })
+
+  it('matches by alias/abbreviation like findBook does', () => {
+    expect(getWayfindingBooks('Gen', 1).find((b) => b.distance === 0)?.name).toBe('Genesis')
+  })
+
+  it('truncates rather than wrapping at the start of the canon', () => {
+    const books = getWayfindingBooks('Genesis', 2)
+    expect(books.map((b) => b.name)).toEqual(['Genesis', 'Exodus', 'Leviticus'])
+  })
+
+  it('truncates rather than wrapping at the end of the canon', () => {
+    const books = getWayfindingBooks('Revelation', 2)
+    expect(books.map((b) => b.name)).toEqual(['3 John', 'Jude', 'Revelation'])
+  })
+
+  it('returns an empty list for an unknown book', () => {
+    expect(getWayfindingBooks('Not A Book')).toEqual([])
   })
 })
 

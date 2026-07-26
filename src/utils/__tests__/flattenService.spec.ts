@@ -168,6 +168,28 @@ describe('flattenService — scripture', () => {
     expect(flat).toHaveLength(1)
     expect(flat[0]).toMatchObject({ itemLabel: 'John 3:16-17', subLabel: 'Reference Only', text: '' })
   })
+
+  it('includes the surrounding-books wayfinding list in reference-only mode', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'scripture', reference: 'John 3:16-17', translation: 'KJV', displayMode: 'reference-only' }],
+    })
+    const flat = flattenService(service, new Map())
+    expect(flat[0]?.wayfindingBooks?.map((b) => [b.name, b.distance])).toEqual([
+      ['Mark', -2],
+      ['Luke', -1],
+      ['John', 0],
+      ['Acts', 1],
+      ['Romans', 2],
+    ])
+  })
+
+  it('omits the wayfinding list in full-text mode', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'scripture', reference: 'John 3:16-17', translation: 'KJV', displayMode: 'full' }],
+    })
+    const flat = flattenService(service, new Map())
+    expect(flat[0]?.wayfindingBooks).toBeUndefined()
+  })
 })
 
 describe('flattenService — slide-ref', () => {

@@ -20,11 +20,40 @@ onMounted(async () => {
   await emit('presentation:ready')
 })
 onUnmounted(() => unlisten?.())
+
+// Wayfinding (reference-only scripture, spec section 1): books further from the current one
+// shrink and fade, one fade level per book regardless of length — mirrors flipping through a
+// physical Bible and seeing nearby book names.
+function bookStyle(distance: number) {
+  const level = Math.abs(distance)
+  const sizes = ['clamp(16px, 3vw, 34px)', 'clamp(12px, 2vw, 24px)']
+  const opacities = [0.55, 0.3]
+  return { fontSize: sizes[level - 1] ?? sizes[sizes.length - 1], opacity: opacities[level - 1] ?? opacities[opacities.length - 1] }
+}
 </script>
 
 <template>
   <div class="presentation-root">
-    <div v-if="current" class="presentation-content">
+    <div v-if="current?.wayfindingBooks" class="wayfinding-content">
+      <div
+        v-for="book in current.wayfindingBooks.filter((b) => b.distance < 0)"
+        :key="book.name"
+        class="wayfinding-book"
+        :style="bookStyle(book.distance)"
+      >
+        {{ book.name }}
+      </div>
+      <div class="wayfinding-reference">{{ current.itemLabel }}</div>
+      <div
+        v-for="book in current.wayfindingBooks.filter((b) => b.distance > 0)"
+        :key="book.name"
+        class="wayfinding-book"
+        :style="bookStyle(book.distance)"
+      >
+        {{ book.name }}
+      </div>
+    </div>
+    <div v-else-if="current" class="presentation-content">
       <div class="presentation-label">{{ current.itemLabel }}<template v-if="current.subLabel"> — {{ current.subLabel }}</template></div>
       <div class="presentation-text">{{ current.text }}</div>
     </div>
@@ -58,5 +87,21 @@ onUnmounted(() => unlisten?.())
   font-weight: 600;
   line-height: 1.3;
   white-space: pre-line;
+}
+
+.wayfinding-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.wayfinding-book {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.wayfinding-reference {
+  font-size: clamp(40px, 7vw, 90px);
+  font-weight: 700;
+  margin: 18px 0;
 }
 </style>

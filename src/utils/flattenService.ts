@@ -2,6 +2,7 @@ import type { Service, ServiceItem } from '@/models/service'
 import type { Song } from '@/models/song'
 import type { SlideLibraryItem } from '@/models/library'
 import type { ScripturePassage } from '@/adapters/types'
+import { getWayfindingBooks, parseReference, type WayfindingBook } from '@/utils/scriptureReference'
 
 export interface FlatSlide {
   /** Unique across the whole flattened sequence. */
@@ -13,6 +14,8 @@ export interface FlatSlide {
   /** e.g. block label "Chorus"; empty for single-slide item types */
   subLabel: string
   text: string
+  /** Reference-only scripture slides only — the surrounding-books wayfinding visual (spec section 1). */
+  wayfindingBooks?: WayfindingBook[]
 }
 
 function labelForOtherType(item: ServiceItem): string {
@@ -92,7 +95,16 @@ export function flattenService(
       if (item.displayMode === 'reference-only') {
         // No verse text needed at all in this mode (spec section 1) — no API/local-file
         // lookup, just the reference itself as a single wayfinding slide.
-        flat.push({ key: `${item.id}:0`, itemIndex, itemId: item.id, itemLabel: item.reference, subLabel: 'Reference Only', text: '' })
+        const book = parseReference(item.reference)?.book
+        flat.push({
+          key: `${item.id}:0`,
+          itemIndex,
+          itemId: item.id,
+          itemLabel: item.reference,
+          subLabel: 'Reference Only',
+          text: '',
+          wayfindingBooks: book ? getWayfindingBooks(book) : undefined,
+        })
       } else {
         const passage = scriptureById.get(item.id)
         flat.push({

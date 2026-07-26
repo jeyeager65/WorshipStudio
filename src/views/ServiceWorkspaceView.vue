@@ -7,6 +7,7 @@ import { getAdapter } from '@/adapters'
 import { useServicesStore } from '@/stores/services'
 import { useSongsStore } from '@/stores/songs'
 import { useSlidesStore } from '@/stores/slides'
+import { useMediaStore } from '@/stores/media'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useUndoStore } from '@/stores/undo'
@@ -15,7 +16,7 @@ import { colorForBlockLabel, colorForItemType } from '@/utils/contentColors'
 import { formatReference, getBookNames, getChapterCount, getVerseCount, isValidReference, parseReference } from '@/utils/scriptureReference'
 import type { Service, ServiceItem } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
-import type { SlideLibraryItem } from '@/models/library'
+import type { SlideLibraryItem, MediaItem } from '@/models/library'
 import type { ScripturePassage, ScriptureTranslation, LiveSlideContent } from '@/adapters/types'
 import type { ScriptureReference } from '@/models/scripture'
 
@@ -23,6 +24,7 @@ const route = useRoute()
 const servicesStore = useServicesStore()
 const songsStore = useSongsStore()
 const slidesStore = useSlidesStore()
+const mediaStore = useMediaStore()
 const { isPresenting } = storeToRefs(useLiveSessionStore())
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const undoStore = useUndoStore()
@@ -59,6 +61,7 @@ let stopServiceWatch: (() => void) | undefined
 onMounted(async () => {
   if (!songsStore.loaded) await songsStore.load()
   if (!slidesStore.loaded) await slidesStore.load()
+  if (!mediaStore.loaded) await mediaStore.load()
   // A just-created service arrives via the store instead of disk — see CreateServiceView —
   // so it's never persisted until Save is actually pressed.
   const isDraft = servicesStore.draftService?.id === route.params.id
@@ -125,6 +128,7 @@ async function saveService() {
 
 const songsById = computed(() => new Map(songsStore.songs.map((song) => [song.id, song])))
 const slidesById = computed(() => new Map(slidesStore.slides.map((item) => [item.id, item])))
+const mediaById = computed(() => new Map(mediaStore.items.map((item) => [item.id, item])))
 const flatSlides = computed<FlatSlide[]>(() =>
   service.value ? flattenService(service.value, songsById.value, scriptureById, slidesById.value) : [],
 )
@@ -190,6 +194,8 @@ function itemLabel(item: ServiceItem): string {
   if (item.type === 'scripture') return item.reference
   if (item.type === 'text-slide') return 'Text Slide'
   if (item.type === 'slide-ref') return slidesById.value.get(item.slideId)?.label ?? 'Unknown Slide'
+  if (item.type === 'media') return mediaById.value.get(item.mediaId)?.filename ?? 'Unknown Media'
+  if (item.type === 'video') return mediaById.value.get(item.mediaId)?.filename ?? 'Unknown Video'
   return item.type
 }
 
@@ -289,7 +295,12 @@ const liveSlide = computed(() =>
 )
 const liveContentPayload = computed<LiveSlideContent | undefined>(() =>
   liveSlide.value
-    ? { itemLabel: liveSlide.value.itemLabel, subLabel: liveSlide.value.subLabel, text: liveSlide.value.text }
+    ? {
+        itemLabel: liveSlide.value.itemLabel,
+        subLabel: liveSlide.value.subLabel,
+        text: liveSlide.value.text,
+        wayfindingBooks: liveSlide.value.wayfindingBooks,
+      }
     : undefined,
 )
 watch(liveContentPayload, (content) => {
@@ -330,10 +341,13 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 // "+ Add to Service" — tabbed picker (spec section 2): Songs (search), Scripture (a
-// reference builder rather than a browsable list, since scripture isn't a library), and
-// Slides (pick from the library, or quick-create service-only text slides). The full
-// unified fuzzy search across songs/scripture/slides/media is a later slice.
-const addTab = ref<'songs' | 'scripture' | 'slides'>('songs')
+// reference builder rather than a browsable list, since scripture isn't a library), Slides
+// (pick from the library, or quick-create service-only text slides), and Media/Video (pick
+// from the Media Library, filtered by kind). No Audio tab yet — the Media Library's MediaItem
+// only models 'image' | 'video' today, so there's no real data an Audio tab could list; that's
+// a Media Library extension, not just an Add-to-Service tab. The full unified fuzzy search
+// across every type is still a later slice.
+const addTab = ref<'songs' | 'scripture' | 'slides' | 'media' | 'video'>('songs')
 
 const filteredSongsForAdd = computed(() => {
   const q = addQuery.value.trim().toLowerCase()
@@ -519,6 +533,48 @@ function addTextSlideToService() {
   closeAddDialog()
 }
 
+// Media/Video sub-pickers (spec section 3): pick an existing Media Library item, filtered by
+// kind — 'image' backs the `media` item type (with a Cover/Contain fit choice, defaulting to
+// Cover per the live-presentation aspect-ratio spec), 'video' backs the `video` item type.
+const mediaQuery = ref('')
+const videoQuery = ref('')
+const mediaFit = ref<'cover' | 'contain'>('cover')
+const addingMedia = ref(false)
+
+const filteredMediaForAdd = computed(() => {
+  const q = mediaQuery.value.trim().toLowerCase()
+  return mediaStore.items.filter((item) => item.kind === 'image' && (!q || item.filename.toLowerCase().includes(q)))
+})
+const filteredVideoForAdd = computed(() => {
+  const q = videoQuery.value.trim().toLowerCase()
+  return mediaStore.items.filter((item) => item.kind === 'video' && (!q || item.filename.toLowerCase().includes(q)))
+})
+
+async function addMediaToService(mediaItem: MediaItem) {
+  if (!service.value || addingMedia.value) return
+  addingMedia.value = true
+  try {
+    const item: ServiceItem = { id: `item-${crypto.randomUUID()}`, type: 'media', mediaId: mediaItem.id, fit: mediaFit.value }
+    service.value.items.push(item)
+    selectedItemIndex.value = service.value.items.length - 1
+    closeAddDialog()
+  } finally {
+    addingMedia.value = false
+  }
+}
+async function addVideoToService(mediaItem: MediaItem) {
+  if (!service.value || addingMedia.value) return
+  addingMedia.value = true
+  try {
+    const item: ServiceItem = { id: `item-${crypto.randomUUID()}`, type: 'video', mediaId: mediaItem.id }
+    service.value.items.push(item)
+    selectedItemIndex.value = service.value.items.length - 1
+    closeAddDialog()
+  } finally {
+    addingMedia.value = false
+  }
+}
+
 function closeAddDialog() {
   addDialogOpen.value = false
   addQuery.value = ''
@@ -533,6 +589,9 @@ function closeAddDialog() {
   slideQuery.value = ''
   slidesSubMode.value = 'pick'
   newTextSlideBlocks.value = []
+  mediaQuery.value = ''
+  videoQuery.value = ''
+  mediaFit.value = 'cover'
 }
 
 function updatePresenterNote(itemId: string, note: string) {
@@ -775,6 +834,8 @@ function updatePresenterNote(itemId: string, note: string) {
           <v-tab value="songs">Songs</v-tab>
           <v-tab value="scripture">Scripture</v-tab>
           <v-tab value="slides">Slides</v-tab>
+          <v-tab value="media">Media</v-tab>
+          <v-tab value="video">Video</v-tab>
         </v-tabs>
         <v-card-text>
           <v-window v-model="addTab">
@@ -963,6 +1024,52 @@ function updatePresenterNote(itemId: string, note: string) {
                   Add to Service
                 </v-btn>
               </template>
+            </v-window-item>
+
+            <v-window-item value="media">
+              <v-btn-toggle v-model="mediaFit" mandatory density="compact" divided class="mb-4">
+                <v-btn value="cover" size="small">Cover (crop to fill)</v-btn>
+                <v-btn value="contain" size="small">Contain (show in full)</v-btn>
+              </v-btn-toggle>
+              <v-text-field
+                v-model="mediaQuery"
+                label="Search media…"
+                variant="outlined"
+                density="comfortable"
+                prepend-inner-icon="mdi-magnify"
+                autofocus
+              />
+              <v-list :disabled="addingMedia">
+                <v-list-item
+                  v-for="item in filteredMediaForAdd"
+                  :key="item.id"
+                  :title="item.filename"
+                  prepend-icon="mdi-image-outline"
+                  @click="addMediaToService(item)"
+                />
+              </v-list>
+              <p v-if="filteredMediaForAdd.length === 0" class="text-medium-emphasis text-body-2">No images found in the Media Library.</p>
+            </v-window-item>
+
+            <v-window-item value="video">
+              <v-text-field
+                v-model="videoQuery"
+                label="Search videos…"
+                variant="outlined"
+                density="comfortable"
+                prepend-inner-icon="mdi-magnify"
+                autofocus
+              />
+              <v-list :disabled="addingMedia">
+                <v-list-item
+                  v-for="item in filteredVideoForAdd"
+                  :key="item.id"
+                  :title="item.filename"
+                  prepend-icon="mdi-movie-open-outline"
+                  @click="addVideoToService(item)"
+                />
+              </v-list>
+              <p v-if="filteredVideoForAdd.length === 0" class="text-medium-emphasis text-body-2">No videos found in the Media Library.</p>
             </v-window-item>
           </v-window>
         </v-card-text>

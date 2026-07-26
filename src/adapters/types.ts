@@ -146,6 +146,8 @@ export interface LiveSlideContent {
   itemLabel: string
   subLabel: string
   text: string
+  /** Reference-only scripture slides only — the surrounding-books wayfinding visual (spec section 1). */
+  wayfindingBooks?: { name: string; distance: number }[]
 }
 
 export interface LivePresentationPort {

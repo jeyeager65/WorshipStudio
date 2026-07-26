@@ -1,21 +1,25 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useTheme } from 'vuetify'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useRoute, useRouter } from 'vue-router'
-import { getAdapter } from '@/adapters'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import UndoToastStack from '@/components/UndoToastStack.vue'
+import SplashScreen from '@/components/SplashScreen.vue'
 import PresentationView from '@/views/PresentationView.vue'
 import IdentifyView from '@/views/IdentifyView.vue'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useSyncStore } from '@/stores/sync'
+import { useSettingsStore } from '@/stores/settings'
+import { useServicesStore } from '@/stores/services'
 
 const { blockedMessage } = storeToRefs(useLiveSessionStore())
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const syncStore = useSyncStore()
+const settingsStore = useSettingsStore()
+const servicesStore = useServicesStore()
 
 // The presentation window (see src/adapters/tauri/index.ts's `live` port) loads this same
 // app bundle in a second native window labeled "presentation" — never reached through
@@ -51,8 +55,16 @@ const route = useRoute()
 // SettingsView's "Run First-Time Setup Wizard") — showing the normal nav alongside it would
 // let the operator wander off mid-setup, defeating the point.
 const isSetupWizard = computed(() => route.name === 'setup-wizard')
+
+// Splash screen (feature-spec.md section "Splash screen"): shown only for the normal
+// operator-window startup path, not the presentation/identify windows or the first-run
+// wizard (which has its own onboarding UI and nothing meaningful to preload yet).
+const showingSplash = ref(!isPresentationWindow && !isIdentifyWindow)
+const splashStatus = ref('Loading settings…')
+
 onMounted(async () => {
-  const machineSettings = await getAdapter().settings.getMachineSettings()
+  await settingsStore.load()
+  const machineSettings = settingsStore.machineSettings!
   theme.change(machineSettings.darkMode ? 'worshipDark' : 'worshipLight')
 
   // First launch (or an upgrade from before this flag existed) — send the operator through
@@ -65,11 +77,18 @@ onMounted(async () => {
     router.currentRoute.value.path !== '/setup'
   ) {
     router.replace('/setup')
+    showingSplash.value = false
   }
 
   // Fire-and-forget — a slow/failed sync-status check shouldn't block the rest of startup,
   // and the app-bar badge below just stays hidden until it resolves.
   if (!isPresentationWindow && !isIdentifyWindow) void syncStore.load()
+
+  if (showingSplash.value) {
+    splashStatus.value = 'Loading library…'
+    await servicesStore.load()
+    showingSplash.value = false
+  }
 })
 </script>
 
@@ -77,6 +96,13 @@ onMounted(async () => {
   <PresentationView v-if="isPresentationWindow" />
   <IdentifyView v-else-if="isIdentifyWindow" :label="identifyLabel" />
   <v-app v-else>
+    <SplashScreen
+      v-if="showingSplash"
+      :church-name="settingsStore.librarySettings?.branding.churchName"
+      :primary-color="settingsStore.librarySettings?.branding.primaryColor"
+      :secondary-color="settingsStore.librarySettings?.branding.secondaryColor"
+      :status-text="splashStatus"
+    />
     <v-app-bar v-if="!isSetupWizard" density="compact" elevation="0" class="border-b app-bar-no-print">
       <v-spacer />
       <span v-if="saveHandler" class="text-caption text-medium-emphasis mr-3">
