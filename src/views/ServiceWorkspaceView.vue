@@ -553,6 +553,9 @@ function updatePresenterNote(itemId: string, note: string) {
         <v-btn variant="outlined" prepend-icon="mdi-account-group-outline" :to="`/service/${service.id}/roster`">
           Volunteer Roster
         </v-btn>
+        <v-btn variant="outlined" prepend-icon="mdi-file-document-outline" :to="`/service/${service.id}/order-of-worship`">
+          Order of Worship
+        </v-btn>
         <v-btn :color="isPresenting ? 'error' : 'primary'" variant="flat" @click="togglePresenting">
           <v-icon :icon="isPresenting ? 'mdi-stop' : 'mdi-play'" start />
           {{ isPresenting ? 'Stop Presenting' : 'Start Presenting' }}

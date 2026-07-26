@@ -11,6 +11,11 @@ const router = createRouter({
     { path: '/create-service', name: 'create-service', component: () => import('@/views/CreateServiceView.vue') },
     { path: '/service/:id', name: 'service-workspace', component: () => import('@/views/ServiceWorkspaceView.vue') },
     { path: '/service/:id/roster', name: 'volunteer-roster', component: () => import('@/views/VolunteerRosterView.vue') },
+    {
+      path: '/service/:id/order-of-worship',
+      name: 'order-of-worship',
+      component: () => import('@/views/OrderOfWorshipView.vue'),
+    },
     { path: '/library/songs', name: 'song-library', component: () => import('@/views/SongLibraryView.vue') },
     { path: '/library/songs/:id', name: 'song-editor', component: () => import('@/views/SongEditorView.vue') },
     { path: '/library/slides', name: 'slide-library', component: () => import('@/views/SlideLibraryView.vue') },
