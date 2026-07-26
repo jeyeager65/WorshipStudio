@@ -1,0 +1,114 @@
+name: Release
+
+# Cutting a release: bump the version in package.json/src-tauri/tauri.conf.json/Cargo.toml,
+# commit, then `git tag vX.Y.Z && git push origin vX.Y.Z` — see docs/release-process.md.
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-tauri:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+          - platform: macos-latest
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      # Windows builds are signed with the self-signed certificate documented in
+      # docs/release-process.md — imported here from secrets, never committed. macOS builds
+      # are intentionally unsigned for now (see the same doc); no equivalent step runs there.
+      - name: Import Windows code-signing certificate
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINDOWS_CERT_THUMBPRINT: ${{ secrets.WINDOWS_CERT_THUMBPRINT }}
+        run: |
+          $bytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'codesign.pfx'
+          [IO.File]::WriteAllBytes($pfxPath, $bytes)
+          $securePassword = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $securePassword | Out-Null
+          Remove-Item $pfxPath
+
+          $signingConfig = @{
+            bundle = @{
+              windows = @{
+                certificateThumbprint = $env:WINDOWS_CERT_THUMBPRINT
+                digestAlgorithm       = 'sha256'
+                timestampUrl          = 'http://timestamp.digicert.com'
+              }
+            }
+          } | ConvertTo-Json -Depth 5
+          Set-Content -Path windows-signing.json -Value $signingConfig
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Worship Studio ${{ github.ref_name }}'
+          releaseBody: |
+            See the commit history for what changed. Windows builds are signed — see the
+            "install-trust-windows.ps1" note in docs/release-process.md if this is the first
+            install on a given machine. macOS builds are unsigned; see the same doc for the
+            one-time Gatekeeper bypass.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.platform == 'windows-latest' && '--config windows-signing.json' || '' }}
+
+  deploy-demo:
+    # The web-only static demo (mock adapter, no Tauri backend) republished on every
+    # release — see README's "static demo" note and docs/release-process.md.
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+        env:
+          VITE_BASE_PATH: /WorshipStudio/
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - uses: actions/deploy-pages@v4
+        id: deployment

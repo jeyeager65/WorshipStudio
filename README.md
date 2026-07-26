@@ -6,6 +6,7 @@ files in a folder synced via Dropbox (or equivalent).
 
 - **Feature spec & design sketches**: [design/](design/) — start with [design/README.md](design/README.md)
 - **Technical architecture & build plan**: [docs/architecture-plan.md](docs/architecture-plan.md)
+- **Cutting a release / code-signing setup**: [docs/release-process.md](docs/release-process.md)
 - **Migration source**: [OpenSong/](OpenSong/) — the current church setup's data, used as the
   source for the OpenSong-import feature
 
