@@ -48,6 +48,7 @@ pub fn run() {
             commands::scripture::resolve_scripture,
             commands::scripture::get_scripture_book_list,
             commands::scripture::list_scripture_translations,
+            commands::opensong::import_opensong_sets,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

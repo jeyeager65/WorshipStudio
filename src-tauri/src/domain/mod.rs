@@ -1,5 +1,6 @@
 pub mod manifest;
 pub mod opensong;
+pub mod opensong_sets;
 pub mod scripture;
 pub mod services;
 pub mod slides;

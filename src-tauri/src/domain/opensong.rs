@@ -191,7 +191,7 @@ fn label_for_tag(tag: &str) -> String {
     }
 }
 
-fn decode_xml_entities(input: &str) -> String {
+pub(crate) fn decode_xml_entities(input: &str) -> String {
     let mut result = String::with_capacity(input.len());
     let mut chars = input.chars().peekable();
     while let Some(c) = chars.next() {
