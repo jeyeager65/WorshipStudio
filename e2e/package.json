@@ -1,0 +1,27 @@
+{
+  "name": "worship-studio-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:app": "cd .. && npm run tauri build -- --debug --no-bundle",
+    "test": "wdio run wdio.conf.js",
+    "postinstall": "patch-package"
+  },
+  "devDependencies": {
+    "@wdio/cli": "^9.19.0",
+    "@wdio/local-runner": "^9.19.0",
+    "@wdio/mocha-framework": "^9.19.0",
+    "@wdio/spec-reporter": "^9.19.0",
+    "@wdio/tauri-service": "^1.2.0",
+    "patch-package": "^8.0.1"
+  },
+  "allowScripts": {
+    "edgedriver@6.3.0": true,
+    "esbuild@0.28.1": true,
+    "geckodriver@6.1.1": true
+  },
+  "overrides": {
+    "@wdio/native-utils": "2.5.0"
+  }
+}
