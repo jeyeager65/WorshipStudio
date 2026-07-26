@@ -16,6 +16,11 @@ jobs:
           - platform: windows-latest
           - platform: macos-latest
     runs-on: ${{ matrix.platform }}
+    # tauri-action creates/updates the GitHub Release and uploads build artifacts to it via
+    # the REST API — needs write access, which the default GITHUB_TOKEN doesn't grant unless
+    # a repo/org has changed its default workflow permissions from GitHub's read-only default.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
