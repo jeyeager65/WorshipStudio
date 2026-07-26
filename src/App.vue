@@ -80,6 +80,9 @@ onMounted(async () => {
       <v-btn to="/library/slides" variant="flat" color="secondary" class="mr-2" prepend-icon="mdi-image-multiple">
         Slides
       </v-btn>
+      <v-btn to="/library/media" variant="flat" color="secondary" class="mr-2" prepend-icon="mdi-file-image-outline">
+        Media
+      </v-btn>
       <v-btn to="/settings" variant="flat" color="secondary" class="mr-3" prepend-icon="mdi-cog">
         Settings
       </v-btn>

@@ -1,4 +1,5 @@
 pub mod files;
+pub mod media;
 pub mod opensong;
 pub mod scripture;
 pub mod services;

@@ -27,4 +27,6 @@ export interface MachineSettings {
   libraryPath: string
   /** Whether the First-Time Setup Wizard has been completed or explicitly skipped. */
   hasCompletedSetup: boolean
+  /** Local-only media folder (never synced) — for files too large to sync to every machine. */
+  localMediaPath: string
 }

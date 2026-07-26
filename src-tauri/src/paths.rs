@@ -28,6 +28,10 @@ fn default_machine_settings(app: &AppHandle) -> MachineSettings {
             .to_string_lossy()
             .to_string(),
         has_completed_setup: false,
+        local_media_path: app_data_dir(app)
+            .join("LocalMedia")
+            .to_string_lossy()
+            .to_string(),
     }
 }
 
@@ -61,6 +65,17 @@ pub fn library_root(app: &AppHandle) -> PathBuf {
 
 pub fn this_device_name(app: &AppHandle) -> String {
     load_machine_settings(app).this_computer_name
+}
+
+/// The local-only media folder (never synced) — falls back to a default location for
+/// machine-settings.json files written before this field existed (empty string).
+pub fn local_media_root(app: &AppHandle) -> PathBuf {
+    let configured = load_machine_settings(app).local_media_path;
+    if configured.is_empty() {
+        app_data_dir(app).join("LocalMedia")
+    } else {
+        PathBuf::from(configured)
+    }
 }
 
 pub fn now_iso() -> String {

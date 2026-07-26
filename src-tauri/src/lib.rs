@@ -49,6 +49,12 @@ pub fn run() {
             commands::scripture::get_scripture_book_list,
             commands::scripture::list_scripture_translations,
             commands::opensong::import_opensong_sets,
+            commands::media::list_media,
+            commands::media::save_media,
+            commands::media::delete_media,
+            commands::media::stage_media_import,
+            commands::media::commit_media_import,
+            commands::media::detect_media_duplicates,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

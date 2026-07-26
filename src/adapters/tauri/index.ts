@@ -13,6 +13,8 @@ import type {
   RemoteDevice,
   SyncStatus,
   ImportSetsSummary,
+  StagedMediaFile,
+  MediaImportCommit,
 } from '@/adapters/types'
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
@@ -161,7 +163,18 @@ export function createTauriAdapter(): StudioAdapter {
     },
     media: {
       list: () => invoke<MediaItem[]>('list_media'),
-      import: (files) => invoke<MediaItem[]>('import_media', { files }),
+      save: (item) => invoke('save_media', { item }),
+      pickFilesToImport: async () => {
+        const selection = await open({
+          multiple: true,
+          title: 'Import Media',
+          filters: [{ name: 'Images & Video Loops', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'webm', 'm4v'] }],
+        })
+        if (!selection) return []
+        const paths = Array.isArray(selection) ? selection : [selection]
+        return invoke<StagedMediaFile[]>('stage_media_import', { paths })
+      },
+      commitImport: (files: MediaImportCommit[]) => invoke<MediaItem[]>('commit_media_import', { files }),
       detectDuplicates: (item) => invoke<MediaItem[]>('detect_media_duplicates', { item }),
       delete: (id) => invoke('delete_media', { id }),
     },

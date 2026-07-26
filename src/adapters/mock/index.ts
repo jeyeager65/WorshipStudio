@@ -5,9 +5,12 @@ import type {
   DisplayRole,
   RemoteDevice,
   SyncStatus,
+  StagedMediaFile,
+  MediaImportCommit,
 } from '@/adapters/types'
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
+import type { MediaItem } from '@/models/library'
 import { MockCollection, MockSingleton } from './collection'
 import {
   seedSongs,
@@ -49,6 +52,19 @@ export function createMockAdapter(): StudioAdapter {
     { id: 'display-2', name: 'Preview (simulated audience)', resolution: '1920x1080', role: 'audience' },
   ])
   const mockRemoteDevices: RemoteDevice[] = []
+  // Staged-but-not-yet-committed File objects from pickFilesToImport, keyed by the synthetic
+  // "path" handed back to the caller — there's no real filesystem path in the browser demo,
+  // so this in-memory map stands in for one between staging and commitImport.
+  const stagedMediaFiles = new Map<string, File>()
+
+  function guessMediaKind(file: File): 'image' | 'video' {
+    return file.type.startsWith('video') ? 'video' : 'image'
+  }
+  // Name+size stands in for a real content hash here — good enough to catch an obviously
+  // re-picked file in a demo, not meant to be cryptographically meaningful.
+  function fakeContentHash(file: File): string {
+    return `${file.name}:${file.size}`
+  }
 
   async function importOpenSongXml(xml: string): Promise<Song> {
     const parsed = parseOpenSongXml(xml)
@@ -105,22 +121,53 @@ export function createMockAdapter(): StudioAdapter {
       delete: (id) => slides.delete(id),
     },
     media: {
-      list: () => media.list(),
-      import: async (files) => {
+      list: () => media.list() as Promise<MediaItem[]>,
+      save: (item) => media.save({ ...item, ...nowStamp() }),
+      pickFilesToImport: async (): Promise<StagedMediaFile[]> => {
+        const files = await pickFilesInBrowser()
+        const existing = (await media.list()) as MediaItem[]
+        const staged: StagedMediaFile[] = []
         for (const file of files) {
-          await media.save({
-            id: newId('media'),
+          const path = `mock-file-${crypto.randomUUID()}`
+          stagedMediaFiles.set(path, file)
+          const hash = fakeContentHash(file)
+          const duplicate = existing.find((item) => item.contentHash === hash)
+          staged.push({
+            path,
             filename: file.name,
-            kind: file.type.startsWith('video') ? ('video' as const) : ('image' as const),
-            tags: [],
-            location: 'synced' as const,
-            usage: { usesPastYear: 0 },
-            ...nowStamp(),
+            sizeBytes: file.size,
+            kind: guessMediaKind(file),
+            duplicateOfId: duplicate?.id,
+            duplicateOfFilename: duplicate?.filename,
           })
         }
-        return media.list()
+        return staged
       },
-      detectDuplicates: async () => [],
+      commitImport: async (files: MediaImportCommit[]) => {
+        const created: MediaItem[] = []
+        for (const file of files) {
+          const source = stagedMediaFiles.get(file.path)
+          stagedMediaFiles.delete(file.path)
+          const item: MediaItem = {
+            id: newId('media'),
+            filename: file.filename,
+            kind: source ? guessMediaKind(source) : 'image',
+            tags: file.tags,
+            location: file.location,
+            duplicateOfId: file.duplicateOfId,
+            contentHash: source ? fakeContentHash(source) : newId('hash'),
+            usage: { usesPastYear: 0 },
+            ...nowStamp(),
+          }
+          await media.save(item)
+          created.push(item)
+        }
+        return created
+      },
+      detectDuplicates: async (item) => {
+        const all = (await media.list()) as MediaItem[]
+        return all.filter((other) => other.id !== item.id && other.contentHash === item.contentHash)
+      },
       delete: (id) => media.delete(id),
     },
     themes: {

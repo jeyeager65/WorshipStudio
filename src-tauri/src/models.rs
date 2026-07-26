@@ -193,6 +193,28 @@ pub struct SlideLibraryItem {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
+pub struct MediaItem {
+    pub id: String,
+    pub filename: String,
+    /// "image" | "video" — a plain string rather than an enum, same convention as
+    /// `service_type`/`location` elsewhere in this file for simple open-ended value sets.
+    pub kind: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// "synced" | "local" — see MachineSettings::local_media_path.
+    pub location: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duplicate_of_id: Option<String>,
+    /// Non-cryptographic content hash (see domain::media::hash_file) used only to notice
+    /// accidental duplicate imports, not for integrity/security.
+    pub content_hash: String,
+    pub usage: Usage,
+    pub updated_at: String,
+    pub updated_by_device: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct Branding {
     pub church_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -241,6 +263,12 @@ pub struct MachineSettings {
     /// silently assuming it was already done.
     #[serde(default)]
     pub has_completed_setup: bool,
+    /// Local-only media folder (per-machine, never synced) — for video loops etc. too large
+    /// to be worth Dropbox-syncing to every machine (see design/feature-spec.md's Media
+    /// Library section). Empty for machine-settings.json files written before this field
+    /// existed; domain::media::local_media_root falls back to a default location for those.
+    #[serde(default)]
+    pub local_media_path: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

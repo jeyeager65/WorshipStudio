@@ -41,7 +41,30 @@ export const seedServices: Service[] = [
 ]
 
 export const seedSlides: SlideLibraryItem[] = []
-export const seedMedia: MediaItem[] = []
+export const seedMedia: MediaItem[] = [
+  {
+    id: 'media-worship-hands-sunset',
+    filename: 'worship-hands-sunset.jpg',
+    kind: 'image',
+    tags: ['Worship'],
+    location: 'synced',
+    contentHash: 'seed-1',
+    usage: { usesPastYear: 8, lastUsedAt: now },
+    updatedAt: now,
+    updatedByDevice: device,
+  },
+  {
+    id: 'media-gentle-water-loop',
+    filename: 'gentle-water-loop.mp4',
+    kind: 'video',
+    tags: ['Nature'],
+    location: 'synced',
+    contentHash: 'seed-2',
+    usage: { usesPastYear: 5, lastUsedAt: now },
+    updatedAt: now,
+    updatedByDevice: device,
+  },
+]
 export const seedThemes: Theme[] = []
 
 export const seedLibrarySettings: LibrarySettings = {
@@ -66,4 +89,5 @@ export const seedMachineSettings: MachineSettings = {
   // The demo build's sample data (above) stands in for the wizard's library import, so
   // there's no reason to make an evaluator click through it before seeing the app.
   hasCompletedSetup: true,
+  localMediaPath: '',
 }

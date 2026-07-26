@@ -48,9 +48,32 @@ export interface SlideLibraryPort {
   delete(id: string): Promise<void>
 }
 
+export interface StagedMediaFile {
+  /** Opaque handle the adapter needs back at commit time — a filesystem path in Tauri, a synthetic id in the mock. */
+  path: string
+  filename: string
+  sizeBytes: number
+  kind: 'image' | 'video'
+  duplicateOfId?: string
+  duplicateOfFilename?: string
+}
+
+export interface MediaImportCommit {
+  path: string
+  filename: string
+  tags: string[]
+  location: 'synced' | 'local'
+  duplicateOfId?: string
+}
+
 export interface MediaPort {
   list(): Promise<MediaItem[]>
-  import(files: File[]): Promise<MediaItem[]>
+  save(item: MediaItem): Promise<void>
+  /** Opens a native/browser file picker and stages each selection (size, kind, duplicate check) for the Import Media review dialog — nothing is copied into the library yet. */
+  pickFilesToImport(): Promise<StagedMediaFile[]>
+  /** Copies each accepted staged file into the library (synced or local, per its chosen location) and creates its record. */
+  commitImport(files: MediaImportCommit[]): Promise<MediaItem[]>
+  /** Passive re-check for an already-imported item — the "DUPLICATE" badge's backstop for files that entered the library some other way. */
   detectDuplicates(item: MediaItem): Promise<MediaItem[]>
   delete(id: string): Promise<void>
 }

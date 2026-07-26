@@ -25,6 +25,8 @@ export interface MediaItem {
   tags: string[]
   location: 'synced' | 'local'
   duplicateOfId?: string
+  /** Non-cryptographic content hash used only to notice accidental duplicate imports. */
+  contentHash: string
   usage: {
     lastUsedAt?: string
     usesPastYear: number
