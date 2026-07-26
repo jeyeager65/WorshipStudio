@@ -239,6 +239,7 @@ export function createTauriAdapter(): StudioAdapter {
       commitImport: (files: MediaImportCommit[]) => invoke<MediaItem[]>('commit_media_import', { files }),
       detectDuplicates: (item) => invoke<MediaItem[]>('detect_media_duplicates', { item }),
       delete: (id) => invoke('delete_media', { id }),
+      getFilePath: (id) => invoke<string>('get_media_file_path', { id }),
     },
     themes: {
       list: () => invoke<Theme[]>('list_themes'),

@@ -459,6 +459,18 @@ pub struct WayfindingBook {
     pub distance: i32,
 }
 
+/// Opaque to Rust — just a `convertFileSrc` URL string the frontend already resolved, carried
+/// through so the confidence-monitor mirror (remote_page.html) can display it too.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveMediaRef {
+    pub url: String,
+    /// "image" | "video"
+    pub kind: String,
+    /// "cover" | "contain"
+    pub fit: String,
+}
+
 /// Mirrors the frontend's LiveSlideContent (src/adapters/types.ts) — the operator window
 /// pushes this to Rust (see commands::remote::update_remote_live_state) whenever the live
 /// slide changes, so the remote HTTP server's /api/state has something to report without the
@@ -471,4 +483,6 @@ pub struct LiveSlideContent {
     pub text: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wayfinding_books: Option<Vec<WayfindingBook>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media: Option<LiveMediaRef>,
 }

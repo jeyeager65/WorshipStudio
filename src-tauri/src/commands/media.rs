@@ -56,3 +56,18 @@ pub fn commit_media_import(
 pub fn detect_media_duplicates(app: AppHandle, item: MediaItem) -> Result<Vec<MediaItem>, String> {
     media::detect_duplicates(&library_root(&app), &item).map_err(|e| e.to_string())
 }
+
+/// Resolves a MediaItem to the real file on disk — the frontend turns this into a usable
+/// `<img>`/`<video>` src via Tauri's `convertFileSrc`, for actually displaying/playing
+/// content live (spec sections 1/3) rather than just a placeholder label.
+#[tauri::command]
+pub fn get_media_file_path(app: AppHandle, id: String) -> Result<String, String> {
+    let root = library_root(&app);
+    let item =
+        media::get(&root, &id).ok_or_else(|| "That media item no longer exists.".to_string())?;
+    let path = media::file_path(&root, &local_media_root(&app), &item);
+    if !path.exists() {
+        return Err(format!("File not found: {}", path.display()));
+    }
+    Ok(path.to_string_lossy().to_string())
+}

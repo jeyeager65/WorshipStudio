@@ -76,6 +76,13 @@ export interface MediaPort {
   /** Passive re-check for an already-imported item — the "DUPLICATE" badge's backstop for files that entered the library some other way. */
   detectDuplicates(item: MediaItem): Promise<MediaItem[]>
   delete(id: string): Promise<void>
+  /**
+   * The real file path backing a MediaItem, for actually displaying/playing it live (spec
+   * sections 1/3) rather than just a placeholder label. Tauri-only — turned into a usable
+   * `<img>`/`<video>` src via `convertFileSrc`; absent in the mock/browser demo, which has no
+   * local file to point at.
+   */
+  getFilePath?(id: string): Promise<string>
 }
 
 export interface ThemePort {
@@ -142,12 +149,21 @@ export interface DisplayPort {
   identify(displayId: string): Promise<void>
 }
 
+export interface LiveMediaRef {
+  /** A `convertFileSrc` URL, already resolved by the operator window — usable directly as an `<img>`/`<video>` src. */
+  url: string
+  kind: 'image' | 'video'
+  fit: 'cover' | 'contain'
+}
+
 export interface LiveSlideContent {
   itemLabel: string
   subLabel: string
   text: string
   /** Reference-only scripture slides only — the surrounding-books wayfinding visual (spec section 1). */
   wayfindingBooks?: { name: string; distance: number }[]
+  /** Media/Video items only — the actual image/video to display live (spec sections 1/3). */
+  media?: LiveMediaRef
 }
 
 export interface LivePresentationPort {

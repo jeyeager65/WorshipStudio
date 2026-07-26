@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { getAdapter } from '@/adapters'
 import { useServicesStore } from '@/stores/services'
 import { useSongsStore } from '@/stores/songs'
@@ -50,6 +51,24 @@ async function resolveScriptureItem(item: ServiceItem) {
     scriptureErrors.delete(item.id)
   } catch (e) {
     scriptureErrors.set(item.id, e instanceof Error ? e.message : 'Failed to resolve passage.')
+  }
+}
+
+// Resolved media file src, keyed by MediaItem id (not service item id — several service items
+// could reuse the same media). getFilePath is a real Rust round trip (only the Rust side
+// knows library_root/local_media_root), so this can't happen inside flattenService's
+// otherwise-synchronous walk — resolved once up front instead, same pattern as scripture above.
+const mediaUrlById = reactive(new Map<string, string>())
+const mediaErrors = reactive(new Map<string, string>())
+
+async function resolveMediaItem(mediaId: string) {
+  if (mediaUrlById.has(mediaId) || !getAdapter().media.getFilePath) return
+  try {
+    const path = await getAdapter().media.getFilePath!(mediaId)
+    mediaUrlById.set(mediaId, convertFileSrc(path))
+    mediaErrors.delete(mediaId)
+  } catch (e) {
+    mediaErrors.set(mediaId, e instanceof Error ? e.message : 'Failed to load media file.')
   }
 }
 
@@ -111,6 +130,9 @@ onMounted(async () => {
   } catch (e) {
     console.error('Failed to load scripture translations/passages:', e)
   }
+
+  const mediaIds = (service.value?.items ?? []).filter((item) => item.type === 'media' || item.type === 'video').map((item) => item.mediaId)
+  await Promise.all(mediaIds.map(resolveMediaItem))
 })
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeydown)
@@ -163,6 +185,16 @@ const selectedSlideGroup = computed<SongBlock[] | undefined>(() => {
 function slideFlatIndex(itemId: string, subIndex: number): number {
   return flatSlides.value.findIndex((s) => s.key === `${itemId}:${subIndex}`)
 }
+const selectedMediaUrl = computed(() => {
+  const item = selectedItem.value
+  const mediaId = item?.type === 'media' || item?.type === 'video' ? item.mediaId : undefined
+  return mediaId ? mediaUrlById.get(mediaId) : undefined
+})
+const selectedMediaError = computed(() => {
+  const item = selectedItem.value
+  const mediaId = item?.type === 'media' || item?.type === 'video' ? item.mediaId : undefined
+  return mediaId ? mediaErrors.get(mediaId) : undefined
+})
 const selectedScripturePassage = computed<ScripturePassage | undefined>(() => {
   const item = selectedItem.value
   return item?.type === 'scripture' ? scriptureById.get(item.id) : undefined
@@ -306,16 +338,18 @@ function togglePresenting() {
 const liveSlide = computed(() =>
   flatIndex.value >= 0 && flatIndex.value < flatSlides.value.length ? flatSlides.value[flatIndex.value] : undefined,
 )
-const liveContentPayload = computed<LiveSlideContent | undefined>(() =>
-  liveSlide.value
-    ? {
-        itemLabel: liveSlide.value.itemLabel,
-        subLabel: liveSlide.value.subLabel,
-        text: liveSlide.value.text,
-        wayfindingBooks: liveSlide.value.wayfindingBooks,
-      }
-    : undefined,
-)
+const liveContentPayload = computed<LiveSlideContent | undefined>(() => {
+  if (!liveSlide.value) return undefined
+  const slide = liveSlide.value
+  const mediaUrl = slide.mediaId ? mediaUrlById.get(slide.mediaId) : undefined
+  return {
+    itemLabel: slide.itemLabel,
+    subLabel: slide.subLabel,
+    text: slide.text,
+    wayfindingBooks: slide.wayfindingBooks,
+    media: mediaUrl && slide.mediaKind && slide.mediaFit ? { url: mediaUrl, kind: slide.mediaKind, fit: slide.mediaFit } : undefined,
+  }
+})
 watch(liveContentPayload, (content) => {
   if (isPresenting.value) {
     getAdapter().live.setLiveContent(content)
@@ -574,6 +608,7 @@ async function addMediaToService(mediaItem: MediaItem) {
     service.value.items.push(item)
     selectedItemIndex.value = service.value.items.length - 1
     closeAddDialog()
+    await resolveMediaItem(mediaItem.id)
   } finally {
     addingMedia.value = false
   }
@@ -586,6 +621,7 @@ async function addVideoToService(mediaItem: MediaItem) {
     service.value.items.push(item)
     selectedItemIndex.value = service.value.items.length - 1
     closeAddDialog()
+    await resolveMediaItem(mediaItem.id)
   } finally {
     addingMedia.value = false
   }
@@ -786,6 +822,29 @@ function updatePresenterNote(itemId: string, note: string) {
                   <div class="text-body-2" style="white-space: pre-line; opacity: 0.75">{{ slide.text }}</div>
                 </div>
               </div>
+            </div>
+          </template>
+
+          <template v-else-if="selectedItem.type === 'media' || selectedItem.type === 'video'">
+            <div
+              class="slide-row"
+              :class="{ 'slide-row--live': itemHasLive(selectedItemIndex) }"
+              :style="[
+                { maxWidth: '460px' },
+                itemHasLive(selectedItemIndex)
+                  ? {}
+                  : {
+                      background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                      borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                      paddingLeft: '9px',
+                    },
+              ]"
+              @click="goLive(flatSlides.findIndex((s) => s.itemIndex === selectedItemIndex))"
+            >
+              <div v-if="selectedMediaError" class="text-body-2 text-error">{{ selectedMediaError }}</div>
+              <img v-else-if="selectedMediaUrl && selectedItem.type === 'media'" :src="selectedMediaUrl" class="media-preview" alt="" />
+              <video v-else-if="selectedMediaUrl" :src="selectedMediaUrl" class="media-preview" muted controls />
+              <div v-else class="text-body-2 text-medium-emphasis">Loading…</div>
             </div>
           </template>
 
@@ -1162,6 +1221,11 @@ function updatePresenterNote(itemId: string, note: string) {
 }
 .slide-row:hover {
   background: rgba(var(--v-theme-primary), 0.08);
+}
+.media-preview {
+  max-width: 100%;
+  max-height: 220px;
+  border-radius: 4px;
 }
 .slide-row--live {
   background: rgba(var(--v-theme-error), 0.1);

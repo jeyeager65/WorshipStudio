@@ -28,6 +28,18 @@ pub fn list(root: &Path) -> std::io::Result<Vec<MediaItem>> {
     read_json_dir(&media_items_dir(root))
 }
 
+/// The actual file on disk backing a MediaItem — needed for real playback/display (spec
+/// sections 3/1), not just the metadata `list`/`get` return. Doesn't check existence; callers
+/// that need to fail loudly on a missing file do that check themselves.
+pub fn file_path(root: &Path, local_media_root: &Path, item: &MediaItem) -> PathBuf {
+    let dir = if item.location == "local" {
+        local_media_root
+    } else {
+        &synced_media_dir(root)
+    };
+    dir.join(&item.filename)
+}
+
 pub fn get(root: &Path, id: &str) -> Option<MediaItem> {
     read_json_file(&media_item_path(root, id))
 }
@@ -49,12 +61,7 @@ pub fn save(
 /// forever with no UI able to find them again.
 pub fn delete(root: &Path, local_media_root: &Path, id: &str) -> std::io::Result<()> {
     if let Some(item) = get(root, id) {
-        let dir = if item.location == "local" {
-            local_media_root
-        } else {
-            &synced_media_dir(root)
-        };
-        let _ = fs::remove_file(dir.join(&item.filename));
+        let _ = fs::remove_file(file_path(root, local_media_root, &item));
     }
     delete_file_if_exists(&media_item_path(root, id))
 }
@@ -251,6 +258,25 @@ mod tests {
         assert_eq!(guess_kind("sunset.jpg"), "image");
         assert_eq!(guess_kind("sunset.PNG"), "image");
         assert_eq!(guess_kind("no-extension"), "image");
+    }
+
+    #[test]
+    fn file_path_resolves_synced_items_under_the_library_media_dir() {
+        let root = Path::new("/library");
+        let local = Path::new("/local-media");
+        let item = sample("media-1", "sunset.jpg", "synced", "abc");
+        assert_eq!(
+            file_path(root, local, &item),
+            root.join("media").join("sunset.jpg")
+        );
+    }
+
+    #[test]
+    fn file_path_resolves_local_items_under_the_local_media_root() {
+        let root = Path::new("/library");
+        let local = Path::new("/local-media");
+        let item = sample("media-1", "clip.mp4", "local", "abc");
+        assert_eq!(file_path(root, local, &item), local.join("clip.mp4"));
     }
 
     #[test]

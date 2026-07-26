@@ -53,6 +53,23 @@ function bookStyle(distance: number) {
         {{ book.name }}
       </div>
     </div>
+    <img
+      v-else-if="current?.media?.kind === 'image'"
+      :key="current.media.url"
+      :src="current.media.url"
+      class="media-fill"
+      :style="{ objectFit: current.media.fit }"
+      alt=""
+    />
+    <video
+      v-else-if="current?.media?.kind === 'video'"
+      :key="current.media.url"
+      :src="current.media.url"
+      class="media-fill"
+      :style="{ objectFit: current.media.fit }"
+      autoplay
+      controls
+    />
     <div v-else-if="current" class="presentation-content">
       <div class="presentation-label">{{ current.itemLabel }}<template v-if="current.subLabel"> — {{ current.subLabel }}</template></div>
       <div class="presentation-text">{{ current.text }}</div>
@@ -87,6 +104,10 @@ function bookStyle(distance: number) {
   font-weight: 600;
   line-height: 1.3;
   white-space: pre-line;
+}
+.media-fill {
+  width: 100%;
+  height: 100%;
 }
 
 .wayfinding-content {

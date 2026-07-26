@@ -66,6 +66,7 @@ pub fn run() {
             commands::media::stage_media_import,
             commands::media::commit_media_import,
             commands::media::detect_media_duplicates,
+            commands::media::get_media_file_path,
             commands::themes::list_themes,
             commands::themes::save_theme,
             commands::themes::delete_theme,

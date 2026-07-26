@@ -16,6 +16,10 @@ export interface FlatSlide {
   text: string
   /** Reference-only scripture slides only — the surrounding-books wayfinding visual (spec section 1). */
   wayfindingBooks?: WayfindingBook[]
+  /** Media/Video items only — resolved to an actual displayable URL by the caller (see ServiceWorkspaceView), since that needs an async Rust round trip flattenService can't make. */
+  mediaId?: string
+  mediaKind?: 'image' | 'video'
+  mediaFit?: 'cover' | 'contain'
 }
 
 function labelForOtherType(item: ServiceItem): string {
@@ -44,9 +48,11 @@ function labelForOtherType(item: ServiceItem): string {
  * per-verse auto-fit splitting (spec section 1) is still a later slice, so for now a
  * passage that resolved fits on a single slide regardless of length; slide-ref items expand
  * to one flat entry per slide in the referenced library item (see slidesById below), same
- * shape as text-slide; every other item type (media, video, audio, external-app, countdown,
- * qr) is still a work-in-progress content type (v1.1), so each becomes a single placeholder
- * slide for now rather than being left out of the sequence entirely.
+ * shape as text-slide; media/video items carry a `mediaId` for the caller to resolve to a
+ * real displayable URL (this function stays synchronous, so it can't do that Rust round trip
+ * itself); every other item type (audio, external-app, countdown, qr) is still a
+ * work-in-progress content type, so each becomes a single placeholder slide for now rather
+ * than being left out of the sequence entirely.
  */
 export function flattenService(
   service: Service,
@@ -139,6 +145,32 @@ export function flattenService(
           })
         })
       }
+    } else if (item.type === 'media') {
+      flat.push({
+        key: `${item.id}:0`,
+        itemIndex,
+        itemId: item.id,
+        itemLabel: 'Media',
+        subLabel: '',
+        text: '',
+        mediaId: item.mediaId,
+        mediaKind: 'image',
+        mediaFit: item.fit,
+      })
+    } else if (item.type === 'video') {
+      flat.push({
+        key: `${item.id}:0`,
+        itemIndex,
+        itemId: item.id,
+        itemLabel: 'Video',
+        subLabel: '',
+        text: '',
+        mediaId: item.mediaId,
+        mediaKind: 'video',
+        // No per-item fit choice for video (unlike `media`) — a dedicated video slide is
+        // meant to be watched in full, not cropped like a background loop.
+        mediaFit: 'contain',
+      })
     } else {
       flat.push({
         key: `${item.id}:0`,

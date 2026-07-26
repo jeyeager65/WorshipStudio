@@ -92,11 +92,30 @@ describe('flattenService', () => {
 
   it('treats not-yet-fully-built item types as a single placeholder slide', () => {
     const service = makeService({
+      items: [{ id: 'item-1', type: 'audio', mediaId: 'media-1' }],
+    })
+    const flat = flattenService(service, new Map())
+    expect(flat).toHaveLength(1)
+    expect(flat[0].itemLabel).toBe('Audio')
+    expect(flat[0].mediaId).toBeUndefined()
+  })
+
+  it('carries a media item through with its fit choice for the caller to resolve', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'media', mediaId: 'media-1', fit: 'contain' }],
+    })
+    const flat = flattenService(service, new Map())
+    expect(flat).toHaveLength(1)
+    expect(flat[0]).toMatchObject({ itemLabel: 'Media', mediaId: 'media-1', mediaKind: 'image', mediaFit: 'contain' })
+  })
+
+  it('carries a video item through, defaulting to a Contain fit', () => {
+    const service = makeService({
       items: [{ id: 'item-1', type: 'video', mediaId: 'media-1' }],
     })
     const flat = flattenService(service, new Map())
     expect(flat).toHaveLength(1)
-    expect(flat[0].itemLabel).toBe('Video')
+    expect(flat[0]).toMatchObject({ itemLabel: 'Video', mediaId: 'media-1', mediaKind: 'video', mediaFit: 'contain' })
   })
 
   it('falls back gracefully when a slide-ref cannot be resolved', () => {
