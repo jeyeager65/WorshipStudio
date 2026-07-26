@@ -43,8 +43,11 @@ Do this once, not per-release.
    - `worship-studio-codesign.cer` — public certificate only, no private key. **Commit this
      file** — `install-trust-windows.ps1` reads it directly from the repo.
 
-2. **Store three GitHub Actions secrets** (repo Settings → Secrets and variables →
-   Actions):
+2. **Store three *repository* secrets** (repo Settings → Secrets and variables → Actions →
+   **Repository secrets** tab — not Environment secrets. The signing step runs in
+   `build-tauri`, which doesn't declare an `environment:`, so an environment-scoped secret
+   would be invisible to it; only `deploy-demo` declares one, for `actions/deploy-pages`,
+   and needs none of these three):
    - `WINDOWS_CERTIFICATE` — the `.pfx` file, base64-encoded:
      ```powershell
      [Convert]::ToBase64String([IO.File]::ReadAllBytes('scripts/release/worship-studio-codesign.pfx'))
