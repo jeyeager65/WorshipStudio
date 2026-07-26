@@ -315,6 +315,13 @@ pub struct MachineSettings {
     /// existed; domain::media::local_media_root falls back to a default location for those.
     #[serde(default)]
     pub local_media_path: String,
+    /// Persisted Display Setup role per monitor (keyed by the OS-reported monitor name, since
+    /// that's the one thing stable across launches — see adapters/tauri's `displays` port,
+    /// which does its own real monitor enumeration rather than a Rust command). Values are
+    /// "operator" | "audience" | "not-used"; a monitor with no entry here defaults to
+    /// "not-used" in the UI.
+    #[serde(default)]
+    pub display_roles: std::collections::HashMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

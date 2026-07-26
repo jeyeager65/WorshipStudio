@@ -111,4 +111,5 @@ export const seedMachineSettings: MachineSettings = {
   // there's no reason to make an evaluator click through it before seeing the app.
   hasCompletedSetup: true,
   localMediaPath: '',
+  displayRoles: { 'display-1': 'operator', 'display-2': 'audience' },
 }

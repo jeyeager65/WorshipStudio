@@ -8,6 +8,7 @@ import { getAdapter } from '@/adapters'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import UndoToastStack from '@/components/UndoToastStack.vue'
 import PresentationView from '@/views/PresentationView.vue'
+import IdentifyView from '@/views/IdentifyView.vue'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 
@@ -22,6 +23,15 @@ const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 // however Tauri serves the bundled frontend to a freshly created window.
 const isPresentationWindow =
   typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__ && getCurrentWindow().label === 'presentation'
+
+// Same reasoning as the presentation window above — the Display Setup "Identify" button
+// (SettingsView) opens this same bundle in a short-lived window labeled "identify", also
+// never reached through routing. Its label text rides along as a real query string (not a
+// `#/...` hash — this app uses path-based createWebHistory routing, so a hash fragment would
+// be inert) since Tauri's WebviewWindowOptions has no field for arbitrary custom data.
+const isIdentifyWindow =
+  typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__ && getCurrentWindow().label === 'identify'
+const identifyLabel = typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('identify') ?? '') : ''
 
 // The router guard (router/index.ts) covers in-app navigation; this covers closing the
 // tab/window entirely, which a route guard can't intercept.
@@ -46,7 +56,12 @@ onMounted(async () => {
   // First launch (or an upgrade from before this flag existed) — send the operator through
   // the wizard once before anything else. Direct navigation to any other route still works
   // normally afterward; this only fires on the very first paint.
-  if (!isPresentationWindow && !machineSettings.hasCompletedSetup && router.currentRoute.value.path !== '/setup') {
+  if (
+    !isPresentationWindow &&
+    !isIdentifyWindow &&
+    !machineSettings.hasCompletedSetup &&
+    router.currentRoute.value.path !== '/setup'
+  ) {
     router.replace('/setup')
   }
 })
@@ -54,6 +69,7 @@ onMounted(async () => {
 
 <template>
   <PresentationView v-if="isPresentationWindow" />
+  <IdentifyView v-else-if="isIdentifyWindow" :label="identifyLabel" />
   <v-app v-else>
     <v-app-bar v-if="!isSetupWizard" density="compact" elevation="0" class="border-b">
       <v-spacer />

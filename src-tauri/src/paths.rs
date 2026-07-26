@@ -32,6 +32,7 @@ fn default_machine_settings(app: &AppHandle) -> MachineSettings {
             .join("LocalMedia")
             .to_string_lossy()
             .to_string(),
+        display_roles: std::collections::HashMap::new(),
     }
 }
 

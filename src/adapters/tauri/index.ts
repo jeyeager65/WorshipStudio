@@ -36,6 +36,16 @@ export function createTauriAdapter(): StudioAdapter {
   let restoreOperatorBounds: { position: LogicalPosition; size: LogicalSize } | undefined
   let lastLiveContent: LiveSlideContent | null = null
   let unlistenPresentationReady: UnlistenFn | undefined
+  let identifyWindow: WebviewWindow | undefined
+
+  // The OS doesn't hand back a stable per-monitor id, so the one thing that actually stays
+  // the same across launches (Tauri's reported `name`, e.g. "\\.\DISPLAY1" on Windows) is
+  // used as the key into MachineSettings.displayRoles. A monitor unplugged and replaced with
+  // an identically-positioned one would be misidentified, but that's an acceptable edge case
+  // for a role assignment the operator can just re-pick in Settings.
+  function monitorId(monitor: Awaited<ReturnType<typeof availableMonitors>>[number], index: number): string {
+    return monitor.name ?? `monitor-${index}`
+  }
 
   async function openPresentationWindow() {
     const operatorWindow = getCurrentWindow()
@@ -71,12 +81,15 @@ export function createTauriAdapter(): StudioAdapter {
       width = workAreaSize.width - halfWidth
       height = workAreaSize.height
     } else {
-      // 2+ monitors: presentation goes fullscreen (within its work area — see above) on the
-      // first monitor that isn't the primary/operator one. Targeting a specific monitor by
-      // its Settings-assigned role (Display Setup) is a follow-up, once the displays port is
-      // backed by real OS monitor enumeration rather than today's placeholder invoke stub.
+      // 2+ monitors: presentation goes fullscreen (within its work area — see above) on
+      // whichever monitor Display Setup (Settings) has assigned the "audience" role to, if
+      // any. Falls back to "the first monitor that isn't the primary/operator one" when
+      // nothing's been assigned yet, so this still works before a first-time setup.
+      const machineSettings = await invoke<MachineSettings>('get_machine_settings')
+      const assignedAudience = monitors.find((m, i) => machineSettings.displayRoles[monitorId(m, i)] === 'audience')
       const primary = await primaryMonitor()
       const secondary =
+        assignedAudience ??
         monitors.find((m) => m.position.x !== primary?.position.x || m.position.y !== primary?.position.y) ??
         monitors[1] ??
         monitors[0]
@@ -121,6 +134,51 @@ export function createTauriAdapter(): StudioAdapter {
       await operatorWindow.setSize(restoreOperatorBounds.size)
       restoreOperatorBounds = undefined
     }
+  }
+
+  // Briefly shows a large label centered on the given monitor — the only way to answer
+  // "which physical screen is THIS one" when a church's booth has several identical-looking
+  // displays. Reuses the same app bundle/router as the presentation window (see App.vue's
+  // window-label branch) rather than a bespoke HTML page.
+  async function identifyDisplay(displayId: string) {
+    const monitors = await availableMonitors()
+    const index = monitors.findIndex((m, i) => monitorId(m, i) === displayId)
+    const monitor = monitors[index]
+    if (!monitor) return
+
+    const workAreaPosition = monitor.workArea.position.toLogical(monitor.scaleFactor)
+    const workAreaSize = monitor.workArea.size.toLogical(monitor.scaleFactor)
+    const width = 360
+    const height = 240
+    const x = workAreaPosition.x + workAreaSize.width / 2 - width / 2
+    const y = workAreaPosition.y + workAreaSize.height / 2 - height / 2
+
+    if (identifyWindow) {
+      await identifyWindow.close()
+      identifyWindow = undefined
+    }
+    const label = monitor.name ?? `Display ${index + 1}`
+    const thisWindow = new WebviewWindow('identify', {
+      // A real query string, not a `#/...` hash fragment — the app uses createWebHistory
+      // (path-based) routing, so a hash here would be inert. Read the same way the
+      // presentation window is detected (its Tauri window label), not through vue-router —
+      // this window never gets routed at all, same reasoning as PresentationView.
+      url: `index.html?identify=${encodeURIComponent(label)}`,
+      x,
+      y,
+      width,
+      height,
+      decorations: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      focus: false,
+    })
+    identifyWindow = thisWindow
+    setTimeout(() => {
+      if (identifyWindow === thisWindow) identifyWindow = undefined
+      void thisWindow.close()
+    }, 2500)
   }
 
   return {
@@ -220,9 +278,32 @@ export function createTauriAdapter(): StudioAdapter {
     // hiding them on the macOS build is a platform check to add once that build exists
     // (docs/architecture-plan.md M7+), not a reason to omit the ports today.
     displays: {
-      list: () => invoke<DisplayInfo[]>('list_displays'),
-      assignRole: (displayId, role: DisplayRole) => invoke('assign_display_role', { displayId, role }),
-      identify: (displayId) => invoke('identify_display', { displayId }),
+      // Real OS monitor enumeration (no Rust command needed — Tauri's window API already
+      // exposes this) combined with the persisted role map in MachineSettings, which is the
+      // one piece that actually needs to survive restarts.
+      list: async () => {
+        const [monitors, machineSettings] = await Promise.all([
+          availableMonitors(),
+          invoke<MachineSettings>('get_machine_settings'),
+        ])
+        return monitors.map((monitor, index): DisplayInfo => {
+          const id = monitorId(monitor, index)
+          const size = monitor.size.toLogical(monitor.scaleFactor)
+          const role = (machineSettings.displayRoles[id] as DisplayRole | undefined) ?? 'not-used'
+          return {
+            id,
+            name: monitor.name ?? `Display ${index + 1}`,
+            resolution: `${Math.round(size.width)}x${Math.round(size.height)}`,
+            role,
+          }
+        })
+      },
+      assignRole: async (displayId, role: DisplayRole) => {
+        const machineSettings = await invoke<MachineSettings>('get_machine_settings')
+        machineSettings.displayRoles[displayId] = role
+        await invoke('save_machine_settings', { settings: machineSettings })
+      },
+      identify: (displayId) => identifyDisplay(displayId),
     },
     externalApps: {
       launch: (profileId, file) => invoke('launch_external_app', { profileId, file }),

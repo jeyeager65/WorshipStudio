@@ -29,4 +29,11 @@ export interface MachineSettings {
   hasCompletedSetup: boolean
   /** Local-only media folder (never synced) — for files too large to sync to every machine. */
   localMediaPath: string
+  /**
+   * Persisted Display Setup role per monitor, keyed by the OS-reported monitor name (see
+   * adapters/tauri's `displays` port, which does real monitor enumeration itself rather than
+   * through a Rust command). Values are DisplayRole strings; a plain Record here rather than
+   * importing that type keeps this model layer independent of the adapters layer.
+   */
+  displayRoles: Record<string, string>
 }
