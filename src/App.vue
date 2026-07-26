@@ -77,7 +77,7 @@ onMounted(async () => {
   <PresentationView v-if="isPresentationWindow" />
   <IdentifyView v-else-if="isIdentifyWindow" :label="identifyLabel" />
   <v-app v-else>
-    <v-app-bar v-if="!isSetupWizard" density="compact" elevation="0" class="border-b">
+    <v-app-bar v-if="!isSetupWizard" density="compact" elevation="0" class="border-b app-bar-no-print">
       <v-spacer />
       <span v-if="saveHandler" class="text-caption text-medium-emphasis mr-3">
         {{ saving ? 'Saving…' : isDirty ? 'Unsaved changes' : 'All changes saved' }}
@@ -120,6 +120,9 @@ onMounted(async () => {
       <v-btn to="/library/media" variant="flat" color="secondary" class="mr-2" prepend-icon="mdi-file-image-outline">
         Media
       </v-btn>
+      <v-btn to="/reports" variant="flat" color="secondary" class="mr-2" prepend-icon="mdi-file-chart-outline">
+        Reports
+      </v-btn>
       <v-btn to="/settings" variant="flat" color="secondary" class="mr-3" prepend-icon="mdi-cog">
         Settings
       </v-btn>
@@ -141,3 +144,14 @@ onMounted(async () => {
     <UndoToastStack />
   </v-app>
 </template>
+
+<style scoped>
+/* Report screens (e.g. CcliReportView) use the browser/OS "print to PDF" flow rather than a
+   bundled PDF library — the persistent app-bar has to disappear for that printout too, not
+   just whatever a report screen hides within its own content area. */
+@media print {
+  .app-bar-no-print {
+    display: none !important;
+  }
+}
+</style>

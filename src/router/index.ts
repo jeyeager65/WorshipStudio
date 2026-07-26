@@ -19,6 +19,8 @@ const router = createRouter({
     { path: '/library/themes', name: 'theme-editor', component: () => import('@/views/ThemeEditorView.vue') },
     { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
     { path: '/sync-conflicts', name: 'sync-conflicts', component: () => import('@/views/SyncConflictsView.vue') },
+    { path: '/reports', name: 'reports-home', component: () => import('@/views/ReportsHomeView.vue') },
+    { path: '/reports/ccli', name: 'ccli-report', component: () => import('@/views/CcliReportView.vue') },
   ],
 })
 
