@@ -475,6 +475,14 @@ pub struct LiveMediaRef {
 /// pushes this to Rust (see commands::remote::update_remote_live_state) whenever the live
 /// slide changes, so the remote HTTP server's /api/state has something to report without the
 /// server itself needing any awareness of songs/scripture/slides.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveCountdownRef {
+    pub target_time: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct LiveSlideContent {
@@ -485,4 +493,6 @@ pub struct LiveSlideContent {
     pub wayfinding_books: Option<Vec<WayfindingBook>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media: Option<LiveMediaRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub countdown: Option<LiveCountdownRef>,
 }

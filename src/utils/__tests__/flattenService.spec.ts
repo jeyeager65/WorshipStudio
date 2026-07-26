@@ -151,6 +151,27 @@ describe('flattenService', () => {
     expect(flat[0]).toMatchObject({ itemLabel: 'External App', externalApp: { profileId: 'missing-profile' } })
   })
 
+  it('carries a countdown item through with its target time and custom text', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'countdown', targetTime: '2026-08-01T10:15:00Z', text: 'Join us at 10:15!' }],
+    })
+    const flat = flattenService(service, new Map())
+    expect(flat).toHaveLength(1)
+    expect(flat[0]).toMatchObject({
+      itemLabel: 'Countdown',
+      text: 'Join us at 10:15!',
+      countdown: { targetTime: '2026-08-01T10:15:00Z', text: 'Join us at 10:15!' },
+    })
+  })
+
+  it('handles a countdown item with no custom text', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'countdown', targetTime: '2026-08-01T10:15:00Z' }],
+    })
+    const flat = flattenService(service, new Map())
+    expect(flat[0]).toMatchObject({ text: '', countdown: { targetTime: '2026-08-01T10:15:00Z', text: undefined } })
+  })
+
   it('falls back gracefully when a slide-ref cannot be resolved', () => {
     const service = makeService({
       items: [{ id: 'item-1', type: 'slide-ref', slideId: 'missing-slide' }],

@@ -22,6 +22,8 @@ export interface FlatSlide {
   mediaFit?: 'cover' | 'contain'
   /** External App Hand-off items only (spec section 12) — what to launch/focus when this slide goes live. */
   externalApp?: { profileId: string; file?: string }
+  /** Countdown items only (spec section 1) — the live-ticking clock's target and optional custom text. */
+  countdown?: { targetTime: string; text?: string }
 }
 
 function labelForOtherType(item: ServiceItem): string {
@@ -32,8 +34,6 @@ function labelForOtherType(item: ServiceItem): string {
       return 'Video'
     case 'audio':
       return 'Audio'
-    case 'countdown':
-      return 'Countdown'
     case 'qr':
       return 'QR Code'
     default:
@@ -51,9 +51,11 @@ function labelForOtherType(item: ServiceItem): string {
  * shape as text-slide; media/video items carry a `mediaId` for the caller to resolve to a
  * real displayable URL (this function stays synchronous, so it can't do that Rust round trip
  * itself); external-app items carry their profileId/file for the caller to launch/focus when
- * live (see ServiceWorkspaceView); every other item type (audio, countdown, qr) is still a
- * work-in-progress content type, so each becomes a single placeholder slide for now rather
- * than being left out of the sequence entirely.
+ * live (see ServiceWorkspaceView); countdown items carry their target time/text for the caller
+ * to render a live-ticking clock from (computed client-side, not baked in here, since "now"
+ * obviously isn't a pure function of the service data); every other item type (audio, qr) is
+ * still a work-in-progress content type, so each becomes a single placeholder slide for now
+ * rather than being left out of the sequence entirely.
  */
 export function flattenService(
   service: Service,
@@ -183,6 +185,16 @@ export function flattenService(
         subLabel: '',
         text: '',
         externalApp: { profileId: item.profileId, file: item.file },
+      })
+    } else if (item.type === 'countdown') {
+      flat.push({
+        key: `${item.id}:0`,
+        itemIndex,
+        itemId: item.id,
+        itemLabel: 'Countdown',
+        subLabel: '',
+        text: item.text ?? '',
+        countdown: { targetTime: item.targetTime, text: item.text },
       })
     } else {
       flat.push({

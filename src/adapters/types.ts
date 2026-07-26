@@ -164,6 +164,8 @@ export interface LiveSlideContent {
   wayfindingBooks?: { name: string; distance: number }[]
   /** Media/Video items only — the actual image/video to display live (spec sections 1/3). */
   media?: LiveMediaRef
+  /** Countdown items only (spec section 1) — the ticking clock's target and optional custom text. */
+  countdown?: { targetTime: string; text?: string }
 }
 
 export interface LivePresentationPort {

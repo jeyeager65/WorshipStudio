@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { formatCountdown } from '@/utils/countdown'
 import type { LiveSlideContent } from '@/adapters/types'
 
 /**
@@ -11,6 +12,11 @@ import type { LiveSlideContent } from '@/adapters/types'
 const current = ref<LiveSlideContent>()
 let unlisten: UnlistenFn | undefined
 
+// Its own ticking clock (spec section 1's Countdown slide type) — separate from the operator
+// window's, since this is a different window/component entirely.
+const nowTick = ref(new Date())
+let nowTickInterval: ReturnType<typeof setInterval> | undefined
+
 onMounted(async () => {
   unlisten = await listen<LiveSlideContent | null>('live:slide-changed', (event) => {
     current.value = event.payload ?? undefined
@@ -18,8 +24,12 @@ onMounted(async () => {
   // Tells the operator window's adapter this window is actually listening now, so it can
   // (re)send the current slide — see the matching comment in openPresentationWindow().
   await emit('presentation:ready')
+  nowTickInterval = setInterval(() => (nowTick.value = new Date()), 1000)
 })
-onUnmounted(() => unlisten?.())
+onUnmounted(() => {
+  unlisten?.()
+  clearInterval(nowTickInterval)
+})
 
 // Wayfinding (reference-only scripture, spec section 1): books further from the current one
 // shrink and fade, one fade level per book regardless of length — mirrors flipping through a
@@ -70,6 +80,12 @@ function bookStyle(distance: number) {
       autoplay
       controls
     />
+    <div v-else-if="current?.countdown" class="presentation-content">
+      <div v-if="current.countdown.text" class="presentation-label" style="text-transform: none; letter-spacing: normal">
+        {{ current.countdown.text }}
+      </div>
+      <div class="countdown-clock">{{ formatCountdown(current.countdown.targetTime, nowTick) }}</div>
+    </div>
     <div v-else-if="current" class="presentation-content">
       <div class="presentation-label">{{ current.itemLabel }}<template v-if="current.subLabel"> — {{ current.subLabel }}</template></div>
       <div class="presentation-text">{{ current.text }}</div>
@@ -108,6 +124,11 @@ function bookStyle(distance: number) {
 .media-fill {
   width: 100%;
   height: 100%;
+}
+.countdown-clock {
+  font-size: clamp(48px, 10vw, 140px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .wayfinding-content {

@@ -15,6 +15,7 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useUndoStore } from '@/stores/undo'
 import { flattenService, type FlatSlide } from '@/utils/flattenService'
 import { colorForBlockLabel, colorForItemType } from '@/utils/contentColors'
+import { formatCountdown } from '@/utils/countdown'
 import { formatReference, getBookNames, getChapterCount, getVerseCount, isValidReference, parseReference } from '@/utils/scriptureReference'
 import type { Service, ServiceItem } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
@@ -90,7 +91,13 @@ async function resolveMediaItem(mediaId: string) {
 let stopServiceWatch: (() => void) | undefined
 let unlistenRemoteCommand: (() => void) | undefined
 
+// A live-ticking clock for Countdown items' operator-side preview (spec section 1) — the
+// presentation window ticks its own independently, since it's a separate window/component.
+const nowTick = ref(new Date())
+let nowTickInterval: ReturnType<typeof setInterval> | undefined
+
 onMounted(async () => {
+  nowTickInterval = setInterval(() => (nowTick.value = new Date()), 1000)
   if (!songsStore.loaded) await songsStore.load()
   if (!slidesStore.loaded) await slidesStore.load()
   if (!mediaStore.loaded) await mediaStore.load()
@@ -148,6 +155,7 @@ onMounted(async () => {
   await Promise.all(mediaIds.map(resolveMediaItem))
 })
 onUnmounted(() => {
+  clearInterval(nowTickInterval)
   window.removeEventListener('keydown', onKeydown)
   // Safety net: the router guard (router/index.ts) is what normally prevents leaving while
   // presenting, but if this view ever unmounts some other way, don't leave the app
@@ -258,6 +266,7 @@ function itemLabel(item: ServiceItem): string {
   if (item.type === 'media') return mediaById.value.get(item.mediaId)?.filename ?? 'Unknown Media'
   if (item.type === 'video') return mediaById.value.get(item.mediaId)?.filename ?? 'Unknown Video'
   if (item.type === 'external-app') return externalAppProfilesById.value.get(item.profileId)?.name ?? 'Unknown App'
+  if (item.type === 'countdown') return item.text || 'Countdown'
   return item.type
 }
 
@@ -386,6 +395,7 @@ const liveContentPayload = computed<LiveSlideContent | undefined>(() => {
     text: slide.text,
     wayfindingBooks: slide.wayfindingBooks,
     media: mediaUrl && slide.mediaKind && slide.mediaFit ? { url: mediaUrl, kind: slide.mediaKind, fit: slide.mediaFit } : undefined,
+    countdown: slide.countdown,
   }
 })
 watch(liveContentPayload, (content) => {
@@ -484,7 +494,7 @@ function onKeydown(event: KeyboardEvent) {
 // today, so there's no real data an Audio tab could list; that's a Media Library extension,
 // not just an Add-to-Service tab. The full unified fuzzy search across every type is still a
 // later slice.
-const addTab = ref<'songs' | 'scripture' | 'slides' | 'media' | 'video' | 'external-app'>('songs')
+const addTab = ref<'songs' | 'scripture' | 'slides' | 'media' | 'video' | 'external-app' | 'countdown'>('songs')
 
 const filteredSongsForAdd = computed(() => {
   const q = addQuery.value.trim().toLowerCase()
@@ -746,6 +756,23 @@ async function addExternalAppToService() {
   }
 }
 
+// Countdown sub-picker (spec section 1): custom text plus a target time, entered per-use (not
+// baked into a reusable library item — service times vary week to week). Service-specific
+// only, same as the Slides tab's "+ New Text Slides" quick-create — no Slide Library reuse.
+const countdownTargetTime = ref('')
+const countdownText = ref('')
+
+function addCountdownToService() {
+  if (!service.value || !countdownTargetTime.value) return
+  // <input type="datetime-local"> has no timezone of its own — treated as this computer's
+  // local time, same as every other date the app already collects this way.
+  const targetTime = new Date(countdownTargetTime.value).toISOString()
+  const item: ServiceItem = { id: `item-${crypto.randomUUID()}`, type: 'countdown', targetTime, text: countdownText.value.trim() || undefined }
+  service.value.items.push(item)
+  selectedItemIndex.value = service.value.items.length - 1
+  closeAddDialog()
+}
+
 function closeAddDialog() {
   addDialogOpen.value = false
   addQuery.value = ''
@@ -766,6 +793,8 @@ function closeAddDialog() {
   externalAppProfileId.value = undefined
   externalAppFile.value = undefined
   externalAppAddError.value = undefined
+  countdownTargetTime.value = ''
+  countdownText.value = ''
 }
 
 function updatePresenterNote(itemId: string, note: string) {
@@ -970,6 +999,27 @@ function updatePresenterNote(itemId: string, note: string) {
             </div>
           </template>
 
+          <template v-else-if="selectedItem.type === 'countdown'">
+            <div
+              class="slide-row"
+              :class="{ 'slide-row--live': itemHasLive(selectedItemIndex) }"
+              :style="[
+                { maxWidth: '460px' },
+                itemHasLive(selectedItemIndex)
+                  ? {}
+                  : {
+                      background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                      borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                      paddingLeft: '9px',
+                    },
+              ]"
+              @click="goLive(flatSlides.findIndex((s) => s.itemIndex === selectedItemIndex))"
+            >
+              <div v-if="selectedItem.text" class="text-body-2 mb-1">{{ selectedItem.text }}</div>
+              <div class="text-h5 font-weight-bold">{{ formatCountdown(selectedItem.targetTime, nowTick) }}</div>
+            </div>
+          </template>
+
           <template v-else>
             <div
               class="slide-row"
@@ -1045,6 +1095,7 @@ function updatePresenterNote(itemId: string, note: string) {
           <v-tab value="media">Media</v-tab>
           <v-tab value="video">Video</v-tab>
           <v-tab v-if="getAdapter().externalApps" value="external-app">External App</v-tab>
+          <v-tab value="countdown">Countdown</v-tab>
         </v-tabs>
         <v-card-text>
           <v-window v-model="addTab">
@@ -1324,6 +1375,28 @@ function updatePresenterNote(itemId: string, note: string) {
                   Add to Service
                 </v-btn>
               </template>
+            </v-window-item>
+
+            <v-window-item value="countdown">
+              <v-text-field
+                v-model="countdownTargetTime"
+                type="datetime-local"
+                label="Target Time"
+                variant="outlined"
+                density="comfortable"
+                class="mb-3"
+              />
+              <v-text-field
+                v-model="countdownText"
+                label="Custom Text (optional)"
+                placeholder="e.g. Join us at 10:15!"
+                variant="outlined"
+                density="comfortable"
+                class="mb-3"
+              />
+              <v-btn variant="flat" color="primary" block :disabled="!countdownTargetTime" @click="addCountdownToService">
+                Add to Service
+              </v-btn>
             </v-window-item>
           </v-window>
         </v-card-text>
