@@ -85,7 +85,12 @@ const browseResults = computed(() => {
           <ServiceCard :service="todayService" badge="TODAY" @delete="deleteService(todayService)" />
         </template>
 
-        <div class="text-overline text-medium-emphasis mt-6 mb-2">Upcoming</div>
+        <div class="d-flex align-center justify-space-between mt-6 mb-2">
+          <div class="text-overline text-medium-emphasis">Upcoming</div>
+          <router-link to="/planning-ahead" class="text-caption text-primary text-decoration-none">
+            Planning Ahead →
+          </router-link>
+        </div>
         <ServiceCard
           v-for="service in upcomingServices"
           :key="service.id"

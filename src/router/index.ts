@@ -26,6 +26,8 @@ const router = createRouter({
     { path: '/sync-conflicts', name: 'sync-conflicts', component: () => import('@/views/SyncConflictsView.vue') },
     { path: '/reports', name: 'reports-home', component: () => import('@/views/ReportsHomeView.vue') },
     { path: '/reports/ccli', name: 'ccli-report', component: () => import('@/views/CcliReportView.vue') },
+    { path: '/reports/planning', name: 'planning-report', component: () => import('@/views/PlanningReportView.vue') },
+    { path: '/planning-ahead', name: 'planning-ahead', component: () => import('@/views/PlanningAheadView.vue') },
   ],
 })
 
