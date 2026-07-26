@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { useTheme } from 'vuetify'
 import { getAdapter } from '@/adapters'
 import { useSettingsStore } from '@/stores/settings'
+import { useSyncStore } from '@/stores/sync'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useUndoStore } from '@/stores/undo'
 import { needsSingleMonitorFallback } from '@/utils/displaySetup'
@@ -17,6 +18,16 @@ const router = useRouter()
 const { librarySettings, machineSettings } = storeToRefs(store)
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const undoStore = useUndoStore()
+const syncStore = useSyncStore()
+const refreshingSync = ref(false)
+async function refreshSyncStatus() {
+  refreshingSync.value = true
+  try {
+    await syncStore.load()
+  } finally {
+    refreshingSync.value = false
+  }
+}
 
 type Section =
   | 'general'
@@ -27,9 +38,11 @@ type Section =
   | 'bible-translations'
   | 'themes'
   | 'volunteer-roles'
+  | 'sync'
 const activeSection = ref<Section>('general')
 const sections: { key: Section; label: string; group: string }[] = [
   { key: 'general', label: 'General', group: 'App' },
+  { key: 'sync', label: 'Sync Status', group: 'App' },
   { key: 'display', label: 'Display Setup', group: 'Display' },
   { key: 'service-types', label: 'Service Types', group: 'Content Library' },
   { key: 'preachers', label: 'Preachers', group: 'Content Library' },
@@ -252,6 +265,50 @@ function removeTranslation(index: number) {
         <v-btn variant="text" color="primary" prepend-icon="mdi-magic-staff" class="mt-4" @click="runSetupWizard">
           Run First-Time Setup Wizard
         </v-btn>
+      </template>
+
+      <template v-else-if="activeSection === 'sync'">
+        <h2 class="text-h6 mb-4">Sync Status</h2>
+        <p class="text-medium-emphasis text-body-2 mb-4">
+          Checks that the library folder is readable, whether Dropbox appears to be running, and for any
+          conflicted-copy files a sync may have left behind.
+        </p>
+        <v-btn variant="outlined" class="mb-4" :loading="refreshingSync" @click="refreshSyncStatus">Check Now</v-btn>
+
+        <div v-if="syncStore.status" style="max-width: 480px">
+          <div class="d-flex align-center ga-2 mb-2">
+            <v-icon
+              :icon="syncStore.status.folderReadable ? 'mdi-check-circle' : 'mdi-alert-circle'"
+              :color="syncStore.status.folderReadable ? 'success' : 'error'"
+              size="small"
+            />
+            <span class="text-body-2">Library folder {{ syncStore.status.folderReadable ? 'readable' : 'not readable' }}</span>
+          </div>
+          <div class="d-flex align-center ga-2 mb-2">
+            <v-icon
+              :icon="syncStore.status.syncClientRunning ? 'mdi-check-circle' : 'mdi-alert-circle'"
+              :color="syncStore.status.syncClientRunning ? 'success' : 'warning'"
+              size="small"
+            />
+            <span class="text-body-2">
+              Dropbox {{ syncStore.status.syncClientRunning ? 'appears to be running' : "doesn't appear to be running" }}
+            </span>
+          </div>
+          <div v-if="syncStore.status.lastLibraryChangeAt" class="text-caption text-medium-emphasis mb-4">
+            Last library change: {{ new Date(syncStore.status.lastLibraryChangeAt).toLocaleString() }}
+          </div>
+
+          <v-btn
+            v-if="syncStore.status.conflictCount > 0"
+            variant="flat"
+            color="warning"
+            prepend-icon="mdi-alert"
+            to="/sync-conflicts"
+          >
+            Resolve {{ syncStore.status.conflictCount }} Conflict{{ syncStore.status.conflictCount === 1 ? '' : 's' }}
+          </v-btn>
+          <p v-else class="text-medium-emphasis text-body-2">No sync conflicts right now.</p>
+        </div>
       </template>
 
       <template v-else-if="activeSection === 'display'">

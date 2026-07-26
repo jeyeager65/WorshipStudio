@@ -11,9 +11,11 @@ import PresentationView from '@/views/PresentationView.vue'
 import IdentifyView from '@/views/IdentifyView.vue'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
+import { useSyncStore } from '@/stores/sync'
 
 const { blockedMessage } = storeToRefs(useLiveSessionStore())
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
+const syncStore = useSyncStore()
 
 // The presentation window (see src/adapters/tauri/index.ts's `live` port) loads this same
 // app bundle in a second native window labeled "presentation" — never reached through
@@ -64,6 +66,10 @@ onMounted(async () => {
   ) {
     router.replace('/setup')
   }
+
+  // Fire-and-forget — a slow/failed sync-status check shouldn't block the rest of startup,
+  // and the app-bar badge below just stays hidden until it resolves.
+  if (!isPresentationWindow && !isIdentifyWindow) void syncStore.load()
 })
 </script>
 
@@ -89,6 +95,21 @@ onMounted(async () => {
         Save
       </v-btn>
       <v-divider v-if="saveHandler" vertical inset class="mr-3" />
+      <v-tooltip v-if="syncStore.status && !syncStore.status.folderReadable" text="Library folder isn't readable — check the sync setup in Settings">
+        <template #activator="{ props }">
+          <v-icon v-bind="props" icon="mdi-folder-alert-outline" color="error" class="mr-3" />
+        </template>
+      </v-tooltip>
+      <v-btn
+        v-if="syncStore.status && syncStore.status.conflictCount > 0"
+        to="/sync-conflicts"
+        variant="flat"
+        color="warning"
+        class="mr-3"
+        prepend-icon="mdi-alert"
+      >
+        {{ syncStore.status.conflictCount }} conflict{{ syncStore.status.conflictCount === 1 ? '' : 's' }}
+      </v-btn>
       <v-btn to="/" variant="flat" color="secondary" class="mr-2" prepend-icon="mdi-home">Home</v-btn>
       <v-btn to="/library/songs" variant="flat" color="secondary" class="mr-2" prepend-icon="mdi-bookshelf">
         Library

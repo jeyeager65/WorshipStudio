@@ -18,6 +18,7 @@ const router = createRouter({
     { path: '/library/media', name: 'media-library', component: () => import('@/views/MediaLibraryView.vue') },
     { path: '/library/themes', name: 'theme-editor', component: () => import('@/views/ThemeEditorView.vue') },
     { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
+    { path: '/sync-conflicts', name: 'sync-conflicts', component: () => import('@/views/SyncConflictsView.vue') },
   ],
 })
 

@@ -191,9 +191,29 @@ export interface SyncStatus {
   conflictCount: number
 }
 
+export interface ConflictedItem {
+  kind: string
+  id: string
+  label: string
+  /** Raw JSON of each side — deliberately untyped (varies by `kind`) so this stays generic across every content type. */
+  thisVersion: Record<string, unknown>
+  otherVersion: Record<string, unknown>
+  otherDevice: string
+  otherUpdatedAt: string
+  /** Opaque handle for resolveConflict — the conflicted-copy file's own path. */
+  conflictFilePath: string
+}
+
 export interface SyncPort {
   getStatus(): Promise<SyncStatus>
-  listConflicts(): Promise<unknown[]>
+  listConflicts(): Promise<ConflictedItem[]>
+  /**
+   * `keep: 'theirs'` overwrites the original with the conflicted copy's content; `'mine'`
+   * leaves the original untouched. Either way the conflicted-copy artifact is removed
+   * afterward, so the conflict stops appearing — self-clearing, per feature-spec.md's Sync
+   * section.
+   */
+  resolveConflict(conflictFilePath: string, keep: 'mine' | 'theirs'): Promise<void>
 }
 
 export interface EmailPort {

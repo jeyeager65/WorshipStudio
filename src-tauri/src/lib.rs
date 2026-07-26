@@ -61,6 +61,9 @@ pub fn run() {
             commands::volunteers::list_volunteers,
             commands::volunteers::save_volunteer,
             commands::volunteers::delete_volunteer,
+            commands::sync::get_sync_status,
+            commands::sync::list_sync_conflicts,
+            commands::sync::resolve_sync_conflict,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

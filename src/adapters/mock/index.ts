@@ -264,7 +264,9 @@ export function createMockAdapter(): StudioAdapter {
         lastLibraryChangeAt: new Date().toISOString(),
         conflictCount: 0,
       }),
+      // No real Dropbox conflict artifacts to scan for in the browser demo.
       listConflicts: async () => [],
+      resolveConflict: async () => {},
     },
     email: {
       sendOrderOfWorship: async () => {

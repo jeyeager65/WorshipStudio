@@ -25,6 +25,11 @@ describe('Volunteer Roster', () => {
     const saveBtn = await $('button*=Save')
     await saveBtn.waitForClickable({ timeout: 10000 })
     await saveBtn.click()
+    // Confirms the async save round-trip actually finished (not just that the click
+    // dispatched) before navigating away — otherwise the roster page's own fresh
+    // getLibrarySettings() read could race a save still in flight.
+    const savedText = await $('span*=All changes saved')
+    await savedText.waitForExist({ timeout: 10000 })
 
     // Create a fresh service to open its roster from.
     const homeNav = await $('a[href="/"]')

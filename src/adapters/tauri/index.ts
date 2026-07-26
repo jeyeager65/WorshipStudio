@@ -12,6 +12,7 @@ import type {
   LiveSlideContent,
   RemoteDevice,
   SyncStatus,
+  ConflictedItem,
   ImportSetsSummary,
   StagedMediaFile,
   MediaImportCommit,
@@ -318,7 +319,9 @@ export function createTauriAdapter(): StudioAdapter {
     },
     sync: {
       getStatus: () => invoke<SyncStatus>('get_sync_status'),
-      listConflicts: () => invoke<unknown[]>('list_sync_conflicts'),
+      listConflicts: () => invoke<ConflictedItem[]>('list_sync_conflicts'),
+      resolveConflict: (conflictFilePath, keep) =>
+        invoke('resolve_sync_conflict', { conflictFilePath, keep }),
     },
     email: {
       sendOrderOfWorship: (serviceId, toAddresses, body) =>
