@@ -64,6 +64,13 @@ pub fn run() {
             commands::sync::get_sync_status,
             commands::sync::list_sync_conflicts,
             commands::sync::resolve_sync_conflict,
+            commands::external_apps::list_external_app_profiles,
+            commands::external_apps::save_external_app_profile,
+            commands::external_apps::delete_external_app_profile,
+            commands::external_apps::launch_external_app,
+            commands::external_apps::restore_self,
+            commands::external_apps::test_launch_external_app,
+            commands::external_apps::capture_external_app_window_position,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

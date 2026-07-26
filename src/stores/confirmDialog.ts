@@ -9,10 +9,12 @@ import { ref } from 'vue'
 export const useConfirmDialogStore = defineStore('confirmDialog', () => {
   const isOpen = ref(false)
   const message = ref('')
+  const confirmLabel = ref('Confirm')
   let resolvePromise: ((confirmed: boolean) => void) | null = null
 
-  function confirm(text: string): Promise<boolean> {
+  function confirm(text: string, label = 'Confirm'): Promise<boolean> {
     message.value = text
+    confirmLabel.value = label
     isOpen.value = true
     return new Promise((resolve) => {
       resolvePromise = resolve
@@ -25,5 +27,5 @@ export const useConfirmDialogStore = defineStore('confirmDialog', () => {
     resolvePromise = null
   }
 
-  return { isOpen, message, confirm, respond }
+  return { isOpen, message, confirmLabel, confirm, respond }
 })

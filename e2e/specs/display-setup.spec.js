@@ -14,8 +14,10 @@ describe('Display Setup', () => {
     await displaySection.click()
 
     // A resolution string like "1920x1080" only shows up if real OS monitor enumeration
-    // worked — the old placeholder invoke stub had nothing behind it at all.
-    const resolutionText = await $('div*=x')
+    // worked — the old placeholder invoke stub had nothing behind it at all. Scoped to
+    // .settings-content (not just "div*=x") since the sidebar nav also has labels containing
+    // "x" (e.g. "External Apps").
+    const resolutionText = await $('.settings-content').$('div*=x')
     await resolutionText.waitForExist({ timeout: 10000 })
     const text = await resolutionText.getText()
     await expect(text).toMatch(/^\d+x\d+$/)

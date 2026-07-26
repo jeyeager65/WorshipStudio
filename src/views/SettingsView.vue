@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, toRaw, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useTheme } from 'vuetify'
@@ -9,8 +9,10 @@ import { useSyncStore } from '@/stores/sync'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useUndoStore } from '@/stores/undo'
 import { needsSingleMonitorFallback } from '@/utils/displaySetup'
+import { previewExternalAppCommand } from '@/utils/externalAppPreview'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import ManagedStringList from '@/components/settings/ManagedStringList.vue'
-import type { DisplayInfo, DisplayRole } from '@/adapters/types'
+import type { DisplayInfo, DisplayRole, ExternalAppProfile } from '@/adapters/types'
 import type { LibrarySettings } from '@/models/settings'
 
 const store = useSettingsStore()
@@ -18,6 +20,7 @@ const router = useRouter()
 const { librarySettings, machineSettings } = storeToRefs(store)
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const undoStore = useUndoStore()
+const confirmDialog = useConfirmDialogStore()
 const syncStore = useSyncStore()
 const refreshingSync = ref(false)
 async function refreshSyncStatus() {
@@ -39,11 +42,15 @@ type Section =
   | 'themes'
   | 'volunteer-roles'
   | 'sync'
+  | 'external-apps'
 const activeSection = ref<Section>('general')
 const sections: { key: Section; label: string; group: string }[] = [
   { key: 'general', label: 'General', group: 'App' },
   { key: 'sync', label: 'Sync Status', group: 'App' },
   { key: 'display', label: 'Display Setup', group: 'Display' },
+  // Windows-only (Win32 window hand-off) — the port is entirely absent on the macOS/demo
+  // build, unlike Display Setup which still has something to show (real monitors) in mock.
+  ...(getAdapter().externalApps ? [{ key: 'external-apps' as const, label: 'External Apps', group: 'Display' }] : []),
   { key: 'service-types', label: 'Service Types', group: 'Content Library' },
   { key: 'preachers', label: 'Preachers', group: 'Content Library' },
   { key: 'collections', label: 'Song Collections', group: 'Content Library' },
@@ -81,6 +88,7 @@ onMounted(async () => {
   // toolbar that would scroll out of view — this view just supplies the action.
   saveHandler.value = saveSettings
   await loadDisplays()
+  await loadExternalApps()
 
   // Whether the ESV copyright notice below needs to show is a question of whether ESV is
   // actually resolvable right now (an ESV_API_KEY configured on this machine — see
@@ -151,6 +159,98 @@ async function assignRole(displayId: string, role: DisplayRole) {
 }
 async function identifyDisplay(displayId: string) {
   await getAdapter().displays?.identify(displayId)
+}
+
+// External App Profiles (spec section 12) — also Windows-only, feature-detected same as
+// displays above. Edited via a modal (design/sketches/external-app-profile.html) rather than
+// inline like Theme Editor, since a profile has enough fields (launch config, remote
+// controls, window position) to warrant its own focused surface.
+const externalAppProfiles = ref<ExternalAppProfile[]>([])
+async function loadExternalApps() {
+  try {
+    externalAppProfiles.value = (await getAdapter().externalApps?.listProfiles()) ?? []
+  } catch (e) {
+    console.error('Failed to list external app profiles:', e)
+    externalAppProfiles.value = []
+  }
+}
+const launchModeOptions: { title: string; value: ExternalAppProfile['launchMode']; hint: string }[] = [
+  { title: 'Already Running', value: 'already-running', hint: 'Operator opens it manually before the service' },
+  { title: 'Launch Automatically', value: 'launch-automatically', hint: 'Worship Studio opens it when the slide is reached' },
+]
+
+const profileDialogOpen = ref(false)
+const editingProfile = ref<ExternalAppProfile>()
+// Test Launch/Recapture Position both act on the profile as saved on disk (the Rust side
+// looks it up by id) — until Save Profile has run at least once, there's nothing for them to
+// act on yet, so they stay disabled with a hint rather than silently auto-saving.
+const isEditingSavedProfile = computed(() => externalAppProfiles.value.some((p) => p.id === editingProfile.value?.id))
+
+function blankExternalAppProfile(): ExternalAppProfile {
+  return {
+    id: crypto.randomUUID(),
+    name: '',
+    launchMode: 'launch-automatically',
+    executablePath: '',
+    parameterFormat: '',
+    remoteControlsEnabled: false,
+    nextKey: '',
+    prevKey: '',
+    windowPosition: undefined,
+    updatedAt: '',
+    updatedByDevice: '',
+  }
+}
+function openNewExternalAppProfile() {
+  editingProfile.value = blankExternalAppProfile()
+  testLaunchResult.value = undefined
+  profileDialogOpen.value = true
+}
+function openEditExternalAppProfile(profile: ExternalAppProfile) {
+  // toRaw first — profile is the reactive v-for item, and structuredClone can't clone a Vue
+  // reactive Proxy directly (throws DataCloneError).
+  editingProfile.value = structuredClone(toRaw(profile))
+  testLaunchResult.value = undefined
+  profileDialogOpen.value = true
+}
+async function pickExternalAppExecutable() {
+  const path = await getAdapter().externalApps?.pickExecutable()
+  if (path && editingProfile.value) editingProfile.value.executablePath = path
+}
+async function saveExternalAppProfile() {
+  if (!editingProfile.value) return
+  await getAdapter().externalApps?.saveProfile(editingProfile.value)
+  profileDialogOpen.value = false
+  await loadExternalApps()
+}
+async function deleteExternalAppProfile(profile: ExternalAppProfile) {
+  if (!(await confirmDialog.confirm(`Delete the "${profile.name}" external app profile?`, 'Delete'))) return
+  await getAdapter().externalApps?.deleteProfile(profile.id)
+  await loadExternalApps()
+}
+
+const testingLaunch = ref(false)
+const testLaunchResult = ref<{ ok: boolean; message: string }>()
+async function testLaunchExternalApp() {
+  if (!editingProfile.value) return
+  testingLaunch.value = true
+  try {
+    testLaunchResult.value = await getAdapter().externalApps?.testLaunch(editingProfile.value.id)
+  } finally {
+    testingLaunch.value = false
+  }
+}
+const capturingPosition = ref(false)
+async function recaptureWindowPosition() {
+  if (!editingProfile.value) return
+  capturingPosition.value = true
+  try {
+    editingProfile.value.windowPosition = await getAdapter().externalApps?.captureWindowPosition()
+  } catch (e) {
+    console.error('Failed to capture window position:', e)
+  } finally {
+    capturingPosition.value = false
+  }
 }
 
 // Re-running the wizard doesn't reset hasCompletedSetup — that only matters for whether it
@@ -341,6 +441,180 @@ function removeTranslation(index: number) {
         </div>
       </template>
 
+      <template v-else-if="activeSection === 'external-apps'">
+        <h2 class="text-h6 mb-4">External Apps</h2>
+        <p class="text-medium-emphasis text-body-2 mb-4">
+          Profiles for handing a service item off to another app (PowerPoint, VLC, etc.) — focusing its window,
+          remembering where it sits, and optionally forwarding Next/Prev keystrokes.
+        </p>
+
+        <v-list v-if="externalAppProfiles.length > 0" density="comfortable" class="mb-4" style="max-width: 560px">
+          <v-list-item v-for="profile in externalAppProfiles" :key="profile.id" rounded="lg" class="mb-1" border>
+            <template #prepend>
+              <v-icon icon="mdi-application-outline" class="mr-3" />
+            </template>
+            <v-list-item-title class="font-weight-bold">{{ profile.name || '(Unnamed)' }}</v-list-item-title>
+            <v-list-item-subtitle>
+              {{ profile.launchMode === 'already-running' ? 'Already Running' : 'Launch Automatically' }}
+            </v-list-item-subtitle>
+            <template #append>
+              <v-btn icon="mdi-pencil-outline" variant="text" size="small" @click.stop="openEditExternalAppProfile(profile)" />
+              <v-btn icon="mdi-trash-can-outline" variant="text" size="small" color="error" @click.stop="deleteExternalAppProfile(profile)" />
+            </template>
+          </v-list-item>
+        </v-list>
+        <p v-else class="text-medium-emphasis text-body-2 mb-4">No external app profiles configured yet.</p>
+
+        <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="openNewExternalAppProfile">Add Profile</v-btn>
+
+        <v-dialog v-model="profileDialogOpen" max-width="640">
+          <v-card v-if="editingProfile">
+            <v-card-title>External App Profile{{ editingProfile.name ? ` — ${editingProfile.name}` : '' }}</v-card-title>
+            <v-card-text>
+              <v-text-field v-model="editingProfile.name" label="Name" variant="outlined" density="comfortable" class="mb-4" />
+
+              <div class="text-caption text-medium-emphasis font-weight-bold text-uppercase mb-2">Launch Mode</div>
+              <v-btn-toggle v-model="editingProfile.launchMode" mandatory density="comfortable" class="mb-4 d-flex" style="width: 100%">
+                <v-btn
+                  v-for="option in launchModeOptions"
+                  :key="option.value"
+                  :value="option.value"
+                  class="flex-grow-1"
+                  style="height: auto"
+                >
+                  <div class="text-left py-1">
+                    <div class="text-body-2 font-weight-bold">{{ option.title }}</div>
+                    <div class="text-caption text-medium-emphasis" style="white-space: normal">{{ option.hint }}</div>
+                  </div>
+                </v-btn>
+              </v-btn-toggle>
+
+              <v-text-field
+                v-model="editingProfile.executablePath"
+                label="Executable"
+                variant="outlined"
+                density="comfortable"
+                hint="Used to launch the app and/or recognize its already-running process."
+                persistent-hint
+                class="mb-4"
+              >
+                <template #append>
+                  <v-btn variant="outlined" @click="pickExternalAppExecutable">Browse…</v-btn>
+                </template>
+              </v-text-field>
+
+              <template v-if="editingProfile.launchMode === 'launch-automatically'">
+                <v-text-field
+                  v-model="editingProfile.parameterFormat"
+                  label="Parameter Format"
+                  variant="outlined"
+                  density="comfortable"
+                  hint="{file} is replaced with the file chosen when this app is added to a service."
+                  persistent-hint
+                  class="mb-1"
+                />
+                <div class="param-preview mb-3">
+                  Will run: {{ previewExternalAppCommand(editingProfile.executablePath, editingProfile.parameterFormat) }}
+                </div>
+
+                <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
+                  Worship Studio checks the executable and chosen file both exist when this item is added to a
+                  service — not just when the slide is reached — so a missing file is caught during prep, not
+                  mid-service.
+                </v-alert>
+              </template>
+
+              <div>
+                <v-btn
+                  variant="outlined"
+                  color="primary"
+                  size="small"
+                  :loading="testingLaunch"
+                  :disabled="!isEditingSavedProfile"
+                  @click="testLaunchExternalApp"
+                >
+                  Test Launch
+                </v-btn>
+                <span v-if="!isEditingSavedProfile" class="text-caption text-medium-emphasis ml-2">Save this profile first</span>
+              </div>
+              <v-alert
+                v-if="testLaunchResult"
+                :type="testLaunchResult.ok ? 'success' : 'error'"
+                variant="tonal"
+                density="compact"
+                class="mt-3"
+              >
+                {{ testLaunchResult.message }}
+              </v-alert>
+
+              <v-divider class="my-5" />
+
+              <div class="d-flex align-center justify-space-between mb-3">
+                <div>
+                  <div class="font-weight-bold">Basic Remote Controls</div>
+                  <div class="text-caption text-medium-emphasis">
+                    Let Next/Prev and the remote control also drive this app, if it supports simple commands
+                  </div>
+                </div>
+                <v-switch v-model="editingProfile.remoteControlsEnabled" color="primary" hide-details />
+              </div>
+              <template v-if="editingProfile.remoteControlsEnabled">
+                <v-text-field
+                  v-model="editingProfile.nextKey"
+                  label="Next slide key"
+                  placeholder="e.g. Right Arrow"
+                  variant="outlined"
+                  density="compact"
+                  class="mb-2"
+                />
+                <v-text-field
+                  v-model="editingProfile.prevKey"
+                  label="Previous slide key"
+                  placeholder="e.g. Left Arrow"
+                  variant="outlined"
+                  density="compact"
+                  class="mb-1"
+                />
+                <div class="text-caption text-medium-emphasis mb-2">
+                  Sent as a keystroke to the app's window when Next/Prev is pressed while this item is live. Leave
+                  blank if the app doesn't support this.
+                </div>
+              </template>
+
+              <v-divider class="my-5" />
+
+              <div class="d-flex align-center justify-space-between">
+                <div>
+                  <div class="font-weight-bold">Window Position</div>
+                  <div class="text-caption text-medium-emphasis">
+                    {{
+                      editingProfile.windowPosition
+                        ? `Captured — ${editingProfile.windowPosition.width}×${editingProfile.windowPosition.height} on ${editingProfile.windowPosition.monitorId}`
+                        : 'Not captured yet'
+                    }}
+                  </div>
+                </div>
+                <v-btn
+                  variant="flat"
+                  color="secondary"
+                  size="small"
+                  :loading="capturingPosition"
+                  :disabled="!isEditingSavedProfile"
+                  @click="recaptureWindowPosition"
+                >
+                  Recapture Position
+                </v-btn>
+              </div>
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer />
+              <v-btn variant="text" @click="profileDialogOpen = false">Cancel</v-btn>
+              <v-btn variant="flat" color="primary" @click="saveExternalAppProfile">Save Profile</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+      </template>
+
       <template v-else-if="activeSection === 'service-types'">
         <h2 class="text-h6 mb-4">Service Types</h2>
         <p class="text-medium-emphasis text-body-2 mb-4">
@@ -444,5 +718,13 @@ function removeTranslation(index: number) {
 .settings-content {
   padding: 24px 32px;
   max-width: 720px;
+}
+.param-preview {
+  font-family: monospace;
+  font-size: 12px;
+  background: rgba(var(--v-theme-on-surface), 0.05);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: rgba(var(--v-theme-on-surface), 0.7);
 }
 </style>

@@ -164,6 +164,47 @@ pub struct Volunteer {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
+pub struct WindowPosition {
+    /// The OS-reported monitor name this position was captured on — informational only
+    /// (display purposes), not re-validated against current hardware before positioning.
+    pub monitor_id: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+/// Per-machine, not synced (see MachineSettings — executable paths like `C:\Program Files\...`
+/// are local to that computer, meaningless elsewhere). Stored in its own file
+/// (external-apps.json) rather than as a MachineSettings field since it's a growing list of
+/// records, not a scalar.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalAppProfile {
+    pub id: String,
+    pub name: String,
+    /// "already-running" | "launch-automatically"
+    pub launch_mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub executable_path: Option<String>,
+    /// Contains a literal `{file}` placeholder, substituted with the file chosen when this
+    /// profile is added to a specific service — never baked into the profile itself.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parameter_format: Option<String>,
+    #[serde(default)]
+    pub remote_controls_enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prev_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_position: Option<WindowPosition>,
+    pub updated_at: String,
+    pub updated_by_device: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct Service {
     pub id: String,
     pub date: String,

@@ -3,7 +3,7 @@ import { storeToRefs } from 'pinia'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 
 const store = useConfirmDialogStore()
-const { isOpen, message } = storeToRefs(store)
+const { isOpen, message, confirmLabel } = storeToRefs(store)
 </script>
 
 <template>
@@ -13,7 +13,7 @@ const { isOpen, message } = storeToRefs(store)
       <v-card-actions>
         <v-spacer />
         <v-btn variant="flat" color="secondary" @click="store.respond(false)">Cancel</v-btn>
-        <v-btn variant="flat" color="error" @click="store.respond(true)">Leave Without Saving</v-btn>
+        <v-btn variant="flat" color="error" @click="store.respond(true)">{{ confirmLabel }}</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>

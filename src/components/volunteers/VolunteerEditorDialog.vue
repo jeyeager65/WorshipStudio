@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, toRaw, watch } from 'vue'
 import type { UnavailableDateRange, Volunteer } from '@/models/library'
 
 const props = defineProps<{ modelValue: boolean; volunteer?: Volunteer; roleOptions: string[] }>()
@@ -27,7 +27,7 @@ watch(
   () => props.modelValue,
   (open) => {
     if (!open) return
-    draft.value = props.volunteer ? structuredClone(props.volunteer) : blank()
+    draft.value = props.volunteer ? structuredClone(toRaw(props.volunteer)) : blank()
     newRangeStart.value = ''
     newRangeEnd.value = ''
   },

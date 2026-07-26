@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, toRaw, watch } from 'vue'
 import { useThemesStore } from '@/stores/themes'
 import { useMediaStore } from '@/stores/media'
 import { useSettingsStore } from '@/stores/settings'
@@ -47,14 +47,14 @@ function blankTheme(): Theme {
 
 async function confirmDiscardIfDirty(): Promise<boolean> {
   if (!dirty.value) return true
-  return confirmDialog.confirm('Discard unsaved theme changes?')
+  return confirmDialog.confirm('Discard unsaved theme changes?', 'Leave Without Saving')
 }
 
 async function selectTheme(id: string) {
   if (!(await confirmDiscardIfDirty())) return
   const theme = store.themes.find((t) => t.id === id)
   selectedId.value = id
-  draft.value = theme ? structuredClone(theme) : undefined
+  draft.value = theme ? structuredClone(toRaw(theme)) : undefined
   dirty.value = false
 }
 

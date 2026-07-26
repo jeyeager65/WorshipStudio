@@ -16,6 +16,8 @@ import type {
   ImportSetsSummary,
   StagedMediaFile,
   MediaImportCommit,
+  ExternalAppProfile,
+  WindowPosition,
 } from '@/adapters/types'
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
@@ -307,9 +309,17 @@ export function createTauriAdapter(): StudioAdapter {
       identify: (displayId) => identifyDisplay(displayId),
     },
     externalApps: {
+      listProfiles: () => invoke<ExternalAppProfile[]>('list_external_app_profiles'),
+      saveProfile: (profile) => invoke('save_external_app_profile', { profile }),
+      deleteProfile: (id) => invoke('delete_external_app_profile', { id }),
+      pickExecutable: async () => {
+        const selection = await open({ title: 'Select Executable', filters: [{ name: 'Executable', extensions: ['exe'] }] })
+        return typeof selection === 'string' ? selection : undefined
+      },
       launch: (profileId, file) => invoke('launch_external_app', { profileId, file }),
       restoreSelf: () => invoke('restore_self'),
       testLaunch: (profileId) => invoke('test_launch_external_app', { profileId }),
+      captureWindowPosition: () => invoke<WindowPosition>('capture_external_app_window_position'),
     },
     remote: {
       listDevices: () => invoke<RemoteDevice[]>('list_remote_devices'),

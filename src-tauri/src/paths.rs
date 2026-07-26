@@ -82,3 +82,9 @@ pub fn local_media_root(app: &AppHandle) -> PathBuf {
 pub fn now_iso() -> String {
     chrono::Utc::now().to_rfc3339()
 }
+
+/// External App Profiles (see domain::external_apps) — per-machine, never synced, since
+/// executable paths are local to that computer.
+pub fn external_apps_path(app: &AppHandle) -> PathBuf {
+    app_data_dir(app).join("external-apps.json")
+}

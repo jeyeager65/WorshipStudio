@@ -1,3 +1,4 @@
+pub mod external_apps;
 pub mod manifest;
 pub mod media;
 pub mod opensong;
@@ -9,6 +10,7 @@ pub mod songs;
 pub mod sync;
 pub mod themes;
 pub mod volunteers;
+pub mod win32;
 
 use std::fs;
 use std::path::Path;

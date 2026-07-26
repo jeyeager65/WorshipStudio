@@ -164,11 +164,40 @@ export interface LivePresentationPort {
   setLiveContent(content: LiveSlideContent | undefined): Promise<void>
 }
 
+export interface WindowPosition {
+  monitorId: string
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface ExternalAppProfile {
+  id: string
+  name: string
+  launchMode: 'already-running' | 'launch-automatically'
+  executablePath?: string
+  parameterFormat?: string
+  remoteControlsEnabled: boolean
+  nextKey?: string
+  prevKey?: string
+  windowPosition?: WindowPosition
+  updatedAt: string
+  updatedByDevice: string
+}
+
 /** Windows-only (Win32 window hand-off) — absent port on the macOS/demo build. */
 export interface ExternalAppPort {
+  listProfiles(): Promise<ExternalAppProfile[]>
+  saveProfile(profile: ExternalAppProfile): Promise<void>
+  deleteProfile(id: string): Promise<void>
+  /** Opens a native file picker for the profile editor's Executable field. */
+  pickExecutable(): Promise<string | undefined>
   launch(profileId: string, file?: string): Promise<void>
   restoreSelf(): Promise<void>
   testLaunch(profileId: string): Promise<{ ok: boolean; message: string }>
+  /** Captures the currently-foreground window's bounds, for the profile editor's "Recapture Position" button. */
+  captureWindowPosition(): Promise<WindowPosition>
 }
 
 export interface RemoteDevice {
