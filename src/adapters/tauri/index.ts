@@ -318,10 +318,16 @@ export function createTauriAdapter(): StudioAdapter {
         const selection = await open({ title: 'Select Executable', filters: [{ name: 'Executable', extensions: ['exe'] }] })
         return typeof selection === 'string' ? selection : undefined
       },
+      pickFile: async () => {
+        const selection = await open({ title: 'Select File' })
+        return typeof selection === 'string' ? selection : undefined
+      },
       launch: (profileId, file) => invoke('launch_external_app', { profileId, file }),
       restoreSelf: () => invoke('restore_self'),
       testLaunch: (profileId) => invoke('test_launch_external_app', { profileId }),
       captureWindowPosition: () => invoke<WindowPosition>('capture_external_app_window_position'),
+      verifyItem: (profileId, file) => invoke('verify_external_app_item', { profileId, file }),
+      sendKeystroke: (profileId, direction) => invoke('send_external_app_keystroke', { profileId, direction }),
     },
     remote: {
       listDevices: () => invoke<RemoteDevice[]>('list_remote_devices'),

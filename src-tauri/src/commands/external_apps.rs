@@ -83,6 +83,50 @@ pub fn launch_external_app(
     win32::launch_and_focus(&executable, &args, profile.window_position.as_ref())
 }
 
+/// Add-time verification (feature-spec.md's "robustness priority over convenience" — the
+/// executable/file are checked when an item is *added to a service*, not only when its slide
+/// is actually reached live). Deliberately doesn't launch anything.
+#[tauri::command]
+pub fn verify_external_app_item(
+    app: AppHandle,
+    profile_id: String,
+    file: Option<String>,
+) -> Result<(), String> {
+    let profile = find_profile(&app, &profile_id)?;
+    if profile.launch_mode == "already-running" {
+        if profile.executable_path.as_deref().unwrap_or("").is_empty() {
+            return Err("This profile has no executable configured.".to_string());
+        }
+        return Ok(());
+    }
+    verify_paths(&profile, file.as_deref())?;
+    Ok(())
+}
+
+/// Basic Remote Controls (feature-spec.md section 12) — Next/Prev forwarded as a keystroke to
+/// the external app's own window instead of advancing the service's slide sequence, only
+/// while this profile's item is actually live and configured for it.
+#[tauri::command]
+pub fn send_external_app_keystroke(
+    app: AppHandle,
+    profile_id: String,
+    direction: String,
+) -> Result<(), String> {
+    let profile = find_profile(&app, &profile_id)?;
+    if !profile.remote_controls_enabled {
+        return Err("Basic Remote Controls aren't enabled for this profile.".to_string());
+    }
+    let key = match direction.as_str() {
+        "next" => &profile.next_key,
+        "previous" => &profile.prev_key,
+        _ => return Err(format!("Unknown direction: {direction}")),
+    };
+    let key = key
+        .as_deref()
+        .ok_or_else(|| format!("No {direction} key is configured for this profile."))?;
+    win32::send_keystroke(key)
+}
+
 #[tauri::command]
 pub fn restore_self(window: tauri::WebviewWindow) -> Result<(), String> {
     let handle = window.window_handle().map_err(|e| e.to_string())?;

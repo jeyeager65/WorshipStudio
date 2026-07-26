@@ -118,6 +118,39 @@ describe('flattenService', () => {
     expect(flat[0]).toMatchObject({ itemLabel: 'Video', mediaId: 'media-1', mediaKind: 'video', mediaFit: 'contain' })
   })
 
+  it('carries an external-app item through with its profile name and chosen file', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'external-app', profileId: 'profile-1', file: 'C:\\Services\\slides.pptx' }],
+    })
+    const profiles = new Map([
+      [
+        'profile-1',
+        {
+          id: 'profile-1',
+          name: 'PowerPoint',
+          launchMode: 'launch-automatically' as const,
+          remoteControlsEnabled: false,
+          updatedAt: '',
+          updatedByDevice: '',
+        },
+      ],
+    ])
+    const flat = flattenService(service, new Map(), new Map(), new Map(), profiles)
+    expect(flat).toHaveLength(1)
+    expect(flat[0]).toMatchObject({
+      itemLabel: 'PowerPoint',
+      externalApp: { profileId: 'profile-1', file: 'C:\\Services\\slides.pptx' },
+    })
+  })
+
+  it('falls back to a generic label for an external-app item whose profile no longer exists', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'external-app', profileId: 'missing-profile' }],
+    })
+    const flat = flattenService(service, new Map())
+    expect(flat[0]).toMatchObject({ itemLabel: 'External App', externalApp: { profileId: 'missing-profile' } })
+  })
+
   it('falls back gracefully when a slide-ref cannot be resolved', () => {
     const service = makeService({
       items: [{ id: 'item-1', type: 'slide-ref', slideId: 'missing-slide' }],

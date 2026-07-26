@@ -83,6 +83,8 @@ pub fn run() {
             commands::external_apps::restore_self,
             commands::external_apps::test_launch_external_app,
             commands::external_apps::capture_external_app_window_position,
+            commands::external_apps::verify_external_app_item,
+            commands::external_apps::send_external_app_keystroke,
             commands::remote::list_remote_devices,
             commands::remote::provision_remote_device,
             commands::remote::revoke_remote_device,

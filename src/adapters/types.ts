@@ -211,11 +211,17 @@ export interface ExternalAppPort {
   deleteProfile(id: string): Promise<void>
   /** Opens a native file picker for the profile editor's Executable field. */
   pickExecutable(): Promise<string | undefined>
+  /** Opens a native file picker (no extension filter) for the file an Add-to-Service item hands to the app. */
+  pickFile(): Promise<string | undefined>
   launch(profileId: string, file?: string): Promise<void>
   restoreSelf(): Promise<void>
   testLaunch(profileId: string): Promise<{ ok: boolean; message: string }>
   /** Captures the currently-foreground window's bounds, for the profile editor's "Recapture Position" button. */
   captureWindowPosition(): Promise<WindowPosition>
+  /** Add-time robustness check (spec section 12) — executable/file existence, no launch. */
+  verifyItem(profileId: string, file?: string): Promise<void>
+  /** Basic Remote Controls — forwards Next/Prev as a keystroke instead of advancing the service, while this item is live. */
+  sendKeystroke(profileId: string, direction: 'next' | 'previous'): Promise<void>
 }
 
 export interface RemoteDevice {

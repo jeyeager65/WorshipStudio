@@ -1,7 +1,7 @@
 import type { Service, ServiceItem } from '@/models/service'
 import type { Song } from '@/models/song'
 import type { SlideLibraryItem } from '@/models/library'
-import type { ScripturePassage } from '@/adapters/types'
+import type { ScripturePassage, ExternalAppProfile } from '@/adapters/types'
 import { getWayfindingBooks, parseReference, type WayfindingBook } from '@/utils/scriptureReference'
 
 export interface FlatSlide {
@@ -20,6 +20,8 @@ export interface FlatSlide {
   mediaId?: string
   mediaKind?: 'image' | 'video'
   mediaFit?: 'cover' | 'contain'
+  /** External App Hand-off items only (spec section 12) — what to launch/focus when this slide goes live. */
+  externalApp?: { profileId: string; file?: string }
 }
 
 function labelForOtherType(item: ServiceItem): string {
@@ -30,8 +32,6 @@ function labelForOtherType(item: ServiceItem): string {
       return 'Video'
     case 'audio':
       return 'Audio'
-    case 'external-app':
-      return 'External App'
     case 'countdown':
       return 'Countdown'
     case 'qr':
@@ -50,7 +50,8 @@ function labelForOtherType(item: ServiceItem): string {
  * to one flat entry per slide in the referenced library item (see slidesById below), same
  * shape as text-slide; media/video items carry a `mediaId` for the caller to resolve to a
  * real displayable URL (this function stays synchronous, so it can't do that Rust round trip
- * itself); every other item type (audio, external-app, countdown, qr) is still a
+ * itself); external-app items carry their profileId/file for the caller to launch/focus when
+ * live (see ServiceWorkspaceView); every other item type (audio, countdown, qr) is still a
  * work-in-progress content type, so each becomes a single placeholder slide for now rather
  * than being left out of the sequence entirely.
  */
@@ -59,6 +60,7 @@ export function flattenService(
   songsById: Map<string, Song>,
   scriptureById: Map<string, ScripturePassage> = new Map(),
   slidesById: Map<string, SlideLibraryItem> = new Map(),
+  externalAppProfilesById: Map<string, ExternalAppProfile> = new Map(),
 ): FlatSlide[] {
   const flat: FlatSlide[] = []
 
@@ -170,6 +172,17 @@ export function flattenService(
         // No per-item fit choice for video (unlike `media`) — a dedicated video slide is
         // meant to be watched in full, not cropped like a background loop.
         mediaFit: 'contain',
+      })
+    } else if (item.type === 'external-app') {
+      const profile = externalAppProfilesById.get(item.profileId)
+      flat.push({
+        key: `${item.id}:0`,
+        itemIndex,
+        itemId: item.id,
+        itemLabel: profile?.name ?? 'External App',
+        subLabel: '',
+        text: '',
+        externalApp: { profileId: item.profileId, file: item.file },
       })
     } else {
       flat.push({

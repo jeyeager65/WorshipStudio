@@ -9,6 +9,7 @@ import { useServicesStore } from '@/stores/services'
 import { useSongsStore } from '@/stores/songs'
 import { useSlidesStore } from '@/stores/slides'
 import { useMediaStore } from '@/stores/media'
+import { useExternalAppsStore } from '@/stores/externalApps'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useUndoStore } from '@/stores/undo'
@@ -26,6 +27,7 @@ const servicesStore = useServicesStore()
 const songsStore = useSongsStore()
 const slidesStore = useSlidesStore()
 const mediaStore = useMediaStore()
+const externalAppsStore = useExternalAppsStore()
 const { isPresenting } = storeToRefs(useLiveSessionStore())
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const undoStore = useUndoStore()
@@ -37,6 +39,16 @@ const flatIndex = ref(-1)
 
 const addDialogOpen = ref(false)
 const addQuery = ref('')
+
+// A rejected Tauri invoke() surfaces its Rust Err(String) payload as a plain JS string, not an
+// Error instance — `e instanceof Error` is always false for it, silently discarding the real
+// message in favor of a generic fallback. Every catch block below that talks to the backend
+// needs to handle both shapes.
+function errorMessage(e: unknown, fallback: string): string {
+  if (typeof e === 'string') return e
+  if (e instanceof Error) return e.message
+  return fallback
+}
 
 // Resolved scripture passages, keyed by service item id — reactive() rather than ref() so
 // Map.set()/.delete() are tracked directly without reassigning the whole map.
@@ -50,7 +62,7 @@ async function resolveScriptureItem(item: ServiceItem) {
     scriptureById.set(item.id, passage)
     scriptureErrors.delete(item.id)
   } catch (e) {
-    scriptureErrors.set(item.id, e instanceof Error ? e.message : 'Failed to resolve passage.')
+    scriptureErrors.set(item.id, errorMessage(e, 'Failed to resolve passage.'))
   }
 }
 
@@ -68,7 +80,7 @@ async function resolveMediaItem(mediaId: string) {
     mediaUrlById.set(mediaId, convertFileSrc(path))
     mediaErrors.delete(mediaId)
   } catch (e) {
-    mediaErrors.set(mediaId, e instanceof Error ? e.message : 'Failed to load media file.')
+    mediaErrors.set(mediaId, errorMessage(e, 'Failed to load media file.'))
   }
 }
 
@@ -82,6 +94,7 @@ onMounted(async () => {
   if (!songsStore.loaded) await songsStore.load()
   if (!slidesStore.loaded) await slidesStore.load()
   if (!mediaStore.loaded) await mediaStore.load()
+  if (!externalAppsStore.loaded) await externalAppsStore.load()
   // A just-created service arrives via the store instead of disk — see CreateServiceView —
   // so it's never persisted until Save is actually pressed.
   const isDraft = servicesStore.draftService?.id === route.params.id
@@ -141,6 +154,7 @@ onUnmounted(() => {
   // permanently believing a torn-down workspace is still live — or a presentation window
   // open with nothing left able to close it.
   if (isPresenting.value) getAdapter().live.stopPresenting()
+  if (externalAppActiveKey.value) getAdapter().externalApps?.restoreSelf()
   isPresenting.value = false
   stopServiceWatch?.()
   unlistenRemoteCommand?.()
@@ -163,8 +177,11 @@ async function saveService() {
 const songsById = computed(() => new Map(songsStore.songs.map((song) => [song.id, song])))
 const slidesById = computed(() => new Map(slidesStore.slides.map((item) => [item.id, item])))
 const mediaById = computed(() => new Map(mediaStore.items.map((item) => [item.id, item])))
+const externalAppProfilesById = computed(() => new Map(externalAppsStore.profiles.map((profile) => [profile.id, profile])))
 const flatSlides = computed<FlatSlide[]>(() =>
-  service.value ? flattenService(service.value, songsById.value, scriptureById, slidesById.value) : [],
+  service.value
+    ? flattenService(service.value, songsById.value, scriptureById, slidesById.value, externalAppProfilesById.value)
+    : [],
 )
 
 const selectedItem = computed<ServiceItem | undefined>(() => service.value?.items[selectedItemIndex.value])
@@ -240,6 +257,7 @@ function itemLabel(item: ServiceItem): string {
   if (item.type === 'slide-ref') return slidesById.value.get(item.slideId)?.label ?? 'Unknown Slide'
   if (item.type === 'media') return mediaById.value.get(item.mediaId)?.filename ?? 'Unknown Media'
   if (item.type === 'video') return mediaById.value.get(item.mediaId)?.filename ?? 'Unknown Video'
+  if (item.type === 'external-app') return externalAppProfilesById.value.get(item.profileId)?.name ?? 'Unknown App'
   return item.type
 }
 
@@ -314,10 +332,30 @@ const prevPreviewLabel = computed(() => describeSlide(prevIndex.value))
 function goLive(index: number) {
   flatIndex.value = index
 }
-function next() {
+
+// Basic Remote Controls (spec section 12) — while an External App Hand-off item is live and
+// its profile has this configured, Next/Prev forward a keystroke to the app's own window
+// instead of advancing the service's slide sequence.
+async function tryForwardKeystroke(direction: 'next' | 'previous'): Promise<boolean> {
+  if (!isPresenting.value) return false
+  const externalApp = liveSlide.value?.externalApp
+  if (!externalApp) return false
+  const profile = externalAppProfilesById.value.get(externalApp.profileId)
+  const key = direction === 'next' ? profile?.nextKey : profile?.prevKey
+  if (!profile?.remoteControlsEnabled || !key) return false
+  try {
+    await getAdapter().externalApps?.sendKeystroke(profile.id, direction)
+  } catch (e) {
+    console.error(`Failed to forward ${direction} to the external app:`, e)
+  }
+  return true
+}
+async function next() {
+  if (await tryForwardKeystroke('next')) return
   flatIndex.value = nextIndex.value
 }
-function previous() {
+async function previous() {
+  if (await tryForwardKeystroke('previous')) return
   flatIndex.value = prevIndex.value
 }
 function togglePresenting() {
@@ -352,10 +390,58 @@ const liveContentPayload = computed<LiveSlideContent | undefined>(() => {
 })
 watch(liveContentPayload, (content) => {
   if (isPresenting.value) {
-    getAdapter().live.setLiveContent(content)
+    // While an External App Hand-off item is live, Worship Studio's own presentation window
+    // deliberately shows nothing new — the external app's window is what's actually on the
+    // audience display now (see engageExternalAppIfNeeded below), covering ours by virtue of
+    // being brought to the foreground, positioned over that same monitor.
+    if (!liveSlide.value?.externalApp) getAdapter().live.setLiveContent(content)
     getAdapter().remote?.pushLiveState(content, true)
   }
 })
+
+// External App Hand-off (spec section 12): "on advance" launches/focuses the configured app;
+// "on advancing past it" restores Worship Studio to the foreground. Tracked by FlatSlide key
+// (not just profileId) so re-visiting the *same* slide (e.g. navigating back to it) re-engages
+// rather than being treated as a no-op from a stale previous engagement.
+const externalAppActiveKey = ref<string>()
+const externalAppError = ref<string>()
+
+async function engageExternalAppIfNeeded() {
+  const slide = liveSlide.value
+  if (!isPresenting.value || !slide?.externalApp) {
+    if (externalAppActiveKey.value) {
+      externalAppActiveKey.value = undefined
+      externalAppError.value = undefined
+      try {
+        await getAdapter().externalApps?.restoreSelf()
+      } catch (e) {
+        console.error('Failed to restore Worship Studio to the foreground:', e)
+      }
+    }
+    return
+  }
+  if (externalAppActiveKey.value === slide.key) return
+  externalAppActiveKey.value = slide.key
+  externalAppError.value = undefined
+  try {
+    await getAdapter().externalApps?.launch(slide.externalApp.profileId, slide.externalApp.file)
+  } catch (e) {
+    externalAppError.value = errorMessage(e, 'Failed to launch the external app.')
+  }
+}
+watch([liveSlide, isPresenting], engageExternalAppIfNeeded)
+
+async function retryExternalApp() {
+  externalAppActiveKey.value = undefined
+  await engageExternalAppIfNeeded()
+}
+function skipExternalAppError() {
+  // Deliberately doesn't force navigation — the operator moves on with Next/Prev whenever
+  // ready, same "clear failure, operator decides" pattern as section 13's video errors. The
+  // audience display stays on whatever was live before (untouched, since setLiveContent above
+  // is skipped for external-app slides either way).
+  externalAppError.value = undefined
+}
 const liveStatusText = computed(() => {
   if (!isPresenting.value) return 'Not Presenting'
   if (!liveSlide.value) return 'LIVE: Blank'
@@ -392,12 +478,13 @@ function onKeydown(event: KeyboardEvent) {
 
 // "+ Add to Service" — tabbed picker (spec section 2): Songs (search), Scripture (a
 // reference builder rather than a browsable list, since scripture isn't a library), Slides
-// (pick from the library, or quick-create service-only text slides), and Media/Video (pick
-// from the Media Library, filtered by kind). No Audio tab yet — the Media Library's MediaItem
-// only models 'image' | 'video' today, so there's no real data an Audio tab could list; that's
-// a Media Library extension, not just an Add-to-Service tab. The full unified fuzzy search
-// across every type is still a later slice.
-const addTab = ref<'songs' | 'scripture' | 'slides' | 'media' | 'video'>('songs')
+// (pick from the library, or quick-create service-only text slides), Media/Video (pick
+// from the Media Library, filtered by kind), and External App (pick a configured profile from
+// Settings). No Audio tab yet — the Media Library's MediaItem only models 'image' | 'video'
+// today, so there's no real data an Audio tab could list; that's a Media Library extension,
+// not just an Add-to-Service tab. The full unified fuzzy search across every type is still a
+// later slice.
+const addTab = ref<'songs' | 'scripture' | 'slides' | 'media' | 'video' | 'external-app'>('songs')
 
 const filteredSongsForAdd = computed(() => {
   const q = addQuery.value.trim().toLowerCase()
@@ -510,7 +597,7 @@ watch([activeReferenceText, scriptureTranslationCode, scriptureDisplayMode], asy
     const passage = await getAdapter().scripture.resolve(activeReferenceText.value, scriptureTranslationCode.value)
     if (token === scripturePreviewToken) scripturePreview.value = passage
   } catch (e) {
-    if (token === scripturePreviewToken) scripturePreviewError.value = e instanceof Error ? e.message : 'Failed to load passage.'
+    if (token === scripturePreviewToken) scripturePreviewError.value = errorMessage(e, 'Failed to load passage.')
   } finally {
     if (token === scripturePreviewToken) scripturePreviewLoading.value = false
   }
@@ -627,6 +714,38 @@ async function addVideoToService(mediaItem: MediaItem) {
   }
 }
 
+// External App Hand-off sub-picker (spec section 12): pick a configured profile and, if its
+// Parameter Format needs one, the file to hand it. Add-time verification (exe/file exist) —
+// "robustness priority over convenience" — runs before the item is actually added, so a
+// broken path is caught during prep rather than discovered mid-service.
+const externalAppProfileId = ref<string>()
+const externalAppFile = ref<string>()
+const addingExternalApp = ref(false)
+const externalAppAddError = ref<string>()
+const selectedExternalAppProfile = computed(() => externalAppProfilesById.value.get(externalAppProfileId.value ?? ''))
+const externalAppNeedsFile = computed(() => selectedExternalAppProfile.value?.parameterFormat?.includes('{file}') ?? false)
+
+async function pickExternalAppFile() {
+  const path = await getAdapter().externalApps?.pickFile()
+  if (path) externalAppFile.value = path
+}
+async function addExternalAppToService() {
+  if (!service.value || addingExternalApp.value || !externalAppProfileId.value) return
+  addingExternalApp.value = true
+  externalAppAddError.value = undefined
+  try {
+    await getAdapter().externalApps?.verifyItem(externalAppProfileId.value, externalAppFile.value)
+    const item: ServiceItem = { id: `item-${crypto.randomUUID()}`, type: 'external-app', profileId: externalAppProfileId.value, file: externalAppFile.value }
+    service.value.items.push(item)
+    selectedItemIndex.value = service.value.items.length - 1
+    closeAddDialog()
+  } catch (e) {
+    externalAppAddError.value = errorMessage(e, 'Failed to verify this app.')
+  } finally {
+    addingExternalApp.value = false
+  }
+}
+
 function closeAddDialog() {
   addDialogOpen.value = false
   addQuery.value = ''
@@ -644,6 +763,9 @@ function closeAddDialog() {
   mediaQuery.value = ''
   videoQuery.value = ''
   mediaFit.value = 'cover'
+  externalAppProfileId.value = undefined
+  externalAppFile.value = undefined
+  externalAppAddError.value = undefined
 }
 
 function updatePresenterNote(itemId: string, note: string) {
@@ -884,6 +1006,17 @@ function updatePresenterNote(itemId: string, note: string) {
       </div>
     </div>
 
+    <!-- External App Hand-off failure — operator-only, never shown to the congregation (spec
+         section 12); the audience display stays on whatever was live before. -->
+    <v-alert v-if="externalAppError" type="warning" variant="elevated" density="compact" class="external-app-alert">
+      <div class="d-flex align-center ga-3">
+        <span>⚠️ {{ externalAppError }}</span>
+        <v-spacer />
+        <v-btn variant="flat" size="small" color="white" @click="retryExternalApp">Try Again</v-btn>
+        <v-btn variant="text" size="small" @click="skipExternalAppError">Skip</v-btn>
+      </div>
+    </v-alert>
+
     <div class="live-footer">
       <div class="d-flex align-center ga-3">
         <v-btn variant="flat" color="error" prepend-icon="mdi-chevron-left" @click="previous">Previous</v-btn>
@@ -911,6 +1044,7 @@ function updatePresenterNote(itemId: string, note: string) {
           <v-tab value="slides">Slides</v-tab>
           <v-tab value="media">Media</v-tab>
           <v-tab value="video">Video</v-tab>
+          <v-tab v-if="getAdapter().externalApps" value="external-app">External App</v-tab>
         </v-tabs>
         <v-card-text>
           <v-window v-model="addTab">
@@ -1146,6 +1280,51 @@ function updatePresenterNote(itemId: string, note: string) {
               </v-list>
               <p v-if="filteredVideoForAdd.length === 0" class="text-medium-emphasis text-body-2">No videos found in the Media Library.</p>
             </v-window-item>
+
+            <v-window-item value="external-app">
+              <p v-if="externalAppsStore.profiles.length === 0" class="text-medium-emphasis text-body-2">
+                No profiles configured yet — add one in Settings &gt; External Apps.
+              </p>
+              <v-select
+                v-else
+                v-model="externalAppProfileId"
+                :items="externalAppsStore.profiles"
+                item-title="name"
+                item-value="id"
+                label="App Profile"
+                variant="outlined"
+                density="comfortable"
+                class="mb-3"
+              />
+              <template v-if="selectedExternalAppProfile">
+                <v-text-field
+                  v-if="externalAppNeedsFile"
+                  :model-value="externalAppFile"
+                  label="File"
+                  variant="outlined"
+                  density="comfortable"
+                  readonly
+                  class="mb-2"
+                >
+                  <template #append>
+                    <v-btn variant="outlined" @click="pickExternalAppFile">Browse…</v-btn>
+                  </template>
+                </v-text-field>
+                <v-alert v-if="externalAppAddError" type="error" variant="tonal" density="compact" class="mb-3">
+                  {{ externalAppAddError }}
+                </v-alert>
+                <v-btn
+                  variant="flat"
+                  color="primary"
+                  block
+                  :loading="addingExternalApp"
+                  :disabled="externalAppNeedsFile && !externalAppFile"
+                  @click="addExternalAppToService"
+                >
+                  Add to Service
+                </v-btn>
+              </template>
+            </v-window-item>
           </v-window>
         </v-card-text>
         <v-card-actions>
@@ -1238,6 +1417,10 @@ function updatePresenterNote(itemId: string, note: string) {
 .slide-row:hover .row-remove,
 .service-item:hover .row-remove {
   opacity: 1;
+}
+.external-app-alert {
+  flex-shrink: 0;
+  margin: 0 20px 10px;
 }
 .live-footer {
   flex-shrink: 0;
