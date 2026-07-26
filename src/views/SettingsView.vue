@@ -49,6 +49,17 @@ onMounted(async () => {
   // toolbar that would scroll out of view — this view just supplies the action.
   saveHandler.value = saveSettings
   await loadDisplays()
+
+  // Whether the ESV copyright notice below needs to show is a question of whether ESV is
+  // actually resolvable right now (an ESV_API_KEY configured on this machine — see
+  // commands::scripture on the Rust side), not whether a matching entry happens to exist in
+  // librarySettings.bibleTranslations, which is a separate, unrelated picker-seeding list.
+  try {
+    const translations = await getAdapter().scripture.listTranslations()
+    esvAvailable.value = translations.some((t) => t.code === 'ESV')
+  } catch (e) {
+    console.error('Failed to list scripture translations:', e)
+  }
 })
 onUnmounted(() => {
   isDirty.value = false
@@ -110,8 +121,10 @@ async function identifyDisplay(displayId: string) {
 }
 
 // Bible Translations — this list only feeds the translation *picker*; scripture.resolve()
-// itself still only knows the small local KJV sample (M5), not these entries. Wiring real
-// translations up to the picker is a later slice.
+// itself only actually knows KJV (full text, bundled — public domain) and ESV (real API,
+// Tauri-only, needs an ESV_API_KEY configured on this machine — see docs/release-process.md),
+// not these entries generally. Wiring arbitrary local-file/other-API translations up to the
+// picker is a later slice.
 const newTranslationCode = ref('')
 const newTranslationLabel = ref('')
 const newTranslationSource = ref<LibrarySettings['bibleTranslations'][number]['source']>('local-file')
@@ -123,6 +136,12 @@ const sourceOptions: { title: string; value: LibrarySettings['bibleTranslations'
 function sourceLabel(source: string): string {
   return sourceOptions.find((o) => o.value === source)?.title ?? source
 }
+// ESV API terms require this exact notice appear somewhere equivalent to a "copyright page"
+// (https://api.esv.org/) — shown here once, rather than repeated on every passage/live
+// slide, which instead just show the compact "(ESV)" designator via the translation code.
+const ESV_COPYRIGHT_NOTICE =
+  'Scripture quotations marked (ESV) are from the ESV® Bible (The Holy Bible, English Standard Version®), copyright © 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. All rights reserved. www.esv.org'
+const esvAvailable = ref(false)
 function addTranslation() {
   if (!librarySettings.value) return
   const code = newTranslationCode.value.trim().toUpperCase()
@@ -276,6 +295,10 @@ function removeTranslation(index: number) {
           />
           <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="addTranslation">Add</v-btn>
         </div>
+
+        <v-alert v-if="esvAvailable" type="info" variant="tonal" density="compact" class="mt-4" style="max-width: 560px">
+          {{ ESV_COPYRIGHT_NOTICE }}
+        </v-alert>
       </template>
     </div>
   </div>

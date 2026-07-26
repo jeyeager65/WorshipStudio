@@ -48,8 +48,9 @@ describe('mock adapter', () => {
     await expect(adapter.scripture.resolve('Not A Book 1:1', 'KJV')).rejects.toThrow()
   })
 
-  it('rejects a valid but unsampled reference with a clear error', async () => {
+  it('resolves any valid reference across the whole Bible, not just a handful of samples', async () => {
     const adapter = createMockAdapter()
-    await expect(adapter.scripture.resolve('Genesis 1:1', 'KJV')).rejects.toThrow(/no sample text available/i)
+    await expect(adapter.scripture.resolve('Genesis 1:1', 'KJV')).resolves.not.toThrow()
+    await expect(adapter.scripture.resolve('Revelation 22:21', 'KJV')).resolves.not.toThrow()
   })
 })

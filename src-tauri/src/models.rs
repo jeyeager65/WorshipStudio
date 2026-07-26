@@ -245,3 +245,45 @@ pub struct ManifestEntry {
     pub label: String,
     pub updated_at: String,
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct BibleBookRef {
+    pub name: String,
+    pub abbr: String,
+    /// Verse count per chapter — index 0 is chapter 1.
+    pub chapters: Vec<u32>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptureReference {
+    pub book: String,
+    pub start_chapter: u32,
+    pub start_verse: u32,
+    pub end_chapter: u32,
+    pub end_verse: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ScripturePassageVerse {
+    pub number: u32,
+    pub text: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ScripturePassage {
+    pub reference: String,
+    pub translation: String,
+    pub verses: Vec<ScripturePassageVerse>,
+    /// Short attribution/copyright notice (e.g. ESV's required "(ESV)" line) — present when
+    /// the source translation requires it be displayed alongside the text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub copyright: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ScriptureTranslation {
+    pub code: String,
+    pub name: String,
+}

@@ -1,4 +1,5 @@
 pub mod files;
+pub mod scripture;
 pub mod services;
 pub mod settings;
 pub mod slides;

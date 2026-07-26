@@ -661,7 +661,12 @@ function updatePresenterNote(itemId: string, note: string) {
                 Reference only — no verse text shown.
               </div>
               <div v-else-if="selectedScriptureError" class="text-body-2 text-error">{{ selectedScriptureError }}</div>
-              <div v-else-if="selectedScripturePassage" class="text-body-2">{{ selectedScriptureText }}</div>
+              <template v-else-if="selectedScripturePassage">
+                <div class="text-body-2">{{ selectedScriptureText }}</div>
+                <div class="text-caption text-medium-emphasis mt-2">
+                  {{ selectedScripturePassage.copyright ?? selectedScripturePassage.translation }}
+                </div>
+              </template>
               <div v-else class="text-body-2 text-medium-emphasis">Loading…</div>
             </div>
           </template>

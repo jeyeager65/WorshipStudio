@@ -62,6 +62,8 @@ export interface ScripturePassage {
   reference: string
   translation: string
   verses: ScripturePassageVerse[]
+  /** Short attribution (e.g. "(ESV)") — present when the source translation requires it be displayed alongside the text. */
+  copyright?: string
 }
 
 export interface ScriptureTranslation {

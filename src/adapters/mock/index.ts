@@ -20,7 +20,7 @@ import {
 } from './fixtures'
 import { parseOpenSongXml } from './opensongParser'
 import { pickFilesInBrowser } from './pickFiles'
-import { availableTranslations, kjvSample } from './scriptureFixtures'
+import { availableTranslations, loadKjv } from './scriptureFixtures'
 import { formatReference, getBookNames, isValidReference, parseReference } from '@/utils/scriptureReference'
 
 function newId(prefix: string): string {
@@ -137,7 +137,8 @@ export function createMockAdapter(): StudioAdapter {
         const parsed = parseReference(reference)
         if (!parsed || !isValidReference(parsed)) throw new Error(`"${reference}" isn't a valid scripture reference.`)
 
-        const bookData = kjvSample[parsed.book]
+        const kjv = await loadKjv()
+        const bookData = kjv[parsed.book]
         const verses: ScripturePassage['verses'] = []
         for (let chapter = parsed.startChapter; chapter <= parsed.endChapter; chapter++) {
           const verseFrom = chapter === parsed.startChapter ? parsed.startVerse : 1
@@ -150,7 +151,9 @@ export function createMockAdapter(): StudioAdapter {
         }
 
         if (verses.length === 0) {
-          throw new Error(`No sample text available for ${formatReference(parsed)} in this demo build.`)
+          // Every reference is validated against the same chapter/verse-count table this
+          // dataset was checked against when it was built, so this shouldn't happen.
+          throw new Error(`No KJV text found for ${formatReference(parsed)} — this shouldn't happen.`)
         }
         return { reference: formatReference(parsed), translation, verses }
       },

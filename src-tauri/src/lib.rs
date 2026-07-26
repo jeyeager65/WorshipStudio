@@ -5,6 +5,14 @@ mod paths;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Local-dev convenience only (e.g. ESV_API_KEY — see docs/release-process.md and
+    // commands::scripture) — silently no-ops if missing, which is the normal case for a
+    // packaged build. CWD differs between `cargo run` (src-tauri/) and other invocations, so
+    // both the repo root and one level up are tried; whichever exists wins, and dotenvy never
+    // overwrites a variable that's already set in the real environment.
+    let _ = dotenvy::dotenv();
+    let _ = dotenvy::from_filename("../.env");
+
     tauri::Builder::default()
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -37,6 +45,9 @@ pub fn run() {
             commands::settings::save_library_settings,
             commands::settings::get_machine_settings,
             commands::settings::save_machine_settings,
+            commands::scripture::resolve_scripture,
+            commands::scripture::get_scripture_book_list,
+            commands::scripture::list_scripture_translations,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
