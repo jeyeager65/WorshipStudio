@@ -3,6 +3,7 @@ pub mod manifest;
 pub mod media;
 pub mod opensong;
 pub mod opensong_sets;
+pub mod remote;
 pub mod scripture;
 pub mod services;
 pub mod slides;

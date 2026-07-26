@@ -12,7 +12,7 @@ import { needsSingleMonitorFallback } from '@/utils/displaySetup'
 import { previewExternalAppCommand } from '@/utils/externalAppPreview'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import ManagedStringList from '@/components/settings/ManagedStringList.vue'
-import type { DisplayInfo, DisplayRole, ExternalAppProfile } from '@/adapters/types'
+import type { DisplayInfo, DisplayRole, ExternalAppProfile, RemoteDevice } from '@/adapters/types'
 import type { LibrarySettings } from '@/models/settings'
 
 const store = useSettingsStore()
@@ -43,6 +43,7 @@ type Section =
   | 'volunteer-roles'
   | 'sync'
   | 'external-apps'
+  | 'remote-control'
 const activeSection = ref<Section>('general')
 const sections: { key: Section; label: string; group: string }[] = [
   { key: 'general', label: 'General', group: 'App' },
@@ -51,6 +52,9 @@ const sections: { key: Section; label: string; group: string }[] = [
   // Windows-only (Win32 window hand-off) — the port is entirely absent on the macOS/demo
   // build, unlike Display Setup which still has something to show (real monitors) in mock.
   ...(getAdapter().externalApps ? [{ key: 'external-apps' as const, label: 'External Apps', group: 'Display' }] : []),
+  // Needs the bundled local HTTP server (see adapters/types.ts's RemotePort doc comment) —
+  // not meaningful in the static/mock demo build even though the port itself exists there.
+  ...(getAdapter().kind === 'tauri' ? [{ key: 'remote-control' as const, label: 'Remote Control', group: 'Display' }] : []),
   { key: 'service-types', label: 'Service Types', group: 'Content Library' },
   { key: 'preachers', label: 'Preachers', group: 'Content Library' },
   { key: 'collections', label: 'Song Collections', group: 'Content Library' },
@@ -89,6 +93,7 @@ onMounted(async () => {
   saveHandler.value = saveSettings
   await loadDisplays()
   await loadExternalApps()
+  await loadRemoteDevices()
 
   // Whether the ESV copyright notice below needs to show is a question of whether ESV is
   // actually resolvable right now (an ESV_API_KEY configured on this machine — see
@@ -251,6 +256,60 @@ async function recaptureWindowPosition() {
   } finally {
     capturingPosition.value = false
   }
+}
+
+// Remote Control (spec section 4) — provisioning generates a QR code scoped to one device
+// name + access level; the token itself never round-trips back to this screen once handed
+// out (see RemoteDeviceSummary on the Rust side), so there's nothing to "edit" afterward,
+// only revoke.
+const remoteDevices = ref<RemoteDevice[]>([])
+const remoteServerInfo = ref<{ lanIp?: string; port: number }>()
+async function loadRemoteDevices() {
+  try {
+    remoteDevices.value = (await getAdapter().remote?.listDevices()) ?? []
+    remoteServerInfo.value = await getAdapter().remote?.getServerInfo()
+  } catch (e) {
+    console.error('Failed to load remote devices:', e)
+    remoteDevices.value = []
+  }
+}
+const accessLevelOptions: { title: string; value: RemoteDevice['accessLevel'] }[] = [
+  { title: 'View Only', value: 'view-only' },
+  { title: 'Advance Only', value: 'advance-only' },
+  { title: 'Full Control', value: 'full-control' },
+]
+function accessLevelLabel(level: RemoteDevice['accessLevel']): string {
+  return accessLevelOptions.find((o) => o.value === level)?.title ?? level
+}
+
+const provisionDialogOpen = ref(false)
+const newDeviceName = ref('')
+const newDeviceAccessLevel = ref<RemoteDevice['accessLevel']>('advance-only')
+const provisioning = ref(false)
+const provisionResult = ref<{ qrDataUrl: string; pairingUrl: string }>()
+
+function openProvisionDialog() {
+  newDeviceName.value = ''
+  newDeviceAccessLevel.value = 'advance-only'
+  provisionResult.value = undefined
+  provisionDialogOpen.value = true
+}
+async function provisionDevice() {
+  if (!newDeviceName.value.trim() || provisioning.value) return
+  provisioning.value = true
+  try {
+    provisionResult.value = await getAdapter().remote?.provisionDevice(newDeviceName.value.trim(), newDeviceAccessLevel.value)
+    await loadRemoteDevices()
+  } catch (e) {
+    console.error('Failed to provision remote device:', e)
+  } finally {
+    provisioning.value = false
+  }
+}
+async function revokeRemoteDevice(device: RemoteDevice) {
+  if (!(await confirmDialog.confirm(`Revoke access for "${device.name}"?`, 'Revoke'))) return
+  await getAdapter().remote?.revokeDevice(device.id)
+  await loadRemoteDevices()
 }
 
 // Re-running the wizard doesn't reset hasCompletedSetup — that only matters for whether it
@@ -610,6 +669,84 @@ function removeTranslation(index: number) {
               <v-spacer />
               <v-btn variant="text" @click="profileDialogOpen = false">Cancel</v-btn>
               <v-btn variant="flat" color="primary" @click="saveExternalAppProfile">Save Profile</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+      </template>
+
+      <template v-else-if="activeSection === 'remote-control'">
+        <h2 class="text-h6 mb-4">Remote Control</h2>
+        <p class="text-medium-emphasis text-body-2 mb-4">
+          Control the live presentation from a phone or tablet on the same network. Pair a device once — it
+          stays authorized until revoked here.
+        </p>
+        <p v-if="remoteServerInfo && !remoteServerInfo.lanIp" class="text-warning text-body-2 mb-4">
+          Couldn't detect a network address for this computer — check that it's connected to the church's
+          network, then reopen this screen.
+        </p>
+
+        <v-list v-if="remoteDevices.length > 0" density="comfortable" class="mb-4" style="max-width: 560px">
+          <v-list-item v-for="device in remoteDevices" :key="device.id" rounded="lg" class="mb-1" border>
+            <template #prepend><v-icon icon="mdi-cellphone" class="mr-3" /></template>
+            <v-list-item-title class="font-weight-bold">{{ device.name }}</v-list-item-title>
+            <v-list-item-subtitle>{{ accessLevelLabel(device.accessLevel) }}</v-list-item-subtitle>
+            <template #append>
+              <v-btn icon="mdi-trash-can-outline" variant="text" size="small" color="error" @click.stop="revokeRemoteDevice(device)" />
+            </template>
+          </v-list-item>
+        </v-list>
+        <p v-else class="text-medium-emphasis text-body-2 mb-4">No devices paired yet.</p>
+
+        <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="openProvisionDialog">Pair a Device</v-btn>
+
+        <v-dialog v-model="provisionDialogOpen" max-width="480">
+          <v-card>
+            <v-card-title>Pair a Device</v-card-title>
+            <v-card-text>
+              <template v-if="!provisionResult">
+                <v-text-field
+                  v-model="newDeviceName"
+                  label="Device Name"
+                  placeholder="e.g. John's iPhone"
+                  variant="outlined"
+                  density="comfortable"
+                  autofocus
+                  class="mb-2"
+                />
+                <v-select
+                  v-model="newDeviceAccessLevel"
+                  :items="accessLevelOptions"
+                  label="Access Level"
+                  variant="outlined"
+                  density="comfortable"
+                />
+                <div class="text-caption text-medium-emphasis mb-2">
+                  <div><strong>View Only</strong> — mirrors the presentation screen, no controls.</div>
+                  <div><strong>Advance Only</strong> — mirror plus Previous/Next.</div>
+                  <div><strong>Full Control</strong> — mirror, Previous/Next, and Start/Stop Presenting.</div>
+                </div>
+              </template>
+              <template v-else>
+                <div class="text-center mb-3">
+                  <img :src="provisionResult.qrDataUrl" alt="Pairing QR code" style="width: 220px; height: 220px" />
+                </div>
+                <p class="text-body-2 text-center mb-2">
+                  Scan this with "{{ newDeviceName }}"'s camera, or open this link on it directly:
+                </p>
+                <p class="text-caption text-medium-emphasis text-center" style="word-break: break-all">
+                  {{ provisionResult.pairingUrl }}
+                </p>
+              </template>
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer />
+              <template v-if="!provisionResult">
+                <v-btn variant="text" @click="provisionDialogOpen = false">Cancel</v-btn>
+                <v-btn variant="flat" color="primary" :loading="provisioning" :disabled="!newDeviceName.trim()" @click="provisionDevice">
+                  Generate QR Code
+                </v-btn>
+              </template>
+              <v-btn v-else variant="flat" color="primary" @click="provisionDialogOpen = false">Done</v-btn>
             </v-card-actions>
           </v-card>
         </v-dialog>

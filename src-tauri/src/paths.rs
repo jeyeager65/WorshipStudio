@@ -88,3 +88,9 @@ pub fn now_iso() -> String {
 pub fn external_apps_path(app: &AppHandle) -> PathBuf {
     app_data_dir(app).join("external-apps.json")
 }
+
+/// Paired Remote Control devices (see domain::remote) — per-machine, never synced, since a
+/// paired phone only makes sense against the HTTP server running on this specific computer.
+pub fn remote_devices_path(app: &AppHandle) -> PathBuf {
+    app_data_dir(app).join("remote-devices.json")
+}

@@ -11,6 +11,7 @@ import type {
   DisplayRole,
   LiveSlideContent,
   RemoteDevice,
+  RemoteCommand,
   SyncStatus,
   ConflictedItem,
   ImportSetsSummary,
@@ -324,8 +325,14 @@ export function createTauriAdapter(): StudioAdapter {
     remote: {
       listDevices: () => invoke<RemoteDevice[]>('list_remote_devices'),
       provisionDevice: (name, accessLevel) =>
-        invoke<{ qrDataUrl: string }>('provision_remote_device', { name, accessLevel }),
+        invoke<{ qrDataUrl: string; pairingUrl: string }>('provision_remote_device', { name, accessLevel }),
       revokeDevice: (id) => invoke('revoke_remote_device', { id }),
+      getServerInfo: () => invoke<{ lanIp?: string; port: number }>('get_remote_server_info'),
+      pushLiveState: (content, isPresenting) => invoke('update_remote_live_state', { content: content ?? null, isPresenting }),
+      onCommand: async (callback) => {
+        const unlisten = await listen<RemoteCommand>('remote:command', (event) => callback(event.payload))
+        return unlisten
+      },
     },
     sync: {
       getStatus: () => invoke<SyncStatus>('get_sync_status'),

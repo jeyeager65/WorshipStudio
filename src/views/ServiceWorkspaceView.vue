@@ -17,7 +17,7 @@ import { formatReference, getBookNames, getChapterCount, getVerseCount, isValidR
 import type { Service, ServiceItem } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
 import type { SlideLibraryItem, MediaItem } from '@/models/library'
-import type { ScripturePassage, ScriptureTranslation, LiveSlideContent } from '@/adapters/types'
+import type { ScripturePassage, ScriptureTranslation, LiveSlideContent, RemoteCommand } from '@/adapters/types'
 import type { ScriptureReference } from '@/models/scripture'
 
 const route = useRoute()
@@ -57,6 +57,7 @@ async function resolveScriptureItem(item: ServiceItem) {
 // synchronous component-setup tracking, so it isn't auto-stopped on unmount — stopping it
 // explicitly is what actually scopes it to this view's lifetime rather than leaking forever.
 let stopServiceWatch: (() => void) | undefined
+let unlistenRemoteCommand: (() => void) | undefined
 
 onMounted(async () => {
   if (!songsStore.loaded) await songsStore.load()
@@ -90,6 +91,16 @@ onMounted(async () => {
   // which need to stay clickable even while a toast is showing during a live service.
   undoStore.bottomOffsetPx = 70
 
+  // Remote Control (spec section 4): a paired phone's button press arrives here the same
+  // way the presentation window receives slide changes — as a Tauri event, not a direct
+  // function call, since the HTTP server lives entirely on the Rust side.
+  unlistenRemoteCommand = await getAdapter().remote?.onCommand((command: RemoteCommand) => {
+    if (command.action === 'next') next()
+    else if (command.action === 'previous') previous()
+    else if (command.action === 'goto' && command.index !== undefined) goLive(command.index)
+    else if (command.action === 'toggle-presenting') togglePresenting()
+  })
+
   // Scripture resolution isn't wired to a real command on the native Tauri backend yet
   // (README's adapter-status note) — best-effort and last, so a rejected invoke() here can
   // never take down the wiring above it and silently break Save for every service.
@@ -110,6 +121,7 @@ onUnmounted(() => {
   if (isPresenting.value) getAdapter().live.stopPresenting()
   isPresenting.value = false
   stopServiceWatch?.()
+  unlistenRemoteCommand?.()
   isDirty.value = false
   saveHandler.value = undefined
   undoStore.bottomOffsetPx = 0
@@ -288,6 +300,7 @@ function togglePresenting() {
   } else {
     getAdapter().live.stopPresenting()
   }
+  getAdapter().remote?.pushLiveState(isPresenting.value ? liveContentPayload.value : undefined, isPresenting.value)
 }
 
 const liveSlide = computed(() =>
@@ -304,7 +317,10 @@ const liveContentPayload = computed<LiveSlideContent | undefined>(() =>
     : undefined,
 )
 watch(liveContentPayload, (content) => {
-  if (isPresenting.value) getAdapter().live.setLiveContent(content)
+  if (isPresenting.value) {
+    getAdapter().live.setLiveContent(content)
+    getAdapter().remote?.pushLiveState(content, true)
+  }
 })
 const liveStatusText = computed(() => {
   if (!isPresenting.value) return 'Not Presenting'

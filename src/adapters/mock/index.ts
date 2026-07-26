@@ -250,12 +250,17 @@ export function createMockAdapter(): StudioAdapter {
       listDevices: async () => structuredClone(mockRemoteDevices),
       provisionDevice: async (name, accessLevel) => {
         mockRemoteDevices.push({ id: newId('device'), name, accessLevel })
-        return { qrDataUrl: '' }
+        return { qrDataUrl: '', pairingUrl: '' }
       },
       revokeDevice: async (id) => {
         const index = mockRemoteDevices.findIndex((d) => d.id === id)
         if (index !== -1) mockRemoteDevices.splice(index, 1)
       },
+      // No real HTTP server in the browser demo — nothing to report state to or receive
+      // commands from.
+      getServerInfo: async () => ({ lanIp: undefined, port: 0 }),
+      pushLiveState: async () => {},
+      onCommand: async () => () => {},
     },
     sync: {
       getStatus: async (): Promise<SyncStatus> => ({

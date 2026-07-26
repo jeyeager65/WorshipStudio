@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Worship Studio Remote</title>
+<style>
+  :root {
+    --bg: #11131a;
+    --panel: #1c1f29;
+    --border: #2c303c;
+    --text: #f2f3f5;
+    --muted: #9aa0ac;
+    --accent: #5b7cfa;
+    --live-red: #e6534f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .header .brand { font-size: 14px; font-weight: 700; color: var(--muted); }
+  .connection-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #3ecf6d;
+    display: inline-block;
+    margin-right: 5px;
+  }
+  .connection-dot.offline { background: var(--live-red); }
+  .live-banner {
+    background: rgba(230,83,79,0.15);
+    border-bottom: 1px solid rgba(230,83,79,0.4);
+    padding: 12px 18px;
+    min-height: 56px;
+  }
+  .live-banner .label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 700; color: var(--live-red);
+    text-transform: uppercase; letter-spacing: 0.04em;
+    margin-bottom: 4px;
+  }
+  .live-blink { width: 7px; height: 7px; border-radius: 50%; background: var(--live-red); }
+  .live-banner .content { font-size: 16px; font-weight: 600; }
+  .live-banner .sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .transport-area { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 24px 18px; gap: 14px; }
+  .row-2 { display: flex; gap: 12px; }
+  .nav-btn {
+    flex: 1;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    padding: 28px 16px;
+    border-radius: 16px;
+    border: none;
+    background: var(--panel);
+    color: var(--text);
+    font-size: 20px;
+    font-weight: 700;
+  }
+  .nav-btn.next { background: var(--accent); }
+  .present-toggle-row { padding: 0 18px 24px; }
+  .present-toggle {
+    width: 100%;
+    padding: 16px;
+    border-radius: 14px;
+    border: none;
+    font-size: 15px;
+    font-weight: 700;
+    background: var(--live-red);
+    color: white;
+  }
+  .access-note { text-align: center; font-size: 11px; color: var(--muted); padding-bottom: 16px; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <span class="brand">Worship Studio Remote</span>
+    <span><span id="connection-dot" class="connection-dot"></span><span id="device-name" class="muted"></span></span>
+  </div>
+
+  <div class="live-banner">
+    <div class="label"><span class="live-blink"></span> Live Now</div>
+    <div class="content" id="live-label">Not presenting</div>
+    <div class="sub" id="live-sub"></div>
+  </div>
+
+  <div class="transport-area" id="transport-area" style="display:none">
+    <div class="row-2">
+      <button class="nav-btn" id="prev-btn">&lsaquo; Previous</button>
+      <button class="nav-btn next" id="next-btn">Next &rsaquo;</button>
+    </div>
+  </div>
+
+  <div class="present-toggle-row" id="present-row" style="display:none">
+    <button class="present-toggle" id="present-btn">Start/Stop Presenting</button>
+  </div>
+
+  <div class="access-note" id="access-note"></div>
+
+  <script>
+    const ACCESS_LABELS = { 'view-only': 'View Only — mirrors the presentation screen only', 'advance-only': 'Advance Only — reordering and editing require the operator computer', 'full-control': 'Full Control — content editing still requires the operator computer' };
+
+    async function postAction(action, extra) {
+      await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ action }, extra || {})),
+      });
+    }
+
+    document.getElementById('prev-btn').addEventListener('click', () => postAction('previous'));
+    document.getElementById('next-btn').addEventListener('click', () => postAction('next'));
+    document.getElementById('present-btn').addEventListener('click', () => postAction('toggle-presenting'));
+
+    async function poll() {
+      try {
+        const res = await fetch('/api/state');
+        if (res.status === 401) {
+          document.body.innerHTML = '<div style="padding:24px;text-align:center;color:#9aa0ac">This device is no longer paired. Ask the operator to re-pair it in Settings.</div>';
+          return;
+        }
+        const state = await res.json();
+        document.getElementById('connection-dot').classList.remove('offline');
+        document.getElementById('device-name').textContent = state.deviceName;
+        document.getElementById('live-label').textContent = state.isPresenting && state.content
+          ? state.content.itemLabel + (state.content.subLabel ? ' — ' + state.content.subLabel : '')
+          : (state.isPresenting ? 'Live — nothing on screen yet' : 'Not presenting');
+        document.getElementById('live-sub').textContent = state.isPresenting && state.content ? state.content.text : '';
+
+        document.getElementById('transport-area').style.display = state.accessLevel === 'view-only' ? 'none' : 'flex';
+        document.getElementById('present-row').style.display = state.accessLevel === 'full-control' ? 'block' : 'none';
+        document.getElementById('access-note').textContent = ACCESS_LABELS[state.accessLevel] || '';
+      } catch (e) {
+        document.getElementById('connection-dot').classList.add('offline');
+      }
+    }
+
+    poll();
+    setInterval(poll, 1200);
+  </script>
+</body>
+</html>

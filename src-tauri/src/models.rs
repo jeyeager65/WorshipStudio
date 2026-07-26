@@ -203,6 +203,43 @@ pub struct ExternalAppProfile {
     pub updated_by_device: String,
 }
 
+/// Persisted per-machine (never synced) — a paired phone/tablet only makes sense on the
+/// machine it was paired against, since the HTTP server it talks to only runs there.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteDevice {
+    pub id: String,
+    pub name: String,
+    /// "view-only" | "advance-only" | "full-control"
+    pub access_level: String,
+    /// The pairing/session secret embedded in the QR code and stored as the phone's cookie —
+    /// never sent back to the operator UI once provisioned (see RemoteDeviceSummary).
+    pub token: String,
+    pub updated_at: String,
+    pub updated_by_device: String,
+}
+
+/// What the Settings > Remote Control management screen actually lists — the token is
+/// deliberately omitted; the screen only ever needs to list devices and revoke them, never
+/// re-display a secret already handed out via the original QR code.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteDeviceSummary {
+    pub id: String,
+    pub name: String,
+    pub access_level: String,
+}
+
+impl From<&RemoteDevice> for RemoteDeviceSummary {
+    fn from(device: &RemoteDevice) -> Self {
+        Self {
+            id: device.id.clone(),
+            name: device.name.clone(),
+            access_level: device.access_level.clone(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Service {
@@ -414,4 +451,24 @@ pub struct ScripturePassage {
 pub struct ScriptureTranslation {
     pub code: String,
     pub name: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct WayfindingBook {
+    pub name: String,
+    pub distance: i32,
+}
+
+/// Mirrors the frontend's LiveSlideContent (src/adapters/types.ts) — the operator window
+/// pushes this to Rust (see commands::remote::update_remote_live_state) whenever the live
+/// slide changes, so the remote HTTP server's /api/state has something to report without the
+/// server itself needing any awareness of songs/scripture/slides.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveSlideContent {
+    pub item_label: String,
+    pub sub_label: String,
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wayfinding_books: Option<Vec<WayfindingBook>>,
 }

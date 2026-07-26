@@ -2,6 +2,9 @@ mod commands;
 mod domain;
 mod models;
 mod paths;
+mod remote_server;
+
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -22,6 +25,14 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
+            // Remote Control's local HTTP server (design/feature-spec.md section 4) — started
+            // once here rather than lazily on first use, so it's already reachable by the
+            // time an operator opens Settings > Remote Control to provision a device.
+            let remote_handle = remote_server::RemoteServerHandle::new(app.handle().clone());
+            app.manage(remote_handle.clone());
+            remote_server::start(remote_handle);
+
             Ok(())
         })
         .plugin(tauri_plugin_dialog::init())
@@ -71,6 +82,11 @@ pub fn run() {
             commands::external_apps::restore_self,
             commands::external_apps::test_launch_external_app,
             commands::external_apps::capture_external_app_window_position,
+            commands::remote::list_remote_devices,
+            commands::remote::provision_remote_device,
+            commands::remote::revoke_remote_device,
+            commands::remote::get_remote_server_info,
+            commands::remote::update_remote_live_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

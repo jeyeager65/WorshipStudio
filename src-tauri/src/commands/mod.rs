@@ -2,6 +2,7 @@ pub mod external_apps;
 pub mod files;
 pub mod media;
 pub mod opensong;
+pub mod remote;
 pub mod scripture;
 pub mod services;
 pub mod settings;

@@ -208,11 +208,22 @@ export interface RemoteDevice {
   accessLevel: 'view-only' | 'advance-only' | 'full-control'
 }
 
+export interface RemoteCommand {
+  action: 'next' | 'previous' | 'goto' | 'toggle-presenting'
+  index?: number
+}
+
 /** Tauri-only — needs the bundled local HTTP server; not meaningful in the static demo. */
 export interface RemotePort {
   listDevices(): Promise<RemoteDevice[]>
-  provisionDevice(name: string, accessLevel: RemoteDevice['accessLevel']): Promise<{ qrDataUrl: string }>
+  provisionDevice(name: string, accessLevel: RemoteDevice['accessLevel']): Promise<{ qrDataUrl: string; pairingUrl: string }>
   revokeDevice(id: string): Promise<void>
+  /** LAN IP/port the server is actually listening on — a manual-entry fallback next to the QR code. */
+  getServerInfo(): Promise<{ lanIp?: string; port: number }>
+  /** Mirrors the live slide/presenting state into the Rust-side server so /api/state has something to report. */
+  pushLiveState(content: LiveSlideContent | undefined, isPresenting: boolean): Promise<void>
+  /** A paired phone's button press, relayed back from the server — see remote_server.rs. */
+  onCommand(callback: (command: RemoteCommand) => void): Promise<() => void>
 }
 
 export interface SyncStatus {
