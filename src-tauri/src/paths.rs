@@ -27,6 +27,7 @@ fn default_machine_settings(app: &AppHandle) -> MachineSettings {
             .join("Library")
             .to_string_lossy()
             .to_string(),
+        has_completed_setup: false,
     }
 }
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
+import { useRouter } from 'vue-router'
 import { useTheme } from 'vuetify'
 import { getAdapter } from '@/adapters'
 import { useSettingsStore } from '@/stores/settings'
@@ -12,6 +13,7 @@ import type { DisplayInfo, DisplayRole } from '@/adapters/types'
 import type { LibrarySettings } from '@/models/settings'
 
 const store = useSettingsStore()
+const router = useRouter()
 const { librarySettings, machineSettings } = storeToRefs(store)
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const undoStore = useUndoStore()
@@ -39,12 +41,19 @@ const groupedSections = computed(() => {
   return groups
 })
 
+// Registering `watch` after an `await` (inside onMounted's async callback) happens outside
+// Vue's synchronous component-setup tracking, so it isn't auto-stopped on unmount — it would
+// keep reacting to store.librarySettings/machineSettings mutations from *other* views (e.g.
+// the setup wizard) after this one is long gone, wrongly flagging isDirty. Stopping it
+// explicitly in onUnmounted is what actually scopes it to this view's lifetime.
+let stopSettingsWatch: (() => void) | undefined
+
 onMounted(async () => {
   await store.load()
   isDirty.value = false
   // Registered after the initial load so it only reacts to actual user edits, not the
   // assignment above — same pattern as Song Editor/Service Workspace.
-  watch([librarySettings, machineSettings], () => (isDirty.value = true), { deep: true })
+  stopSettingsWatch = watch([librarySettings, machineSettings], () => (isDirty.value = true), { deep: true })
   // The Save button itself lives in the persistent app bar (App.vue), not a per-page
   // toolbar that would scroll out of view — this view just supplies the action.
   saveHandler.value = saveSettings
@@ -62,6 +71,7 @@ onMounted(async () => {
   }
 })
 onUnmounted(() => {
+  stopSettingsWatch?.()
   isDirty.value = false
   saveHandler.value = undefined
 })
@@ -118,6 +128,23 @@ async function assignRole(displayId: string, role: DisplayRole) {
 }
 async function identifyDisplay(displayId: string) {
   await getAdapter().displays?.identify(displayId)
+}
+
+// Re-running the wizard doesn't reset hasCompletedSetup — that only matters for whether it
+// auto-opens on next launch (App.vue), and this is an explicit, already-past-first-launch visit.
+function runSetupWizard() {
+  router.push('/setup')
+}
+
+const pickingLibraryFolder = ref(false)
+async function pickLibraryFolder() {
+  pickingLibraryFolder.value = true
+  try {
+    const folder = await getAdapter().settings.pickLibraryFolder()
+    if (folder && machineSettings.value) machineSettings.value.libraryPath = folder
+  } finally {
+    pickingLibraryFolder.value = false
+  }
 }
 
 // Bible Translations — this list only feeds the translation *picker*; scripture.resolve()
@@ -200,7 +227,21 @@ function removeTranslation(index: number) {
           class="mb-6"
           style="max-width: 360px"
         />
-        <v-switch v-model="darkMode" label="Dark mode" color="primary" hide-details />
+        <v-switch v-model="darkMode" label="Dark mode" color="primary" hide-details class="mb-6" />
+
+        <div class="d-flex align-center ga-3 mb-2" style="max-width: 560px">
+          <div class="flex-grow-1">
+            <div class="font-weight-bold">Library Sync Folder</div>
+            <div class="text-caption text-medium-emphasis">{{ machineSettings.libraryPath }}</div>
+          </div>
+          <v-btn variant="flat" color="secondary" :loading="pickingLibraryFolder" @click="pickLibraryFolder">
+            Change…
+          </v-btn>
+        </div>
+
+        <v-btn variant="text" color="primary" prepend-icon="mdi-magic-staff" class="mt-4" @click="runSetupWizard">
+          Run First-Time Setup Wizard
+        </v-btn>
       </template>
 
       <template v-else-if="activeSection === 'display'">

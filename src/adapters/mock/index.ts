@@ -95,6 +95,8 @@ export function createMockAdapter(): StudioAdapter {
         const all = (await services.list()) as Service[]
         return all.filter((s) => s.date >= fromDate && s.date <= toDate)
       },
+      // No real filesystem to pick an OpenSong Sets folder from in the browser demo.
+      importOpenSongSets: async () => undefined,
     },
     slides: {
       list: () => slides.list(),
@@ -131,6 +133,8 @@ export function createMockAdapter(): StudioAdapter {
       saveLibrarySettings: (next) => librarySettingsStore.save(next),
       getMachineSettings: () => machineSettingsStore.get(),
       saveMachineSettings: (next) => machineSettingsStore.save(next),
+      // No real filesystem to pick a folder from in the browser demo.
+      pickLibraryFolder: async () => undefined,
     },
     scripture: {
       resolve: async (reference, translation): Promise<ScripturePassage> => {

@@ -25,4 +25,6 @@ export interface MachineSettings {
   darkMode: boolean
   /** Local filesystem path to the synced library root on this machine. */
   libraryPath: string
+  /** Whether the First-Time Setup Wizard has been completed or explicitly skipped. */
+  hasCompletedSetup: boolean
 }

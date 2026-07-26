@@ -37,6 +37,11 @@ function blankSong(): Song {
   }
 }
 
+// `watch` called after an `await` (inside onMounted's async callback) runs outside Vue's
+// synchronous component-setup tracking, so it isn't auto-stopped on unmount — stopping it
+// explicitly is what actually scopes it to this view's lifetime rather than leaking forever.
+let stopSongWatch: (() => void) | undefined
+
 onMounted(async () => {
   const isNew = route.params.id === 'new'
   const [loadedSong, settings] = await Promise.all([
@@ -53,13 +58,14 @@ onMounted(async () => {
   // Registered after the initial load so it only reacts to actual user edits, not the
   // assignment above — a single deep watch instead of wiring a dirty-flag handler onto
   // every field individually.
-  watch(song, () => (isDirty.value = true), { deep: true })
+  stopSongWatch = watch(song, () => (isDirty.value = true), { deep: true })
   // The Save button itself lives in the persistent app bar (App.vue), not a per-page
   // toolbar that would scroll out of view — this view just supplies the action.
   saveHandler.value = saveSong
 })
 
 onUnmounted(() => {
+  stopSongWatch?.()
   isDirty.value = false
   saveHandler.value = undefined
 })

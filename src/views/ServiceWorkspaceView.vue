@@ -51,6 +51,11 @@ async function resolveScriptureItem(item: ServiceItem) {
   }
 }
 
+// `watch` called after an `await` (inside onMounted's async callback) runs outside Vue's
+// synchronous component-setup tracking, so it isn't auto-stopped on unmount — stopping it
+// explicitly is what actually scopes it to this view's lifetime rather than leaking forever.
+let stopServiceWatch: (() => void) | undefined
+
 onMounted(async () => {
   if (!songsStore.loaded) await songsStore.load()
   if (!slidesStore.loaded) await slidesStore.load()
@@ -74,7 +79,7 @@ onMounted(async () => {
   // rather than auto-save (see stores/unsavedChanges.ts); live-transport state
   // (flatIndex/isPresenting) is intentionally NOT part of this watch, since navigating
   // live isn't "unsaved content".
-  watch(service, () => (isDirty.value = true), { deep: true })
+  stopServiceWatch = watch(service, () => (isDirty.value = true), { deep: true })
   // The Save button itself lives in the persistent app bar (App.vue), not a per-page
   // toolbar that would scroll out of view — this view just supplies the action.
   saveHandler.value = saveService
@@ -101,6 +106,7 @@ onUnmounted(() => {
   // open with nothing left able to close it.
   if (isPresenting.value) getAdapter().live.stopPresenting()
   isPresenting.value = false
+  stopServiceWatch?.()
   isDirty.value = false
   saveHandler.value = undefined
   undoStore.bottomOffsetPx = 0

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useTheme } from 'vuetify'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { useRoute, useRouter } from 'vue-router'
 import { getAdapter } from '@/adapters'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import UndoToastStack from '@/components/UndoToastStack.vue'
@@ -32,16 +33,29 @@ window.addEventListener('beforeunload', (event) => {
 // here rather than re-read on every screen — SettingsView just needs to update
 // theme.global.name itself when the user flips the toggle.
 const theme = useTheme()
+const router = useRouter()
+const route = useRoute()
+// The wizard is a forced, standalone first-run flow (see App.vue's redirect below and
+// SettingsView's "Run First-Time Setup Wizard") — showing the normal nav alongside it would
+// let the operator wander off mid-setup, defeating the point.
+const isSetupWizard = computed(() => route.name === 'setup-wizard')
 onMounted(async () => {
   const machineSettings = await getAdapter().settings.getMachineSettings()
   theme.change(machineSettings.darkMode ? 'worshipDark' : 'worshipLight')
+
+  // First launch (or an upgrade from before this flag existed) — send the operator through
+  // the wizard once before anything else. Direct navigation to any other route still works
+  // normally afterward; this only fires on the very first paint.
+  if (!isPresentationWindow && !machineSettings.hasCompletedSetup && router.currentRoute.value.path !== '/setup') {
+    router.replace('/setup')
+  }
 })
 </script>
 
 <template>
   <PresentationView v-if="isPresentationWindow" />
   <v-app v-else>
-    <v-app-bar density="compact" elevation="0" class="border-b">
+    <v-app-bar v-if="!isSetupWizard" density="compact" elevation="0" class="border-b">
       <v-spacer />
       <span v-if="saveHandler" class="text-caption text-medium-emphasis mr-3">
         {{ saving ? 'Saving…' : isDirty ? 'Unsaved changes' : 'All changes saved' }}

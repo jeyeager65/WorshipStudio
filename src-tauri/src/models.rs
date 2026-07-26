@@ -235,6 +235,12 @@ pub struct MachineSettings {
     pub dark_mode: bool,
     /// Local filesystem path to the synced library root on this machine.
     pub library_path: String,
+    /// Whether the First-Time Setup Wizard has been completed or explicitly skipped on this
+    /// machine. Defaults to false for machine-settings.json files written before this field
+    /// existed, so upgrading an existing install re-offers the wizard exactly once rather than
+    /// silently assuming it was already done.
+    #[serde(default)]
+    pub has_completed_setup: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

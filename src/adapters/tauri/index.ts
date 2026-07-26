@@ -12,6 +12,7 @@ import type {
   LiveSlideContent,
   RemoteDevice,
   SyncStatus,
+  ImportSetsSummary,
 } from '@/adapters/types'
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
@@ -146,6 +147,11 @@ export function createTauriAdapter(): StudioAdapter {
       save: (service) => invoke('save_service', { service }),
       delete: (id) => invoke('delete_service', { id }),
       listUpcoming: (fromDate, toDate) => invoke<Service[]>('list_upcoming_services', { fromDate, toDate }),
+      importOpenSongSets: async (year, defaultServiceType) => {
+        const folder = await open({ directory: true, title: 'Select OpenSong Sets Folder' })
+        if (!folder || Array.isArray(folder)) return undefined
+        return invoke<ImportSetsSummary>('import_opensong_sets', { setsFolder: folder, year, defaultServiceType })
+      },
     },
     slides: {
       list: () => invoke<SlideLibraryItem[]>('list_slides'),
@@ -169,6 +175,10 @@ export function createTauriAdapter(): StudioAdapter {
       saveLibrarySettings: (settings) => invoke('save_library_settings', { settings }),
       getMachineSettings: () => invoke<MachineSettings>('get_machine_settings'),
       saveMachineSettings: (settings) => invoke('save_machine_settings', { settings }),
+      pickLibraryFolder: async () => {
+        const folder = await open({ directory: true, title: 'Select Library Sync Folder' })
+        return typeof folder === 'string' ? folder : undefined
+      },
     },
     scripture: {
       resolve: (reference, translationCode) =>

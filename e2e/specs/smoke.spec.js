@@ -1,5 +1,11 @@
 describe('Worship Studio (native)', () => {
   it('loads the landing page', async () => {
+    // First launch on a fresh (or pre-existing-but-never-flagged) profile redirects to the
+    // setup wizard (App.vue) — skip through it so this test still asserts the landing page,
+    // not the wizard, regardless of which state this profile is in.
+    const skipLink = await $('button*=Skip setup')
+    if (await skipLink.isExisting()) await skipLink.click()
+
     const heading = await $('p*=Select a service to continue')
     await heading.waitForExist({ timeout: 15000 })
     await expect(heading).toBeExisting()

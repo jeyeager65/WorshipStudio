@@ -63,4 +63,7 @@ export const seedMachineSettings: MachineSettings = {
   thisComputerName: 'Demo Machine',
   darkMode: true,
   libraryPath: '',
+  // The demo build's sample data (above) stands in for the wizard's library import, so
+  // there's no reason to make an evaluator click through it before seeing the app.
+  hasCompletedSetup: true,
 }

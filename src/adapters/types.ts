@@ -18,12 +18,27 @@ export interface SongPort {
   importFromOpenSongFiles(): Promise<Song[]>
 }
 
+export interface ImportSetsSummary {
+  servicesCreated: number
+  songReferencesMatched: number
+  unmatchedSongTitles: string[]
+  skippedFiles: string[]
+}
+
 export interface ServicePort {
   list(): Promise<Service[]>
   get(id: string): Promise<Service | undefined>
   save(service: Service): Promise<void>
   delete(id: string): Promise<void>
   listUpcoming(fromDate: string, toDate: string): Promise<Service[]>
+  /**
+   * Opens a native folder picker for an OpenSong `Sets` directory, imports every Set file
+   * whose filename date falls in `year` as a draft Service (songs matched by title against
+   * the already-imported library, seeding their usage stats), and returns a summary. Returns
+   * undefined if the picker was cancelled — there's no equivalent in the browser demo build,
+   * which always returns undefined.
+   */
+  importOpenSongSets(year: number, defaultServiceType: string): Promise<ImportSetsSummary | undefined>
 }
 
 export interface SlideLibraryPort {
@@ -51,6 +66,9 @@ export interface SettingsPort {
   saveLibrarySettings(settings: LibrarySettings): Promise<void>
   getMachineSettings(): Promise<MachineSettings>
   saveMachineSettings(settings: MachineSettings): Promise<void>
+  /** Opens a native folder picker for the synced library root (e.g. a Dropbox folder). Returns
+   *  undefined if cancelled — no equivalent in the browser demo, which always returns undefined. */
+  pickLibraryFolder(): Promise<string | undefined>
 }
 
 export interface ScripturePassageVerse {
