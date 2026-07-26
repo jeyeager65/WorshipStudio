@@ -13,11 +13,10 @@
     "windows": [
       {
         "title": "Worship Studio",
-        "width": 1280,
-        "height": 800,
+        "width": 1920,
+        "height": 1080,
         "resizable": true,
-        "fullscreen": false,
-        "maximized": true
+        "fullscreen": false
       }
     ],
     "security": {
