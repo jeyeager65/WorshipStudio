@@ -549,10 +549,15 @@ function updatePresenterNote(itemId: string, note: string) {
         <span class="text-body-2 font-weight-bold">{{ service.type }} — {{ service.date }}</span>
         <span class="text-caption text-medium-emphasis">{{ service.sermonTitle }}</span>
       </div>
-      <v-btn :color="isPresenting ? 'error' : 'primary'" variant="flat" @click="togglePresenting">
-        <v-icon :icon="isPresenting ? 'mdi-stop' : 'mdi-play'" start />
-        {{ isPresenting ? 'Stop Presenting' : 'Start Presenting' }}
-      </v-btn>
+      <div class="d-flex ga-2">
+        <v-btn variant="outlined" prepend-icon="mdi-account-group-outline" :to="`/service/${service.id}/roster`">
+          Volunteer Roster
+        </v-btn>
+        <v-btn :color="isPresenting ? 'error' : 'primary'" variant="flat" @click="togglePresenting">
+          <v-icon :icon="isPresenting ? 'mdi-stop' : 'mdi-play'" start />
+          {{ isPresenting ? 'Stop Presenting' : 'Start Presenting' }}
+        </v-btn>
+      </div>
     </div>
 
     <div class="workspace-layout">

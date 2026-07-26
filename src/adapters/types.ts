@@ -1,6 +1,6 @@
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
-import type { SlideLibraryItem, MediaItem, Theme } from '@/models/library'
+import type { SlideLibraryItem, MediaItem, Theme, Volunteer } from '@/models/library'
 import type { LibrarySettings, MachineSettings } from '@/models/settings'
 
 /**
@@ -81,6 +81,12 @@ export interface MediaPort {
 export interface ThemePort {
   list(): Promise<Theme[]>
   save(theme: Theme): Promise<void>
+  delete(id: string): Promise<void>
+}
+
+export interface VolunteerPort {
+  list(): Promise<Volunteer[]>
+  save(volunteer: Volunteer): Promise<void>
   delete(id: string): Promise<void>
 }
 
@@ -192,6 +198,13 @@ export interface SyncPort {
 
 export interface EmailPort {
   sendOrderOfWorship(serviceId: string, toAddresses: string[], body: string): Promise<void>
+  /**
+   * Composing/reviewing the message is fully real; actually dispatching it is deliberately
+   * not wired up to any mail transport yet on either adapter — this always resolves without
+   * sending anything, so the Volunteer Roster's "Send Assignments by Email" is safe to wire
+   * up and click today.
+   */
+  sendVolunteerAssignments(serviceId: string, toAddresses: string[], body: string): Promise<void>
 }
 
 export interface StudioAdapter {
@@ -201,6 +214,7 @@ export interface StudioAdapter {
   slides: SlideLibraryPort
   media: MediaPort
   themes: ThemePort
+  volunteers: VolunteerPort
   settings: SettingsPort
   scripture: ScripturePort
   live: LivePresentationPort

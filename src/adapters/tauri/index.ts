@@ -18,7 +18,7 @@ import type {
 } from '@/adapters/types'
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
-import type { SlideLibraryItem, MediaItem, Theme } from '@/models/library'
+import type { SlideLibraryItem, MediaItem, Theme, Volunteer } from '@/models/library'
 import type { LibrarySettings, MachineSettings } from '@/models/settings'
 
 /**
@@ -183,6 +183,11 @@ export function createTauriAdapter(): StudioAdapter {
       save: (theme) => invoke('save_theme', { theme }),
       delete: (id) => invoke('delete_theme', { id }),
     },
+    volunteers: {
+      list: () => invoke<Volunteer[]>('list_volunteers'),
+      save: (volunteer) => invoke('save_volunteer', { volunteer }),
+      delete: (id) => invoke('delete_volunteer', { id }),
+    },
     settings: {
       getLibrarySettings: () => invoke<LibrarySettings>('get_library_settings'),
       saveLibrarySettings: (settings) => invoke('save_library_settings', { settings }),
@@ -237,6 +242,9 @@ export function createTauriAdapter(): StudioAdapter {
     email: {
       sendOrderOfWorship: (serviceId, toAddresses, body) =>
         invoke('send_order_of_worship_email', { serviceId, toAddresses, body }),
+      // Deliberately not wired to a real mail transport yet (no SMTP/API integration exists
+      // anywhere in this codebase) — composing/reviewing the message is real, sending it isn't.
+      sendVolunteerAssignments: async () => {},
     },
   }
 }

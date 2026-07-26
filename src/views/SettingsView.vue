@@ -18,7 +18,15 @@ const { librarySettings, machineSettings } = storeToRefs(store)
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const undoStore = useUndoStore()
 
-type Section = 'general' | 'display' | 'service-types' | 'preachers' | 'collections' | 'bible-translations' | 'themes'
+type Section =
+  | 'general'
+  | 'display'
+  | 'service-types'
+  | 'preachers'
+  | 'collections'
+  | 'bible-translations'
+  | 'themes'
+  | 'volunteer-roles'
 const activeSection = ref<Section>('general')
 const sections: { key: Section; label: string; group: string }[] = [
   { key: 'general', label: 'General', group: 'App' },
@@ -28,6 +36,7 @@ const sections: { key: Section; label: string; group: string }[] = [
   { key: 'collections', label: 'Song Collections', group: 'Content Library' },
   { key: 'bible-translations', label: 'Bible Translations', group: 'Content Library' },
   { key: 'themes', label: 'Themes', group: 'Content Library' },
+  { key: 'volunteer-roles', label: 'Volunteer Roles', group: 'Content Library' },
 ]
 const groupedSections = computed(() => {
   const groups: { name: string; items: typeof sections }[] = []
@@ -352,6 +361,14 @@ function removeTranslation(index: number) {
         <v-btn variant="flat" color="primary" prepend-icon="mdi-palette-outline" to="/library/themes">
           Open Theme Editor
         </v-btn>
+      </template>
+
+      <template v-else-if="activeSection === 'volunteer-roles'">
+        <h2 class="text-h6 mb-4">Volunteer Roles</h2>
+        <p class="text-medium-emphasis text-body-2 mb-4">
+          The roles offered on each service's Volunteer Roster (Piano, Sound Booth, Greeters, etc.).
+        </p>
+        <ManagedStringList v-model="librarySettings.volunteerRoles" add-label="Add a role…" />
       </template>
     </div>
   </div>

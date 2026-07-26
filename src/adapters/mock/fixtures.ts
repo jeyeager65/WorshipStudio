@@ -1,6 +1,6 @@
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
-import type { SlideLibraryItem, MediaItem, Theme } from '@/models/library'
+import type { SlideLibraryItem, MediaItem, Theme, Volunteer } from '@/models/library'
 import type { LibrarySettings, MachineSettings } from '@/models/settings'
 
 const now = new Date().toISOString()
@@ -66,6 +66,27 @@ export const seedMedia: MediaItem[] = [
   },
 ]
 export const seedThemes: Theme[] = []
+export const seedVolunteers: Volunteer[] = [
+  {
+    id: 'volunteer-marlene',
+    firstName: 'Marlene',
+    lastName: 'Diaz',
+    email: 'marlene.diaz@email.com',
+    preferredRoles: ['Piano'],
+    unavailableDateRanges: [],
+    updatedAt: now,
+    updatedByDevice: device,
+  },
+  {
+    id: 'volunteer-mark',
+    firstName: 'Mark',
+    lastName: 'Ellison',
+    preferredRoles: ['Drums'],
+    unavailableDateRanges: [],
+    updatedAt: now,
+    updatedByDevice: device,
+  },
+]
 
 export const seedLibrarySettings: LibrarySettings = {
   serviceTypes: ['Sunday Morning Worship', 'Wednesday Bible Study'],

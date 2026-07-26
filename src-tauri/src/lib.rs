@@ -58,6 +58,9 @@ pub fn run() {
             commands::themes::list_themes,
             commands::themes::save_theme,
             commands::themes::delete_theme,
+            commands::volunteers::list_volunteers,
+            commands::volunteers::save_volunteer,
+            commands::volunteers::delete_volunteer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

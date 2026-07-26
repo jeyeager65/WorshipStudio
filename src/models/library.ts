@@ -46,3 +46,20 @@ export interface Theme {
   updatedAt: string
   updatedByDevice: string
 }
+
+export interface UnavailableDateRange {
+  start: string
+  end: string
+}
+
+export interface Volunteer {
+  id: string
+  firstName: string
+  lastName: string
+  email?: string
+  /** Not a restriction — just makes this volunteer show up first when filling roster fields for these roles. */
+  preferredRoles: string[]
+  unavailableDateRanges: UnavailableDateRange[]
+  updatedAt: string
+  updatedByDevice: string
+}

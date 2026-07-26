@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::models::ManifestEntry;
 
-use super::{media, services, slides, songs, themes, write_json_file};
+use super::{media, services, slides, songs, themes, volunteers, write_json_file};
 
 const MANIFEST_FILE: &str = "manifest.json";
 
@@ -54,6 +54,15 @@ pub fn rebuild(root: &Path) -> std::io::Result<Vec<ManifestEntry>> {
             kind: "theme".to_string(),
             label: theme.name,
             updated_at: theme.updated_at,
+        });
+    }
+
+    for volunteer in volunteers::list(root)? {
+        entries.push(ManifestEntry {
+            id: volunteer.id,
+            kind: "volunteer".to_string(),
+            label: format!("{} {}", volunteer.first_name, volunteer.last_name),
+            updated_at: volunteer.updated_at,
         });
     }
 

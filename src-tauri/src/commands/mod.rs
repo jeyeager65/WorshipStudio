@@ -7,3 +7,4 @@ pub mod settings;
 pub mod slides;
 pub mod songs;
 pub mod themes;
+pub mod volunteers;

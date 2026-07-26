@@ -7,6 +7,7 @@ pub mod services;
 pub mod slides;
 pub mod songs;
 pub mod themes;
+pub mod volunteers;
 
 use std::fs;
 use std::path::Path;

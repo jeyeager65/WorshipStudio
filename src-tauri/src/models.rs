@@ -139,6 +139,31 @@ pub struct RoleAssignment {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
+pub struct UnavailableDateRange {
+    pub start: String,
+    pub end: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Volunteer {
+    pub id: String,
+    pub first_name: String,
+    pub last_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    /// Not a restriction — just makes this volunteer show up first when filling roster
+    /// fields for these roles (see design/sketches/volunteer-editor.html).
+    #[serde(default)]
+    pub preferred_roles: Vec<String>,
+    #[serde(default)]
+    pub unavailable_date_ranges: Vec<UnavailableDateRange>,
+    pub updated_at: String,
+    pub updated_by_device: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct Service {
     pub id: String,
     pub date: String,
