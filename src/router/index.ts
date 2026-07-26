@@ -15,6 +15,7 @@ const router = createRouter({
     { path: '/library/slides', name: 'slide-library', component: () => import('@/views/SlideLibraryView.vue') },
     { path: '/library/slides/:id', name: 'slide-editor', component: () => import('@/views/SlideEditorView.vue') },
     { path: '/library/media', name: 'media-library', component: () => import('@/views/MediaLibraryView.vue') },
+    { path: '/library/themes', name: 'theme-editor', component: () => import('@/views/ThemeEditorView.vue') },
     { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
   ],
 })

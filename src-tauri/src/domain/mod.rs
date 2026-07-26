@@ -6,6 +6,7 @@ pub mod scripture;
 pub mod services;
 pub mod slides;
 pub mod songs;
+pub mod themes;
 
 use std::fs;
 use std::path::Path;

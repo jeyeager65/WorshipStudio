@@ -215,6 +215,27 @@ pub struct MediaItem {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
+pub struct Theme {
+    pub id: String,
+    pub name: String,
+    /// Either a MediaItem id, or one of the sentinel values "brand-primary"/"brand-secondary"
+    /// (resolved against LibrarySettings::branding rather than duplicating a color here) —
+    /// absent means no background.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub background_id: Option<String>,
+    pub font: String,
+    pub text_color: String,
+    #[serde(default)]
+    pub outline: bool,
+    /// "songs" | "scripture" | "announcements" | "welcome-closing"
+    #[serde(default)]
+    pub use_as_default_for: Vec<String>,
+    pub updated_at: String,
+    pub updated_by_device: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct Branding {
     pub church_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]

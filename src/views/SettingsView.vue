@@ -18,7 +18,7 @@ const { librarySettings, machineSettings } = storeToRefs(store)
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const undoStore = useUndoStore()
 
-type Section = 'general' | 'display' | 'service-types' | 'preachers' | 'collections' | 'bible-translations'
+type Section = 'general' | 'display' | 'service-types' | 'preachers' | 'collections' | 'bible-translations' | 'themes'
 const activeSection = ref<Section>('general')
 const sections: { key: Section; label: string; group: string }[] = [
   { key: 'general', label: 'General', group: 'App' },
@@ -27,6 +27,7 @@ const sections: { key: Section; label: string; group: string }[] = [
   { key: 'preachers', label: 'Preachers', group: 'Content Library' },
   { key: 'collections', label: 'Song Collections', group: 'Content Library' },
   { key: 'bible-translations', label: 'Bible Translations', group: 'Content Library' },
+  { key: 'themes', label: 'Themes', group: 'Content Library' },
 ]
 const groupedSections = computed(() => {
   const groups: { name: string; items: typeof sections }[] = []
@@ -340,6 +341,17 @@ function removeTranslation(index: number) {
         <v-alert v-if="esvAvailable" type="info" variant="tonal" density="compact" class="mt-4" style="max-width: 560px">
           {{ ESV_COPYRIGHT_NOTICE }}
         </v-alert>
+      </template>
+
+      <template v-else-if="activeSection === 'themes'">
+        <h2 class="text-h6 mb-4">Themes</h2>
+        <p class="text-medium-emphasis text-body-2 mb-4">
+          Background, font, and text-color presets for songs, scripture, announcements, and welcome/closing
+          slides — pulling backgrounds from Branding colors or the Media Library.
+        </p>
+        <v-btn variant="flat" color="primary" prepend-icon="mdi-palette-outline" to="/library/themes">
+          Open Theme Editor
+        </v-btn>
       </template>
     </div>
   </div>
