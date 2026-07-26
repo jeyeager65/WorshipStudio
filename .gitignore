@@ -42,3 +42,7 @@ OpenSong/
 # WebdriverIO + tauri-driver, see docs/architecture-plan.md). Revisit intentionally if we
 # ever want this shared with every Claude Code session on the repo.
 .mcp.json
+
+# Windows code-signing private key (see docs/release-process.md) — the .pfx contains the
+# private key and must never be committed; only the .cer (public certificate) is tracked.
+scripts/release/*.pfx
