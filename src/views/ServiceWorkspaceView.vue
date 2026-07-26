@@ -757,7 +757,7 @@ function updatePresenterNote(itemId: string, note: string) {
     <v-dialog v-model="addDialogOpen" max-width="560">
       <v-card>
         <v-card-title>Add to Service</v-card-title>
-        <v-tabs v-model="addTab" density="compact" class="border-b">
+        <v-tabs v-model="addTab" density="compact" class="border-b add-service-tabs">
           <v-tab value="songs">Songs</v-tab>
           <v-tab value="scripture">Scripture</v-tab>
           <v-tab value="slides">Slides</v-tab>
@@ -1061,5 +1061,22 @@ function updatePresenterNote(itemId: string, note: string) {
   border-radius: 50%;
   background: rgb(var(--v-theme-error));
   flex-shrink: 0;
+}
+/* Add-to-Service dialog: with a large library (100+ songs), the song list is tall enough
+   that the whole card wants to grow well past the viewport. Without an explicit
+   flex-shrink: 0, flexbox's default shrink-to-fit behavior squeezes EVERY flex child
+   (including the title and tabs bar) down toward zero to make room, rather than confining
+   the overflow to the list — reproducible in any browser with enough songs seeded, nothing
+   Tauri/WebView2-specific about it. Title, tabs, and Cancel stay fixed size and always
+   visible; only the content area (song/scripture/slide list) scrolls internally. */
+:deep(.v-card-title),
+.add-service-tabs,
+:deep(.v-card-actions) {
+  flex-shrink: 0;
+}
+:deep(.v-card-text) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 </style>
