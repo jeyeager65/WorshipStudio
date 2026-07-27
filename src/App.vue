@@ -68,6 +68,12 @@ const route = useRoute()
 // let the operator wander off mid-setup, defeating the point.
 const isSetupWizard = computed(() => route.name === 'setup-wizard')
 
+// Only top-level pages reachable from the sidebar set meta.title (router/index.ts) — deeper
+// pages (song/slide editors, the service workspace, etc.) render their own in-content
+// heading instead, often a dynamic one (the actual song/service name), which wouldn't fit
+// here.
+const pageTitle = computed(() => route.meta.title)
+
 // The dark logo's white wordmark reads fine on the dark theme's near-black sidebar but nearly
 // disappears on the light theme's — same swap LandingView used to do before this moved here.
 const logoSrc = computed(() => (theme.global.current.value.dark ? logoDark : logoLight))
@@ -161,8 +167,8 @@ onMounted(async () => {
         <div class="mx-2 mt-2 mb-4">
           <img :src="logoSrc" alt="Worship Studio" class="sidebar-logo-img" />
         </div>
-        <v-list-item to="/" prepend-icon="mdi-home" title="Home" rounded="lg" class="mx-2 mb-1 sidebar-item" />
-        <v-list-item to="/library/songs" prepend-icon="mdi-bookshelf" title="Library" rounded="lg" class="mx-2 mb-1 sidebar-item" />
+        <v-list-item to="/" prepend-icon="mdi-home" title="Services" rounded="lg" class="mx-2 mb-1 sidebar-item" />
+        <v-list-item to="/library/songs" prepend-icon="mdi-bookshelf" title="Songs" rounded="lg" class="mx-2 mb-1 sidebar-item" />
         <v-list-item to="/library/slides" prepend-icon="mdi-image-multiple" title="Slides" rounded="lg" class="mx-2 mb-1 sidebar-item" />
         <v-list-item to="/library/media" prepend-icon="mdi-file-image-outline" title="Media" rounded="lg" class="mx-2 mb-1 sidebar-item" />
         <v-list-item to="/reports" prepend-icon="mdi-file-chart-outline" title="Reports" rounded="lg" class="mx-2 mb-1 sidebar-item" />
@@ -176,6 +182,7 @@ onMounted(async () => {
          the only window chrome now that decorations are off, so it's what lets the operator
          drag, minimize, or close the window at every point in the app, wizard included. -->
     <v-app-bar density="compact" elevation="0" class="border-b app-bar-no-print">
+      <span v-if="pageTitle" class="page-title text-h5 font-weight-bold ml-4">{{ pageTitle }}</span>
       <!-- data-tauri-drag-region only takes effect on the exact element it's applied to (no
            ancestor/child matching), so it has to sit on this actual empty spacer rather than
            the app-bar as a whole — that's what silently made the whole bar undraggable. The

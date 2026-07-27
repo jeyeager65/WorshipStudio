@@ -8,8 +8,13 @@ import { useSettingsStore } from '@/stores/settings'
 import { useSyncStore } from '@/stores/sync'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useUndoStore } from '@/stores/undo'
+import { useSongsStore } from '@/stores/songs'
+import { useServicesStore } from '@/stores/services'
+import { useVolunteersStore } from '@/stores/volunteers'
+import { useThemesStore } from '@/stores/themes'
 import { needsSingleMonitorFallback } from '@/utils/displaySetup'
 import { previewExternalAppCommand } from '@/utils/externalAppPreview'
+import { buildSampleServices, sampleSongs, sampleThemes, sampleVolunteers, sampleVolunteerRoles, sampleServiceTypes } from '@/utils/sampleData'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import ManagedStringList from '@/components/settings/ManagedStringList.vue'
 import type { DisplayInfo, DisplayRole, ExternalAppProfile, RemoteDevice } from '@/adapters/types'
@@ -22,6 +27,10 @@ const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const undoStore = useUndoStore()
 const confirmDialog = useConfirmDialogStore()
 const syncStore = useSyncStore()
+const songsStore = useSongsStore()
+const servicesStore = useServicesStore()
+const volunteersStore = useVolunteersStore()
+const themesStore = useThemesStore()
 const refreshingSync = ref(false)
 async function refreshSyncStatus() {
   refreshingSync.value = true
@@ -318,6 +327,80 @@ function runSetupWizard() {
   router.push('/setup')
 }
 
+const loadingSampleData = ref(false)
+const sampleDataLoaded = ref(false)
+const clearingData = ref(false)
+const dataCleared = ref(false)
+
+/** Deletes every existing song, service, volunteer, and theme — shared by both destructive
+ *  actions below (clearing outright, and loading sample data over the top of a clean slate). */
+async function deleteAllLibraryContent() {
+  await Promise.all([songsStore.load(), servicesStore.load(), volunteersStore.load(), themesStore.load()])
+  for (const song of songsStore.songs) await songsStore.remove(song.id)
+  for (const service of servicesStore.services) await servicesStore.remove(service.id)
+  for (const volunteer of volunteersStore.volunteers) await volunteersStore.remove(volunteer.id)
+  for (const theme of themesStore.themes) await themesStore.remove(theme.id)
+}
+
+// Sample data is strictly for demoing the app, never for mixing into a real church's library
+// — so this *replaces* everything rather than adding alongside it: every existing song,
+// service, volunteer, and theme is deleted first. That's exactly why the confirmation below
+// spells out what's being destroyed instead of using a generic "are you sure?".
+async function loadSampleData() {
+  if (
+    !(await confirmDialog.confirm(
+      'This permanently deletes ALL existing songs, services, volunteers, and themes in this library, and replaces them with demo content. This cannot be undone — only use this on a library you don\'t need (e.g. exploring the app for the first time), never on a real church\'s data.',
+      'Delete Everything & Load Sample Data',
+    ))
+  ) {
+    return
+  }
+  loadingSampleData.value = true
+  sampleDataLoaded.value = false
+  dataCleared.value = false
+  try {
+    await deleteAllLibraryContent()
+
+    for (const song of sampleSongs) await songsStore.save(song)
+    for (const theme of sampleThemes) await themesStore.save(theme)
+    for (const volunteer of sampleVolunteers) await volunteersStore.save(volunteer)
+    for (const service of buildSampleServices()) await servicesStore.save(service)
+
+    if (librarySettings.value) {
+      librarySettings.value.serviceTypes = [...sampleServiceTypes]
+      librarySettings.value.volunteerRoles = [...sampleVolunteerRoles]
+      librarySettings.value.preachers = ['Pastor Dan']
+      librarySettings.value.collections = ['Hymns of Grace', 'Worship Hymnal']
+      await store.save()
+    }
+    sampleDataLoaded.value = true
+  } finally {
+    loadingSampleData.value = false
+  }
+}
+
+// Deliberately separate from loadSampleData — a church wanting to wipe demo content (or start
+// over) before going live shouldn't have to load a fresh batch of sample data just to clear
+// the old one out.
+async function clearExistingData() {
+  if (
+    !(await confirmDialog.confirm(
+      'This permanently deletes ALL songs, services, volunteers, and themes in this library. This cannot be undone — make sure this library is not currently in use before doing this.',
+      'Delete Everything',
+    ))
+  ) {
+    return
+  }
+  clearingData.value = true
+  sampleDataLoaded.value = false
+  try {
+    await deleteAllLibraryContent()
+    dataCleared.value = true
+  } finally {
+    clearingData.value = false
+  }
+}
+
 const pickingLibraryFolder = ref(false)
 async function pickLibraryFolder() {
   pickingLibraryFolder.value = true
@@ -424,6 +507,34 @@ function removeTranslation(index: number) {
         <v-btn variant="text" color="primary" prepend-icon="mdi-magic-staff" class="mt-4" @click="runSetupWizard">
           Run First-Time Setup Wizard
         </v-btn>
+        <br />
+        <v-btn
+          variant="text"
+          color="primary"
+          prepend-icon="mdi-database-import-outline"
+          class="mt-2"
+          :loading="loadingSampleData"
+          @click="loadSampleData"
+        >
+          Load Sample Data
+        </v-btn>
+        <div v-if="sampleDataLoaded" class="text-caption text-medium-emphasis mt-1">
+          Sample songs, services, volunteers, and themes added — check Home to see them.
+        </div>
+        <br />
+        <v-btn
+          variant="text"
+          color="error"
+          prepend-icon="mdi-delete-forever-outline"
+          class="mt-2"
+          :loading="clearingData"
+          @click="clearExistingData"
+        >
+          Clear Existing Data
+        </v-btn>
+        <div v-if="dataCleared" class="text-caption text-medium-emphasis mt-1">
+          All songs, services, volunteers, and themes have been deleted.
+        </div>
       </template>
 
       <template v-else-if="activeSection === 'sync'">

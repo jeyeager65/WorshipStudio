@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { execSync } from 'node:child_process'
+import { appDataDir } from '../helpers/appDataDir.js'
 
 describe('External App Hand-off (live launch/restore)', () => {
   it('launches on advance, and cleanly surfaces a Try Again/Skip error if the window never appears', async () => {
@@ -13,7 +14,7 @@ describe('External App Hand-off (live launch/restore)', () => {
     // to verify the *live* wiring around it (auto-launch on advance, the operator-only
     // error banner with Try Again/Skip, and that Stop Presenting/restore-self afterward
     // doesn't hang the session) — not to require an app that happens to cold-start under 5s.
-    const externalAppsPath = path.join(process.env.APPDATA, 'dev.yeager.worshipstudio', 'external-apps.json')
+    const externalAppsPath = path.join(appDataDir, 'external-apps.json')
     fs.writeFileSync(
       externalAppsPath,
       JSON.stringify(

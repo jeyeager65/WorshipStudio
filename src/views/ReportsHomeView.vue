@@ -2,8 +2,7 @@
 
 <template>
   <v-container class="py-8" style="max-width: 640px">
-    <h1 class="text-h5 font-weight-bold mb-6">Reports</h1>
-    <v-list class="pa-0" bg-color="transparent">
+    <v-list class="pa-0 mt-2" bg-color="transparent">
       <v-list-item to="/reports/ccli" title="CCLI Reporting" subtitle="Song usage across services, for CCLI license reporting" rounded="lg" class="border mb-2">
         <template #prepend><v-icon icon="mdi-file-chart-outline" class="mr-3" /></template>
       </v-list-item>

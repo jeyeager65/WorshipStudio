@@ -1,12 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { appDataDir } from '../helpers/appDataDir.js'
 
 describe('Add-to-Service External App tab', () => {
   it('rejects a missing executable at add-time, then adds a valid profile', async () => {
     // Self-contained fixtures (one pointed at a real, always-present Windows binary; one
     // pointed at nothing), same approach as other specs — written directly to disk rather
     // than driving the full Settings profile editor here.
-    const externalAppsPath = path.join(process.env.APPDATA, 'dev.yeager.worshipstudio', 'external-apps.json')
+    const externalAppsPath = path.join(appDataDir, 'external-apps.json')
     fs.writeFileSync(
       externalAppsPath,
       JSON.stringify(

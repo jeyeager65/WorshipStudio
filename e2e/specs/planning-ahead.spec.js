@@ -33,7 +33,7 @@ describe('Planning Ahead', () => {
     await workspaceSaveBtn.waitForClickable({ timeout: 15000 })
     await workspaceSaveBtn.click()
 
-    const homeLink = await $('a*=Home')
+    const homeLink = await $('a*=Services')
     await homeLink.waitForClickable({ timeout: 10000 })
     await homeLink.click()
 

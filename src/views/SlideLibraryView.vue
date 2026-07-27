@@ -48,7 +48,7 @@ function createSlide() {
 <template>
   <v-container class="py-8" style="max-width: 720px">
     <div class="d-flex align-center mb-6 ga-3">
-      <h1 class="text-h5 font-weight-bold flex-grow-1">Slide Library</h1>
+      <v-spacer />
       <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSlide">New Slide</v-btn>
     </div>
 

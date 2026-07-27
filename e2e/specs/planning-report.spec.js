@@ -1,20 +1,45 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { appDataDir } from '../helpers/appDataDir.js'
 
 describe('Multi-Week Planning Report', () => {
   it('shows planned songs and roster for a service within the default range', async () => {
-    // Self-contained fixtures (volunteer + service), same approach as sync-conflicts.spec.js —
-    // written directly to disk and cleaned up in `finally`, rather than driving the flaky
-    // native date-input control through Create Service (see planning-ahead.spec.js's fix for
-    // that same control).
-    const libraryDir = path.join(process.env.APPDATA, 'dev.yeager.worshipstudio', 'Library')
+    // Self-contained fixtures (song + volunteer + service), same approach as
+    // sync-conflicts.spec.js — written directly to disk and cleaned up in `finally`, rather
+    // than driving the flaky native date-input control through Create Service (see
+    // planning-ahead.spec.js's fix for that same control). The isolated E2E app-data
+    // directory (see helpers/appDataDir.js) starts empty on every run, so this can no longer
+    // borrow an existing song from the library the way it once did against the real profile —
+    // it has to create its own, like every other fixture here.
+    const libraryDir = path.join(appDataDir, 'Library')
     const songsDir = path.join(libraryDir, 'songs')
     const volunteersDir = path.join(libraryDir, 'volunteers')
     const servicesDir = path.join(libraryDir, 'services', '2026')
+    fs.mkdirSync(songsDir, { recursive: true })
+    fs.mkdirSync(volunteersDir, { recursive: true })
     fs.mkdirSync(servicesDir, { recursive: true })
 
-    const originalFile = fs.readdirSync(songsDir).find((f) => f.endsWith('.json') && !f.includes('('))
-    const song = JSON.parse(fs.readFileSync(path.join(songsDir, originalFile), 'utf8'))
+    const songId = 'song-e2e-planning-report'
+    const songPath = path.join(songsDir, `${songId}.json`)
+    const songTitle = 'E2E Planning Report Song'
+    fs.writeFileSync(
+      songPath,
+      JSON.stringify(
+        {
+          id: songId,
+          title: songTitle,
+          collections: [],
+          tags: [],
+          blocks: [{ id: 'v1', label: 'Verse 1', text: 'E2E fixture verse.' }],
+          defaultArrangement: { sequence: ['v1'] },
+          usage: { usesPastYear: 0 },
+          updatedAt: '2026-07-26T00:00:00Z',
+          updatedByDevice: 'e2e',
+        },
+        null,
+        2,
+      ),
+    )
 
     const volunteerId = 'volunteer-e2e-planning-report'
     const volunteerPath = path.join(volunteersDir, `${volunteerId}.json`)
@@ -48,7 +73,7 @@ describe('Multi-Week Planning Report', () => {
           type: 'Sunday Morning Worship',
           sermonTitle: 'E2E Planning Report Sermon',
           preacher: 'Pastor E2E',
-          items: [{ id: 'item-1', type: 'song', songId: song.id, arrangement: { sequence: [] } }],
+          items: [{ id: 'item-1', type: 'song', songId, arrangement: { sequence: ['v1'] } }],
           volunteerRoster: [{ role: 'Piano', volunteerId, tentative: false }],
           updatedAt: '2026-07-26T00:00:00Z',
           updatedByDevice: 'e2e',
@@ -79,12 +104,13 @@ describe('Multi-Week Planning Report', () => {
       await sermonTitle.waitForExist({ timeout: 10000 })
       await expect(sermonTitle).toBeExisting()
 
-      const songsLine = await $(`div*=${song.title}`)
+      const songsLine = await $(`div*=${songTitle}`)
       await expect(songsLine).toBeExisting()
 
       const rosterLine = await $('div*=Piano — Jordan E2EReport')
       await expect(rosterLine).toBeExisting()
     } finally {
+      if (fs.existsSync(songPath)) fs.unlinkSync(songPath)
       if (fs.existsSync(volunteerPath)) fs.unlinkSync(volunteerPath)
       if (fs.existsSync(servicePath)) fs.unlinkSync(servicePath)
     }

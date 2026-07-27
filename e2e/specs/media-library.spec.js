@@ -9,7 +9,7 @@ describe('Media Library', () => {
     await mediaNav.waitForExist({ timeout: 15000 })
     await mediaNav.click()
 
-    const heading = await $('h1*=Media Library')
+    const heading = await $('.page-title*=Media')
     await heading.waitForExist({ timeout: 10000 })
 
     const importBtn = await $('button*=Import Media')

@@ -3,10 +3,18 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 
+declare module 'vue-router' {
+  interface RouteMeta {
+    /** Shown in the app-bar (see App.vue) for top-level pages reachable from the sidebar —
+     *  deeper/detail pages render their own in-content heading instead and leave this unset. */
+    title?: string
+  }
+}
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
-    { path: '/', name: 'landing', component: () => import('@/views/LandingView.vue') },
+    { path: '/', name: 'landing', component: () => import('@/views/LandingView.vue'), meta: { title: 'Services' } },
     { path: '/setup', name: 'setup-wizard', component: () => import('@/views/SetupWizardView.vue') },
     { path: '/create-service', name: 'create-service', component: () => import('@/views/CreateServiceView.vue') },
     { path: '/service/:id', name: 'service-workspace', component: () => import('@/views/ServiceWorkspaceView.vue') },
@@ -16,15 +24,15 @@ const router = createRouter({
       name: 'order-of-worship',
       component: () => import('@/views/OrderOfWorshipView.vue'),
     },
-    { path: '/library/songs', name: 'song-library', component: () => import('@/views/SongLibraryView.vue') },
+    { path: '/library/songs', name: 'song-library', component: () => import('@/views/SongLibraryView.vue'), meta: { title: 'Songs' } },
     { path: '/library/songs/:id', name: 'song-editor', component: () => import('@/views/SongEditorView.vue') },
-    { path: '/library/slides', name: 'slide-library', component: () => import('@/views/SlideLibraryView.vue') },
+    { path: '/library/slides', name: 'slide-library', component: () => import('@/views/SlideLibraryView.vue'), meta: { title: 'Slides' } },
     { path: '/library/slides/:id', name: 'slide-editor', component: () => import('@/views/SlideEditorView.vue') },
-    { path: '/library/media', name: 'media-library', component: () => import('@/views/MediaLibraryView.vue') },
+    { path: '/library/media', name: 'media-library', component: () => import('@/views/MediaLibraryView.vue'), meta: { title: 'Media' } },
     { path: '/library/themes', name: 'theme-editor', component: () => import('@/views/ThemeEditorView.vue') },
-    { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
+    { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue'), meta: { title: 'Settings' } },
     { path: '/sync-conflicts', name: 'sync-conflicts', component: () => import('@/views/SyncConflictsView.vue') },
-    { path: '/reports', name: 'reports-home', component: () => import('@/views/ReportsHomeView.vue') },
+    { path: '/reports', name: 'reports-home', component: () => import('@/views/ReportsHomeView.vue'), meta: { title: 'Reports' } },
     { path: '/reports/ccli', name: 'ccli-report', component: () => import('@/views/CcliReportView.vue') },
     { path: '/reports/planning', name: 'planning-report', component: () => import('@/views/PlanningReportView.vue') },
     { path: '/planning-ahead', name: 'planning-ahead', component: () => import('@/views/PlanningAheadView.vue') },

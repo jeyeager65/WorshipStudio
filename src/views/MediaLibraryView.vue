@@ -75,9 +75,9 @@ async function saveEdits() {
 </script>
 
 <template>
-  <div class="media-library">
+  <v-container class="py-8" style="max-width: 1200px">
     <div class="d-flex align-center mb-4 ga-3 flex-wrap">
-      <h1 class="text-h5 font-weight-bold flex-grow-1">Media Library</h1>
+      <v-spacer />
       <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="importDialogOpen = true">Import Media</v-btn>
     </div>
 
@@ -165,13 +165,10 @@ async function saveEdits() {
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </div>
+  </v-container>
 </template>
 
 <style scoped>
-.media-library {
-  padding: 32px;
-}
 .tag-sidebar {
   width: 200px;
 }

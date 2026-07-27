@@ -1,15 +1,36 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { appDataDir } from '../helpers/appDataDir.js'
 
 describe('Sync Conflict Resolution', () => {
   it('shows a conflict, resolves it, and it stops appearing', async () => {
-    // Fabricates a real Dropbox-style "conflicted copy" file next to an existing song file —
+    // Fabricates a real Dropbox-style "conflicted copy" file next to an original song file —
     // there's no in-app way to create one (it only ever originates from the sync client
-    // itself), so this test creates its own fixture directly on disk and cleans it up after.
-    const libraryDir = path.join(process.env.APPDATA, 'dev.yeager.worshipstudio', 'Library')
+    // itself), so this test creates both the original and the conflicted copy directly on
+    // disk and cleans them up after. The isolated E2E app-data directory (see
+    // helpers/appDataDir.js) starts empty on every run, so the original can no longer be
+    // borrowed from the library the way it once could against the real profile.
+    const libraryDir = path.join(appDataDir, 'Library')
     const songsDir = path.join(libraryDir, 'songs')
-    const originalFile = fs.readdirSync(songsDir).find((f) => f.endsWith('.json') && !f.includes('('))
-    const original = JSON.parse(fs.readFileSync(path.join(songsDir, originalFile), 'utf8'))
+    fs.mkdirSync(songsDir, { recursive: true })
+
+    const originalId = 'song-e2e-sync-conflict'
+    const originalFile = `${originalId}.json`
+    const original = {
+      id: originalId,
+      title: 'E2E Sync Conflict Song',
+      author: 'Original Author',
+      collections: [],
+      tags: [],
+      blocks: [{ id: 'v1', label: 'Verse 1', text: 'E2E fixture verse.' }],
+      defaultArrangement: { sequence: ['v1'] },
+      usage: { usesPastYear: 0 },
+      updatedAt: '2026-07-25T16:00:00Z',
+      updatedByDevice: 'e2e',
+    }
+    const originalPath = path.join(songsDir, originalFile)
+    fs.writeFileSync(originalPath, JSON.stringify(original, null, 2))
+
     const conflictData = {
       ...original,
       author: 'Modified by Pastor Mac',
@@ -70,6 +91,7 @@ describe('Sync Conflict Resolution', () => {
       // Resolving through the UI already deletes the conflict file on the success path —
       // this is just a safety net if an assertion fails partway through.
       if (fs.existsSync(conflictPath)) fs.unlinkSync(conflictPath)
+      if (fs.existsSync(originalPath)) fs.unlinkSync(originalPath)
     }
   })
 })

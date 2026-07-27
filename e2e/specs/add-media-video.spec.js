@@ -1,12 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { appDataDir } from '../helpers/appDataDir.js'
 
 describe('Add-to-Service Media/Video tabs', () => {
   it('adds an existing Media Library image and video to a service', async () => {
     // Self-contained fixtures, same approach as sync-conflicts.spec.js / planning-report.spec.js
     // — real Import Media only works through a native file picker WebdriverIO can't drive
     // (see media-library.spec.js), so these are written directly to disk instead.
-    const mediaItemsDir = path.join(process.env.APPDATA, 'dev.yeager.worshipstudio', 'Library', 'media-items')
+    const mediaItemsDir = path.join(appDataDir, 'Library', 'media-items')
     fs.mkdirSync(mediaItemsDir, { recursive: true })
 
     const imageId = 'media-e2e-add-image'

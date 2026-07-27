@@ -1,0 +1,6 @@
+/* Vuetify's whole typography/spacing scale is rem-based, so bumping the root size here scales
+   the entire app proportionally (headings, body text, button labels, rem-based spacing
+   utilities) rather than needing to override font-size in dozens of individual places. */
+html {
+  font-size: 1.2rem;
+}

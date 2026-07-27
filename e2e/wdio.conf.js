@@ -1,5 +1,7 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { appDataDir } from './helpers/appDataDir.js'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 
@@ -14,6 +16,39 @@ export const config = {
   specs: ['./specs/**/*.spec.js'],
   maxInstances: 1,
   maxInstancesPerCapability: 1,
+
+  // Wipes the isolated E2E app-data directory before every run — see helpers/appDataDir.js
+  // for why this is safe (never the real dev profile) and why it matters (guarantees every
+  // spec starts from the exact same clean slate, rather than accumulating leftover services/
+  // volunteers/themes from whatever ran before it).
+  //
+  // Pre-seeding hasCompletedSetup: true here (rather than leaving it for App.vue's own
+  // first-run default) matters more than it looks: every spec's "skip setup if it's showing"
+  // guard is a point-in-time isExisting() check, not a wait, so it only works if the wizard's
+  // own redirect either has already happened or never happens at all — a real race either
+  // way. Against the old shared, long-since-onboarded dev profile that redirect never fired,
+  // so the race never mattered; against a genuinely fresh directory it fires on every single
+  // spec, not just the ones that mean to test it. setup-wizard.spec.js reaches the wizard via
+  // Settings' "Run First-Time Setup Wizard" regardless of this flag, so it's unaffected.
+  onPrepare: function () {
+    fs.rmSync(appDataDir, { recursive: true, force: true })
+    fs.mkdirSync(appDataDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(appDataDir, 'machine-settings.json'),
+      JSON.stringify(
+        {
+          thisComputerName: 'E2E Test Machine',
+          darkMode: true,
+          libraryPath: path.join(appDataDir, 'Library'),
+          hasCompletedSetup: true,
+          localMediaPath: path.join(appDataDir, 'LocalMedia'),
+          displayRoles: {},
+        },
+        null,
+        2,
+      ),
+    )
+  },
 
   services: [
     [

@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { appDataDir } from '../helpers/appDataDir.js'
 
 const PORT = 47823
 
@@ -9,7 +10,7 @@ describe('Remote Control confidence-monitor mirror', () => {
     // the WebdriverIO browser session at all, so there's no multi-window risk here (unlike
     // driving the presentation window). The app just needs to already be running, which it is
     // for the duration of this spec file.
-    const remoteDevicesPath = path.join(process.env.APPDATA, 'dev.yeager.worshipstudio', 'remote-devices.json')
+    const remoteDevicesPath = path.join(appDataDir, 'remote-devices.json')
     const token = 'e2e-mirror-token'
     fs.writeFileSync(
       remoteDevicesPath,
@@ -29,15 +30,45 @@ describe('Remote Control confidence-monitor mirror', () => {
       ),
     )
 
-    const libraryDir = path.join(process.env.APPDATA, 'dev.yeager.worshipstudio', 'Library')
+    // Self-contained media fixture — the isolated E2E app-data directory (see
+    // helpers/appDataDir.js) starts empty on every run, so this can no longer borrow whatever
+    // media file happened to already be in the library the way it once did against the real
+    // profile. A real (if tiny) 1x1 PNG, not just arbitrary bytes, since the point of this
+    // test is verifying an actual byte-for-byte file transfer over HTTP.
+    const libraryDir = path.join(appDataDir, 'Library')
     const mediaDir = path.join(libraryDir, 'media')
-    const mediaFilename = fs.readdirSync(mediaDir)[0]
     const mediaItemsDir = path.join(libraryDir, 'media-items')
-    const mediaItemFile = fs.readdirSync(mediaItemsDir).find((f) => {
-      const item = JSON.parse(fs.readFileSync(path.join(mediaItemsDir, f), 'utf8'))
-      return item.filename === mediaFilename
-    })
-    const mediaId = JSON.parse(fs.readFileSync(path.join(mediaItemsDir, mediaItemFile), 'utf8')).id
+    fs.mkdirSync(mediaDir, { recursive: true })
+    fs.mkdirSync(mediaItemsDir, { recursive: true })
+
+    const mediaFilename = 'e2e-mirror-fixture.png'
+    const mediaFilePath = path.join(mediaDir, mediaFilename)
+    const onePixelPng = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+      'base64',
+    )
+    fs.writeFileSync(mediaFilePath, onePixelPng)
+
+    const mediaId = 'media-e2e-mirror-fixture'
+    const mediaItemPath = path.join(mediaItemsDir, `${mediaId}.json`)
+    fs.writeFileSync(
+      mediaItemPath,
+      JSON.stringify(
+        {
+          id: mediaId,
+          filename: mediaFilename,
+          kind: 'image',
+          tags: [],
+          location: 'synced',
+          contentHash: 'e2e-fixture',
+          usage: { usesPastYear: 0 },
+          updatedAt: '2026-07-26T00:00:00Z',
+          updatedByDevice: 'e2e',
+        },
+        null,
+        2,
+      ),
+    )
 
     try {
       // Unauthenticated request — no cookie at all.
@@ -77,6 +108,8 @@ describe('Remote Control confidence-monitor mirror', () => {
       expect(html).toContain('renderMirror')
     } finally {
       if (fs.existsSync(remoteDevicesPath)) fs.writeFileSync(remoteDevicesPath, '[]')
+      if (fs.existsSync(mediaFilePath)) fs.unlinkSync(mediaFilePath)
+      if (fs.existsSync(mediaItemPath)) fs.unlinkSync(mediaItemPath)
     }
   })
 })
