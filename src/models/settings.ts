@@ -10,13 +10,41 @@ export interface LibrarySettings {
     primaryColor: string
     secondaryColor: string
   }
-  bibleTranslations: {
+  /**
+   * Church-chosen api.bible editions (e.g. NIV) — synced so every machine agrees on what
+   * "NIV" refers to. The api.bible *key* needed to actually resolve these lives per-machine
+   * in MachineSettings.apiBibleKey, since keys must never sync.
+   */
+  apiBibleTranslations: {
     code: string
-    source: 'api-esv' | 'api-bible' | 'local-file'
     label: string
+    bibleId: string
   }[]
   defaultTranslationCode?: string
   mediaMaxSyncedFileSizeMb: number
+  /**
+   * Scripture slides auto-fit as large as possible within this range (never below the
+   * minimum) — a passage that still doesn't fit at the minimum splits across slides at verse
+   * boundaries instead of shrinking further.
+   */
+  scriptureMinFontSizePx: number
+  scriptureMaxFontSizePx: number
+  /**
+   * Song lyric slides auto-fit as large as possible within this range, shrinking to fit the
+   * whole part (Verse, Chorus, etc.) on one slide — a part is already the atomic unit a
+   * worship leader chose, so unlike scripture it never auto-splits across slides. Unlike
+   * scripture, a line that still doesn't fit at the minimum is left as-is rather than wrapped
+   * at a word boundary (see utils/textAutoFit.ts's wrapLineAtPunctuation).
+   */
+  songMinFontSizePx: number
+  songMaxFontSizePx: number
+  /**
+   * Slide header (the reference/title above the text, e.g. "John 3:16-17") and footer (the
+   * translation/sub-label below it, e.g. "ESV") — fixed position, fixed size, unlike the
+   * auto-fit main text, so they don't move or resize as the main text shrinks/grows.
+   */
+  slideHeaderFontSizePx: number
+  slideFooterFontSizePx: number
 }
 
 /** Per-machine settings — Tauri app-data dir, never synced. */
@@ -36,4 +64,8 @@ export interface MachineSettings {
    * importing that type keeps this model layer independent of the adapters layer.
    */
   displayRoles: Record<string, string>
+  /** ESV API key (api.esv.org) — per-machine, never synced. Entered in Settings > Bible Translations. */
+  esvApiKey?: string
+  /** api.bible key (scripture.api.bible) — per-machine, never synced. Same reasoning as esvApiKey. */
+  apiBibleKey?: string
 }

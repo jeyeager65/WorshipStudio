@@ -33,6 +33,8 @@ fn default_machine_settings(app: &AppHandle) -> MachineSettings {
             .to_string_lossy()
             .to_string(),
         display_roles: std::collections::HashMap::new(),
+        esv_api_key: None,
+        api_bible_key: None,
     }
 }
 

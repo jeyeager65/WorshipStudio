@@ -13,6 +13,7 @@ import { useExternalAppsStore } from '@/stores/externalApps'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useUndoStore } from '@/stores/undo'
+import { useSettingsStore } from '@/stores/settings'
 import { flattenService, type FlatSlide } from '@/utils/flattenService'
 import { colorForBlockLabel, colorForItemType } from '@/utils/contentColors'
 import { formatCountdown } from '@/utils/countdown'
@@ -29,6 +30,7 @@ const songsStore = useSongsStore()
 const slidesStore = useSlidesStore()
 const mediaStore = useMediaStore()
 const externalAppsStore = useExternalAppsStore()
+const settingsStore = useSettingsStore()
 const { isPresenting } = storeToRefs(useLiveSessionStore())
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const undoStore = useUndoStore()
@@ -145,7 +147,10 @@ onMounted(async () => {
   // never take down the wiring above it and silently break Save for every service.
   try {
     scriptureTranslations.value = await getAdapter().scripture.listTranslations()
-    if (scriptureTranslations.value.length > 0) scriptureTranslationCode.value = scriptureTranslations.value[0].code
+    const defaultCode = settingsStore.librarySettings?.defaultTranslationCode
+    const defaultAvailable = scriptureTranslations.value.some((t) => t.code === defaultCode)
+    if (defaultAvailable && defaultCode) scriptureTranslationCode.value = defaultCode
+    else if (scriptureTranslations.value.length > 0) scriptureTranslationCode.value = scriptureTranslations.value[0].code
     await Promise.all((service.value?.items ?? []).map(resolveScriptureItem))
   } catch (e) {
     console.error('Failed to load scripture translations/passages:', e)
@@ -186,9 +191,25 @@ const songsById = computed(() => new Map(songsStore.songs.map((song) => [song.id
 const slidesById = computed(() => new Map(slidesStore.slides.map((item) => [item.id, item])))
 const mediaById = computed(() => new Map(mediaStore.items.map((item) => [item.id, item])))
 const externalAppProfilesById = computed(() => new Map(externalAppsStore.profiles.map((profile) => [profile.id, profile])))
+const scriptureFontRange = computed(() => ({
+  minPx: settingsStore.librarySettings?.scriptureMinFontSizePx ?? 28,
+  maxPx: settingsStore.librarySettings?.scriptureMaxFontSizePx ?? 72,
+}))
+const songFontRange = computed(() => ({
+  minPx: settingsStore.librarySettings?.songMinFontSizePx ?? 16,
+  maxPx: settingsStore.librarySettings?.songMaxFontSizePx ?? 72,
+}))
 const flatSlides = computed<FlatSlide[]>(() =>
   service.value
-    ? flattenService(service.value, songsById.value, scriptureById, slidesById.value, externalAppProfilesById.value)
+    ? flattenService(
+        service.value,
+        songsById.value,
+        scriptureById,
+        slidesById.value,
+        externalAppProfilesById.value,
+        scriptureFontRange.value,
+        songFontRange.value,
+      )
     : [],
 )
 
@@ -225,7 +246,7 @@ const selectedScripturePassage = computed<ScripturePassage | undefined>(() => {
   return item?.type === 'scripture' ? scriptureById.get(item.id) : undefined
 })
 const selectedScriptureText = computed(() =>
-  selectedScripturePassage.value ? selectedScripturePassage.value.verses.map((v) => `${v.number} ${v.text}`).join('\n') : '',
+  selectedScripturePassage.value ? selectedScripturePassage.value.verses.map((v) => `${v.number} ${v.text}`).join(' ') : '',
 )
 const selectedScriptureError = computed<string | undefined>(() => {
   const item = selectedItem.value
@@ -399,6 +420,10 @@ const liveContentPayload = computed<LiveSlideContent | undefined>(() => {
         ? { url: mediaUrl, mediaId: slide.mediaId, kind: slide.mediaKind, fit: slide.mediaFit }
         : undefined,
     countdown: slide.countdown,
+    fontRange: slide.fontRange,
+    lineWrap: slide.lineWrap,
+    headerFontSizePx: settingsStore.librarySettings?.slideHeaderFontSizePx,
+    footerFontSizePx: settingsStore.librarySettings?.slideFooterFontSizePx,
   }
 })
 watch(liveContentPayload, (content) => {

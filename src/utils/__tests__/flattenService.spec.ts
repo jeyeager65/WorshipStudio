@@ -51,6 +51,33 @@ describe('flattenService', () => {
     expect(new Set(flat.map((s) => s.key)).size).toBe(3)
   })
 
+  it('applies the configured song font range to every block', () => {
+    const song = makeSong()
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: ['v1', 'c'] } }],
+    })
+    const flat = flattenService(service, new Map([['song-1', song]]), new Map(), new Map(), new Map(), undefined, {
+      minPx: 20,
+      maxPx: 60,
+    })
+    expect(flat.every((s) => s.fontRange?.maxPx === 60 && s.fontRange?.minPx === 20)).toBe(true)
+    // Song lines shouldn't wrap unless necessary, and should never break at a plain word
+    // boundary when they do — only at a comma/semicolon (see PresentationView's use of lineWrap).
+    expect(flat.every((s) => s.lineWrap === true)).toBe(true)
+  })
+
+  it('never splits a song block across multiple slides, however long its text', () => {
+    const longSong = makeSong({
+      blocks: [{ id: 'v1', label: 'Verse 1', text: Array.from({ length: 50 }, (_, i) => `Line ${i + 1} of the song.`).join('\n') }],
+    })
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: ['v1'] } }],
+    })
+    const flat = flattenService(service, new Map([['song-1', longSong]]))
+    expect(flat).toHaveLength(1)
+    expect(flat[0].text).toBe(longSong.blocks[0].text)
+  })
+
   it('produces a placeholder for a song item with an empty arrangement', () => {
     const song = makeSong()
     const service = makeService({
@@ -230,7 +257,43 @@ describe('flattenService — scripture', () => {
     expect(flat).toHaveLength(1)
     expect(flat[0].itemLabel).toBe('John 3:16-17')
     expect(flat[0].subLabel).toBe('KJV')
-    expect(flat[0].text).toBe('16 For God so loved the world...\n17 For God sent not his Son...')
+    expect(flat[0].text).toBe('16 For God so loved the world... 17 For God sent not his Son...')
+  })
+
+  it('applies the configured font range to a resolved full-text scripture slide', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'scripture', reference: 'John 3:16-17', translation: 'KJV', displayMode: 'full' }],
+    })
+    const flat = flattenService(service, new Map(), new Map([['item-1', makePassage()]]), new Map(), new Map(), {
+      minPx: 30,
+      maxPx: 60,
+    })
+    expect(flat[0].fontRange).toEqual({ minPx: 30, maxPx: 60 })
+  })
+
+  it('splits a passage that does not fit at the minimum size into multiple slides at verse boundaries', () => {
+    const longVerses = Array.from({ length: 30 }, (_, i) => ({
+      number: i + 1,
+      text: 'This is a reasonably long verse of scripture text meant to force pagination across several slides.',
+    }))
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'scripture', reference: 'Psalm 119:1-30', translation: 'KJV', displayMode: 'full' }],
+    })
+    const flat = flattenService(
+      service,
+      new Map(),
+      new Map([['item-1', makePassage({ verses: longVerses })]]),
+      new Map(),
+      new Map(),
+      { minPx: 28, maxPx: 72 },
+    )
+    expect(flat.length).toBeGreaterThan(1)
+    // Every slide's key is distinct, sub-labels show progress, and every verse number appears
+    // exactly once across the whole run (no verse dropped, none duplicated, none split).
+    expect(new Set(flat.map((s) => s.key)).size).toBe(flat.length)
+    expect(flat.every((s) => /\(\d+\/\d+\)$/.test(s.subLabel))).toBe(true)
+    const allNumbers = flat.flatMap((s) => [...s.text.matchAll(/(?:^|\s)(\d+)\s/g)].map((m) => Number(m[1])))
+    expect(allNumbers).toEqual(longVerses.map((v) => v.number))
   })
 
   it('shows no verse text in reference-only mode, even if a passage happens to be resolved', () => {

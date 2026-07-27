@@ -3,6 +3,16 @@ import type { Song } from '@/models/song'
 import type { SlideLibraryItem } from '@/models/library'
 import type { ScripturePassage, ExternalAppProfile } from '@/adapters/types'
 import { getWayfindingBooks, parseReference, type WayfindingBook } from '@/utils/scriptureReference'
+import { paginateTextUnits, type FontSizeRange } from '@/utils/textAutoFit'
+
+// Matches LibrarySettings' scriptureMin/MaxFontSizePx defaults (see models/settings.ts) — used
+// whenever a caller doesn't pass its own configured range (e.g. existing tests).
+const DEFAULT_SCRIPTURE_FONT_RANGE: FontSizeRange = { minPx: 28, maxPx: 72 }
+
+// Matches LibrarySettings' songMin/MaxFontSizePx defaults (see models/settings.ts) — song
+// blocks are already the atomic unit a worship leader chose (Verse 1, Chorus, etc.), so unlike
+// scripture there's no auto-split across slides, just shrink-to-fit within this range.
+const DEFAULT_SONG_FONT_RANGE: FontSizeRange = { minPx: 16, maxPx: 72 }
 
 export interface FlatSlide {
   /** Unique across the whole flattened sequence. */
@@ -24,6 +34,15 @@ export interface FlatSlide {
   externalApp?: { profileId: string; file?: string }
   /** Countdown items only (spec section 1) — the live-ticking clock's target and optional custom text. */
   countdown?: { targetTime: string; text?: string }
+  /** Full-text scripture and song slides only — the configured auto-fit range (spec section 1) PresentationView fits this slide's text within (see DEFAULT_SCRIPTURE_FONT_RANGE/DEFAULT_SONG_FONT_RANGE). */
+  fontRange?: FontSizeRange
+  /**
+   * Song blocks only — tells PresentationView to treat each `\n`-separated line in `text` as
+   * its own authored unit that shouldn't wrap unless it truly doesn't fit, preferring a break
+   * at a comma/semicolon over an arbitrary word boundary when it does. Scripture's `text` is
+   * one flowing paragraph instead (see the scripture branch below), which wraps normally.
+   */
+  lineWrap?: boolean
 }
 
 function labelForOtherType(item: ServiceItem): string {
@@ -43,19 +62,26 @@ function labelForOtherType(item: ServiceItem): string {
 
 /**
  * Walks a service's items into one continuous run of slides — the flattened Next/Prev
- * sequence (spec section 3). Songs and text-slides expand to one flat entry per block;
- * scripture becomes one slide per resolved passage (see scriptureById below) — real
- * per-verse auto-fit splitting (spec section 1) is still a later slice, so for now a
- * passage that resolved fits on a single slide regardless of length; slide-ref items expand
- * to one flat entry per slide in the referenced library item (see slidesById below), same
- * shape as text-slide; media/video items carry a `mediaId` for the caller to resolve to a
- * real displayable URL (this function stays synchronous, so it can't do that Rust round trip
- * itself); external-app items carry their profileId/file for the caller to launch/focus when
- * live (see ServiceWorkspaceView); countdown items carry their target time/text for the caller
- * to render a live-ticking clock from (computed client-side, not baked in here, since "now"
- * obviously isn't a pure function of the service data); every other item type (audio, qr) is
- * still a work-in-progress content type, so each becomes a single placeholder slide for now
- * rather than being left out of the sequence entirely.
+ * sequence (spec section 3). Songs expand to one flat entry per block (a block is already the
+ * atomic unit a worship leader chose — Verse 1, Chorus, etc. — so unlike scripture it never
+ * auto-splits; each block's text just shrinks to fit within `songFontRange`, however small
+ * that takes); text-slides expand to one flat entry per slide the same way. Scripture becomes
+ * one or more slides per resolved passage (see scriptureById below), pre-split at verse
+ * boundaries via paginateTextUnits so a passage too long for `scriptureFontRange` at its
+ * minimum size becomes a run of consecutive flat slides rather than one slide with overflowing
+ * text. Either way, actual font size within the given range is decided live, per render, by
+ * PresentationView (which alone knows the real container's pixel size); this function only
+ * decides *how many slides* and *which content goes on each*, since that split has to be
+ * stable for Next/Prev regardless of which display ends up presenting it. Slide-ref
+ * items expand to one flat entry per slide in the referenced library item (see slidesById
+ * below), same shape as text-slide; media/video items carry a `mediaId` for the caller to
+ * resolve to a real displayable URL (this function stays synchronous, so it can't do that
+ * Rust round trip itself); external-app items carry their profileId/file for the caller to
+ * launch/focus when live (see ServiceWorkspaceView); countdown items carry their target
+ * time/text for the caller to render a live-ticking clock from (computed client-side, not
+ * baked in here, since "now" obviously isn't a pure function of the service data); every
+ * other item type (audio, qr) is still a work-in-progress content type, so each becomes a
+ * single placeholder slide for now rather than being left out of the sequence entirely.
  */
 export function flattenService(
   service: Service,
@@ -63,6 +89,8 @@ export function flattenService(
   scriptureById: Map<string, ScripturePassage> = new Map(),
   slidesById: Map<string, SlideLibraryItem> = new Map(),
   externalAppProfilesById: Map<string, ExternalAppProfile> = new Map(),
+  scriptureFontRange: FontSizeRange = DEFAULT_SCRIPTURE_FONT_RANGE,
+  songFontRange: FontSizeRange = DEFAULT_SONG_FONT_RANGE,
 ): FlatSlide[] {
   const flat: FlatSlide[] = []
 
@@ -72,7 +100,16 @@ export function flattenService(
       const itemLabel = song?.title ?? 'Unknown Song'
       const sequence = item.arrangement.sequence
       if (sequence.length === 0) {
-        flat.push({ key: `${item.id}:0`, itemIndex, itemId: item.id, itemLabel, subLabel: '(empty arrangement)', text: '' })
+        flat.push({
+          key: `${item.id}:0`,
+          itemIndex,
+          itemId: item.id,
+          itemLabel,
+          subLabel: '(empty arrangement)',
+          text: '',
+          fontRange: songFontRange,
+          lineWrap: true,
+        })
       } else {
         sequence.forEach((blockId, subIndex) => {
           const block = song?.blocks.find((b) => b.id === blockId)
@@ -83,6 +120,8 @@ export function flattenService(
             itemLabel,
             subLabel: block?.label ?? blockId,
             text: block?.text ?? '',
+            fontRange: songFontRange,
+            lineWrap: true,
           })
         })
       }
@@ -117,14 +156,32 @@ export function flattenService(
         })
       } else {
         const passage = scriptureById.get(item.id)
-        flat.push({
-          key: `${item.id}:0`,
-          itemIndex,
-          itemId: item.id,
-          itemLabel: passage?.reference ?? item.reference,
-          subLabel: passage?.translation ?? item.translation,
-          text: passage ? passage.verses.map((v) => `${v.number} ${v.text}`).join('\n') : '',
-        })
+        if (!passage) {
+          flat.push({
+            key: `${item.id}:0`,
+            itemIndex,
+            itemId: item.id,
+            itemLabel: item.reference,
+            subLabel: item.translation,
+            text: '',
+          })
+        } else {
+          // Verses flow as one paragraph (space-joined), not one per line — pagination splits
+          // whole verses onto separate slides instead when they don't all fit.
+          const verseUnits = passage.verses.map((v) => `${v.number} ${v.text}`)
+          const pages = paginateTextUnits(verseUnits, scriptureFontRange, ' ')
+          pages.forEach((pageUnits, subIndex) => {
+            flat.push({
+              key: `${item.id}:${subIndex}`,
+              itemIndex,
+              itemId: item.id,
+              itemLabel: passage.reference,
+              subLabel: pages.length > 1 ? `${passage.translation} (${subIndex + 1}/${pages.length})` : passage.translation,
+              text: pageUnits.join(' '),
+              fontRange: scriptureFontRange,
+            })
+          })
+        }
       }
     } else if (item.type === 'slide-ref') {
       const slideItem = slidesById.get(item.slideId)

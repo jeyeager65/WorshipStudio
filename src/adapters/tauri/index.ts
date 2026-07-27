@@ -7,6 +7,7 @@ import type {
   StudioAdapter,
   ScripturePassage,
   ScriptureTranslation,
+  ApiBibleCatalogEntry,
   DisplayInfo,
   DisplayRole,
   LiveSlideContent,
@@ -266,6 +267,7 @@ export function createTauriAdapter(): StudioAdapter {
         invoke<ScripturePassage>('resolve_scripture', { reference, translationCode }),
       getBookList: () => invoke<string[]>('get_scripture_book_list'),
       listTranslations: () => invoke<ScriptureTranslation[]>('list_scripture_translations'),
+      listApiBibleCatalog: (apiKey) => invoke<ApiBibleCatalogEntry[]>('list_api_bible_catalog', { apiKey }),
     },
     live: {
       startPresenting: () => openPresentationWindow(),

@@ -337,17 +337,10 @@ async function skipSetup() {
             <div>
               <div class="font-weight-bold">Default Bible Translation</div>
               <div class="text-caption text-medium-emphasis">
-                Used unless switched live during a service
+                King James Version is bundled and always available. Add ESV or NIV later in
+                Settings → Bible Translations.
               </div>
             </div>
-            <v-select
-              v-model="store.librarySettings.defaultTranslationCode"
-              :items="store.librarySettings.bibleTranslations.map((t) => t.code)"
-              variant="outlined"
-              density="compact"
-              hide-details
-              style="width: 160px"
-            />
           </div>
 
           <div class="d-flex align-center justify-space-between py-3 pref-row">

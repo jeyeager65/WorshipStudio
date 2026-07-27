@@ -347,12 +347,17 @@ pub struct Branding {
     pub secondary_color: String,
 }
 
+/// A church-chosen api.bible edition (e.g. NIV) — synced via LibrarySettings so every machine
+/// agrees on what "NIV" refers to, even though the api.bible *key* needed to actually resolve
+/// it lives per-machine in MachineSettings (see MachineSettings::api_bible_key).
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct BibleTranslationConfig {
+pub struct ApiBibleTranslation {
+    /// Short code used in the picker and stored on ServiceItem (e.g. "NIV") — distinct from
+    /// api.bible's own `bibleId`, which is an opaque catalog id (e.g. "78a9f6124f344018-01").
     pub code: String,
-    pub source: String,
     pub label: String,
+    pub bible_id: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -368,10 +373,83 @@ pub struct LibrarySettings {
     pub volunteer_roles: Vec<String>,
     pub branding: Branding,
     #[serde(default)]
-    pub bible_translations: Vec<BibleTranslationConfig>,
+    pub api_bible_translations: Vec<ApiBibleTranslation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_translation_code: Option<String>,
     pub media_max_synced_file_size_mb: u32,
+    /// Scripture slides auto-fit as large as possible within this range (never below the
+    /// minimum — a passage that still doesn't fit at minimum size splits across slides at
+    /// verse boundaries instead of shrinking further). Defaults match the size range the
+    /// static CSS clamp used before this was configurable.
+    #[serde(default = "default_scripture_min_font_size_px")]
+    pub scripture_min_font_size_px: u32,
+    #[serde(default = "default_scripture_max_font_size_px")]
+    pub scripture_max_font_size_px: u32,
+    /// Song lyric slides auto-fit as large as possible within this range, shrinking to fit
+    /// the whole block on one slide (a block is already the atomic unit a worship leader
+    /// chose, so unlike scripture it never auto-splits across slides). Unlike scripture, a
+    /// line that still doesn't fit at the minimum size is left as-is rather than wrapped at a
+    /// word boundary — see utils/textAutoFit.ts's wrapLineAtPunctuation on the frontend.
+    #[serde(default = "default_song_min_font_size_px")]
+    pub song_min_font_size_px: u32,
+    #[serde(default = "default_song_max_font_size_px")]
+    pub song_max_font_size_px: u32,
+    /// Slide header (the reference/title above the text, e.g. "John 3:16-17") and footer (the
+    /// translation/sub-label below it, e.g. "ESV") — fixed position, fixed size, unlike the
+    /// auto-fit main text, so they don't move or resize as the main text shrinks/grows.
+    #[serde(default = "default_slide_header_font_size_px")]
+    pub slide_header_font_size_px: u32,
+    #[serde(default = "default_slide_footer_font_size_px")]
+    pub slide_footer_font_size_px: u32,
+}
+
+fn default_scripture_min_font_size_px() -> u32 {
+    28
+}
+
+fn default_scripture_max_font_size_px() -> u32 {
+    72
+}
+
+fn default_song_min_font_size_px() -> u32 {
+    16
+}
+
+fn default_song_max_font_size_px() -> u32 {
+    72
+}
+
+fn default_slide_header_font_size_px() -> u32 {
+    24
+}
+
+fn default_slide_footer_font_size_px() -> u32 {
+    24
+}
+
+/// api.bible sends an explicit JSON `null` for some entries' `description` (not merely an
+/// absent field), which `#[serde(default)]` alone doesn't cover for a plain `String` — so this
+/// treats both "missing" and "null" as empty.
+fn empty_string_if_null<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<String>::deserialize(deserializer)?.unwrap_or_default())
+}
+
+/// One entry from api.bible's `/v1/bibles` catalog — surfaced to Settings so a church picks a
+/// real edition (e.g. NIV) rather than typing an arbitrary, unvalidated code.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiBibleCatalogEntry {
+    pub id: String,
+    pub name: String,
+    pub abbreviation: String,
+    /// api.bible often lists multiple distinct editions (different canons/licensors) sharing
+    /// the exact same name and abbreviation (e.g. four "World English Bible" entries —
+    /// Protestant/Catholic/Orthodox/Ecumenical) — this is the only field that tells them apart.
+    #[serde(default, deserialize_with = "empty_string_if_null")]
+    pub description: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -400,6 +478,15 @@ pub struct MachineSettings {
     /// "not-used" in the UI.
     #[serde(default)]
     pub display_roles: std::collections::HashMap<String, String>,
+    /// ESV API key (api.esv.org) — per-machine, never synced, entered in Settings > Bible
+    /// Translations. `None`/missing means ESV isn't configured on this machine; falls back to
+    /// the ESV_API_KEY env var for local-dev convenience (see commands::scripture).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub esv_api_key: Option<String>,
+    /// api.bible key (scripture.api.bible) — per-machine, never synced, same reasoning as
+    /// esv_api_key above.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_bible_key: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -499,4 +586,34 @@ pub struct LiveSlideContent {
     pub media: Option<LiveMediaRef>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub countdown: Option<LiveCountdownRef>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A library-settings.json written before scriptureMin/MaxFontSizePx existed must still
+    /// load, defaulting to the same range the old static CSS clamp used — this is a real,
+    /// already-in-production file shape (see the actual file on disk during development),
+    /// not a hypothetical.
+    #[test]
+    fn library_settings_defaults_scripture_font_range_when_missing_from_disk() {
+        let json = r##"{
+            "serviceTypes": ["Sunday Morning Worship"],
+            "preachers": [],
+            "collections": [],
+            "volunteerRoles": [],
+            "branding": { "churchName": "", "primaryColor": "#1F3A5F", "secondaryColor": "#C9A227" },
+            "apiBibleTranslations": [],
+            "defaultTranslationCode": "KJV",
+            "mediaMaxSyncedFileSizeMb": 50
+        }"##;
+        let settings: LibrarySettings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.scripture_min_font_size_px, 28);
+        assert_eq!(settings.scripture_max_font_size_px, 72);
+        assert_eq!(settings.song_min_font_size_px, 16);
+        assert_eq!(settings.song_max_font_size_px, 72);
+        assert_eq!(settings.slide_header_font_size_px, 24);
+        assert_eq!(settings.slide_footer_font_size_px, 24);
+    }
 }

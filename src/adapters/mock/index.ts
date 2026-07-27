@@ -217,6 +217,10 @@ export function createMockAdapter(): StudioAdapter {
       },
       getBookList: async () => getBookNames(),
       listTranslations: async () => availableTranslations,
+      // This mock powers the publicly-hosted static demo, which must never embed a real API
+      // key client-side (see scriptureFixtures.ts) — so there's no real api.bible catalog to
+      // return here.
+      listApiBibleCatalog: async () => [],
     },
     live: {
       startPresenting: async () => {

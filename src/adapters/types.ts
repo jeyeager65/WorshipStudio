@@ -125,12 +125,25 @@ export interface ScriptureTranslation {
   name: string
 }
 
+/** One edition from api.bible's own catalog (GET /v1/bibles) — surfaced so Settings can offer a
+ *  real picker instead of free-text entry of an unvalidated code. */
+export interface ApiBibleCatalogEntry {
+  id: string
+  name: string
+  abbreviation: string
+  /** Distinguishes entries that otherwise share the same name/abbreviation (different canons/licensors). */
+  description: string
+}
+
 export interface ScripturePort {
   resolve(reference: string, translationCode: string): Promise<ScripturePassage>
   /** Book/chapter/verse-count reference table — used for validation and reference-only wayfinding, no API call. */
   getBookList(): Promise<string[]>
   /** Translations actually available to resolve against (configured API key or imported file) — spec section 2. */
   listTranslations(): Promise<ScriptureTranslation[]>
+  /** api.bible's catalog of English editions. `apiKey` lets Settings browse with an unsaved
+   *  draft key before it's persisted to machine-settings.json; omit to use the saved one. */
+  listApiBibleCatalog(apiKey?: string): Promise<ApiBibleCatalogEntry[]>
 }
 
 export type DisplayRole = 'operator' | 'audience' | 'not-used'
@@ -168,6 +181,13 @@ export interface LiveSlideContent {
   media?: LiveMediaRef
   /** Countdown items only (spec section 1) — the ticking clock's target and optional custom text. */
   countdown?: { targetTime: string; text?: string }
+  /** Full-text scripture and song slides only — auto-fit `text` within this range (spec section 1) rather than the static size used for other slide types. */
+  fontRange?: { minPx: number; maxPx: number }
+  /** Song slides only — treat each `\n`-separated line in `text` as its own unit that shouldn't wrap unless necessary, preferring a comma/semicolon break over an arbitrary word boundary. */
+  lineWrap?: boolean
+  /** Song/scripture/text-slide items only — fixed (not auto-fit) size for itemLabel/subLabel, shown as a pinned header/footer rather than above the main text. */
+  headerFontSizePx?: number
+  footerFontSizePx?: number
 }
 
 export interface LivePresentationPort {

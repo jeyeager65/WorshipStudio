@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::models::{
-    BibleBookRef, ScripturePassage, ScripturePassageVerse, ScriptureReference, ScriptureTranslation,
+    ApiBibleCatalogEntry, BibleBookRef, ScripturePassage, ScripturePassageVerse, ScriptureReference,
 };
 
 /// Book/chapter/verse-count reference table — same data as src/data/bibleBooks.json on the
@@ -236,10 +236,39 @@ pub fn resolve(reference_text: &str, translation_code: &str) -> Result<Scripture
     })
 }
 
-/// Matches a leading "[16] " verse-number marker in ESV API text (include-verse-numbers=true)
-/// — everything up to the next marker (or end of string) is that verse's text.
-static ESV_VERSE_MARKER: LazyLock<Regex> =
+/// Matches a leading "[16] " verse-number marker — the format both the ESV API
+/// (include-verse-numbers=true) and api.bible (content-type=text) use for their flat passage
+/// text, so both `resolve_esv` and `resolve_api_bible` below share the same parser.
+static VERSE_MARKER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\[(\d+)\]\s*").expect("verse marker pattern must compile"));
+
+/// Splits a flat "[16] text [17] text..." response on each verse-number marker, pairing it
+/// with the text run up to the next marker (or end of string).
+fn parse_bracketed_verses(text: &str) -> Vec<ScripturePassageVerse> {
+    let mut verses = Vec::new();
+    let mut last_end = 0usize;
+    let mut pending_number: Option<u32> = None;
+    for m in VERSE_MARKER.captures_iter(text) {
+        let whole = m.get(0).expect("group 0 always matches");
+        if let Some(number) = pending_number {
+            let segment = text[last_end..whole.start()].trim();
+            verses.push(ScripturePassageVerse {
+                number,
+                text: segment.to_string(),
+            });
+        }
+        pending_number = m.get(1).and_then(|n| n.as_str().parse().ok());
+        last_end = whole.end();
+    }
+    if let Some(number) = pending_number {
+        let segment = text[last_end..].trim();
+        verses.push(ScripturePassageVerse {
+            number,
+            text: segment.to_string(),
+        });
+    }
+    verses
+}
 
 #[derive(serde::Deserialize)]
 struct EsvPassageResponse {
@@ -286,31 +315,7 @@ pub async fn resolve_esv(reference_text: &str, api_key: &str) -> Result<Scriptur
         .first()
         .ok_or_else(|| format!("The ESV API returned no text for {canonical_reference}."))?;
 
-    // Splits the flat "[16] text [17] text..." response on each verse-number marker, pairing
-    // it with the text run up to the next marker (or end of string).
-    let mut verses = Vec::new();
-    let mut last_end = 0usize;
-    let mut pending_number: Option<u32> = None;
-    for m in ESV_VERSE_MARKER.captures_iter(text) {
-        let whole = m.get(0).expect("group 0 always matches");
-        if let Some(number) = pending_number {
-            let segment = text[last_end..whole.start()].trim();
-            verses.push(ScripturePassageVerse {
-                number,
-                text: segment.to_string(),
-            });
-        }
-        pending_number = m.get(1).and_then(|n| n.as_str().parse().ok());
-        last_end = whole.end();
-    }
-    if let Some(number) = pending_number {
-        let segment = text[last_end..].trim();
-        verses.push(ScripturePassageVerse {
-            number,
-            text: segment.to_string(),
-        });
-    }
-
+    let verses = parse_bracketed_verses(text);
     if verses.is_empty() {
         return Err(format!(
             "The ESV API returned no verse text for {canonical_reference}."
@@ -328,18 +333,205 @@ pub async fn resolve_esv(reference_text: &str, api_key: &str) -> Result<Scriptur
     })
 }
 
-pub fn list_translations(esv_api_key_configured: bool) -> Vec<ScriptureTranslation> {
-    let mut translations = vec![ScriptureTranslation {
-        code: "KJV".to_string(),
-        name: "King James Version".to_string(),
-    }];
-    if esv_api_key_configured {
-        translations.push(ScriptureTranslation {
-            code: "ESV".to_string(),
-            name: "English Standard Version".to_string(),
-        });
+/// Maps the app's canonical book name (see BIBLE_BOOKS/find_book) to its OSIS abbreviation —
+/// the code api.bible's passage-lookup endpoint expects (e.g. "JHN" for John, "1CO" for 1
+/// Corinthians). These are the standard, stable OSIS codes; the trickiest/most ambiguous ones
+/// (Psalm, Revelation, Song of Solomon, 1 Corinthians) were verified directly against the live
+/// API rather than assumed.
+fn osis_book_code(book_name: &str) -> Option<&'static str> {
+    Some(match book_name {
+        "Genesis" => "GEN",
+        "Exodus" => "EXO",
+        "Leviticus" => "LEV",
+        "Numbers" => "NUM",
+        "Deuteronomy" => "DEU",
+        "Joshua" => "JOS",
+        "Judges" => "JDG",
+        "Ruth" => "RUT",
+        "1 Samuel" => "1SA",
+        "2 Samuel" => "2SA",
+        "1 Kings" => "1KI",
+        "2 Kings" => "2KI",
+        "1 Chronicles" => "1CH",
+        "2 Chronicles" => "2CH",
+        "Ezra" => "EZR",
+        "Nehemiah" => "NEH",
+        "Esther" => "EST",
+        "Job" => "JOB",
+        "Psalm" => "PSA",
+        "Proverbs" => "PRO",
+        "Ecclesiastes" => "ECC",
+        "Song of Solomon" => "SNG",
+        "Isaiah" => "ISA",
+        "Jeremiah" => "JER",
+        "Lamentations" => "LAM",
+        "Ezekiel" => "EZK",
+        "Daniel" => "DAN",
+        "Hosea" => "HOS",
+        "Joel" => "JOL",
+        "Amos" => "AMO",
+        "Obadiah" => "OBA",
+        "Jonah" => "JON",
+        "Micah" => "MIC",
+        "Nahum" => "NAM",
+        "Habakkuk" => "HAB",
+        "Zephaniah" => "ZEP",
+        "Haggai" => "HAG",
+        "Zechariah" => "ZEC",
+        "Malachi" => "MAL",
+        "Matthew" => "MAT",
+        "Mark" => "MRK",
+        "Luke" => "LUK",
+        "John" => "JHN",
+        "Acts" => "ACT",
+        "Romans" => "ROM",
+        "1 Corinthians" => "1CO",
+        "2 Corinthians" => "2CO",
+        "Galatians" => "GAL",
+        "Ephesians" => "EPH",
+        "Philippians" => "PHP",
+        "Colossians" => "COL",
+        "1 Thessalonians" => "1TH",
+        "2 Thessalonians" => "2TH",
+        "1 Timothy" => "1TI",
+        "2 Timothy" => "2TI",
+        "Titus" => "TIT",
+        "Philemon" => "PHM",
+        "Hebrews" => "HEB",
+        "James" => "JAS",
+        "1 Peter" => "1PE",
+        "2 Peter" => "2PE",
+        "1 John" => "1JN",
+        "2 John" => "2JN",
+        "3 John" => "3JN",
+        "Jude" => "JUD",
+        "Revelation" => "REV",
+        _ => return None,
+    })
+}
+
+#[derive(serde::Deserialize)]
+struct ApiBiblePassageResponse {
+    data: ApiBiblePassageData,
+}
+
+#[derive(serde::Deserialize)]
+struct ApiBiblePassageData {
+    content: String,
+    // api.bible sends an explicit JSON `null` for some editions' copyright (not merely an
+    // absent field) — #[serde(default)] alone only covers "missing", so this treats both
+    // "missing" and "null" as empty (see ApiBibleCatalogEntry::description for the same fix).
+    #[serde(default, deserialize_with = "empty_string_if_null")]
+    copyright: String,
+}
+
+fn empty_string_if_null<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(<Option<String> as serde::Deserialize>::deserialize(deserializer)?.unwrap_or_default())
+}
+
+/// Real api.bible fetch (https://scripture.api.bible/docs) for translations beyond the
+/// bundled KJV/ESV — e.g. NIV. `bible_id` is the specific catalog id chosen in Settings (Bible
+/// Translations — see ApiBibleTranslation), since api.bible hosts many editions per language.
+/// `translation_code` is the app's own short label (e.g. "NIV") echoed back into the response,
+/// since api.bible's own abbreviation for the same edition may differ (e.g. "NIV11").
+pub async fn resolve_api_bible(
+    reference_text: &str,
+    bible_id: &str,
+    translation_code: &str,
+    api_key: &str,
+) -> Result<ScripturePassage, String> {
+    let parsed = parse_reference(reference_text)
+        .filter(is_valid_reference)
+        .ok_or_else(|| format!("\"{reference_text}\" isn't a valid scripture reference."))?;
+    let canonical_reference = format_reference(&parsed);
+
+    let book_code = osis_book_code(&parsed.book)
+        .ok_or_else(|| format!("\"{}\" isn't supported by api.bible yet.", parsed.book))?;
+    let passage_id =
+        if parsed.start_chapter == parsed.end_chapter && parsed.start_verse == parsed.end_verse {
+            format!(
+                "{book_code}.{}.{}",
+                parsed.start_chapter, parsed.start_verse
+            )
+        } else {
+            format!(
+                "{book_code}.{}.{}-{book_code}.{}.{}",
+                parsed.start_chapter, parsed.start_verse, parsed.end_chapter, parsed.end_verse
+            )
+        };
+
+    let client = reqwest::Client::new();
+    let url = format!("https://api.scripture.api.bible/v1/bibles/{bible_id}/passages/{passage_id}");
+    let response = client
+        .get(&url)
+        .header("api-key", api_key)
+        .query(&[
+            ("content-type", "text"),
+            ("include-verse-numbers", "true"),
+            ("include-verse-spans", "false"),
+        ])
+        .send()
+        .await
+        .map_err(|e| format!("Failed to reach api.bible: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!("api.bible request failed ({}).", response.status()));
     }
-    translations
+
+    let body: ApiBiblePassageResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse the api.bible response: {e}"))?;
+
+    let verses = parse_bracketed_verses(&body.data.content);
+    if verses.is_empty() {
+        return Err(format!(
+            "api.bible returned no verse text for {canonical_reference}."
+        ));
+    }
+
+    Ok(ScripturePassage {
+        reference: canonical_reference,
+        translation: translation_code.to_string(),
+        verses,
+        copyright: if body.data.copyright.trim().is_empty() {
+            None
+        } else {
+            Some(body.data.copyright)
+        },
+    })
+}
+
+#[derive(serde::Deserialize)]
+struct ApiBibleCatalogResponse {
+    data: Vec<ApiBibleCatalogEntry>,
+}
+
+/// Fetches api.bible's own catalog of English Bible editions (https://scripture.api.bible),
+/// so Settings can offer a real picker (spec: "entered in Bible Translations settings") rather
+/// than free-text entry of an unvalidated code.
+pub async fn list_api_bible_catalog(api_key: &str) -> Result<Vec<ApiBibleCatalogEntry>, String> {
+    let client = reqwest::Client::new();
+    let response = client
+        .get("https://api.scripture.api.bible/v1/bibles")
+        .header("api-key", api_key)
+        .query(&[("language", "eng")])
+        .send()
+        .await
+        .map_err(|e| format!("Failed to reach api.bible: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!("api.bible request failed ({}).", response.status()));
+    }
+
+    let body: ApiBibleCatalogResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse the api.bible catalog response: {e}"))?;
+    Ok(body.data)
 }
 
 #[cfg(test)]
@@ -549,5 +741,47 @@ mod tests {
         // No verse should retain a stray marker or leak into its neighbor.
         assert!(!passage.verses[0].text.contains('['));
         assert!(!passage.verses[1].text.contains('['));
+    }
+
+    #[test]
+    fn osis_book_code_covers_every_book_in_the_reference_table() {
+        for book in get_book_names() {
+            assert!(
+                osis_book_code(&book).is_some(),
+                "missing OSIS code for {book}"
+            );
+        }
+    }
+
+    /// Hits the real api.bible API — needs API_BIBLE_KEY set (see docs/release-process.md).
+    /// Not run by default; run explicitly with `cargo test -- --ignored` when verifying the
+    /// integration itself. The bible_id is NIV's real api.bible catalog id, confirmed live
+    /// against GET /v1/bibles?language=eng.
+    #[tokio::test]
+    #[ignore]
+    async fn resolve_api_bible_fetches_and_parses_a_real_passage() {
+        let _ = dotenvy::dotenv();
+        let _ = dotenvy::from_filename("../.env");
+        let api_key =
+            std::env::var("API_BIBLE_KEY").expect("API_BIBLE_KEY must be set to run this test");
+        let passage = resolve_api_bible("John 3:16-17", "78a9f6124f344018-01", "NIV", &api_key)
+            .await
+            .unwrap();
+        assert_eq!(passage.reference, "John 3:16-17");
+        assert_eq!(passage.translation, "NIV");
+        assert_eq!(passage.verses.len(), 2);
+        assert_eq!(passage.verses[0].number, 16);
+        assert!(!passage.verses[0].text.contains('['));
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn list_api_bible_catalog_returns_real_english_editions() {
+        let _ = dotenvy::dotenv();
+        let _ = dotenvy::from_filename("../.env");
+        let api_key =
+            std::env::var("API_BIBLE_KEY").expect("API_BIBLE_KEY must be set to run this test");
+        let catalog = list_api_bible_catalog(&api_key).await.unwrap();
+        assert!(catalog.iter().any(|b| b.id == "78a9f6124f344018-01"));
     }
 }

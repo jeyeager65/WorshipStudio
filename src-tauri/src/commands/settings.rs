@@ -28,9 +28,17 @@ fn default_library_settings() -> LibrarySettings {
             primary_color: "#1F3A5F".to_string(),
             secondary_color: "#C9A227".to_string(),
         },
-        bible_translations: vec![],
-        default_translation_code: None,
+        api_bible_translations: vec![],
+        // KJV is bundled and always resolvable with zero configuration, so it's the sensible
+        // default for a brand-new library rather than leaving the picker with nothing selected.
+        default_translation_code: Some("KJV".to_string()),
         media_max_synced_file_size_mb: 50,
+        scripture_min_font_size_px: 28,
+        scripture_max_font_size_px: 72,
+        song_min_font_size_px: 16,
+        song_max_font_size_px: 72,
+        slide_header_font_size_px: 24,
+        slide_footer_font_size_px: 24,
     }
 }
 

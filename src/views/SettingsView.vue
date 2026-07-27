@@ -17,8 +17,7 @@ import { previewExternalAppCommand } from '@/utils/externalAppPreview'
 import { buildSampleServices, sampleSongs, sampleThemes, sampleVolunteers, sampleVolunteerRoles, sampleServiceTypes } from '@/utils/sampleData'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import ManagedStringList from '@/components/settings/ManagedStringList.vue'
-import type { DisplayInfo, DisplayRole, ExternalAppProfile, RemoteDevice } from '@/adapters/types'
-import type { LibrarySettings } from '@/models/settings'
+import type { ApiBibleCatalogEntry, DisplayInfo, DisplayRole, ExternalAppProfile, RemoteDevice } from '@/adapters/types'
 
 const store = useSettingsStore()
 const router = useRouter()
@@ -44,6 +43,7 @@ async function refreshSyncStatus() {
 type Section =
   | 'general'
   | 'display'
+  | 'font-sizes'
   | 'service-types'
   | 'preachers'
   | 'collections'
@@ -58,6 +58,7 @@ const sections: { key: Section; label: string; group: string }[] = [
   { key: 'general', label: 'General', group: 'App' },
   { key: 'sync', label: 'Sync Status', group: 'App' },
   { key: 'display', label: 'Display Setup', group: 'Display' },
+  { key: 'font-sizes', label: 'Font Sizes', group: 'Display' },
   // Windows-only (Win32 window hand-off) — the port is entirely absent on the macOS/demo
   // build, unlike Display Setup which still has something to show (real monitors) in mock.
   ...(getAdapter().externalApps ? [{ key: 'external-apps' as const, label: 'External Apps', group: 'Display' }] : []),
@@ -105,9 +106,9 @@ onMounted(async () => {
   await loadRemoteDevices()
 
   // Whether the ESV copyright notice below needs to show is a question of whether ESV is
-  // actually resolvable right now (an ESV_API_KEY configured on this machine — see
-  // commands::scripture on the Rust side), not whether a matching entry happens to exist in
-  // librarySettings.bibleTranslations, which is a separate, unrelated picker-seeding list.
+  // actually resolvable right now (an esvApiKey configured on this machine — see
+  // commands::scripture on the Rust side), which can lag one Save behind the draft key typed
+  // into the field below.
   try {
     const translations = await getAdapter().scripture.listTranslations()
     esvAvailable.value = translations.some((t) => t.code === 'ESV')
@@ -412,52 +413,109 @@ async function pickLibraryFolder() {
   }
 }
 
-// Bible Translations — this list only feeds the translation *picker*; scripture.resolve()
-// itself only actually knows KJV (full text, bundled — public domain) and ESV (real API,
-// Tauri-only, needs an ESV_API_KEY configured on this machine — see docs/release-process.md),
-// not these entries generally. Wiring arbitrary local-file/other-API translations up to the
-// picker is a later slice.
-const newTranslationCode = ref('')
-const newTranslationLabel = ref('')
-const newTranslationSource = ref<LibrarySettings['bibleTranslations'][number]['source']>('local-file')
-const sourceOptions: { title: string; value: LibrarySettings['bibleTranslations'][number]['source'] }[] = [
-  { title: 'ESV API', value: 'api-esv' },
-  { title: 'api.bible', value: 'api-bible' },
-  { title: 'Local File', value: 'local-file' },
-]
-function sourceLabel(source: string): string {
-  return sourceOptions.find((o) => o.value === source)?.title ?? source
-}
-// ESV API terms require this exact notice appear somewhere equivalent to a "copyright page"
-// (https://api.esv.org/) — shown here once, rather than repeated on every passage/live
-// slide, which instead just show the compact "(ESV)" designator via the translation code.
+// Bible Translations — KJV is bundled (always resolvable, no config). ESV and api.bible
+// editions (e.g. NIV) each need their own API key, entered below and stored per-machine in
+// MachineSettings (never synced — see models/settings.ts) since a key is only meaningful on
+// the machine it's configured on. `availableTranslationEntries` below is built from exactly
+// the same rules commands::scripture::list_scripture_translations uses on the Rust side, so
+// this list can never show something as "available" that the real picker wouldn't also offer.
 const ESV_COPYRIGHT_NOTICE =
   'Scripture quotations marked (ESV) are from the ESV® Bible (The Holy Bible, English Standard Version®), copyright © 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. All rights reserved. www.esv.org'
 const esvAvailable = ref(false)
-function addTranslation() {
-  if (!librarySettings.value) return
-  const code = newTranslationCode.value.trim().toUpperCase()
-  const label = newTranslationLabel.value.trim()
-  if (!code || !label || librarySettings.value.bibleTranslations.some((t) => t.code === code)) return
-  librarySettings.value.bibleTranslations.push({ code, source: newTranslationSource.value, label })
-  if (!librarySettings.value.defaultTranslationCode) librarySettings.value.defaultTranslationCode = code
-  newTranslationCode.value = ''
-  newTranslationLabel.value = ''
-}
-function removeTranslation(index: number) {
-  if (!librarySettings.value) return
-  const [removed] = librarySettings.value.bibleTranslations.splice(index, 1)
-  if (!removed) return
-  const wasDefault = librarySettings.value.defaultTranslationCode === removed.code
-  if (wasDefault) {
-    librarySettings.value.defaultTranslationCode = librarySettings.value.bibleTranslations[0]?.code
+
+const apiBibleCatalog = ref<ApiBibleCatalogEntry[]>([])
+const loadingApiBibleCatalog = ref(false)
+const pickedCatalogEntry = ref<ApiBibleCatalogEntry>()
+let catalogLoadedForKey = ''
+
+async function loadApiBibleCatalog() {
+  const key = machineSettings.value?.apiBibleKey
+  // Pass the draft key directly rather than relying on the Rust side re-reading
+  // machine-settings.json — that file only has last Save's value, so without this the catalog
+  // would silently fail to load until Save was pressed at least once.
+  if (!key || catalogLoadedForKey === key || loadingApiBibleCatalog.value) return
+  loadingApiBibleCatalog.value = true
+  try {
+    const catalog = await getAdapter().scripture.listApiBibleCatalog(key)
+    // Defensive: api.bible's own id is the only field guaranteed unique — several editions
+    // share an identical name/abbreviation (see catalogItemTitle below), so de-dupe on id
+    // rather than trusting the response (or an overlapping re-fetch) to never repeat one.
+    const seen = new Set<string>()
+    apiBibleCatalog.value = catalog.filter((entry) => {
+      if (seen.has(entry.id)) return false
+      seen.add(entry.id)
+      return true
+    })
+    catalogLoadedForKey = key
+  } catch (e) {
+    console.error('Failed to list the api.bible catalog:', e)
+  } finally {
+    loadingApiBibleCatalog.value = false
   }
+}
+
+// Several api.bible editions share an identical name/abbreviation (e.g. four "World English
+// Bible" entries — Protestant/Catholic/Orthodox/Ecumenical) — description is the only field
+// that tells them apart, so it's appended whenever present rather than only showing the name.
+function catalogItemTitle(entry: ApiBibleCatalogEntry): string {
+  const base = `${entry.name} (${entry.abbreviation})`
+  return entry.description ? `${base} — ${entry.description}` : base
+}
+
+const addTranslationError = ref('')
+function addApiBibleTranslation() {
+  if (!librarySettings.value || !pickedCatalogEntry.value) return
+  const entry = pickedCatalogEntry.value
+  addTranslationError.value = ''
+  if (librarySettings.value.apiBibleTranslations.some((t) => t.bibleId === entry.id)) {
+    addTranslationError.value = `${entry.name} is already added.`
+    return
+  }
+  // api.bible abbreviations often carry a trailing edition year (e.g. "NIV11") — strip it for
+  // a cleaner picker/live-slide code, falling back to the raw abbreviation if that leaves nothing.
+  const code = entry.abbreviation.replace(/\d+$/, '').toUpperCase() || entry.abbreviation.toUpperCase()
+  if (librarySettings.value.apiBibleTranslations.some((t) => t.code === code)) {
+    addTranslationError.value = `"${code}" is already used by another translation — remove it first.`
+    return
+  }
+  librarySettings.value.apiBibleTranslations.push({ code, label: entry.name, bibleId: entry.id })
+  if (!librarySettings.value.defaultTranslationCode) librarySettings.value.defaultTranslationCode = code
+  pickedCatalogEntry.value = undefined
+}
+
+function removeApiBibleTranslation(code: string) {
+  if (!librarySettings.value) return
+  const index = librarySettings.value.apiBibleTranslations.findIndex((t) => t.code === code)
+  if (index === -1) return
+  const [removed] = librarySettings.value.apiBibleTranslations.splice(index, 1)
+  const wasDefault = librarySettings.value.defaultTranslationCode === code
+  if (wasDefault) librarySettings.value.defaultTranslationCode = 'KJV'
   undoStore.push(`Removed "${removed.label}"`, () => {
     if (!librarySettings.value) return
-    librarySettings.value.bibleTranslations.splice(index, 0, removed)
+    librarySettings.value.apiBibleTranslations.splice(index, 0, removed)
     if (wasDefault) librarySettings.value.defaultTranslationCode = removed.code
   })
 }
+
+interface AvailableTranslationEntry {
+  code: string
+  name: string
+  removable: boolean
+  needsKey: boolean
+}
+const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => {
+  const entries: AvailableTranslationEntry[] = [
+    { code: 'KJV', name: 'King James Version', removable: false, needsKey: false },
+  ]
+  if (esvAvailable.value) {
+    entries.push({ code: 'ESV', name: 'English Standard Version', removable: false, needsKey: false })
+  }
+  const apiBibleKeyConfigured = !!machineSettings.value?.apiBibleKey
+  for (const t of librarySettings.value?.apiBibleTranslations ?? []) {
+    entries.push({ code: t.code, name: t.label, removable: true, needsKey: !apiBibleKeyConfigured })
+  }
+  return entries
+})
 </script>
 
 <template>
@@ -890,45 +948,187 @@ function removeTranslation(index: number) {
       <template v-else-if="activeSection === 'bible-translations'">
         <h2 class="text-h6 mb-4">Bible Translations</h2>
         <p class="text-medium-emphasis text-body-2 mb-4">
-          Translations offered in the scripture picker. The default is used unless a passage is switched
-          to another translation.
+          King James Version is bundled and always available. ESV and api.bible editions (e.g. NIV) each
+          need a free API key, entered below — keys are per-machine and never sync, so this machine's key
+          must be entered here even if another machine already has one.
+        </p>
+
+        <h3 class="text-subtitle-2 mb-2">ESV — api.esv.org</h3>
+        <v-text-field
+          v-model="machineSettings.esvApiKey"
+          label="ESV API key"
+          type="password"
+          variant="outlined"
+          density="compact"
+          autocomplete="off"
+          hint="Free account at api.esv.org (Bible Translations settings)."
+          persistent-hint
+          style="max-width: 420px"
+          class="mb-2"
+        />
+        <v-alert v-if="esvAvailable" type="success" variant="tonal" density="compact" class="mb-6" style="max-width: 560px">
+          {{ ESV_COPYRIGHT_NOTICE }}
+        </v-alert>
+        <v-alert
+          v-else-if="machineSettings.esvApiKey"
+          type="warning"
+          variant="tonal"
+          density="compact"
+          class="mb-6"
+          style="max-width: 560px"
+        >
+          Save Settings to verify this key.
+        </v-alert>
+        <p v-else class="text-medium-emphasis text-body-2 mb-6">Not configured on this machine.</p>
+
+        <h3 class="text-subtitle-2 mb-2">api.bible — NIV and other editions</h3>
+        <v-text-field
+          v-model="machineSettings.apiBibleKey"
+          label="api.bible API key"
+          type="password"
+          variant="outlined"
+          density="compact"
+          autocomplete="off"
+          hint="Free account at scripture.api.bible."
+          persistent-hint
+          style="max-width: 420px"
+          class="mb-2"
+        />
+        <div v-if="machineSettings.apiBibleKey" class="mb-6">
+          <div class="d-flex flex-wrap align-end ga-3 mb-2">
+            <v-autocomplete
+              v-model="pickedCatalogEntry"
+              :items="apiBibleCatalog"
+              :loading="loadingApiBibleCatalog"
+              :item-title="catalogItemTitle"
+              item-value="id"
+              return-object
+              label="Add a translation…"
+              variant="outlined"
+              density="compact"
+              style="width: 380px"
+              @update:focused="(focused: boolean) => focused && loadApiBibleCatalog()"
+            />
+            <v-btn
+              variant="flat"
+              color="primary"
+              prepend-icon="mdi-plus"
+              :disabled="!pickedCatalogEntry"
+              @click="addApiBibleTranslation"
+            >
+              Add
+            </v-btn>
+          </div>
+          <p v-if="addTranslationError" class="text-caption text-error">{{ addTranslationError }}</p>
+        </div>
+        <p v-else class="text-medium-emphasis text-body-2 mb-6">Not configured on this machine.</p>
+
+        <h3 class="text-subtitle-2 mb-2">Available Translations</h3>
+        <p class="text-medium-emphasis text-body-2 mb-4">
+          The default is used unless a passage is switched to another translation live.
         </p>
         <v-radio-group v-model="librarySettings.defaultTranslationCode" hide-details class="mb-4">
           <div
-            v-for="(translation, index) in librarySettings.bibleTranslations"
-            :key="translation.code"
+            v-for="entry in availableTranslationEntries"
+            :key="entry.code"
             class="d-flex align-center ga-3 mb-2"
             style="max-width: 560px"
           >
-            <v-radio :value="translation.code" />
+            <v-radio :value="entry.code" />
             <div class="flex-grow-1">
-              <div class="font-weight-bold">{{ translation.label }} ({{ translation.code }})</div>
-              <div class="text-caption text-medium-emphasis">{{ sourceLabel(translation.source) }}</div>
+              <div class="font-weight-bold">{{ entry.name }} ({{ entry.code }})</div>
+              <div v-if="entry.needsKey" class="text-caption text-warning">Needs the api.bible key above</div>
             </div>
-            <v-btn icon="mdi-trash-can-outline" variant="flat" color="error" size="small" @click="removeTranslation(index)" />
+            <v-btn
+              v-if="entry.removable"
+              icon="mdi-trash-can-outline"
+              variant="flat"
+              color="error"
+              size="small"
+              @click="removeApiBibleTranslation(entry.code)"
+            />
           </div>
         </v-radio-group>
-        <p v-if="librarySettings.bibleTranslations.length === 0" class="text-medium-emphasis text-body-2 mb-4">
-          None configured yet.
+      </template>
+
+      <template v-else-if="activeSection === 'font-sizes'">
+        <h2 class="text-h6 mb-4">Font Sizes</h2>
+        <p class="text-medium-emphasis text-body-2 mb-6">
+          How large text auto-fits on the audience display, per content type.
         </p>
 
-        <div class="d-flex flex-wrap align-end ga-3">
-          <v-text-field v-model="newTranslationCode" label="Code" variant="outlined" density="compact" style="width: 100px" />
-          <v-text-field v-model="newTranslationLabel" label="Name" variant="outlined" density="compact" style="width: 240px" />
-          <v-select
-            v-model="newTranslationSource"
-            :items="sourceOptions"
-            label="Source"
+        <h3 class="text-subtitle-2 mb-2">Scripture</h3>
+        <p class="text-medium-emphasis text-body-2 mb-4">
+          Scripture text auto-fits as large as possible within this range. A passage that still doesn't fit at the
+          minimum size splits across slides at verse boundaries instead of shrinking further.
+        </p>
+        <div class="d-flex ga-3 mb-6" style="max-width: 420px">
+          <v-text-field
+            v-model.number="librarySettings.scriptureMinFontSizePx"
+            label="Minimum size (px)"
+            type="number"
             variant="outlined"
             density="compact"
-            style="width: 160px"
+            min="1"
           />
-          <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="addTranslation">Add</v-btn>
+          <v-text-field
+            v-model.number="librarySettings.scriptureMaxFontSizePx"
+            label="Maximum size (px)"
+            type="number"
+            variant="outlined"
+            density="compact"
+            min="1"
+          />
         </div>
 
-        <v-alert v-if="esvAvailable" type="info" variant="tonal" density="compact" class="mt-4" style="max-width: 560px">
-          {{ ESV_COPYRIGHT_NOTICE }}
-        </v-alert>
+        <h3 class="text-subtitle-2 mb-2">Song Lyrics</h3>
+        <p class="text-medium-emphasis text-body-2 mb-4">
+          Each part (Verse, Chorus, etc.) is already its own slide — no splitting across slides. A line only wraps
+          if it truly doesn't fit even at the minimum size, and only ever breaks at a comma or semicolon, never
+          mid-word.
+        </p>
+        <div class="d-flex ga-3" style="max-width: 420px">
+          <v-text-field
+            v-model.number="librarySettings.songMinFontSizePx"
+            label="Minimum size (px)"
+            type="number"
+            variant="outlined"
+            density="compact"
+            min="1"
+          />
+          <v-text-field
+            v-model.number="librarySettings.songMaxFontSizePx"
+            label="Maximum size (px)"
+            type="number"
+            variant="outlined"
+            density="compact"
+            min="1"
+          />
+        </div>
+
+        <h3 class="text-subtitle-2 mb-2">Header &amp; Footer</h3>
+        <p class="text-medium-emphasis text-body-2 mb-4">
+          The reference/title above the text (e.g. "John 3:16-17") and the translation/sub-label below it (e.g.
+          "ESV") — a fixed position and size, unlike the auto-fit text above them.
+        </p>
+        <div class="d-flex ga-3" style="max-width: 420px">
+          <v-text-field
+            v-model.number="librarySettings.slideHeaderFontSizePx"
+            label="Header size (px)"
+            type="number"
+            variant="outlined"
+            density="compact"
+            min="1"
+          />
+          <v-text-field
+            v-model.number="librarySettings.slideFooterFontSizePx"
+            label="Footer size (px)"
+            type="number"
+            variant="outlined"
+            density="compact"
+            min="1"
+          />
+        </div>
       </template>
 
       <template v-else-if="activeSection === 'themes'">

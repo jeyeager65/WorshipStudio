@@ -98,9 +98,18 @@ export const seedLibrarySettings: LibrarySettings = {
     primaryColor: '#1F3A5F',
     secondaryColor: '#C9A227',
   },
-  bibleTranslations: [{ code: 'ESV', source: 'api-esv', label: 'English Standard Version' }],
-  defaultTranslationCode: 'ESV',
+  // The mock/demo adapter only ever resolves KJV (see scriptureFixtures.ts) — an ESV/api.bible
+  // entry here would be exactly the disconnected-Settings-vs-real-picker bug this model shape
+  // exists to prevent, so the demo's seed data doesn't pretend otherwise.
+  apiBibleTranslations: [],
+  defaultTranslationCode: 'KJV',
   mediaMaxSyncedFileSizeMb: 50,
+  scriptureMinFontSizePx: 28,
+  scriptureMaxFontSizePx: 72,
+  songMinFontSizePx: 16,
+  songMaxFontSizePx: 72,
+  slideHeaderFontSizePx: 24,
+  slideFooterFontSizePx: 24,
 }
 
 export const seedMachineSettings: MachineSettings = {
