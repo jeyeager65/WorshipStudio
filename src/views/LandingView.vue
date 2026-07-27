@@ -1,11 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { useTheme } from 'vuetify'
 import { useServicesStore } from '@/stores/services'
 import { useUndoStore } from '@/stores/undo'
 import ServiceCard from '@/components/ServiceCard.vue'
-import logoDark from '@/assets/logo-dark.png'
-import logoLight from '@/assets/logo-light.png'
 import type { Service } from '@/models/service'
 
 const store = useServicesStore()
@@ -25,12 +22,6 @@ function deleteService(service: Service) {
     },
   )
 }
-const theme = useTheme()
-// The dark logo's white wordmark reads fine on the dark theme's near-black background but
-// nearly disappears on the light theme's — swap for the light variant (navy wordmark)
-// whenever the light theme is active.
-const logoSrc = computed(() => (theme.global.current.value.dark ? logoDark : logoLight))
-
 onMounted(() => {
   if (!store.loaded) store.load()
 })
@@ -69,7 +60,6 @@ const browseResults = computed(() => {
 <template>
   <v-container class="py-8" style="max-width: 720px">
     <div class="text-center mb-6">
-      <img :src="logoSrc" alt="Worship Studio" class="landing-logo mb-4" />
       <p class="text-medium-emphasis">Select a service to continue, or create a new one</p>
     </div>
 
@@ -126,10 +116,3 @@ const browseResults = computed(() => {
     </v-window>
   </v-container>
 </template>
-
-<style scoped>
-.landing-logo {
-  height: 100px;
-  width: auto;
-}
-</style>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, toRaw, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, toRaw, watch } from 'vue'
 import { useThemesStore } from '@/stores/themes'
 import { useMediaStore } from '@/stores/media'
 import { useSettingsStore } from '@/stores/settings'
@@ -28,6 +28,11 @@ const defaultForOptions: { value: Theme['useAsDefaultFor'][number]; label: strin
 
 onMounted(async () => {
   await Promise.all([store.load(), mediaStore.load(), settingsStore.load()])
+  // Guarded on `draft` still being unset: without this, clicking "New Theme" while this load
+  // is still in flight (a slow disk/sync folder, or just unlucky timing) gets silently
+  // clobbered the instant it resolves, replacing the fresh draft with whatever theme happens
+  // to load first.
+  if (draft.value) return
   const first = store.themes[0]
   if (first) selectTheme(first.id)
 })
@@ -55,6 +60,11 @@ async function selectTheme(id: string) {
   const theme = store.themes.find((t) => t.id === id)
   selectedId.value = id
   draft.value = theme ? structuredClone(toRaw(theme)) : undefined
+  // Reassigning `draft` itself (not a nested edit) still triggers the deep watch below, on
+  // the next reactivity flush — awaiting that flush first, then clearing dirty, is what makes
+  // this the one that actually sticks; otherwise selecting an untouched existing theme left it
+  // spuriously marked dirty moments later.
+  await nextTick()
   dirty.value = false
 }
 

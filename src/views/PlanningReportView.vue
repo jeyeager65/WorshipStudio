@@ -22,13 +22,12 @@ const fromDate = ref(toIso(today))
 const toDate = ref(toIso(threeMonthsOut))
 const serviceType = ref('all')
 
+// Always reloaded fresh (not gated on each store's `loaded` flag) — this is a planning report
+// an operator may revisit repeatedly across a session, and it should reflect whatever's
+// actually on disk right now, not a snapshot cached from whenever the app first booted or another
+// view first happened to touch these stores.
 onMounted(async () => {
-  await Promise.all([
-    servicesStore.loaded ? Promise.resolve() : servicesStore.load(),
-    songsStore.loaded ? Promise.resolve() : songsStore.load(),
-    volunteersStore.loaded ? Promise.resolve() : volunteersStore.load(),
-    settingsStore.load(),
-  ])
+  await Promise.all([servicesStore.load(), songsStore.load(), volunteersStore.load(), settingsStore.load()])
 })
 
 const volunteerNames = computed(() => new Map(volunteersStore.volunteers.map((v) => [v.id, `${v.firstName} ${v.lastName}`.trim()])))

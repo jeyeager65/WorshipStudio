@@ -33,6 +33,32 @@ pub fn run() {
             app.manage(remote_handle.clone());
             remote_server::start(remote_handle);
 
+            // E2E-only builds (see e2e/package.json's build:app, which sets this at compile
+            // time) skip creating the splash window at all, rather than creating-then-hiding
+            // it: the WebdriverIO harness's session attaches to whichever native window's
+            // webview finishes its own startup first, and splash's much smaller page reliably
+            // wins that race regardless of OS-level visibility/focus — hiding it after the
+            // fact (tried first) didn't help, since the race is over before setup() even runs.
+            // Not creating a second webview at all removes the race entirely.
+            if option_env!("WORSHIP_STUDIO_E2E_BUILD").is_none() {
+                tauri::WebviewWindowBuilder::new(
+                    app,
+                    "splash",
+                    tauri::WebviewUrl::App("index.html".into()),
+                )
+                .title("Worship Studio")
+                .inner_size(800.0, 600.0)
+                .resizable(false)
+                .decorations(false)
+                .center()
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .build()?;
+            } else if let Some(main) = app.get_webview_window("main") {
+                let _ = main.show();
+                let _ = main.set_focus();
+            }
+
             Ok(())
         })
         .plugin(tauri_plugin_dialog::init())

@@ -1,26 +1,15 @@
 <script setup lang="ts">
-withDefaults(
-  defineProps<{
-    churchName?: string
-    primaryColor?: string
-    secondaryColor?: string
-    statusText: string
-  }>(),
-  {
-    primaryColor: '#3b5bdb',
-    secondaryColor: '#8a5bd6',
-  },
-)
+import logoDark from '@/assets/logo-dark.png'
+
+defineProps<{
+  statusText: string
+}>()
 </script>
 
 <template>
-  <div class="splash-bg" :style="{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }">
+  <div class="splash-bg">
     <div class="splash">
-      <div class="logo-badge">
-        <v-icon icon="mdi-church" size="40" color="white" />
-      </div>
-      <div class="church-name">{{ churchName || 'Worship Studio' }}</div>
-      <div class="powered-by">Running on <strong>Worship Studio</strong></div>
+      <img :src="logoDark" alt="Worship Studio" class="logo-image" />
 
       <div class="progress-track">
         <div class="progress-fill" />
@@ -31,9 +20,12 @@ withDefaults(
 </template>
 
 <style scoped>
+/* Solid black, matching logo-dark.png's own canvas, so the image reads as the whole screen
+   rather than a graphic sitting on a separate background. */
 .splash-bg {
   position: fixed;
   inset: 0;
+  background: #000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -46,30 +38,11 @@ withDefaults(
   color: white;
   text-align: center;
 }
-.logo-badge {
-  width: 96px;
-  height: 96px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.15);
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 20px;
-}
-.church-name {
-  font-size: 22px;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-.powered-by {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.65);
-  margin-bottom: 40px;
-  letter-spacing: 0.02em;
-}
-.powered-by strong {
-  color: rgba(255, 255, 255, 0.9);
+.logo-image {
+  display: block;
+  width: min(85vw, 620px);
+  height: auto;
+  margin-bottom: 56px;
 }
 .progress-track {
   width: 220px;

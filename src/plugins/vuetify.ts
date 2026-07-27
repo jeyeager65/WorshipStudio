@@ -30,6 +30,17 @@ const accentColors = {
 }
 
 export default createVuetify({
+  // WebView2 (Chromium) keeps its own per-field history of previously typed values and offers
+  // them back as a native browser dropdown. Plain `autocomplete="off"` doesn't reliably stop
+  // this in Chromium (it's mainly honored for recognized field types) — Vuetify's own
+  // 'suppress' value is the real fix: it gives the field a fresh unique `name` on every
+  // reload so Chromium's history can never match it to begin with. Set once here for every
+  // v-text-field/v-textarea/v-combobox app-wide rather than per field.
+  defaults: {
+    VTextField: { autocomplete: 'suppress' },
+    VTextarea: { autocomplete: 'suppress' },
+    VCombobox: { autocomplete: 'suppress' },
+  },
   theme: {
     defaultTheme: 'worshipDark',
     themes: {
