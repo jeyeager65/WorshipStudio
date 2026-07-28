@@ -1,6 +1,6 @@
 [package]
 name = "worship-studio"
-version = "0.2.0"
+version = "0.3.0"
 description = "Worship Studio — church presentation/service management app"
 authors = ["Jason Yeager"]
 license = ""
