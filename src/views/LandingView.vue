@@ -3,12 +3,15 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useServicesStore } from '@/stores/services'
 import { useUndoStore } from '@/stores/undo'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
+import { usePeopleStore } from '@/stores/people'
 import ServiceCard from '@/components/ServiceCard.vue'
 import type { Service } from '@/models/service'
+import { personDisplayName } from '@/models/library'
 
 const store = useServicesStore()
 const undoStore = useUndoStore()
 const confirmDialog = useConfirmDialogStore()
+const peopleStore = usePeopleStore()
 // Deletion is soft until the undo toast expires (spec section 16) — see SongLibraryView for
 // the same pattern and its rationale.
 const pendingDeleteIds = reactive(new Set<string>())
@@ -27,7 +30,13 @@ async function deleteService(service: Service) {
 }
 onMounted(() => {
   if (!store.loaded) store.load()
+  if (!peopleStore.loaded) peopleStore.load()
 })
+
+function preacherName(service: Service): string | undefined {
+  const person = peopleStore.people.find((p) => p.id === service.preacherId)
+  return person ? personDisplayName(person) : undefined
+}
 
 const tab = ref<'home' | 'browse'>('home')
 const browseQuery = ref('')
@@ -53,7 +62,7 @@ const browseResults = computed(() => {
   const query = browseQuery.value.trim().toLowerCase()
   if (!query) return pastServices.value.slice(0, 10)
   return visibleServices.value.filter((service) =>
-    [service.type, service.sermonTitle, service.preacher, service.keyPassage].some((field) =>
+    [service.type, service.sermonTitle, preacherName(service), service.keyPassage].some((field) =>
       field?.toLowerCase().includes(query),
     ),
   )
@@ -75,7 +84,12 @@ const browseResults = computed(() => {
       <v-window-item value="home" class="pt-2">
         <template v-if="todayService">
           <div class="text-overline text-medium-emphasis mb-2">Today</div>
-          <ServiceCard :service="todayService" badge="TODAY" @delete="deleteService(todayService)" />
+          <ServiceCard
+            :service="todayService"
+            :preacher-name="preacherName(todayService)"
+            badge="TODAY"
+            @delete="deleteService(todayService)"
+          />
         </template>
 
         <div class="d-flex align-center justify-space-between mt-6 mb-2">
@@ -88,6 +102,7 @@ const browseResults = computed(() => {
           v-for="service in upcomingServices"
           :key="service.id"
           :service="service"
+          :preacher-name="preacherName(service)"
           @delete="deleteService(service)"
         />
         <p v-if="upcomingServices.length === 0" class="text-medium-emphasis text-body-2">No upcoming services yet.</p>
@@ -112,6 +127,7 @@ const browseResults = computed(() => {
           v-for="service in browseResults"
           :key="service.id"
           :service="service"
+          :preacher-name="preacherName(service)"
           @delete="deleteService(service)"
         />
         <p v-if="browseResults.length === 0" class="text-medium-emphasis text-body-2">No services found.</p>

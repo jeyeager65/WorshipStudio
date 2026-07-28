@@ -4,7 +4,7 @@ import { appDataDir } from '../helpers/appDataDir.js'
 
 describe('Multi-Week Planning Report', () => {
   it('shows planned songs and roster for a service within the default range', async () => {
-    // Self-contained fixtures (song + volunteer + service), same approach as
+    // Self-contained fixtures (song + person + service), same approach as
     // sync-conflicts.spec.js — written directly to disk and cleaned up in `finally`, rather
     // than driving the flaky native date-input control through Create Service (see
     // planning-ahead.spec.js's fix for that same control). The isolated E2E app-data
@@ -13,10 +13,10 @@ describe('Multi-Week Planning Report', () => {
     // it has to create its own, like every other fixture here.
     const libraryDir = path.join(appDataDir, 'Library')
     const songsDir = path.join(libraryDir, 'songs')
-    const volunteersDir = path.join(libraryDir, 'volunteers')
+    const peopleDir = path.join(libraryDir, 'people')
     const servicesDir = path.join(libraryDir, 'services', '2026')
     fs.mkdirSync(songsDir, { recursive: true })
-    fs.mkdirSync(volunteersDir, { recursive: true })
+    fs.mkdirSync(peopleDir, { recursive: true })
     fs.mkdirSync(servicesDir, { recursive: true })
 
     const songId = 'song-e2e-planning-report'
@@ -41,13 +41,13 @@ describe('Multi-Week Planning Report', () => {
       ),
     )
 
-    const volunteerId = 'volunteer-e2e-planning-report'
-    const volunteerPath = path.join(volunteersDir, `${volunteerId}.json`)
+    const personId = 'person-e2e-planning-report'
+    const personPath = path.join(peopleDir, `${personId}.json`)
     fs.writeFileSync(
-      volunteerPath,
+      personPath,
       JSON.stringify(
         {
-          id: volunteerId,
+          id: personId,
           firstName: 'Jordan',
           lastName: 'E2EReport',
           preferredRoles: [],
@@ -72,9 +72,9 @@ describe('Multi-Week Planning Report', () => {
           date: futureDate,
           type: 'Sunday Morning Worship',
           sermonTitle: 'E2E Planning Report Sermon',
-          preacher: 'Pastor E2E',
+          preacherId: personId,
           items: [{ id: 'item-1', type: 'song', songId, arrangement: { sequence: ['v1'] } }],
-          volunteerRoster: [{ role: 'Piano', volunteerId, tentative: false }],
+          assignments: [{ role: 'Piano', personId, tentative: false }],
           updatedAt: '2026-07-26T00:00:00Z',
           updatedByDevice: 'e2e',
         },
@@ -111,7 +111,7 @@ describe('Multi-Week Planning Report', () => {
       await expect(rosterLine).toBeExisting()
     } finally {
       if (fs.existsSync(songPath)) fs.unlinkSync(songPath)
-      if (fs.existsSync(volunteerPath)) fs.unlinkSync(volunteerPath)
+      if (fs.existsSync(personPath)) fs.unlinkSync(personPath)
       if (fs.existsSync(servicePath)) fs.unlinkSync(servicePath)
     }
   })

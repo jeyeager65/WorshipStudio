@@ -24,6 +24,7 @@ describe('colorForItemType', () => {
     expect(colorForItemType('song')).toBe('primary')
     expect(colorForItemType('scripture')).toBe('teal')
     expect(colorForItemType('video')).toBe('rose')
+    expect(colorForItemType('placeholder')).toBe('amber')
   })
 
   it('falls back to a neutral color for an unrecognized type', () => {

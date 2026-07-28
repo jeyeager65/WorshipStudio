@@ -364,3 +364,88 @@ describe('flattenService — slide-ref', () => {
     expect(flat[0]).toMatchObject({ itemLabel: 'Announcements', subLabel: '(empty)' })
   })
 })
+
+describe('flattenService — bulletin-note', () => {
+  it('produces no slides at all — the one deliberate exception to every item getting at least one', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'bulletin-note', bulletinLabel: 'Silent Preparation' }],
+    })
+    expect(flattenService(service, new Map())).toEqual([])
+  })
+
+  it('is skipped in place, leaving surrounding items unaffected', () => {
+    const song = makeSong()
+    const service = makeService({
+      items: [
+        { id: 'item-1', type: 'bulletin-note', bulletinLabel: 'Silent Preparation' },
+        { id: 'item-2', type: 'song', songId: 'song-1', arrangement: { sequence: ['v1'] } },
+      ],
+    })
+    const flat = flattenService(service, new Map([['song-1', song]]))
+    expect(flat).toHaveLength(1)
+    expect(flat[0].itemId).toBe('item-2')
+  })
+})
+
+describe('flattenService — sermon', () => {
+  function makePassage(overrides: Partial<ScripturePassage> = {}): ScripturePassage {
+    return {
+      reference: 'Mark 5:1-20',
+      translation: 'ESV',
+      verses: [{ number: 1, text: 'They came to the other side...' }],
+      ...overrides,
+    }
+  }
+
+  it('presents every passage in list order, then the outline, with unique continuous keys', () => {
+    const service = makeService({
+      items: [
+        {
+          id: 'item-1',
+          type: 'sermon',
+          passages: [
+            { id: 'p1', reference: 'Romans 8:28', translation: 'ESV', displayMode: 'reference-only' },
+            { id: 'p2', reference: 'Mark 5:1-20', translation: 'ESV', displayMode: 'full' },
+          ],
+          mainPassageId: 'p2',
+          outline: [
+            { id: 'o1', label: 'The Setup', text: 'Point one' },
+            { id: 'o2', label: 'The Turn', text: 'Point two' },
+          ],
+        },
+      ],
+    })
+    const scriptureById = new Map([['item-1:p2', makePassage()]])
+    const flat = flattenService(service, new Map(), scriptureById)
+
+    expect(flat).toHaveLength(4)
+    expect(flat.map((s) => s.itemLabel)).toEqual(['Romans 8:28', 'Mark 5:1-20', 'Sermon Outline', 'Sermon Outline'])
+    expect(flat.map((s) => s.subLabel)).toEqual(['Reference Only', 'ESV', 'The Setup', 'The Turn'])
+    expect(flat[3].text).toBe('Point two')
+    // The bug this guards against: restarting the outline's key counter at 0 would collide
+    // with an earlier passage page's key, making a click on outline block 2 silently resolve
+    // to the wrong slide (see ServiceWorkspaceView's slideFlatIndex, which looks up by exact key).
+    expect(new Set(flat.map((s) => s.key)).size).toBe(4)
+    expect(flat.map((s) => s.key)).toEqual(['item-1:0', 'item-1:1', 'item-1:2', 'item-1:3'])
+  })
+
+  it('produces a placeholder when a sermon has neither passages nor outline yet', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'sermon', passages: [], mainPassageId: '', outline: [] }],
+    })
+    const flat = flattenService(service, new Map())
+    expect(flat).toHaveLength(1)
+    expect(flat[0]).toMatchObject({ itemLabel: 'Sermon', subLabel: '(empty)' })
+  })
+})
+
+describe('flattenService — placeholder (unreplaced service template slot)', () => {
+  it('produces an obviously-unfilled slide using the placeholder label', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'placeholder', label: 'Opening Song' }],
+    })
+    const flat = flattenService(service, new Map())
+    expect(flat).toHaveLength(1)
+    expect(flat[0]).toMatchObject({ itemLabel: 'Opening Song', subLabel: '(placeholder — not yet filled in)', text: '' })
+  })
+})

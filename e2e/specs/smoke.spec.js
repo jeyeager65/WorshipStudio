@@ -26,13 +26,23 @@ describe('Worship Studio (native)', () => {
     await addButton.waitForClickable({ timeout: 10000 })
     await addButton.click()
 
-    // Regression check for the flexbox-shrink bug (fixed in commit 3997ac6): the tabs bar
-    // must stay visible regardless of song-library size, not just when the library is small.
+    // The Add-to-Service dialog picks its content type via a "Type" dropdown (not tabs) —
+    // confirms every core content type still shows up as an option, regardless of song-library
+    // size (the flexbox-shrink bug this originally guarded against, fixed in commit 3997ac6,
+    // no longer applies now that the dialog is a fixed-size card with its own internal scroll).
+    const typeSelect = await $('.v-dialog .v-select')
+    await typeSelect.waitForClickable({ timeout: 10000 })
+    await typeSelect.click()
+    // Scoped to the open menu's own overlay content — the persistent left nav also has
+    // .v-list-item entries named Songs/Slides/Media, which an unscoped query would match
+    // instead (and actually navigate away from the service, not just fail the assertion).
+    const overlay = await $('[role="listbox"]')
     for (const label of ['Songs', 'Scripture', 'Slides', 'Media', 'Video']) {
-      const tab = await $(`.v-tab*=${label}`)
-      await tab.waitForExist({ timeout: 10000 })
-      await expect(tab).toBeDisplayed()
+      const option = await overlay.$(`.v-list-item*=${label}`)
+      await option.waitForExist({ timeout: 10000 })
+      await expect(option).toBeDisplayed()
     }
+    await browser.keys('Escape')
 
     const cancel = await $('button=Cancel')
     await expect(cancel).toBeDisplayed()

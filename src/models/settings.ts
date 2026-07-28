@@ -1,9 +1,27 @@
+import type { ServiceTemplate } from './service'
+
+/** A named category of roles (e.g. "Praise Team" grouping Drums/Guitar/Piano/Vocals) — purely
+ *  organizational; a role itself is still just a plain string referenced by
+ *  RoleAssignment.role/ServiceTemplateItem.role. */
+export interface RoleGroup {
+  name: string
+  roles: string[]
+}
+
+/** "Praise Team - Guitar" — every display of a role name shows its category, so it's
+ *  identifiable without needing surrounding visual grouping context. Falls back to the bare
+ *  role name if it isn't (or is no longer) in any group. */
+export function roleDisplayLabel(role: string, roleGroups: RoleGroup[]): string {
+  const group = roleGroups.find((g) => g.roles.includes(role))
+  return group ? `${group.name} - ${role}` : role
+}
+
 /** library-settings.json — synced, shared across the church's setup. */
 export interface LibrarySettings {
   serviceTypes: string[]
-  preachers: string[]
   collections: string[]
-  volunteerRoles: string[]
+  roleGroups: RoleGroup[]
+  serviceTemplates: ServiceTemplate[]
   branding: {
     churchName: string
     logoMediaId?: string

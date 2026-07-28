@@ -38,6 +38,9 @@ const ITEM_TYPE_COLORS: Record<string, string> = {
   'external-app': 'terracotta',
   countdown: 'secondary',
   qr: 'teal',
+  sermon: 'teal',
+  'bulletin-note': 'slate',
+  placeholder: 'amber',
 }
 
 export function colorForItemType(type: string): string {

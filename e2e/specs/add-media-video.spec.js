@@ -70,9 +70,16 @@ describe('Add-to-Service Media/Video tabs', () => {
       await addButton.waitForClickable({ timeout: 10000 })
       await addButton.click()
 
-      const mediaTab = await $('.v-tab*=Media')
-      await mediaTab.waitForExist({ timeout: 10000 })
-      await mediaTab.click()
+      // The Add-to-Service dialog picks its content type via a "Type" dropdown, not tabs. The
+      // option lookup is scoped to the open menu's own overlay content — an unscoped query can
+      // match the persistent left nav's own .v-list-item entries instead (e.g. its "Media"
+      // link, which would navigate away from the service instead of picking the dropdown item).
+      const typeSelect = await $('.v-dialog .v-select')
+      await typeSelect.waitForClickable({ timeout: 10000 })
+      await typeSelect.click()
+      const mediaOption = await (await $('[role="listbox"]')).$('.v-list-item*=Media')
+      await mediaOption.waitForClickable({ timeout: 10000 })
+      await mediaOption.click()
 
       // Matched without the file extension — WebdriverIO treats a selector string ending in
       // a recognized image extension (.jpg/.png/etc.) as an image-comparison selector rather
@@ -89,9 +96,12 @@ describe('Add-to-Service Media/Video tabs', () => {
       await addButton.waitForClickable({ timeout: 10000 })
       await addButton.click()
 
-      const videoTab = await $('.v-tab*=Video')
-      await videoTab.waitForExist({ timeout: 10000 })
-      await videoTab.click()
+      const typeSelect2 = await $('.v-dialog .v-select')
+      await typeSelect2.waitForClickable({ timeout: 10000 })
+      await typeSelect2.click()
+      const videoOption = await (await $('[role="listbox"]')).$('.v-list-item*=Video')
+      await videoOption.waitForClickable({ timeout: 10000 })
+      await videoOption.click()
 
       const videoEntry = await $('.v-list-item*=e2e-add-clip')
       await videoEntry.waitForClickable({ timeout: 10000 })

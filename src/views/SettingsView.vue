@@ -10,13 +10,15 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useUndoStore } from '@/stores/undo'
 import { useSongsStore } from '@/stores/songs'
 import { useServicesStore } from '@/stores/services'
-import { useVolunteersStore } from '@/stores/volunteers'
+import { usePeopleStore } from '@/stores/people'
 import { useThemesStore } from '@/stores/themes'
 import { needsSingleMonitorFallback } from '@/utils/displaySetup'
 import { previewExternalAppCommand } from '@/utils/externalAppPreview'
-import { buildSampleServices, sampleSongs, sampleThemes, sampleVolunteers, sampleVolunteerRoles, sampleServiceTypes } from '@/utils/sampleData'
+import { buildSampleServices, sampleSongs, sampleThemes, samplePeople, sampleRoleGroups, sampleServiceTemplates, sampleServiceTypes } from '@/utils/sampleData'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import ManagedStringList from '@/components/settings/ManagedStringList.vue'
+import RoleGroupEditor from '@/components/settings/RoleGroupEditor.vue'
+import ServiceTemplateEditor from '@/components/settings/ServiceTemplateEditor.vue'
 import type { ApiBibleCatalogEntry, DisplayInfo, DisplayRole, ExternalAppProfile, RemoteDevice } from '@/adapters/types'
 
 const store = useSettingsStore()
@@ -28,7 +30,7 @@ const confirmDialog = useConfirmDialogStore()
 const syncStore = useSyncStore()
 const songsStore = useSongsStore()
 const servicesStore = useServicesStore()
-const volunteersStore = useVolunteersStore()
+const peopleStore = usePeopleStore()
 const themesStore = useThemesStore()
 const refreshingSync = ref(false)
 async function refreshSyncStatus() {
@@ -45,11 +47,11 @@ type Section =
   | 'display'
   | 'font-sizes'
   | 'service-types'
-  | 'preachers'
   | 'collections'
   | 'bible-translations'
   | 'themes'
-  | 'volunteer-roles'
+  | 'roles'
+  | 'service-templates'
   | 'sync'
   | 'external-apps'
   | 'remote-control'
@@ -66,11 +68,11 @@ const sections: { key: Section; label: string; group: string }[] = [
   // not meaningful in the static/mock demo build even though the port itself exists there.
   ...(getAdapter().kind === 'tauri' ? [{ key: 'remote-control' as const, label: 'Remote Control', group: 'Display' }] : []),
   { key: 'service-types', label: 'Service Types', group: 'Content Library' },
-  { key: 'preachers', label: 'Preachers', group: 'Content Library' },
   { key: 'collections', label: 'Song Collections', group: 'Content Library' },
   { key: 'bible-translations', label: 'Bible Translations', group: 'Content Library' },
   { key: 'themes', label: 'Themes', group: 'Content Library' },
-  { key: 'volunteer-roles', label: 'Volunteer Roles', group: 'Content Library' },
+  { key: 'roles', label: 'Roles', group: 'Content Library' },
+  { key: 'service-templates', label: 'Service Templates', group: 'Content Library' },
 ]
 const groupedSections = computed(() => {
   const groups: { name: string; items: typeof sections }[] = []
@@ -333,24 +335,24 @@ const sampleDataLoaded = ref(false)
 const clearingData = ref(false)
 const dataCleared = ref(false)
 
-/** Deletes every existing song, service, volunteer, and theme — shared by both destructive
+/** Deletes every existing song, service, person, and theme — shared by both destructive
  *  actions below (clearing outright, and loading sample data over the top of a clean slate). */
 async function deleteAllLibraryContent() {
-  await Promise.all([songsStore.load(), servicesStore.load(), volunteersStore.load(), themesStore.load()])
+  await Promise.all([songsStore.load(), servicesStore.load(), peopleStore.load(), themesStore.load()])
   for (const song of songsStore.songs) await songsStore.remove(song.id)
   for (const service of servicesStore.services) await servicesStore.remove(service.id)
-  for (const volunteer of volunteersStore.volunteers) await volunteersStore.remove(volunteer.id)
+  for (const person of peopleStore.people) await peopleStore.remove(person.id)
   for (const theme of themesStore.themes) await themesStore.remove(theme.id)
 }
 
 // Sample data is strictly for demoing the app, never for mixing into a real church's library
 // — so this *replaces* everything rather than adding alongside it: every existing song,
-// service, volunteer, and theme is deleted first. That's exactly why the confirmation below
+// service, person, and theme is deleted first. That's exactly why the confirmation below
 // spells out what's being destroyed instead of using a generic "are you sure?".
 async function loadSampleData() {
   if (
     !(await confirmDialog.confirm(
-      'This permanently deletes ALL existing songs, services, volunteers, and themes in this library, and replaces them with demo content. This cannot be undone — only use this on a library you don\'t need (e.g. exploring the app for the first time), never on a real church\'s data.',
+      'This permanently deletes ALL existing songs, services, people, and themes in this library, and replaces them with demo content. This cannot be undone — only use this on a library you don\'t need (e.g. exploring the app for the first time), never on a real church\'s data.',
       'Delete Everything & Load Sample Data',
     ))
   ) {
@@ -364,13 +366,13 @@ async function loadSampleData() {
 
     for (const song of sampleSongs) await songsStore.save(song)
     for (const theme of sampleThemes) await themesStore.save(theme)
-    for (const volunteer of sampleVolunteers) await volunteersStore.save(volunteer)
+    for (const person of samplePeople) await peopleStore.save(person)
     for (const service of buildSampleServices()) await servicesStore.save(service)
 
     if (librarySettings.value) {
       librarySettings.value.serviceTypes = [...sampleServiceTypes]
-      librarySettings.value.volunteerRoles = [...sampleVolunteerRoles]
-      librarySettings.value.preachers = ['Pastor Dan']
+      librarySettings.value.roleGroups = structuredClone(sampleRoleGroups)
+      librarySettings.value.serviceTemplates = structuredClone(sampleServiceTemplates)
       librarySettings.value.collections = ['Hymns of Grace', 'Worship Hymnal']
       await store.save()
     }
@@ -386,7 +388,7 @@ async function loadSampleData() {
 async function clearExistingData() {
   if (
     !(await confirmDialog.confirm(
-      'This permanently deletes ALL songs, services, volunteers, and themes in this library. This cannot be undone — make sure this library is not currently in use before doing this.',
+      'This permanently deletes ALL songs, services, people, and themes in this library. This cannot be undone — make sure this library is not currently in use before doing this.',
       'Delete Everything',
     ))
   ) {
@@ -580,7 +582,7 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
           Load Sample Data
         </v-btn>
         <div v-if="sampleDataLoaded" class="text-caption text-medium-emphasis mt-1">
-          Sample songs, services, volunteers, and themes added — check Home to see them.
+          Sample songs, services, people, and themes added — check Home to see them.
         </div>
         <br />
         <v-btn
@@ -594,7 +596,7 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
           Clear Existing Data
         </v-btn>
         <div v-if="dataCleared" class="text-caption text-medium-emphasis mt-1">
-          All songs, services, volunteers, and themes have been deleted.
+          All songs, services, people, and themes have been deleted.
         </div>
       </template>
 
@@ -932,14 +934,6 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
         <ManagedStringList v-model="librarySettings.serviceTypes" add-label="Add a service type…" />
       </template>
 
-      <template v-else-if="activeSection === 'preachers'">
-        <h2 class="text-h6 mb-4">Preachers</h2>
-        <p class="text-medium-emphasis text-body-2 mb-4">
-          Suggestions for Create Service's Preacher field — typing a name not on this list is still allowed.
-        </p>
-        <ManagedStringList v-model="librarySettings.preachers" add-label="Add a preacher…" />
-      </template>
-
       <template v-else-if="activeSection === 'collections'">
         <h2 class="text-h6 mb-4">Song Collections</h2>
         <p class="text-medium-emphasis text-body-2 mb-4">
@@ -1145,12 +1139,27 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
         </v-btn>
       </template>
 
-      <template v-else-if="activeSection === 'volunteer-roles'">
-        <h2 class="text-h6 mb-4">Volunteer Roles</h2>
+      <template v-else-if="activeSection === 'roles'">
+        <h2 class="text-h6 mb-4">Roles</h2>
         <p class="text-medium-emphasis text-body-2 mb-4">
-          The roles offered on each service's Volunteer Roster (Piano, Sound Booth, Greeters, etc.).
+          The roles offered on each service's Assignments page (Piano, Sound Booth, Greeters, Preacher, etc.),
+          organized into categories.
         </p>
-        <ManagedStringList v-model="librarySettings.volunteerRoles" add-label="Add a role…" />
+        <RoleGroupEditor v-model="librarySettings.roleGroups" />
+      </template>
+
+      <template v-else-if="activeSection === 'service-templates'">
+        <h2 class="text-h6 mb-4">Service Templates</h2>
+        <p class="text-medium-emphasis text-body-2 mb-4">
+          The shell of a typical service, in order — songs, scripture, sermon, bulletin notes, and
+          role-only assignments (e.g. 2 Greeters). Seeds a new service's items and Assignments once
+          when it's created; editing a template never changes services already created.
+        </p>
+        <ServiceTemplateEditor
+          v-model="librarySettings.serviceTemplates"
+          :role-groups="librarySettings.roleGroups"
+          :service-types="librarySettings.serviceTypes"
+        />
       </template>
     </div>
   </div>

@@ -194,6 +194,7 @@ onMounted(async () => {
         <v-list-item to="/library/songs" prepend-icon="mdi-bookshelf" title="Songs" rounded="lg" class="mx-2 mb-1 sidebar-item" />
         <v-list-item to="/library/slides" prepend-icon="mdi-image-multiple" title="Slides" rounded="lg" class="mx-2 mb-1 sidebar-item" />
         <v-list-item to="/library/media" prepend-icon="mdi-file-image-outline" title="Media" rounded="lg" class="mx-2 mb-1 sidebar-item" />
+        <v-list-item to="/people" prepend-icon="mdi-account-multiple" title="People" rounded="lg" class="mx-2 mb-1 sidebar-item" />
         <v-list-item to="/reports" prepend-icon="mdi-file-chart-outline" title="Reports" rounded="lg" class="mx-2 mb-1 sidebar-item" />
         <v-list-item to="/settings" prepend-icon="mdi-cog" title="Settings" rounded="lg" class="mx-2 mb-1 sidebar-item" />
       </v-list>

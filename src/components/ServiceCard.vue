@@ -5,6 +5,9 @@ import type { Service } from '@/models/service'
 const props = defineProps<{
   service: Service
   badge?: string
+  /** Resolved by the parent (see LandingView) from service.preacherId — kept a dumb
+   *  presentational prop here rather than this card reaching into the people store itself. */
+  preacherName?: string
 }>()
 const emit = defineEmits<{ delete: [] }>()
 
@@ -18,7 +21,7 @@ const dateLabel = computed(() =>
 // Sermon title + key passage + preacher, combined on one line per spec section 9's
 // three-line service card layout.
 const subtitle = computed(() =>
-  [props.service.sermonTitle, props.service.keyPassage, props.service.preacher].filter(Boolean).join(' · '),
+  [props.service.sermonTitle, props.service.keyPassage, props.preacherName].filter(Boolean).join(' · '),
 )
 
 const songCount = computed(() => props.service.items.filter((item) => item.type === 'song').length)

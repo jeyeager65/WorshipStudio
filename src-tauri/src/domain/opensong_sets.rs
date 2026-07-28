@@ -114,7 +114,9 @@ pub fn import_sets(
                             song_id: song.id.clone(),
                             arrangement: song.default_arrangement.clone(),
                         },
-                        person: None,
+                        role: None,
+                        bulletin_label: None,
+                        bulletin_note: None,
                     });
                     song_references_matched += 1;
                     let record = usage_by_song_id.entry(song.id.clone()).or_insert((0, None));
@@ -135,12 +137,12 @@ pub fn import_sets(
             id: format!("service-{}", uuid::Uuid::new_v4()),
             date: date_str,
             service_type: default_service_type.to_string(),
-            preacher: None,
+            preacher_id: None,
             sermon_title: None,
             key_passage: None,
             items,
             presenter_notes: None,
-            volunteer_roster: None,
+            assignments: None,
             updated_at: String::new(),
             updated_by_device: String::new(),
         });

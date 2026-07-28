@@ -2,14 +2,24 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useServicesStore } from '@/stores/services'
+import { usePeopleStore } from '@/stores/people'
 import { groupUpcomingByMonth, hasStarted, needsPreacher } from '@/utils/planningAhead'
+import { personDisplayName } from '@/models/library'
+import type { Service } from '@/models/service'
 
 const store = useServicesStore()
+const peopleStore = usePeopleStore()
 const router = useRouter()
 
 onMounted(() => {
   if (!store.loaded) store.load()
+  if (!peopleStore.loaded) peopleStore.load()
 })
+
+function preacherName(service: Service): string | undefined {
+  const person = peopleStore.people.find((p) => p.id === service.preacherId)
+  return person ? personDisplayName(person) : undefined
+}
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
@@ -68,7 +78,7 @@ function openService(serviceId: string) {
               <span v-else class="text-medium-emphasis font-italic">Not yet decided</span>
             </td>
             <td>
-              <span v-if="!needsPreacher(service)">{{ service.preacher }}</span>
+              <span v-if="!needsPreacher(service)">{{ preacherName(service) }}</span>
               <v-chip v-else color="warning" size="small" variant="tonal">Needs Preacher</v-chip>
             </td>
             <td>

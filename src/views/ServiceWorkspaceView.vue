@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import SlideContentRenderer from '@/components/live/SlideContentRenderer.vue'
+import ScriptureReferencePicker, { type ScriptureReferenceValue } from '@/components/ScriptureReferencePicker.vue'
 import { getAdapter } from '@/adapters'
 import { useServicesStore } from '@/stores/services'
 import { useSongsStore } from '@/stores/songs'
@@ -16,15 +17,15 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useUndoStore } from '@/stores/undo'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useSettingsStore } from '@/stores/settings'
+import { usePeopleStore } from '@/stores/people'
 import { flattenService, type FlatSlide } from '@/utils/flattenService'
 import { colorForBlockLabel, colorForItemType } from '@/utils/contentColors'
 import { formatCountdown } from '@/utils/countdown'
-import { formatReference, getBookNames, getChapterCount, getVerseCount, isValidReference, parseReference } from '@/utils/scriptureReference'
-import type { Service, ServiceItem } from '@/models/service'
+import type { Service, ServiceItem, SermonPassage } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
 import type { SlideLibraryItem, MediaItem } from '@/models/library'
+import { personDisplayName, sortByPreferredRole } from '@/models/library'
 import type { ScripturePassage, ScriptureTranslation, LiveSlideContent, RemoteCommand } from '@/adapters/types'
-import type { ScriptureReference } from '@/models/scripture'
 
 const route = useRoute()
 const servicesStore = useServicesStore()
@@ -33,6 +34,7 @@ const slidesStore = useSlidesStore()
 const mediaStore = useMediaStore()
 const externalAppsStore = useExternalAppsStore()
 const settingsStore = useSettingsStore()
+const peopleStore = usePeopleStore()
 const { isPresenting } = storeToRefs(useLiveSessionStore())
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const undoStore = useUndoStore()
@@ -53,14 +55,14 @@ const editDate = ref('')
 const editType = ref('')
 const editSermonTitle = ref('')
 const editKeyPassage = ref('')
-const editPreacher = ref('')
+const editPreacherId = ref<string>()
 function openServiceDetailsDialog() {
   if (!service.value) return
   editDate.value = service.value.date
   editType.value = service.value.type
   editSermonTitle.value = service.value.sermonTitle ?? ''
   editKeyPassage.value = service.value.keyPassage ?? ''
-  editPreacher.value = service.value.preacher ?? ''
+  editPreacherId.value = service.value.preacherId
   serviceDetailsDialogOpen.value = true
 }
 function saveServiceDetails() {
@@ -69,9 +71,16 @@ function saveServiceDetails() {
   service.value.type = editType.value
   service.value.sermonTitle = editSermonTitle.value || undefined
   service.value.keyPassage = editKeyPassage.value || undefined
-  service.value.preacher = editPreacher.value || undefined
+  service.value.preacherId = editPreacherId.value || undefined
   serviceDetailsDialogOpen.value = false
 }
+const preacherOptions = computed(() =>
+  sortByPreferredRole(peopleStore.people, 'Preacher').map((p) => ({ title: personDisplayName(p), value: p.id })),
+)
+const preacherName = computed(() => {
+  const person = peopleStore.people.find((p) => p.id === service.value?.preacherId)
+  return person ? personDisplayName(person) : undefined
+})
 // Matches the "weekday, month day, year" format already used for the Order of Worship export
 // and planning report headers (see utils/orderOfWorship.ts/planningReport.ts) — one consistent
 // date presentation across the app instead of the raw "YYYY-MM-DD" stored on disk.
@@ -87,7 +96,7 @@ const serviceDateLabel = computed(() =>
 )
 // Same combine-and-skip-blanks pattern as ServiceCard's own subtitle line.
 const serviceSubtitle = computed(() =>
-  service.value ? [service.value.sermonTitle, service.value.keyPassage, service.value.preacher].filter(Boolean).join(' · ') : '',
+  service.value ? [service.value.sermonTitle, service.value.keyPassage, preacherName.value].filter(Boolean).join(' · ') : '',
 )
 
 const addDialogOpen = ref(false)
@@ -108,15 +117,47 @@ function errorMessage(e: unknown, fallback: string): string {
 const scriptureById = reactive(new Map<string, ScripturePassage>())
 const scriptureErrors = reactive(new Map<string, string>())
 
-async function resolveScriptureItem(item: ServiceItem) {
-  if (item.type !== 'scripture' || item.displayMode === 'reference-only') return
+async function resolvePassage(key: string, reference: string, translation: string) {
   try {
-    const passage = await getAdapter().scripture.resolve(item.reference, item.translation)
-    scriptureById.set(item.id, passage)
-    scriptureErrors.delete(item.id)
+    const passage = await getAdapter().scripture.resolve(reference, translation)
+    scriptureById.set(key, passage)
+    scriptureErrors.delete(key)
   } catch (e) {
-    scriptureErrors.set(item.id, errorMessage(e, 'Failed to resolve passage.'))
+    scriptureErrors.set(key, errorMessage(e, 'Failed to resolve passage.'))
   }
+}
+
+// A `scripture` item resolves under its own id; a `sermon` item can hold several passages, so
+// each resolves under a composite `itemId:passageId` key in the same maps instead.
+async function resolveScriptureItem(item: ServiceItem) {
+  if (item.type === 'scripture') {
+    if (item.displayMode === 'reference-only') return
+    await resolvePassage(item.id, item.reference, item.translation)
+  } else if (item.type === 'sermon') {
+    await Promise.all(
+      item.passages
+        .filter((passage) => passage.displayMode !== 'reference-only')
+        .map((passage) => resolvePassage(`${item.id}:${passage.id}`, passage.reference, passage.translation)),
+    )
+  }
+}
+
+// Switching translations after the item's already been added — e.g. the operator originally
+// picked KJV and now wants ESV instead — re-resolves in place rather than requiring a
+// delete-and-re-add, same as any other post-add edit already possible in this view.
+async function updateScriptureTranslation(itemId: string, translation: string) {
+  const item = service.value?.items.find((i) => i.id === itemId)
+  if (!item || item.type !== 'scripture') return
+  item.translation = translation
+  await resolveScriptureItem(item)
+}
+async function updateSermonPassageTranslation(itemId: string, passageId: string, translation: string) {
+  const item = service.value?.items.find((i) => i.id === itemId)
+  if (!item || item.type !== 'sermon') return
+  const passage = item.passages.find((p) => p.id === passageId)
+  if (!passage) return
+  passage.translation = translation
+  if (passage.displayMode !== 'reference-only') await resolvePassage(`${itemId}:${passageId}`, passage.reference, translation)
 }
 
 // Resolved media file src, keyed by MediaItem id (not service item id — several service items
@@ -154,6 +195,7 @@ onMounted(async () => {
   if (!slidesStore.loaded) await slidesStore.load()
   if (!mediaStore.loaded) await mediaStore.load()
   if (!externalAppsStore.loaded) await externalAppsStore.load()
+  if (!peopleStore.loaded) await peopleStore.load()
   await loadPresentationSize()
   // A just-created service arrives via the store instead of disk — see CreateServiceView —
   // so it's never persisted until Save is actually pressed.
@@ -200,8 +242,11 @@ onMounted(async () => {
     scriptureTranslations.value = await getAdapter().scripture.listTranslations()
     const defaultCode = settingsStore.librarySettings?.defaultTranslationCode
     const defaultAvailable = scriptureTranslations.value.some((t) => t.code === defaultCode)
-    if (defaultAvailable && defaultCode) scriptureTranslationCode.value = defaultCode
-    else if (scriptureTranslations.value.length > 0) scriptureTranslationCode.value = scriptureTranslations.value[0].code
+    // Seeds the Scripture tab's initial translation choice — ScriptureReferencePicker falls
+    // back to the first available translation itself if this is left unset, but the church's
+    // configured default (if any) should win over an arbitrary first-in-list one.
+    if (defaultAvailable && defaultCode) scriptureDraft.value.translation = defaultCode
+    else if (scriptureTranslations.value.length > 0) scriptureDraft.value.translation = scriptureTranslations.value[0].code
     await Promise.all((service.value?.items ?? []).map(resolveScriptureItem))
   } catch (e) {
     console.error('Failed to load scripture translations/passages:', e)
@@ -282,6 +327,19 @@ const selectedSlideGroup = computed<SongBlock[] | undefined>(() => {
 function slideFlatIndex(itemId: string, subIndex: number): number {
   return flatSlides.value.findIndex((s) => s.key === `${itemId}:${subIndex}`)
 }
+function sermonPassageText(itemId: string, passageId: string): string {
+  const passage = scriptureById.get(`${itemId}:${passageId}`)
+  return passage ? passage.verses.map((v) => `${v.number} ${v.text}`).join(' ') : ''
+}
+// A sermon's outline blocks come after however many flat slides its passages produced (which
+// varies with pagination), so their flat index can't be derived the same way slideFlatIndex
+// does for a fixed subIndex — instead, read it off this item's own already-flattened run
+// (flattenService pushes passages then outline in that exact order, see its own doc comment).
+function sermonOutlineFlatIndex(item: Extract<ServiceItem, { type: 'sermon' }>, outlineIndex: number): number {
+  const itemSlides = flatSlides.value.filter((s) => s.itemId === item.id)
+  const target = itemSlides[itemSlides.length - item.outline.length + outlineIndex]
+  return target ? flatSlides.value.indexOf(target) : -1
+}
 const selectedMediaUrl = computed(() => {
   const item = selectedItem.value
   const mediaId = item?.type === 'media' || item?.type === 'video' ? item.mediaId : undefined
@@ -325,6 +383,12 @@ function itemIcon(item: ServiceItem): string {
       return 'mdi-timer-outline'
     case 'qr':
       return 'mdi-qrcode'
+    case 'sermon':
+      return 'mdi-account-voice'
+    case 'bulletin-note':
+      return 'mdi-note-text-outline'
+    case 'placeholder':
+      return 'mdi-help-rhombus-outline'
     default:
       return 'mdi-file'
   }
@@ -339,6 +403,9 @@ function itemLabel(item: ServiceItem): string {
   if (item.type === 'video') return mediaById.value.get(item.mediaId)?.filename ?? 'Unknown Video'
   if (item.type === 'external-app') return externalAppProfilesById.value.get(item.profileId)?.name ?? 'Unknown App'
   if (item.type === 'countdown') return item.text || 'Countdown'
+  if (item.type === 'sermon') return item.bulletinLabel || 'Worship Through the Word'
+  if (item.type === 'bulletin-note') return item.bulletinLabel || 'Bulletin Note'
+  if (item.type === 'placeholder') return item.label
   return item.type
 }
 
@@ -617,7 +684,56 @@ function onKeydown(event: KeyboardEvent) {
 // today, so there's no real data an Audio tab could list; that's a Media Library extension,
 // not just an Add-to-Service tab. The full unified fuzzy search across every type is still a
 // later slice.
-const addTab = ref<'songs' | 'scripture' | 'slides' | 'media' | 'video' | 'external-app' | 'countdown'>('songs')
+const addTab = ref<'songs' | 'scripture' | 'slides' | 'media' | 'video' | 'external-app' | 'countdown' | 'sermon' | 'bulletin-note'>('songs')
+// A menu/select rather than a tab strip — with 9 item types (and counting), a horizontal tab
+// bar was cramped; picking the type first keeps this a single, predictable choice regardless
+// of how many more types get added later.
+const addTabOptions = computed(() => {
+  const options: { title: string; value: typeof addTab.value }[] = [
+    { title: 'Songs', value: 'songs' },
+    { title: 'Scripture', value: 'scripture' },
+    { title: 'Slides', value: 'slides' },
+    { title: 'Media', value: 'media' },
+    { title: 'Video', value: 'video' },
+  ]
+  if (getAdapter().externalApps) options.push({ title: 'External App', value: 'external-app' })
+  options.push(
+    { title: 'Countdown', value: 'countdown' },
+    { title: 'Sermon', value: 'sermon' },
+    { title: 'Bulletin Note', value: 'bulletin-note' },
+  )
+  return options
+})
+
+// Set only while filling in a Service Template's placeholder (see beginReplacePlaceholder) —
+// makes every add*ToService function below splice the new item into the placeholder's own
+// slot instead of appending it, since there's no reordering for the top-level item list today.
+const replaceItemIndex = ref<number | null>(null)
+const replaceItemRole = ref<string>()
+const replaceItemLabel = ref<string>()
+
+function insertItem(item: ServiceItem) {
+  if (!service.value) return
+  if (replaceItemIndex.value !== null) {
+    if (replaceItemRole.value && !item.role) item.role = replaceItemRole.value
+    if (replaceItemLabel.value && !item.bulletinLabel) item.bulletinLabel = replaceItemLabel.value
+    service.value.items.splice(replaceItemIndex.value, 1, item)
+    // Deliberately NOT recomputed from length — it already points at the placeholder's slot,
+    // which is exactly where the replacement now lives.
+  } else {
+    service.value.items.push(item)
+    selectedItemIndex.value = service.value.items.length - 1
+  }
+}
+
+function beginReplacePlaceholder(item: ServiceItem, index: number) {
+  if (item.type !== 'placeholder') return
+  replaceItemIndex.value = index
+  replaceItemRole.value = item.role
+  replaceItemLabel.value = item.bulletinLabel ?? item.label
+  addTab.value = (item.suggestedTab as typeof addTab.value) ?? 'songs'
+  addDialogOpen.value = true
+}
 
 const filteredSongsForAdd = computed(() => {
   const q = addQuery.value.trim().toLowerCase()
@@ -634,123 +750,38 @@ async function addSongToService(song: Song) {
       songId: song.id,
       arrangement: { sequence: [...song.defaultArrangement.sequence] },
     }
-    service.value.items.push(item)
-    selectedItemIndex.value = service.value.items.length - 1
+    insertItem(item)
     closeAddDialog()
   } finally {
     addingSong.value = false
   }
 }
 
-// Scripture sub-picker (spec section 2): "Type a reference" free text, or "Choose fields"
-// cascading dropdowns bounded by the reference table so an invalid reference can't be
-// selected. Both feed the same activeReference/preview pipeline below.
-const scriptureEntryMode = ref<'type' | 'fields'>('type')
-const scriptureRefText = ref('')
-const scriptureBook = ref<string>()
-const scriptureStartChapter = ref<number>()
-const scriptureStartVerse = ref<number>()
-const scriptureEndChapter = ref<number>()
-const scriptureEndVerse = ref<number>()
-const scriptureDisplayMode = ref<'full' | 'reference-only'>('full')
-const scriptureTranslationCode = ref<string>()
+// Scripture sub-picker (spec section 2) — the actual entry-mode/fields/display-mode/preview UI
+// lives in ScriptureReferencePicker.vue (shared with the Sermon tab's passages list below,
+// which needs several independent instances of the same picker); this is just the draft value
+// plus the template ref used to read its exposed validity/resolved-passage on submit.
+const scriptureDraft = ref<ScriptureReferenceValue>({ reference: '', translation: '', displayMode: 'full' })
+const scripturePickerRef = ref<InstanceType<typeof ScriptureReferencePicker>>()
+const scripturePickerResetKey = ref(0)
 const scriptureTranslations = ref<ScriptureTranslation[]>([])
-const scripturePreview = ref<ScripturePassage>()
-const scripturePreviewText = computed(() =>
-  scripturePreview.value ? scripturePreview.value.verses.map((v) => `${v.number} ${v.text}`).join(' ') : '',
-)
-const scripturePreviewError = ref<string>()
-const scripturePreviewLoading = ref(false)
 const addingScripture = ref(false)
 
-const bookNames = getBookNames()
-
-function range(start: number, end: number): number[] {
-  return Array.from({ length: Math.max(0, end - start + 1) }, (_, i) => start + i)
-}
-const startChapterOptions = computed(() => (scriptureBook.value ? range(1, getChapterCount(scriptureBook.value)) : []))
-const startVerseOptions = computed(() =>
-  scriptureBook.value && scriptureStartChapter.value ? range(1, getVerseCount(scriptureBook.value, scriptureStartChapter.value)) : [],
-)
-const endChapterOptions = computed(() =>
-  scriptureBook.value && scriptureStartChapter.value ? range(scriptureStartChapter.value, getChapterCount(scriptureBook.value)) : [],
-)
-const endVerseOptions = computed(() => {
-  if (!scriptureBook.value || !scriptureEndChapter.value) return []
-  const minVerse = scriptureEndChapter.value === scriptureStartChapter.value ? (scriptureStartVerse.value ?? 1) : 1
-  return range(minVerse, getVerseCount(scriptureBook.value, scriptureEndChapter.value))
-})
-
-// Picking a new book/start point resets anything downstream that could now be invalid, and
-// defaults the end of the range to match the start (a single verse) so "Choose fields"
-// always represents a complete, addable reference as soon as a start verse is picked.
-watch(scriptureBook, () => {
-  scriptureStartChapter.value = undefined
-  scriptureStartVerse.value = undefined
-  scriptureEndChapter.value = undefined
-  scriptureEndVerse.value = undefined
-})
-watch(scriptureStartChapter, (chapter) => {
-  scriptureStartVerse.value = undefined
-  scriptureEndChapter.value = chapter
-  scriptureEndVerse.value = undefined
-})
-watch(scriptureStartVerse, (verse) => {
-  scriptureEndVerse.value = verse
-})
-watch(scriptureEndChapter, () => {
-  scriptureEndVerse.value = undefined
-})
-
-const activeReference = computed<ScriptureReference | undefined>(() => {
-  if (scriptureEntryMode.value === 'type') return parseReference(scriptureRefText.value)
-  if (!scriptureBook.value || !scriptureStartChapter.value || !scriptureStartVerse.value) return undefined
-  return {
-    book: scriptureBook.value,
-    startChapter: scriptureStartChapter.value,
-    startVerse: scriptureStartVerse.value,
-    endChapter: scriptureEndChapter.value ?? scriptureStartChapter.value,
-    endVerse: scriptureEndVerse.value ?? scriptureStartVerse.value,
-  }
-})
-const activeReferenceValid = computed(() => !!activeReference.value && isValidReference(activeReference.value))
-const activeReferenceText = computed(() => (activeReference.value ? formatReference(activeReference.value) : ''))
-
-// Live preview, re-fetched whenever the resolved reference/translation changes. A request
-// token guards against an in-flight fetch for a since-superseded reference overwriting a
-// newer one's result.
-let scripturePreviewToken = 0
-watch([activeReferenceText, scriptureTranslationCode, scriptureDisplayMode], async () => {
-  scripturePreview.value = undefined
-  scripturePreviewError.value = undefined
-  if (scriptureDisplayMode.value === 'reference-only' || !activeReferenceValid.value || !scriptureTranslationCode.value) return
-  const token = ++scripturePreviewToken
-  scripturePreviewLoading.value = true
-  try {
-    const passage = await getAdapter().scripture.resolve(activeReferenceText.value, scriptureTranslationCode.value)
-    if (token === scripturePreviewToken) scripturePreview.value = passage
-  } catch (e) {
-    if (token === scripturePreviewToken) scripturePreviewError.value = errorMessage(e, 'Failed to load passage.')
-  } finally {
-    if (token === scripturePreviewToken) scripturePreviewLoading.value = false
-  }
-})
-
 async function addScriptureToService() {
-  if (!service.value || !activeReferenceValid.value || addingScripture.value) return
-  if (scriptureDisplayMode.value === 'full' && (!scriptureTranslationCode.value || scripturePreviewError.value)) return
+  const picker = scripturePickerRef.value
+  if (!service.value || !picker?.isValid || addingScripture.value) return
+  if (scriptureDraft.value.displayMode === 'full' && (!scriptureDraft.value.translation || picker.hasError)) return
   addingScripture.value = true
   try {
     const item: ServiceItem = {
       id: `item-${crypto.randomUUID()}`,
       type: 'scripture',
-      reference: activeReferenceText.value,
-      translation: scriptureTranslationCode.value ?? '',
-      displayMode: scriptureDisplayMode.value,
+      reference: scriptureDraft.value.reference,
+      translation: scriptureDraft.value.translation,
+      displayMode: scriptureDraft.value.displayMode,
     }
-    service.value.items.push(item)
-    if (scripturePreview.value && scriptureDisplayMode.value === 'full') scriptureById.set(item.id, scripturePreview.value)
-    selectedItemIndex.value = service.value.items.length - 1
+    insertItem(item)
+    if (picker.resolvedPassage && scriptureDraft.value.displayMode === 'full') scriptureById.set(item.id, picker.resolvedPassage)
     closeAddDialog()
   } finally {
     addingScripture.value = false
@@ -777,8 +808,7 @@ async function addSlideRefToService(slideItem: SlideLibraryItem) {
   addingSlideRef.value = true
   try {
     const item: ServiceItem = { id: `item-${crypto.randomUUID()}`, type: 'slide-ref', slideId: slideItem.id }
-    service.value.items.push(item)
-    selectedItemIndex.value = service.value.items.length - 1
+    insertItem(item)
     closeAddDialog()
   } finally {
     addingSlideRef.value = false
@@ -801,8 +831,7 @@ function addTextSlideToService() {
     type: 'text-slide',
     slides: newTextSlideBlocks.value.map((block) => ({ ...block })),
   }
-  service.value.items.push(item)
-  selectedItemIndex.value = service.value.items.length - 1
+  insertItem(item)
   closeAddDialog()
 }
 
@@ -828,8 +857,7 @@ async function addMediaToService(mediaItem: MediaItem) {
   addingMedia.value = true
   try {
     const item: ServiceItem = { id: `item-${crypto.randomUUID()}`, type: 'media', mediaId: mediaItem.id, fit: mediaFit.value }
-    service.value.items.push(item)
-    selectedItemIndex.value = service.value.items.length - 1
+    insertItem(item)
     closeAddDialog()
     await resolveMediaItem(mediaItem.id)
   } finally {
@@ -841,8 +869,7 @@ async function addVideoToService(mediaItem: MediaItem) {
   addingMedia.value = true
   try {
     const item: ServiceItem = { id: `item-${crypto.randomUUID()}`, type: 'video', mediaId: mediaItem.id }
-    service.value.items.push(item)
-    selectedItemIndex.value = service.value.items.length - 1
+    insertItem(item)
     closeAddDialog()
     await resolveMediaItem(mediaItem.id)
   } finally {
@@ -872,8 +899,7 @@ async function addExternalAppToService() {
   try {
     await getAdapter().externalApps?.verifyItem(externalAppProfileId.value, externalAppFile.value)
     const item: ServiceItem = { id: `item-${crypto.randomUUID()}`, type: 'external-app', profileId: externalAppProfileId.value, file: externalAppFile.value }
-    service.value.items.push(item)
-    selectedItemIndex.value = service.value.items.length - 1
+    insertItem(item)
     closeAddDialog()
   } catch (e) {
     externalAppAddError.value = errorMessage(e, 'Failed to verify this app.')
@@ -894,22 +920,113 @@ function addCountdownToService() {
   // local time, same as every other date the app already collects this way.
   const targetTime = new Date(countdownTargetTime.value).toISOString()
   const item: ServiceItem = { id: `item-${crypto.randomUUID()}`, type: 'countdown', targetTime, text: countdownText.value.trim() || undefined }
-  service.value.items.push(item)
-  selectedItemIndex.value = service.value.items.length - 1
+  insertItem(item)
+  closeAddDialog()
+}
+
+// Sermon sub-picker: a reorderable list of passages (each its own ScriptureReferencePicker,
+// same as the Scripture tab, just N instances), one marked "main" for the printed bulletin
+// line (see orderOfWorship.ts), then a presentable outline — same block-editor pattern as the
+// Slides tab's "+ New Text Slides".
+interface SermonPassageDraft {
+  id: string
+  value: ScriptureReferenceValue
+}
+const sermonPassages = ref<SermonPassageDraft[]>([])
+const sermonMainPassageId = ref<string>()
+const sermonOutlineBlocks = ref<SongBlock[]>([])
+const sermonPassagePickerRefs = ref<Record<string, InstanceType<typeof ScriptureReferencePicker> | null>>({})
+const addingSermon = ref(false)
+
+function setSermonPassageRef(id: string, el: unknown) {
+  sermonPassagePickerRefs.value[id] = el as InstanceType<typeof ScriptureReferencePicker> | null
+}
+function addSermonPassage() {
+  const id = `passage-${crypto.randomUUID()}`
+  sermonPassages.value.push({ id, value: { reference: '', translation: scriptureDraft.value.translation, displayMode: 'full' } })
+  if (!sermonMainPassageId.value) sermonMainPassageId.value = id
+}
+async function removeSermonPassage(id: string) {
+  const index = sermonPassages.value.findIndex((p) => p.id === id)
+  if (index === -1) return
+  if (!(await confirmDialog.confirm('Remove this passage?', 'Remove'))) return
+  sermonPassages.value.splice(index, 1)
+  delete sermonPassagePickerRefs.value[id]
+  if (sermonMainPassageId.value === id) sermonMainPassageId.value = sermonPassages.value[0]?.id
+}
+function addSermonOutlineBlock() {
+  sermonOutlineBlocks.value.push({ id: `outline-${crypto.randomUUID()}`, label: `Point ${sermonOutlineBlocks.value.length + 1}`, text: '' })
+}
+async function removeSermonOutlineBlock(index: number) {
+  const target = sermonOutlineBlocks.value[index]
+  if (!target) return
+  if (!(await confirmDialog.confirm(`Remove "${target.label}"?`, 'Remove'))) return
+  sermonOutlineBlocks.value.splice(index, 1)
+}
+const sermonPassagesValid = computed(() => sermonPassages.value.every((p) => sermonPassagePickerRefs.value[p.id]?.isValid))
+
+async function addSermonToService() {
+  if (
+    !service.value ||
+    sermonPassages.value.length === 0 ||
+    !sermonMainPassageId.value ||
+    !sermonPassagesValid.value ||
+    addingSermon.value
+  ) {
+    return
+  }
+  addingSermon.value = true
+  try {
+    const passages: SermonPassage[] = sermonPassages.value.map((p) => ({
+      id: p.id,
+      reference: p.value.reference,
+      translation: p.value.translation,
+      displayMode: p.value.displayMode,
+    }))
+    const item: ServiceItem = {
+      id: `item-${crypto.randomUUID()}`,
+      type: 'sermon',
+      passages,
+      mainPassageId: sermonMainPassageId.value,
+      outline: sermonOutlineBlocks.value.map((block) => ({ ...block })),
+    }
+    insertItem(item)
+    for (const passage of sermonPassages.value) {
+      const resolved = sermonPassagePickerRefs.value[passage.id]?.resolvedPassage
+      if (resolved && passage.value.displayMode === 'full') scriptureById.set(`${item.id}:${passage.id}`, resolved)
+    }
+    closeAddDialog()
+  } finally {
+    addingSermon.value = false
+  }
+}
+
+// Bulletin Note sub-picker: a line that only ever appears in the printed Order of Worship (see
+// orderOfWorship.ts) — its heading/body are the shared bulletinLabel/bulletinNote fields
+// every item has, not fields of their own (see ServiceItemContent's BulletinNote variant).
+const bulletinNoteLabel = ref('')
+const bulletinNoteText = ref('')
+
+function addBulletinNoteToService() {
+  if (!service.value || !bulletinNoteLabel.value.trim()) return
+  const item: ServiceItem = {
+    id: `item-${crypto.randomUUID()}`,
+    type: 'bulletin-note',
+    bulletinLabel: bulletinNoteLabel.value.trim(),
+    bulletinNote: bulletinNoteText.value.trim() || undefined,
+  }
+  insertItem(item)
   closeAddDialog()
 }
 
 function closeAddDialog() {
   addDialogOpen.value = false
   addQuery.value = ''
-  scriptureRefText.value = ''
-  scriptureBook.value = undefined
-  scriptureStartChapter.value = undefined
-  scriptureStartVerse.value = undefined
-  scriptureEndChapter.value = undefined
-  scriptureEndVerse.value = undefined
-  scripturePreview.value = undefined
-  scripturePreviewError.value = undefined
+  scriptureDraft.value = { reference: '', translation: '', displayMode: 'full' }
+  // Forces a fresh ScriptureReferencePicker instance next open — the component owns its own
+  // entry-mode/book/chapter/verse state internally, so remounting (rather than trying to push
+  // a reset into it via props) is what actually clears a half-typed reference between opens.
+  scripturePickerResetKey.value++
   slideQuery.value = ''
   slidesSubMode.value = 'pick'
   newTextSlideBlocks.value = []
@@ -921,12 +1038,58 @@ function closeAddDialog() {
   externalAppAddError.value = undefined
   countdownTargetTime.value = ''
   countdownText.value = ''
+  sermonPassages.value = []
+  sermonMainPassageId.value = undefined
+  sermonOutlineBlocks.value = []
+  sermonPassagePickerRefs.value = {}
+  bulletinNoteLabel.value = ''
+  bulletinNoteText.value = ''
+  replaceItemIndex.value = null
+  replaceItemRole.value = undefined
+  replaceItemLabel.value = undefined
 }
 
 function updatePresenterNote(itemId: string, note: string) {
   if (!service.value) return
   if (!service.value.presenterNotes) service.value.presenterNotes = {}
   service.value.presenterNotes[itemId] = note
+}
+
+// Who's doing this part (Elder leading prayer, scripture reader, etc.) — a role from the same
+// catalog Assignments uses, not a Person reference directly: the actual person is whoever that
+// service's Assignments has for this role (see AssignmentsView.vue), so this is just a pointer
+// to which role, kept automatically in sync rather than a second place that could disagree.
+interface ItemRoleOption {
+  type?: 'subheader'
+  title: string
+  value?: string
+}
+const itemRoleOptions = computed<ItemRoleOption[]>(() => {
+  const items: ItemRoleOption[] = []
+  for (const group of settingsStore.librarySettings?.roleGroups ?? []) {
+    if (!group.roles.length) continue
+    items.push({ type: 'subheader', title: group.name })
+    for (const role of group.roles) items.push({ title: role, value: role })
+  }
+  return items
+})
+function updateItemRole(itemId: string, role: string | undefined) {
+  const item = service.value?.items.find((i) => i.id === itemId)
+  if (item) item.role = role
+}
+const rolePersonOptions = computed(() => peopleStore.people.map((p) => ({ title: personDisplayName(p), value: p.id })))
+function assignedPersonId(role: string | undefined): string | undefined {
+  return service.value?.assignments?.find((a) => a.role === role)?.personId
+}
+// Editing directly here (rather than only via the Assignments page) writes to the exact same
+// service.assignments array Assignments reads from — one RoleAssignment per role, created on
+// first use here if this role has never been assigned anything for this service yet.
+function updateRolePerson(role: string, personId: string | undefined) {
+  if (!service.value) return
+  if (!service.value.assignments) service.value.assignments = []
+  const assignment = service.value.assignments.find((a) => a.role === role)
+  if (assignment) assignment.personId = personId
+  else service.value.assignments.push({ role, personId, tentative: false })
 }
 </script>
 
@@ -941,8 +1104,8 @@ function updatePresenterNote(itemId: string, note: string) {
         <v-btn icon="mdi-pencil-outline" variant="text" size="small" title="Edit service details" @click="openServiceDetailsDialog" />
       </div>
       <div class="d-flex ga-2">
-        <v-btn variant="outlined" prepend-icon="mdi-account-group-outline" :to="`/service/${service.id}/roster`">
-          Volunteer Roster
+        <v-btn variant="outlined" prepend-icon="mdi-account-group-outline" :to="`/service/${service.id}/assignments`">
+          Assignments
         </v-btn>
         <v-btn variant="outlined" prepend-icon="mdi-file-document-outline" :to="`/service/${service.id}/order-of-worship`">
           Order of Worship
@@ -967,6 +1130,9 @@ function updatePresenterNote(itemId: string, note: string) {
           >
             <v-icon :icon="itemIcon(item)" :color="itemColor(item)" size="small" />
             <span class="text-truncate flex-grow-1">{{ itemLabel(item) }}</span>
+            <v-chip v-if="item.type === 'placeholder'" size="x-small" color="amber" variant="flat" class="mr-1">
+              Needs content
+            </v-chip>
             <v-btn
               icon="mdi-trash-can-outline"
               variant="flat"
@@ -1047,6 +1213,19 @@ function updatePresenterNote(itemId: string, note: string) {
           </template>
 
           <template v-else-if="selectedItem.type === 'scripture'">
+            <v-select
+              v-if="selectedItem.displayMode === 'full'"
+              :model-value="selectedItem.translation"
+              :items="scriptureTranslations"
+              item-title="name"
+              item-value="code"
+              label="Translation"
+              variant="outlined"
+              density="compact"
+              style="max-width: 300px"
+              class="mb-2"
+              @update:model-value="(value: string) => updateScriptureTranslation(selectedItem!.id, value)"
+            />
             <div
               class="slide-row"
               :class="{ 'slide-row--live': itemHasLive(selectedItemIndex) }"
@@ -1149,6 +1328,120 @@ function updatePresenterNote(itemId: string, note: string) {
             </div>
           </template>
 
+          <template v-else-if="selectedItem.type === 'sermon'">
+            <div v-for="(passage, index) in selectedItem.passages" :key="passage.id" class="mb-3" style="max-width: 460px">
+              <div class="text-caption font-weight-bold text-medium-emphasis mb-1">
+                Passage {{ index + 1 }}<span v-if="passage.id === selectedItem.mainPassageId"> · Main (printed in the bulletin)</span>
+              </div>
+              <v-select
+                v-if="passage.displayMode === 'full'"
+                :model-value="passage.translation"
+                :items="scriptureTranslations"
+                item-title="name"
+                item-value="code"
+                label="Translation"
+                variant="outlined"
+                density="compact"
+                class="mb-2"
+                @update:model-value="(value: string) => updateSermonPassageTranslation(selectedItem!.id, passage.id, value)"
+              />
+              <div
+                class="slide-row"
+                :style="{
+                  background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                  borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                  paddingLeft: '9px',
+                }"
+              >
+                <div v-if="passage.displayMode === 'reference-only'" class="text-body-2 text-medium-emphasis">
+                  {{ passage.reference }} — reference only, no verse text shown.
+                </div>
+                <div v-else-if="scriptureErrors.get(`${selectedItem.id}:${passage.id}`)" class="text-body-2 text-error">
+                  {{ scriptureErrors.get(`${selectedItem.id}:${passage.id}`) }}
+                </div>
+                <template v-else-if="scriptureById.get(`${selectedItem.id}:${passage.id}`)">
+                  <div class="text-body-2">{{ sermonPassageText(selectedItem.id, passage.id) }}</div>
+                  <div class="text-caption text-medium-emphasis mt-2">
+                    {{ scriptureById.get(`${selectedItem.id}:${passage.id}`)?.translation }}
+                  </div>
+                </template>
+                <div v-else class="text-body-2 text-medium-emphasis">Loading…</div>
+              </div>
+            </div>
+
+            <div class="text-overline text-medium-emphasis mt-4 mb-2">Outline</div>
+            <p v-if="selectedItem.outline.length === 0" class="text-medium-emphasis">No outline yet.</p>
+            <div v-else class="d-flex flex-column ga-1" style="max-width: 460px">
+              <div
+                v-for="(block, index) in selectedItem.outline"
+                :key="block.id"
+                class="slide-row"
+                :class="{ 'slide-row--live': flatIndex === sermonOutlineFlatIndex(selectedItem, index) }"
+                :style="
+                  flatIndex === sermonOutlineFlatIndex(selectedItem, index)
+                    ? undefined
+                    : {
+                        background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                        borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                        paddingLeft: '9px',
+                      }
+                "
+                @click="goLive(sermonOutlineFlatIndex(selectedItem, index))"
+              >
+                <div class="flex-grow-1" style="min-width: 0">
+                  <div class="text-body-2 font-weight-bold">{{ block.label }}</div>
+                  <div class="text-caption text-medium-emphasis text-truncate">{{ block.text }}</div>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <template v-else-if="selectedItem.type === 'bulletin-note'">
+            <p class="text-body-2 text-medium-emphasis mb-4" style="max-width: 460px">
+              This item only appears in the printed Order of Worship — it never becomes a slide.
+            </p>
+            <v-text-field
+              :model-value="selectedItem.bulletinLabel"
+              label="Bulletin Label"
+              variant="outlined"
+              density="compact"
+              style="max-width: 460px"
+              class="mb-2"
+              @update:model-value="(value: string) => (selectedItem!.bulletinLabel = value)"
+            />
+            <v-textarea
+              :model-value="selectedItem.bulletinNote"
+              label="Bulletin Note (optional)"
+              variant="outlined"
+              density="compact"
+              rows="2"
+              auto-grow
+              style="max-width: 460px"
+              @update:model-value="(value: string) => (selectedItem!.bulletinNote = value)"
+            />
+          </template>
+
+          <template v-else-if="selectedItem.type === 'placeholder'">
+            <div
+              class="slide-row"
+              style="max-width: 460px; background: rgba(var(--v-theme-amber), 0.08); border-left: 3px solid rgb(var(--v-theme-amber)); padding-left: 9px"
+            >
+              <div class="flex-grow-1" style="min-width: 0">
+                <div class="text-body-2 font-weight-bold">{{ selectedItem.label }}</div>
+                <div class="text-body-2 text-medium-emphasis">This slot hasn't been filled in yet.</div>
+              </div>
+            </div>
+            <v-btn
+              variant="flat"
+              color="primary"
+              class="mt-3"
+              prepend-icon="mdi-pencil"
+              @click="beginReplacePlaceholder(selectedItem, selectedItemIndex)"
+            >
+              Fill In This Slot
+            </v-btn>
+          </template>
+
           <template v-else>
             <div
               class="slide-row"
@@ -1169,7 +1462,53 @@ function updatePresenterNote(itemId: string, note: string) {
             </div>
           </template>
 
-          <div class="mt-6" style="max-width: 460px">
+          <div v-if="selectedItem.type !== 'bulletin-note'" class="mt-6" style="max-width: 460px">
+            <div class="text-overline text-medium-emphasis mb-2">Bulletin Label (optional)</div>
+            <v-text-field
+              :model-value="selectedItem.bulletinLabel"
+              variant="outlined"
+              density="compact"
+              clearable
+              placeholder="Overrides this item's default Order of Worship heading…"
+              @update:model-value="(value: string | undefined) => (selectedItem!.bulletinLabel = value || undefined)"
+            />
+            <div class="text-overline text-medium-emphasis mb-2">Bulletin Note (optional)</div>
+            <v-textarea
+              :model-value="selectedItem.bulletinNote"
+              variant="outlined"
+              density="compact"
+              rows="2"
+              placeholder='A second line under this entry, e.g. "(after this song children up to grade 4 can be dismissed)"…'
+              @update:model-value="(value: string) => (selectedItem!.bulletinNote = value || undefined)"
+            />
+          </div>
+
+          <div class="mt-4" style="max-width: 460px">
+            <div class="text-overline text-medium-emphasis mb-2">Role</div>
+            <v-select
+              :model-value="selectedItem.role"
+              :items="itemRoleOptions"
+              variant="outlined"
+              density="compact"
+              clearable
+              placeholder="Who's doing this part…"
+              @update:model-value="(value: string | undefined) => updateItemRole(selectedItem!.id, value)"
+            />
+            <v-select
+              v-if="selectedItem.role"
+              :model-value="assignedPersonId(selectedItem.role)"
+              :items="rolePersonOptions"
+              label="Assigned Person"
+              variant="outlined"
+              density="compact"
+              clearable
+              class="mt-2"
+              placeholder="Not yet assigned…"
+              @update:model-value="(value: string | undefined) => updateRolePerson(selectedItem!.role!, value)"
+            />
+          </div>
+
+          <div class="mt-4" style="max-width: 460px">
             <div class="text-overline text-medium-emphasis mb-2">Presenter Notes</div>
             <v-textarea
               :model-value="service.presenterNotes?.[selectedItem.id]"
@@ -1264,12 +1603,12 @@ function updatePresenterNote(itemId: string, note: string) {
               />
             </v-col>
             <v-col cols="6">
-              <v-combobox
-                v-model="editPreacher"
-                :items="settingsStore.librarySettings?.preachers ?? []"
+              <v-select
+                v-model="editPreacherId"
+                :items="preacherOptions"
                 label="Preacher (optional)"
-                placeholder="Start typing or pick from list"
                 variant="outlined"
+                clearable
               />
             </v-col>
           </v-row>
@@ -1283,17 +1622,18 @@ function updatePresenterNote(itemId: string, note: string) {
     </v-dialog>
 
     <v-dialog v-model="addDialogOpen" max-width="560">
-      <v-card>
+      <v-card class="add-service-card">
         <v-card-title>Add to Service</v-card-title>
-        <v-tabs v-model="addTab" density="compact" class="border-b add-service-tabs">
-          <v-tab value="songs">Songs</v-tab>
-          <v-tab value="scripture">Scripture</v-tab>
-          <v-tab value="slides">Slides</v-tab>
-          <v-tab value="media">Media</v-tab>
-          <v-tab value="video">Video</v-tab>
-          <v-tab v-if="getAdapter().externalApps" value="external-app">External App</v-tab>
-          <v-tab value="countdown">Countdown</v-tab>
-        </v-tabs>
+        <div class="px-4 pb-3 add-service-tabs">
+          <v-select
+            v-model="addTab"
+            :items="addTabOptions"
+            label="Type"
+            variant="outlined"
+            density="compact"
+            hide-details
+          />
+        </div>
         <v-card-text>
           <v-window v-model="addTab">
             <v-window-item value="songs">
@@ -1317,98 +1657,18 @@ function updatePresenterNote(itemId: string, note: string) {
             </v-window-item>
 
             <v-window-item value="scripture">
-              <v-btn-toggle v-model="scriptureEntryMode" mandatory density="compact" divided class="mb-4">
-                <v-btn value="type" size="small">Type a Reference</v-btn>
-                <v-btn value="fields" size="small">Choose Fields</v-btn>
-              </v-btn-toggle>
-
-              <v-text-field
-                v-if="scriptureEntryMode === 'type'"
-                v-model="scriptureRefText"
-                label="Reference"
-                placeholder="e.g. John 3:16-17"
-                variant="outlined"
-                density="comfortable"
-                autofocus
-                :error="!!scriptureRefText && !activeReferenceValid"
-                :error-messages="scriptureRefText && !activeReferenceValid ? ['Not a recognized reference'] : []"
+              <ScriptureReferencePicker
+                :key="scripturePickerResetKey"
+                ref="scripturePickerRef"
+                v-model="scriptureDraft"
+                :translations="scriptureTranslations"
               />
-
-              <template v-else>
-                <v-select v-model="scriptureBook" :items="bookNames" label="Book" variant="outlined" density="comfortable" />
-                <div class="d-flex ga-3">
-                  <v-select
-                    v-model="scriptureStartChapter"
-                    :items="startChapterOptions"
-                    label="Start Chapter"
-                    variant="outlined"
-                    density="comfortable"
-                    :disabled="!scriptureBook"
-                  />
-                  <v-select
-                    v-model="scriptureStartVerse"
-                    :items="startVerseOptions"
-                    label="Start Verse"
-                    variant="outlined"
-                    density="comfortable"
-                    :disabled="!scriptureStartChapter"
-                  />
-                </div>
-                <div class="d-flex ga-3">
-                  <v-select
-                    v-model="scriptureEndChapter"
-                    :items="endChapterOptions"
-                    label="End Chapter"
-                    variant="outlined"
-                    density="comfortable"
-                    :disabled="!scriptureStartChapter"
-                  />
-                  <v-select
-                    v-model="scriptureEndVerse"
-                    :items="endVerseOptions"
-                    label="End Verse"
-                    variant="outlined"
-                    density="comfortable"
-                    :disabled="!scriptureEndChapter"
-                  />
-                </div>
-              </template>
-
-              <v-btn-toggle v-model="scriptureDisplayMode" mandatory density="compact" divided class="my-3">
-                <v-btn value="full" size="small">Show Full Text</v-btn>
-                <v-btn value="reference-only" size="small">Reference Only</v-btn>
-              </v-btn-toggle>
-
-              <v-select
-                v-if="scriptureDisplayMode === 'full'"
-                v-model="scriptureTranslationCode"
-                :items="scriptureTranslations"
-                item-title="name"
-                item-value="code"
-                label="Translation"
-                variant="outlined"
-                density="comfortable"
-              />
-
-              <div v-if="scriptureDisplayMode === 'full'" class="mb-2" style="min-height: 24px">
-                <span v-if="scripturePreviewLoading" class="text-medium-emphasis text-body-2">Loading preview…</span>
-                <span v-else-if="scripturePreviewError" class="text-error text-body-2">{{ scripturePreviewError }}</span>
-                <div v-else-if="scripturePreview">
-                  <div class="text-caption text-medium-emphasis mb-1">
-                    {{ scripturePreview.reference }} ({{ scripturePreview.translation }})
-                  </div>
-                  <p class="text-body-2">{{ scripturePreviewText }}</p>
-                </div>
-              </div>
-              <p v-else-if="activeReferenceValid" class="text-body-2 text-medium-emphasis mb-2">
-                {{ activeReferenceText }} — reference only, no verse text shown.
-              </p>
 
               <v-btn
                 variant="flat"
                 color="primary"
                 block
-                :disabled="!activeReferenceValid || (scriptureDisplayMode === 'full' && (!scriptureTranslationCode || !!scripturePreviewError))"
+                :disabled="!scripturePickerRef?.isValid || (scriptureDraft.displayMode === 'full' && (!scriptureDraft.translation || scripturePickerRef?.hasError))"
                 :loading="addingScripture"
                 @click="addScriptureToService"
               >
@@ -1595,6 +1855,92 @@ function updatePresenterNote(itemId: string, note: string) {
                 Add to Service
               </v-btn>
             </v-window-item>
+
+            <v-window-item value="sermon">
+              <div class="text-overline text-medium-emphasis mb-2">Passages</div>
+              <v-card v-for="passage in sermonPassages" :key="passage.id" variant="outlined" rounded="lg" class="pa-3 mb-3">
+                <div class="d-flex align-center justify-space-between mb-2">
+                  <v-btn
+                    :variant="sermonMainPassageId === passage.id ? 'flat' : 'outlined'"
+                    :color="sermonMainPassageId === passage.id ? 'primary' : undefined"
+                    size="small"
+                    prepend-icon="mdi-star"
+                    @click="sermonMainPassageId = passage.id"
+                  >
+                    {{ sermonMainPassageId === passage.id ? 'Main Passage' : 'Set as Main' }}
+                  </v-btn>
+                  <v-btn icon="mdi-delete-outline" variant="text" size="small" @click="removeSermonPassage(passage.id)" />
+                </div>
+                <ScriptureReferencePicker
+                  :ref="(el) => setSermonPassageRef(passage.id, el)"
+                  v-model="passage.value"
+                  :translations="scriptureTranslations"
+                />
+              </v-card>
+              <v-btn variant="outlined" class="mb-4" prepend-icon="mdi-plus" @click="addSermonPassage">Add Passage</v-btn>
+
+              <div class="text-overline text-medium-emphasis mb-2">Outline</div>
+              <p class="text-caption text-medium-emphasis mb-3">
+                Presentable points for this sermon only — not added to the Slide Library.
+              </p>
+              <VueDraggable v-model="sermonOutlineBlocks" handle=".drag-handle" :animation="150" class="d-flex flex-column ga-2 mb-3">
+                <v-card v-for="(block, index) in sermonOutlineBlocks" :key="block.id" variant="outlined" rounded="lg">
+                  <div class="d-flex align-center ga-2 px-2 py-1 border-b">
+                    <v-icon icon="mdi-drag-vertical" class="drag-handle" size="small" style="cursor: grab" />
+                    <v-text-field v-model="block.label" variant="filled" density="compact" hide-details class="flex-grow-1" />
+                    <v-btn
+                      icon="mdi-trash-can-outline"
+                      variant="flat"
+                      color="error"
+                      size="small"
+                      @click="removeSermonOutlineBlock(index)"
+                    />
+                  </div>
+                  <v-textarea v-model="block.text" variant="filled" density="compact" rows="2" auto-grow hide-details class="px-2 py-1" />
+                </v-card>
+              </VueDraggable>
+              <v-btn variant="flat" color="primary" class="mb-3" prepend-icon="mdi-plus" @click="addSermonOutlineBlock">
+                Add Outline Point
+              </v-btn>
+
+              <v-btn
+                variant="flat"
+                color="primary"
+                block
+                :disabled="sermonPassages.length === 0 || !sermonMainPassageId || !sermonPassagesValid"
+                :loading="addingSermon"
+                @click="addSermonToService"
+              >
+                Add Sermon
+              </v-btn>
+            </v-window-item>
+
+            <v-window-item value="bulletin-note">
+              <v-text-field
+                v-model="bulletinNoteLabel"
+                label="Bulletin Label"
+                placeholder="e.g. Silent Preparation"
+                variant="outlined"
+                density="comfortable"
+                class="mb-3"
+              />
+              <v-textarea
+                v-model="bulletinNoteText"
+                label="Bulletin Note (optional)"
+                placeholder="e.g. (please spend the next few moments preparing your heart for corporate worship)"
+                variant="outlined"
+                density="comfortable"
+                rows="2"
+                auto-grow
+                class="mb-3"
+              />
+              <p class="text-caption text-medium-emphasis mb-3">
+                This item only appears in the printed Order of Worship — it never becomes a slide.
+              </p>
+              <v-btn variant="flat" color="primary" block :disabled="!bulletinNoteLabel.trim()" @click="addBulletinNoteToService">
+                Add to Service
+              </v-btn>
+            </v-window-item>
           </v-window>
         </v-card-text>
         <v-card-actions>
@@ -1622,7 +1968,7 @@ function updatePresenterNote(itemId: string, note: string) {
 }
 .workspace-layout {
   display: grid;
-  grid-template-columns: 260px 1fr 400px;
+  grid-template-columns: 340px 1fr 400px;
   grid-template-rows: minmax(0, 1fr);
   flex: 1;
   min-height: 0;
@@ -1659,10 +2005,10 @@ function updatePresenterNote(itemId: string, note: string) {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 13.5px;
+  font-size: 15px;
   margin-bottom: 2px;
 }
 .service-item:hover {
@@ -1738,13 +2084,16 @@ function updatePresenterNote(itemId: string, note: string) {
   background: rgb(var(--v-theme-error));
   flex-shrink: 0;
 }
-/* Add-to-Service dialog: with a large library (100+ songs), the song list is tall enough
-   that the whole card wants to grow well past the viewport. Without an explicit
-   flex-shrink: 0, flexbox's default shrink-to-fit behavior squeezes EVERY flex child
-   (including the title and tabs bar) down toward zero to make room, rather than confining
-   the overflow to the list — reproducible in any browser with enough songs seeded, nothing
-   Tauri/WebView2-specific about it. Title, tabs, and Cancel stay fixed size and always
-   visible; only the content area (song/scripture/slide list) scrolls internally. */
+/* Add-to-Service dialog: one fixed size regardless of which type is selected — a long song
+   library, several sermon passages, or the outline editor could otherwise each drive the card
+   to a different (and sometimes viewport-exceeding) height. An explicit height + flex column
+   here, with only the content area scrolling internally, keeps title/type-select/Cancel fixed
+   and always visible no matter what's selected. */
+.add-service-card {
+  height: 640px;
+  display: flex;
+  flex-direction: column;
+}
 :deep(.v-card-title),
 .add-service-tabs,
 :deep(.v-card-actions) {

@@ -17,9 +17,15 @@ describe('Add-to-Service Countdown tab', () => {
     await addButton.waitForClickable({ timeout: 10000 })
     await addButton.click()
 
-    const countdownTab = await $('.v-tab*=Countdown')
-    await countdownTab.waitForExist({ timeout: 10000 })
-    await countdownTab.click()
+    // The Add-to-Service dialog picks its content type via a "Type" dropdown, not tabs. The
+    // option lookup is scoped to the open menu's own overlay content — an unscoped query can
+    // match the persistent left nav's own .v-list-item entries instead.
+    const typeSelect = await $('.v-dialog .v-select')
+    await typeSelect.waitForClickable({ timeout: 10000 })
+    await typeSelect.click()
+    const countdownOption = await (await $('[role="listbox"]')).$('.v-list-item*=Countdown')
+    await countdownOption.waitForClickable({ timeout: 10000 })
+    await countdownOption.click()
 
     // Vuetify's v-window keeps other tabs' fields mounted (just hidden) after they're first
     // activated, so a plain `input[type=...]` or positional query can match a stale field left

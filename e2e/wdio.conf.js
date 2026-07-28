@@ -20,7 +20,7 @@ export const config = {
   // Wipes the isolated E2E app-data directory before every run — see helpers/appDataDir.js
   // for why this is safe (never the real dev profile) and why it matters (guarantees every
   // spec starts from the exact same clean slate, rather than accumulating leftover services/
-  // volunteers/themes from whatever ran before it).
+  // people/themes from whatever ran before it).
   //
   // Pre-seeding hasCompletedSetup: true here (rather than leaving it for App.vue's own
   // first-run default) matters more than it looks: every spec's "skip setup if it's showing"

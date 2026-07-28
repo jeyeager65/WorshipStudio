@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { buildSampleServices, sampleSongs, sampleThemes, sampleVolunteers, sampleVolunteerRoles } from '@/utils/sampleData'
-import { findRoleConflicts } from '@/utils/volunteerConflicts'
+import { buildSampleServices, sampleSongs, sampleThemes, samplePeople, sampleRoleGroups } from '@/utils/sampleData'
+import { findRoleConflicts } from '@/utils/rosterConflicts'
 import { parseReference } from '@/utils/scriptureReference'
 
 const songsById = new Map(sampleSongs.map((s) => [s.id, s]))
-const volunteerIds = new Set(sampleVolunteers.map((v) => v.id))
+const personIds = new Set(samplePeople.map((p) => p.id))
 const services = buildSampleServices(new Date('2026-07-26T12:00:00Z'))
 
 describe('sample data', () => {
@@ -31,11 +31,11 @@ describe('sample data', () => {
     }
   })
 
-  it('every volunteer roster entry references a real sample volunteer', () => {
+  it('every assignment references a real sample person', () => {
     for (const service of services) {
-      for (const assignment of service.volunteerRoster ?? []) {
-        if (!assignment.volunteerId) continue
-        expect(volunteerIds.has(assignment.volunteerId), `${service.id}: unknown volunteerId "${assignment.volunteerId}"`).toBe(true)
+      for (const assignment of service.assignments ?? []) {
+        if (!assignment.personId) continue
+        expect(personIds.has(assignment.personId), `${service.id}: unknown personId "${assignment.personId}"`).toBe(true)
       }
     }
   })
@@ -51,16 +51,16 @@ describe('sample data', () => {
 
   it('the upcoming Sunday service has a deliberate double-booking conflict', () => {
     const soon = services.find((s) => s.id === 'service-sample-upcoming-sunday')!
-    const conflicts = findRoleConflicts(soon.volunteerRoster ?? [])
+    const conflicts = findRoleConflicts(soon.assignments ?? [])
     expect(conflicts).toHaveLength(1)
-    expect(conflicts[0].volunteerId).toBe('volunteer-sample-marcus-johnson')
+    expect(conflicts[0].personId).toBe('person-sample-marcus-johnson')
     expect(conflicts[0].roles.sort()).toEqual(['Piano', 'Slides'])
   })
 
   it('no other service has an accidental conflict', () => {
     for (const service of services) {
       if (service.id === 'service-sample-upcoming-sunday') continue
-      expect(findRoleConflicts(service.volunteerRoster ?? []), service.id).toHaveLength(0)
+      expect(findRoleConflicts(service.assignments ?? []), service.id).toHaveLength(0)
     }
   })
 
@@ -78,11 +78,12 @@ describe('sample data', () => {
     expect(new Date(future.date).getTime()).toBeGreaterThan(new Date(soon.date).getTime())
   })
 
-  it('themes and volunteer roles are internally consistent with the rosters/preferredRoles used above', () => {
+  it('themes and role groups are internally consistent with the rosters/preferredRoles used above', () => {
     expect(sampleThemes.length).toBeGreaterThan(0)
-    const usedRoles = new Set(services.flatMap((s) => (s.volunteerRoster ?? []).map((r) => r.role)))
+    const availableRoles = new Set(sampleRoleGroups.flatMap((g) => g.roles))
+    const usedRoles = new Set(services.flatMap((s) => (s.assignments ?? []).map((r) => r.role)))
     for (const role of usedRoles) {
-      expect(sampleVolunteerRoles, `roster uses role "${role}" not present in sampleVolunteerRoles`).toContain(role)
+      expect(availableRoles, `roster uses role "${role}" not present in sampleRoleGroups`).toContain(role)
     }
   })
 })

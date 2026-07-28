@@ -45,7 +45,7 @@ pub struct SyncStatus {
 
 /// Every item type already stamps `id`/`updatedAt`/`updatedByDevice` on save (see paths.rs's
 /// device-name plumbing) — reading the raw JSON `Value` rather than each concrete model type
-/// keeps this genuinely generic across songs/services/slides/media/themes/volunteers.
+/// keeps this genuinely generic across songs/services/slides/media/themes/people.
 fn label_for(kind: &str, value: &Value) -> String {
     match kind {
         "song" => value
@@ -73,11 +73,15 @@ fn label_for(kind: &str, value: &Value) -> String {
             .and_then(Value::as_str)
             .unwrap_or("Untitled")
             .to_string(),
-        "volunteer" => {
-            let first = value.get("firstName").and_then(Value::as_str).unwrap_or("");
-            let last = value.get("lastName").and_then(Value::as_str).unwrap_or("");
-            format!("{first} {last}").trim().to_string()
-        }
+        "person" => value
+            .get("displayName")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                let first = value.get("firstName").and_then(Value::as_str).unwrap_or("");
+                let last = value.get("lastName").and_then(Value::as_str).unwrap_or("");
+                format!("{first} {last}").trim().to_string()
+            }),
         _ => value
             .get("id")
             .and_then(Value::as_str)
@@ -149,7 +153,7 @@ pub fn detect_conflicts(root: &Path) -> std::io::Result<Vec<ConflictedItem>> {
     scan_dir(&root.join("slides"), "slide", &mut out)?;
     scan_dir(&root.join("media-items"), "media", &mut out)?;
     scan_dir(&root.join("themes"), "theme", &mut out)?;
-    scan_dir(&root.join("volunteers"), "volunteer", &mut out)?;
+    scan_dir(&root.join("people"), "person", &mut out)?;
 
     let services_dir = root.join("services");
     if services_dir.exists() {

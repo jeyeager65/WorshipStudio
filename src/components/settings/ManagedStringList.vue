@@ -5,8 +5,9 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 
 /**
  * Add/remove editor for the small managed lists Settings needs in a few places
- * (Service Types, Preachers, Song Collections) — same underlying pattern each time
- * (spec section 1/17), so it's factored out once rather than repeated three times.
+ * (Service Types, Song Collections, and per-group roles within RoleGroupEditor) —
+ * same underlying pattern each time (spec section 1/17), so it's factored out once
+ * rather than repeated.
  */
 const props = defineProps<{ modelValue: string[]; addLabel: string }>()
 const emit = defineEmits<{ 'update:modelValue': [string[]] }>()

@@ -1,39 +1,39 @@
 import { describe, expect, it } from 'vitest'
-import { findRoleConflicts, isDateUnavailable } from '@/utils/volunteerConflicts'
+import { findRoleConflicts, isDateUnavailable } from '@/utils/rosterConflicts'
 import type { RoleAssignment } from '@/models/service'
 
 function assignment(overrides: Partial<RoleAssignment> = {}): RoleAssignment {
-  return { role: 'Vocals', volunteerId: 'volunteer-1', tentative: false, ...overrides }
+  return { role: 'Vocals', personId: 'person-1', tentative: false, ...overrides }
 }
 
 describe('findRoleConflicts', () => {
-  it('flags a volunteer assigned to two distinct roles', () => {
+  it('flags a person assigned to two distinct roles', () => {
     const assignments = [
-      assignment({ role: 'Vocals', volunteerId: 'ashley' }),
-      assignment({ role: 'Nursery', volunteerId: 'ashley' }),
+      assignment({ role: 'Vocals', personId: 'ashley' }),
+      assignment({ role: 'Nursery', personId: 'ashley' }),
     ]
     const conflicts = findRoleConflicts(assignments)
-    expect(conflicts).toEqual([{ volunteerId: 'ashley', roles: ['Vocals', 'Nursery'] }])
+    expect(conflicts).toEqual([{ personId: 'ashley', roles: ['Vocals', 'Nursery'] }])
   })
 
-  it('does not flag the same volunteer twice in the same role', () => {
+  it('does not flag the same person twice in the same role', () => {
     const assignments = [
-      assignment({ role: 'Greeters', volunteerId: 'tom' }),
-      assignment({ role: 'Greeters', volunteerId: 'tom' }),
+      assignment({ role: 'Greeters', personId: 'tom' }),
+      assignment({ role: 'Greeters', personId: 'tom' }),
     ]
     expect(findRoleConflicts(assignments)).toEqual([])
   })
 
-  it('does not flag different volunteers in different roles', () => {
+  it('does not flag different people in different roles', () => {
     const assignments = [
-      assignment({ role: 'Piano', volunteerId: 'marlene' }),
-      assignment({ role: 'Drums', volunteerId: 'mark' }),
+      assignment({ role: 'Piano', personId: 'marlene' }),
+      assignment({ role: 'Drums', personId: 'mark' }),
     ]
     expect(findRoleConflicts(assignments)).toEqual([])
   })
 
   it('ignores unfilled roles', () => {
-    expect(findRoleConflicts([assignment({ role: 'Piano', volunteerId: undefined })])).toEqual([])
+    expect(findRoleConflicts([assignment({ role: 'Piano', personId: undefined })])).toEqual([])
   })
 })
 

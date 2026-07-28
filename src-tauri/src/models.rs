@@ -69,6 +69,18 @@ pub enum MediaFit {
     Contain,
 }
 
+/// One passage a sermon references — a sermon may cite several beyond its main one; only the
+/// main passage (Sermon::main_passage_id) is printed in the Order of Worship, but every passage
+/// here is presented on screen, in list order, ahead of the outline.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SermonPassage {
+    pub id: String,
+    pub reference: String,
+    pub translation: String,
+    pub display_mode: DisplayMode,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(
     tag = "type",
@@ -116,6 +128,29 @@ pub enum ServiceItemContent {
         #[serde(skip_serializing_if = "Option::is_none")]
         caption: Option<String>,
     },
+    /// "Worship Through the Word" — presentable passage(s) plus an outline, positioned wherever
+    /// it actually falls in the service rather than pinned to a fixed header (see
+    /// Service::sermon_title/key_passage/preacher_id, which remain the quick-glance summary
+    /// fields used by cards/reports, independent of this item's own content).
+    Sermon {
+        #[serde(default)]
+        passages: Vec<SermonPassage>,
+        main_passage_id: String,
+        #[serde(default)]
+        outline: Vec<SongBlock>,
+    },
+    /// A bulletin-only line (e.g. "Silent Preparation", a named prayer) — never presented on
+    /// screen (see domain-side flattening); its heading/body are the shared bulletin_label/
+    /// bulletin_note fields below, not fields of its own.
+    BulletinNote {},
+    /// A "this slot needs real content" stand-in inserted by a ServiceTemplate for any kind
+    /// requiring something specific picked/typed (song, scripture, slide, media, sermon, etc) —
+    /// replaced in place once filled in (see ServiceWorkspaceView's insertItem/replaceItemIndex).
+    Placeholder {
+        label: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        suggested_tab: Option<String>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -124,8 +159,25 @@ pub struct ServiceItem {
     pub id: String,
     #[serde(flatten)]
     pub content: ServiceItemContent,
+    /// Who's doing this part (Elder leading prayer, scripture reader, etc.) — a role name from
+    /// the same catalog Assignments uses (LibrarySettings::role_groups), not a Person id
+    /// directly: the actual person is whoever that service's Assignments has for this role, so
+    /// assigning it there is what fills this in (and keeps conflict-detection/templates
+    /// consistent). Optional and often absent — a "Silent Preparation" bulletin note, for
+    /// example, needs no one assigned at all. Distinct from the service-level preacher
+    /// (Service::preacher_id), which is its own separate assignment.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub person: Option<String>,
+    pub role: Option<String>,
+    /// Overrides this item's default Order of Worship heading (e.g. Scripture's hardcoded
+    /// "Scripture Reading:" becomes "Scriptural Call to Worship:"; a song, which has no default
+    /// label at all, can be given one like "Tithes and Offerings:").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bulletin_label: Option<String>,
+    /// An optional second line under this item's Order of Worship entry (e.g. "(after this song
+    /// children up to grade 4 can be dismissed to a children's lesson)") — the operator types
+    /// the full text themselves; nothing here is auto-punctuated.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bulletin_note: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -133,7 +185,7 @@ pub struct ServiceItem {
 pub struct RoleAssignment {
     pub role: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub volunteer_id: Option<String>,
+    pub person_id: Option<String>,
     pub tentative: bool,
 }
 
@@ -146,20 +198,84 @@ pub struct UnavailableDateRange {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct Volunteer {
+pub struct Person {
     pub id: String,
     pub first_name: String,
     pub last_name: String,
+    /// How this person's name should appear elsewhere in the app (e.g. "Mike Smith" for
+    /// Michael Smith, or "Pastor Dan" for Daniel Renno) — falls back to first + last name
+    /// when unset (see personDisplayName on the frontend).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
-    /// Not a restriction — just makes this volunteer show up first when filling roster
-    /// fields for these roles (see design/sketches/volunteer-editor.html).
+    /// Not a restriction — just makes this person show up first when filling roles for
+    /// these (see design/sketches/volunteer-editor.html).
     #[serde(default)]
     pub preferred_roles: Vec<String>,
     #[serde(default)]
     pub unavailable_date_ranges: Vec<UnavailableDateRange>,
     pub updated_at: String,
     pub updated_by_device: String,
+}
+
+/// A named category of roles (e.g. "Praise Team" grouping Drums/Guitar/Piano/Vocals) — purely
+/// organizational, since a role itself is still just a plain string referenced by
+/// RoleAssignment::role/ServiceTemplateItem::role.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RoleGroup {
+    pub name: String,
+    #[serde(default)]
+    pub roles: Vec<String>,
+}
+
+/// What a single ServiceTemplate entry seeds when a new service is created from its template:
+/// either a real order-of-service item (with a placeholder standing in for content that must be
+/// picked/typed) or, for `RoleOnly`, just a RoleAssignment row with no line in the order of
+/// service at all (e.g. "2 Greeters").
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "kebab-case")]
+pub enum ServiceTemplateItemKind {
+    BulletinNote,
+    Sermon,
+    Song,
+    Scripture,
+    Slide,
+    Media,
+    Other,
+    RoleOnly,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceTemplateItem {
+    pub id: String,
+    pub kind: ServiceTemplateItemKind,
+    /// Bulletin heading / placeholder description (e.g. "Opening Song") / RoleOnly's own display
+    /// label.
+    pub label: String,
+    /// BulletinNote kind only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    /// Optional for content kinds, required for RoleOnly.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    /// RoleOnly kind only, default 1 (e.g. 2 Greeters).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count: Option<u32>,
+}
+
+/// An ordered shell for a service type — songs, scripture, sermon, bulletin notes, role-only
+/// assignments — filled in once per church and applied at service creation (see
+/// applyServiceTemplate on the frontend); never re-applied to already-created services
+/// afterward. Order matters: items seed `Service::items` in this same order.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceTemplate {
+    pub service_type: String,
+    #[serde(default)]
+    pub items: Vec<ServiceTemplateItem>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -248,7 +364,7 @@ pub struct Service {
     #[serde(rename = "type")]
     pub service_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub preacher: Option<String>,
+    pub preacher_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sermon_title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -258,7 +374,7 @@ pub struct Service {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub presenter_notes: Option<std::collections::HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub volunteer_roster: Option<Vec<RoleAssignment>>,
+    pub assignments: Option<Vec<RoleAssignment>>,
     pub updated_at: String,
     pub updated_by_device: String,
 }
@@ -366,11 +482,11 @@ pub struct LibrarySettings {
     #[serde(default)]
     pub service_types: Vec<String>,
     #[serde(default)]
-    pub preachers: Vec<String>,
-    #[serde(default)]
     pub collections: Vec<String>,
     #[serde(default)]
-    pub volunteer_roles: Vec<String>,
+    pub role_groups: Vec<RoleGroup>,
+    #[serde(default)]
+    pub service_templates: Vec<ServiceTemplate>,
     pub branding: Branding,
     #[serde(default)]
     pub api_bible_translations: Vec<ApiBibleTranslation>,
@@ -600,9 +716,9 @@ mod tests {
     fn library_settings_defaults_scripture_font_range_when_missing_from_disk() {
         let json = r##"{
             "serviceTypes": ["Sunday Morning Worship"],
-            "preachers": [],
             "collections": [],
-            "volunteerRoles": [],
+            "roleGroups": [],
+            "serviceTemplates": [],
             "branding": { "churchName": "", "primaryColor": "#1F3A5F", "secondaryColor": "#C9A227" },
             "apiBibleTranslations": [],
             "defaultTranslationCode": "KJV",

@@ -1,15 +1,22 @@
 <script setup lang="ts">
-import { ref, toRaw, watch } from 'vue'
+import { computed, ref, toRaw, watch } from 'vue'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
-import type { UnavailableDateRange, Volunteer } from '@/models/library'
+import type { UnavailableDateRange, Person } from '@/models/library'
+import type { RoleGroup } from '@/models/settings'
+import { roleDisplayLabel } from '@/models/settings'
 
-const props = defineProps<{ modelValue: boolean; volunteer?: Volunteer; roleOptions: string[] }>()
-const emit = defineEmits<{ 'update:modelValue': [boolean]; save: [Volunteer] }>()
+const props = defineProps<{ modelValue: boolean; person?: Person; roleGroups: RoleGroup[] }>()
+const emit = defineEmits<{ 'update:modelValue': [boolean]; save: [Person] }>()
 const confirmDialog = useConfirmDialogStore()
 
-function blank(): Volunteer {
+const roleOptions = computed(() => props.roleGroups.flatMap((g) => g.roles))
+function roleLabel(role: string): string {
+  return roleDisplayLabel(role, props.roleGroups)
+}
+
+function blank(): Person {
   return {
-    id: `volunteer-${crypto.randomUUID()}`,
+    id: `person-${crypto.randomUUID()}`,
     firstName: '',
     lastName: '',
     preferredRoles: [],
@@ -19,17 +26,17 @@ function blank(): Volunteer {
   }
 }
 
-const draft = ref<Volunteer>(blank())
+const draft = ref<Person>(blank())
 const newRangeStart = ref('')
 const newRangeEnd = ref('')
 
-// Resets to either a fresh blank record or a copy of the volunteer being edited each time the
+// Resets to either a fresh blank record or a copy of the person being edited each time the
 // dialog opens, so repeated opens never leak a previous edit into a new one.
 watch(
   () => props.modelValue,
   (open) => {
     if (!open) return
-    draft.value = props.volunteer ? structuredClone(toRaw(props.volunteer)) : blank()
+    draft.value = props.person ? structuredClone(toRaw(props.person)) : blank()
     newRangeStart.value = ''
     newRangeEnd.value = ''
   },
@@ -62,12 +69,22 @@ function save() {
 <template>
   <v-dialog :model-value="modelValue" max-width="520" @update:model-value="(v) => emit('update:modelValue', v)">
     <v-card>
-      <v-card-title>{{ volunteer ? 'Edit Volunteer' : 'Add Volunteer' }}</v-card-title>
+      <v-card-title>{{ person ? 'Edit Person' : 'Add Person' }}</v-card-title>
       <v-card-text>
         <div class="d-flex ga-3 mb-2">
           <v-text-field v-model="draft.firstName" label="First Name" variant="outlined" density="compact" />
           <v-text-field v-model="draft.lastName" label="Last Name" variant="outlined" density="compact" />
         </div>
+
+        <v-text-field
+          v-model="draft.displayName"
+          label="Display Name (optional)"
+          variant="outlined"
+          density="compact"
+          hint='How this person&apos;s name should appear elsewhere in the app — e.g. "Mike Smith" for Michael Smith, or "Pastor Dan" for Daniel Renno.'
+          persistent-hint
+          class="mb-4"
+        />
 
         <v-text-field
           v-model="draft.email"
@@ -91,12 +108,11 @@ function save() {
             :variant="draft.preferredRoles.includes(role) ? 'flat' : 'outlined'"
             @click="toggleRole(role)"
           >
-            {{ role }}
+            {{ roleLabel(role) }}
           </v-chip>
         </div>
         <p class="text-caption text-medium-emphasis mb-4">
-          Makes this volunteer show up first when filling roster fields for these roles — they can still be
-          assigned anywhere.
+          Makes this person show up first when filling roles for these — they can still be assigned anywhere.
         </p>
 
         <div class="text-caption font-weight-bold text-medium-emphasis mb-2">Unavailable Dates (optional)</div>
@@ -122,7 +138,7 @@ function save() {
       <v-card-actions>
         <v-spacer />
         <v-btn variant="outlined" class="mr-2" @click="emit('update:modelValue', false)">Cancel</v-btn>
-        <v-btn variant="flat" color="primary" @click="save">Save Volunteer</v-btn>
+        <v-btn variant="flat" color="primary" @click="save">Save Person</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>

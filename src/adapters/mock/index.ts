@@ -18,7 +18,7 @@ import {
   seedSlides,
   seedMedia,
   seedThemes,
-  seedVolunteers,
+  seedPeople,
   seedLibrarySettings,
   seedMachineSettings,
 } from './fixtures'
@@ -41,7 +41,7 @@ export function createMockAdapter(): StudioAdapter {
   const slides = new MockCollection('slides', seedSlides)
   const media = new MockCollection('media', seedMedia)
   const themes = new MockCollection('themes', seedThemes)
-  const volunteers = new MockCollection('volunteers', seedVolunteers)
+  const people = new MockCollection('people', seedPeople)
 
   const librarySettingsStore = new MockSingleton('library-settings', seedLibrarySettings)
   const machineSettingsStore = new MockSingleton('machine-settings', seedMachineSettings)
@@ -177,10 +177,10 @@ export function createMockAdapter(): StudioAdapter {
       save: (theme) => themes.save({ ...theme, ...nowStamp() }),
       delete: (id) => themes.delete(id),
     },
-    volunteers: {
-      list: () => volunteers.list(),
-      save: (volunteer) => volunteers.save({ ...volunteer, ...nowStamp() }),
-      delete: (id) => volunteers.delete(id),
+    people: {
+      list: () => people.list(),
+      save: (person) => people.save({ ...person, ...nowStamp() }),
+      delete: (id) => people.delete(id),
     },
     settings: {
       getLibrarySettings: () => librarySettingsStore.get(),
@@ -281,7 +281,7 @@ export function createMockAdapter(): StudioAdapter {
       sendOrderOfWorship: async () => {
         // Demo build never sends real email — see spec section 7 (what has to be faked).
       },
-      sendVolunteerAssignments: async () => {
+      sendAssignments: async () => {
         // Same as sendOrderOfWorship — no real mail transport exists in this codebase yet.
       },
     },

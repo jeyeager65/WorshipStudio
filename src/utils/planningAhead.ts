@@ -33,7 +33,7 @@ export function groupUpcomingByMonth(services: Service[], todayIso: string): Pla
 }
 
 export function needsPreacher(service: Service): boolean {
-  return !service.preacher?.trim()
+  return !service.preacherId
 }
 
 export function hasStarted(service: Service): boolean {

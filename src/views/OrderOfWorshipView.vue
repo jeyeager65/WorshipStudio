@@ -4,14 +4,15 @@ import { useRoute } from 'vue-router'
 import { getAdapter } from '@/adapters'
 import { useSongsStore } from '@/stores/songs'
 import { useSlidesStore } from '@/stores/slides'
-import { useVolunteersStore } from '@/stores/volunteers'
+import { usePeopleStore } from '@/stores/people'
 import { buildOrderOfWorship, toHtml, toPlainText } from '@/utils/orderOfWorship'
 import type { Service } from '@/models/service'
+import { personDisplayName } from '@/models/library'
 
 const route = useRoute()
 const songsStore = useSongsStore()
 const slidesStore = useSlidesStore()
-const volunteersStore = useVolunteersStore()
+const peopleStore = usePeopleStore()
 
 const service = ref<Service>()
 const copiedMessage = ref('')
@@ -21,17 +22,15 @@ onMounted(async () => {
     getAdapter().services.get(route.params.id as string),
     songsStore.loaded ? Promise.resolve() : songsStore.load(),
     slidesStore.loaded ? Promise.resolve() : slidesStore.load(),
-    volunteersStore.loaded ? Promise.resolve() : volunteersStore.load(),
+    peopleStore.loaded ? Promise.resolve() : peopleStore.load(),
   ])
   service.value = loadedService
 })
 
-const volunteerNames = computed(
-  () => new Map(volunteersStore.volunteers.map((v) => [v.id, `${v.firstName} ${v.lastName}`])),
-)
+const personNames = computed(() => new Map(peopleStore.people.map((p) => [p.id, personDisplayName(p)])))
 
 const doc = computed(() =>
-  service.value ? buildOrderOfWorship(service.value, songsStore.songs, slidesStore.slides, volunteerNames.value) : undefined,
+  service.value ? buildOrderOfWorship(service.value, songsStore.songs, slidesStore.slides, personNames.value) : undefined,
 )
 
 let copiedTimeout: ReturnType<typeof setTimeout> | undefined
@@ -100,20 +99,16 @@ function sendEmail() {
         <div class="text-caption text-medium-emphasis mt-1">{{ doc.dateLine }}</div>
       </div>
 
-      <p v-if="doc.volunteerLine" class="oow-line mb-3">{{ doc.volunteerLine }}</p>
-      <p v-else class="oow-note mb-3">
-        Add Praise Team and Building assignments manually — no Volunteer Roster is set for this service.
-      </p>
-
-      <p v-for="(line, index) in doc.lines" :key="index" class="oow-line mb-3">
-        <span v-if="line.role" class="font-weight-bold">{{ line.role }}</span>
-        <template v-if="line.text"> {{ line.text }}</template>
-        <span v-if="line.person" class="font-italic"> — {{ line.person }}</span>
-      </p>
-
-      <p v-if="doc.volunteerLine" class="oow-note mt-6">
-        ✓ Praise Team and Building assignments included automatically from this service's Volunteer Roster.
-      </p>
+      <div v-for="(line, index) in doc.lines" :key="index" class="mb-3">
+        <p class="oow-line oow-line-row mb-0">
+          <span>
+            <span v-if="line.role" class="font-weight-bold">{{ line.role }} </span>
+            <template v-if="line.text">{{ line.text }}</template>
+          </span>
+          <span v-if="line.person" class="font-italic oow-person">{{ line.person }}</span>
+        </p>
+        <p v-if="line.note" class="oow-line oow-line-note mb-0 mt-0">{{ line.note }}</p>
+      </div>
     </v-card>
 
     <div class="oow-side">
@@ -149,15 +144,20 @@ function sendEmail() {
   font-size: 14px;
   line-height: 1.5;
 }
-.oow-note {
+.oow-line-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.oow-person {
+  flex-shrink: 0;
+  text-align: right;
+}
+.oow-line-note {
   font-size: 12px;
   color: #888;
   font-style: italic;
-  text-align: center;
-  padding: 10px;
-  border-top: 1px dashed #ccc;
-  border-bottom: 1px dashed #ccc;
-  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 .oow-side {
   width: 300px;

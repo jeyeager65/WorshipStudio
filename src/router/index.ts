@@ -18,7 +18,7 @@ const router = createRouter({
     { path: '/setup', name: 'setup-wizard', component: () => import('@/views/SetupWizardView.vue') },
     { path: '/create-service', name: 'create-service', component: () => import('@/views/CreateServiceView.vue') },
     { path: '/service/:id', name: 'service-workspace', component: () => import('@/views/ServiceWorkspaceView.vue') },
-    { path: '/service/:id/roster', name: 'volunteer-roster', component: () => import('@/views/VolunteerRosterView.vue') },
+    { path: '/service/:id/assignments', name: 'service-assignments', component: () => import('@/views/AssignmentsView.vue') },
     {
       path: '/service/:id/order-of-worship',
       name: 'order-of-worship',
@@ -30,6 +30,7 @@ const router = createRouter({
     { path: '/library/slides/:id', name: 'slide-editor', component: () => import('@/views/SlideEditorView.vue') },
     { path: '/library/media', name: 'media-library', component: () => import('@/views/MediaLibraryView.vue'), meta: { title: 'Media' } },
     { path: '/library/themes', name: 'theme-editor', component: () => import('@/views/ThemeEditorView.vue') },
+    { path: '/people', name: 'people', component: () => import('@/views/PeopleView.vue'), meta: { title: 'People' } },
     { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue'), meta: { title: 'Settings' } },
     { path: '/sync-conflicts', name: 'sync-conflicts', component: () => import('@/views/SyncConflictsView.vue') },
     { path: '/reports', name: 'reports-home', component: () => import('@/views/ReportsHomeView.vue'), meta: { title: 'Reports' } },

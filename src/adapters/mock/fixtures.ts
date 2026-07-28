@@ -1,6 +1,6 @@
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
-import type { SlideLibraryItem, MediaItem, Theme, Volunteer } from '@/models/library'
+import type { SlideLibraryItem, MediaItem, Theme, Person } from '@/models/library'
 import type { LibrarySettings, MachineSettings } from '@/models/settings'
 
 const now = new Date().toISOString()
@@ -29,7 +29,7 @@ export const seedServices: Service[] = [
     id: 'service-2026-07-19',
     date: '2026-07-19',
     type: 'Sunday Morning Worship',
-    preacher: 'Pastor Sample',
+    preacherId: 'person-daniel-renno',
     sermonTitle: 'Sample Sermon',
     items: [
       { id: 'item-1', type: 'song', songId: 'song-amazing-grace', arrangement: { sequence: ['v1', 'v2'] } },
@@ -66,9 +66,19 @@ export const seedMedia: MediaItem[] = [
   },
 ]
 export const seedThemes: Theme[] = []
-export const seedVolunteers: Volunteer[] = [
+export const seedPeople: Person[] = [
   {
-    id: 'volunteer-marlene',
+    id: 'person-daniel-renno',
+    firstName: 'Daniel',
+    lastName: 'Renno',
+    displayName: 'Pastor Dan',
+    preferredRoles: ['Preacher'],
+    unavailableDateRanges: [],
+    updatedAt: now,
+    updatedByDevice: device,
+  },
+  {
+    id: 'person-marlene',
     firstName: 'Marlene',
     lastName: 'Diaz',
     email: 'marlene.diaz@email.com',
@@ -78,7 +88,7 @@ export const seedVolunteers: Volunteer[] = [
     updatedByDevice: device,
   },
   {
-    id: 'volunteer-mark',
+    id: 'person-mark',
     firstName: 'Mark',
     lastName: 'Ellison',
     preferredRoles: ['Drums'],
@@ -90,9 +100,22 @@ export const seedVolunteers: Volunteer[] = [
 
 export const seedLibrarySettings: LibrarySettings = {
   serviceTypes: ['Sunday Morning Worship', 'Wednesday Bible Study'],
-  preachers: ['Pastor Sample'],
   collections: ['Hymns of Grace'],
-  volunteerRoles: ['Piano', 'Guitar', 'Vocals', 'Sound Booth'],
+  roleGroups: [
+    { name: 'Praise Team', roles: ['Piano', 'Guitar', 'Drums', 'Vocals'] },
+    { name: 'Tech', roles: ['Sound Booth'] },
+    { name: 'Ministry', roles: ['Preacher'] },
+  ],
+  serviceTemplates: [
+    {
+      serviceType: 'Sunday Morning Worship',
+      items: [
+        { id: 'tpl-piano', kind: 'role-only', label: 'Piano', role: 'Piano', count: 1 },
+        { id: 'tpl-vocals', kind: 'role-only', label: 'Vocals', role: 'Vocals', count: 2 },
+        { id: 'tpl-sound-booth', kind: 'role-only', label: 'Sound Booth', role: 'Sound Booth', count: 1 },
+      ],
+    },
+  ],
   branding: {
     churchName: 'Sample Church',
     primaryColor: '#1F3A5F',

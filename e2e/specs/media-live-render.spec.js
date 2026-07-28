@@ -62,9 +62,16 @@ describe('Real media rendering in the operator preview', () => {
       await addButton.waitForClickable({ timeout: 10000 })
       await addButton.click()
 
-      const mediaTab = await $('.v-tab*=Media')
-      await mediaTab.waitForExist({ timeout: 10000 })
-      await mediaTab.click()
+      // The Add-to-Service dialog picks its content type via a "Type" dropdown, not tabs. The
+      // option lookup is scoped to the open menu's own overlay content — an unscoped query can
+      // match the persistent left nav's own .v-list-item entries instead (e.g. its "Media"
+      // link, which would navigate away from the service instead of picking the dropdown item).
+      const typeSelect = await $('.v-dialog .v-select')
+      await typeSelect.waitForClickable({ timeout: 10000 })
+      await typeSelect.click()
+      const mediaOption = await (await $('[role="listbox"]')).$('.v-list-item*=Media')
+      await mediaOption.waitForClickable({ timeout: 10000 })
+      await mediaOption.click()
 
       const photoEntry = await $('.v-list-item*=e2e-live-render-fixture')
       await photoEntry.waitForClickable({ timeout: 10000 })

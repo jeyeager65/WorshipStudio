@@ -10,8 +10,8 @@ const LIBRARY_SETTINGS_FILE: &str = "library-settings.json";
 // milestone M7) to let a church configure these, so an empty list would leave the app
 // genuinely unusable (e.g. Create Service's Type dropdown would have nothing to pick).
 // service_types mirrors the common categories shown in design/sketches/create-service.html;
-// preachers/collections/volunteer_roles are left empty since there's no reasonable default
-// for church-specific people or names.
+// collections/role_groups/service_templates are left empty since there's no reasonable
+// default for church-specific people, roles, or names.
 fn default_library_settings() -> LibrarySettings {
     LibrarySettings {
         service_types: vec![
@@ -19,9 +19,9 @@ fn default_library_settings() -> LibrarySettings {
             "Wednesday Bible Study".to_string(),
             "Other".to_string(),
         ],
-        preachers: vec![],
         collections: vec![],
-        volunteer_roles: vec![],
+        role_groups: vec![],
+        service_templates: vec![],
         branding: Branding {
             church_name: "".to_string(),
             logo_media_id: None,

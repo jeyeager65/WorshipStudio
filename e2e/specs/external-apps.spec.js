@@ -18,7 +18,7 @@ describe('External App Hand-off', () => {
     await addBtn.click()
 
     // Fields aren't individually id'd, so they're targeted positionally within the dialog —
-    // same approach volunteer-roster.spec.js uses for its add-volunteer dialog. With "Launch
+    // same approach assignments.spec.js uses for its add-person dialog. With "Launch
     // Automatically" selected by default (it is, out of the box), the order is
     // Name, Executable, Parameter Format. Waiting for all 3 inputs (not just the dialog's
     // existence) so the open transition has actually finished before typing into it.

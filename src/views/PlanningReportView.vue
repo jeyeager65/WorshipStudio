@@ -2,13 +2,14 @@
 import { computed, onMounted, ref } from 'vue'
 import { useServicesStore } from '@/stores/services'
 import { useSongsStore } from '@/stores/songs'
-import { useVolunteersStore } from '@/stores/volunteers'
+import { usePeopleStore } from '@/stores/people'
 import { useSettingsStore } from '@/stores/settings'
 import { buildPlanningReport } from '@/utils/planningReport'
+import { personDisplayName } from '@/models/library'
 
 const servicesStore = useServicesStore()
 const songsStore = useSongsStore()
-const volunteersStore = useVolunteersStore()
+const peopleStore = usePeopleStore()
 const settingsStore = useSettingsStore()
 
 // Defaults to today through 3 months out — planning ahead is forward-looking, unlike CCLI's
@@ -27,17 +28,23 @@ const serviceType = ref('all')
 // actually on disk right now, not a snapshot cached from whenever the app first booted or another
 // view first happened to touch these stores.
 onMounted(async () => {
-  await Promise.all([servicesStore.load(), songsStore.load(), volunteersStore.load(), settingsStore.load()])
+  await Promise.all([servicesStore.load(), songsStore.load(), peopleStore.load(), settingsStore.load()])
 })
 
-const volunteerNames = computed(() => new Map(volunteersStore.volunteers.map((v) => [v.id, `${v.firstName} ${v.lastName}`.trim()])))
+const personNames = computed(() => new Map(peopleStore.people.map((p) => [p.id, personDisplayName(p)])))
 
 const rows = computed(() =>
-  buildPlanningReport(servicesStore.services, songsStore.songs, volunteerNames.value, {
-    fromDate: fromDate.value,
-    toDate: toDate.value,
-    serviceType: serviceType.value,
-  }),
+  buildPlanningReport(
+    servicesStore.services,
+    songsStore.songs,
+    personNames.value,
+    settingsStore.librarySettings?.roleGroups ?? [],
+    {
+      fromDate: fromDate.value,
+      toDate: toDate.value,
+      serviceType: serviceType.value,
+    },
+  ),
 )
 
 const serviceTypeOptions = computed(() => [

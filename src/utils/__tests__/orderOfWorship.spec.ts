@@ -50,7 +50,25 @@ describe('buildOrderOfWorship', () => {
     expect(doc.lines).toEqual([{ text: 'Come Behold the Wondrous Mystery 184', person: undefined }])
   })
 
-  it('renders a scripture line with its reference and person', () => {
+  it("resolves an item's person via its role's Assignments entry, not a direct id", () => {
+    const service = baseService({
+      assignments: [{ role: 'Scripture Reader', personId: 'person-david', tentative: false }],
+      items: [
+        {
+          id: 'item-1',
+          type: 'scripture',
+          reference: 'Matthew 25:1-30',
+          translation: 'ESV',
+          displayMode: 'full',
+          role: 'Scripture Reader',
+        },
+      ],
+    })
+    const doc = buildOrderOfWorship(service, songs, slides, new Map([['person-david', 'David Hamilton']]))
+    expect(doc.lines).toEqual([{ role: 'Scripture Reading:', text: 'Matthew 25:1-30', person: 'David Hamilton' }])
+  })
+
+  it('shows no one when a role has no matching (or no) Assignments entry', () => {
     const service = baseService({
       items: [
         {
@@ -59,46 +77,137 @@ describe('buildOrderOfWorship', () => {
           reference: 'Matthew 25:1-30',
           translation: 'ESV',
           displayMode: 'full',
-          person: 'David Hamilton',
+          role: 'Scripture Reader',
         },
       ],
     })
     const doc = buildOrderOfWorship(service, songs, slides, new Map())
-    expect(doc.lines).toEqual([{ role: 'Scripture Reading:', text: 'Matthew 25:1-30', person: 'David Hamilton' }])
+    expect(doc.lines[0]?.person).toBeUndefined()
   })
 
   it("uses a referenced slide's own label as the line", () => {
     const service = baseService({
-      items: [{ id: 'item-1', type: 'slide-ref', slideId: 'slide-1', person: 'Elder Rob Varano' }],
+      assignments: [{ role: 'Announcer', personId: 'person-rob', tentative: false }],
+      items: [{ id: 'item-1', type: 'slide-ref', slideId: 'slide-1', role: 'Announcer' }],
     })
-    const doc = buildOrderOfWorship(service, songs, slides, new Map())
+    const doc = buildOrderOfWorship(service, songs, slides, new Map([['person-rob', 'Elder Rob Varano']]))
     expect(doc.lines[0]).toMatchObject({ role: 'Welcome and Announcements', person: 'Elder Rob Varano' })
-  })
-
-  it('builds the volunteer line from the roster, marking tentative assignments', () => {
-    const service = baseService({
-      volunteerRoster: [
-        { role: 'Piano', volunteerId: 'v-1', tentative: false },
-        { role: 'Guitar', volunteerId: 'v-2', tentative: true },
-      ],
-    })
-    const names = new Map([
-      ['v-1', 'Marlene'],
-      ['v-2', 'Jason'],
-    ])
-    const doc = buildOrderOfWorship(service, songs, slides, names)
-    expect(doc.volunteerLine).toBe('Piano — Marlene, Guitar — Jason?')
-  })
-
-  it('leaves volunteerLine undefined when there is no roster', () => {
-    const doc = buildOrderOfWorship(baseService(), songs, slides, new Map())
-    expect(doc.volunteerLine).toBeUndefined()
   })
 
   it('includes the service date and type in the date line', () => {
     const doc = buildOrderOfWorship(baseService(), songs, slides, new Map())
     expect(doc.dateLine).toContain('2026')
     expect(doc.dateLine).toContain('Sunday Morning Worship')
+  })
+
+  it('bulletinLabel overrides a type’s own default heading, and bulletinNote adds a second line', () => {
+    const service = baseService({
+      items: [
+        {
+          id: 'item-1',
+          type: 'scripture',
+          reference: 'Psalm 135:3, 5-7, 13-14; 20-21',
+          translation: 'ESV',
+          displayMode: 'reference-only',
+          bulletinLabel: 'Scriptural Call to Worship:',
+          bulletinNote: '(please stand)',
+        },
+      ],
+    })
+    const doc = buildOrderOfWorship(service, songs, slides, new Map())
+    expect(doc.lines[0]).toMatchObject({
+      role: 'Scriptural Call to Worship:',
+      text: 'Psalm 135:3, 5-7, 13-14; 20-21',
+      note: '(please stand)',
+    })
+  })
+
+  it('a sermon line uses only the main passage, the service preacher, and the plain sermon title as its default note', () => {
+    const service = baseService({
+      preacherId: 'person-dan',
+      sermonTitle: 'From Chained to Commissioned',
+      items: [
+        {
+          id: 'item-1',
+          type: 'sermon',
+          passages: [
+            { id: 'p1', reference: 'Romans 8:28', translation: 'ESV', displayMode: 'full' },
+            { id: 'p2', reference: 'Mark 5:1-20', translation: 'ESV', displayMode: 'full' },
+          ],
+          mainPassageId: 'p2',
+          outline: [],
+        },
+      ],
+    })
+    const doc = buildOrderOfWorship(service, songs, slides, new Map([['person-dan', 'Pastor Dan']]))
+    expect(doc.lines[0]).toEqual({
+      role: 'Worship Through the Word',
+      text: 'Mark 5:1-20',
+      person: 'Pastor Dan',
+      note: 'From Chained to Commissioned',
+    })
+  })
+
+  it("a sermon's own bulletinNote overrides the default sermon title", () => {
+    const service = baseService({
+      sermonTitle: 'From Chained to Commissioned',
+      items: [
+        {
+          id: 'item-1',
+          type: 'sermon',
+          passages: [{ id: 'p1', reference: 'Mark 5:1-20', translation: 'ESV', displayMode: 'full' }],
+          mainPassageId: 'p1',
+          outline: [],
+          bulletinNote: 'Custom note',
+        },
+      ],
+    })
+    const doc = buildOrderOfWorship(service, songs, slides, new Map())
+    expect(doc.lines[0]?.note).toBe('Custom note')
+  })
+
+  it('a bulletin-note item renders its label/note/role-resolved person and never a slide-worthy text', () => {
+    const service = baseService({
+      assignments: [{ role: 'Prayer', personId: 'person-elder', tentative: false }],
+      items: [
+        {
+          id: 'item-1',
+          type: 'bulletin-note',
+          role: 'Prayer',
+          bulletinLabel: 'Prayer of Praise and Confession',
+          bulletinNote: '(please kneel if able)',
+        },
+      ],
+    })
+    const doc = buildOrderOfWorship(service, songs, slides, new Map([['person-elder', 'Elder Bruce Barton']]))
+    expect(doc.lines[0]).toEqual({
+      role: 'Prayer of Praise and Confession',
+      text: '',
+      person: 'Elder Bruce Barton',
+      note: '(please kneel if able)',
+    })
+  })
+
+  it('a bulletin-note item with no role needs no one assigned (e.g. Silent Preparation)', () => {
+    const service = baseService({
+      items: [{ id: 'item-1', type: 'bulletin-note', bulletinLabel: 'Silent Preparation' }],
+    })
+    const doc = buildOrderOfWorship(service, songs, slides, new Map())
+    expect(doc.lines[0]).toEqual({ role: 'Silent Preparation', text: '', person: undefined, note: undefined })
+  })
+
+  it("an unreplaced placeholder shows its label, its role's resolved person, and '(to be filled in)'", () => {
+    const service = baseService({
+      assignments: [{ role: 'Scripture Reader', personId: 'person-david', tentative: false }],
+      items: [{ id: 'item-1', type: 'placeholder', label: 'Scripture Reading', role: 'Scripture Reader' }],
+    })
+    const doc = buildOrderOfWorship(service, songs, slides, new Map([['person-david', 'David Hamilton']]))
+    expect(doc.lines[0]).toEqual({
+      role: 'Scripture Reading',
+      text: '(to be filled in)',
+      person: 'David Hamilton',
+      note: undefined,
+    })
   })
 })
 
@@ -111,6 +220,15 @@ describe('toPlainText', () => {
     })
     expect(text).toContain('Scripture Reading: Matthew 25:1-30 — David Hamilton')
   })
+
+  it('renders a note on its own following line', () => {
+    const text = toPlainText({
+      title: 'Order of Worship',
+      dateLine: 'Sunday',
+      lines: [{ role: 'Worship Through the Word', text: 'Mark 5:1-20', person: 'David Hamilton', note: '"From Chained to Commissioned"' }],
+    })
+    expect(text).toContain('Worship Through the Word Mark 5:1-20 — David Hamilton\n"From Chained to Commissioned"')
+  })
 })
 
 describe('toHtml', () => {
@@ -122,5 +240,14 @@ describe('toHtml', () => {
     })
     expect(html).not.toContain('<script>alert(1)</script>')
     expect(html).toContain('&lt;script&gt;')
+  })
+
+  it('renders and escapes a note', () => {
+    const html = toHtml({
+      title: 'Order of Worship',
+      dateLine: 'Sunday',
+      lines: [{ text: 'Mark 5:1-20', note: '<b>note</b>' }],
+    })
+    expect(html).toContain('&lt;b&gt;note&lt;/b&gt;')
   })
 })

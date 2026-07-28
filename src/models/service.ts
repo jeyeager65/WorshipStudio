@@ -1,5 +1,15 @@
 import type { Arrangement, SongBlock } from './song'
 
+/** One passage a sermon references — a sermon may cite several beyond its main one; only the
+ *  main passage (Sermon.mainPassageId) is printed in the Order of Worship, but every passage
+ *  here is presented on screen, in list order, ahead of the outline. */
+export interface SermonPassage {
+  id: string
+  reference: string
+  translation: string
+  displayMode: 'full' | 'reference-only'
+}
+
 export type ServiceItemContent =
   | { type: 'song'; songId: string; arrangement: Arrangement }
   | {
@@ -9,7 +19,7 @@ export type ServiceItemContent =
       displayMode: 'full' | 'reference-only'
     }
   | { type: 'slide-ref'; slideId: string }
-  /** Ad hoc, service-only slides (e.g. sermon notes) — never saved to the Slide Library. */
+  /** Ad hoc, service-only slides — never saved to the Slide Library. */
   | { type: 'text-slide'; slides: SongBlock[] }
   | { type: 'media'; mediaId: string; fit: 'cover' | 'contain' }
   | { type: 'video'; mediaId: string }
@@ -17,30 +27,85 @@ export type ServiceItemContent =
   | { type: 'external-app'; profileId: string; file?: string }
   | { type: 'countdown'; targetTime: string; text?: string }
   | { type: 'qr'; url: string; caption?: string }
+  /** "Worship Through the Word" — presentable passage(s) plus an outline, positioned wherever
+   *  it actually falls in the service rather than pinned to a fixed header (see
+   *  Service.sermonTitle/keyPassage/preacherId, which remain the quick-glance summary fields
+   *  used by cards/reports, independent of this item's own content). */
+  | { type: 'sermon'; passages: SermonPassage[]; mainPassageId: string; outline: SongBlock[] }
+  /** A bulletin-only line (e.g. "Silent Preparation", a named prayer) — never presented on
+   *  screen (see flattenService.ts); its heading/body are the shared bulletinLabel/bulletinNote
+   *  fields below, not fields of its own. */
+  | { type: 'bulletin-note' }
+  /** A "this slot needs real content" stand-in inserted by a ServiceTemplate for any kind
+   *  requiring something specific picked/typed (song, scripture, slide, media, sermon, etc) —
+   *  replaced in place once filled in (see ServiceWorkspaceView's insertItem/replaceItemIndex).
+   *  suggestedTab pre-selects the right Add-to-Service tab when replaced. */
+  | { type: 'placeholder'; label: string; suggestedTab?: string }
 
 export type ServiceItem = ServiceItemContent & {
   id: string
-  /** Who's doing this part (Elder leading prayer, scripture reader, etc.) — distinct from the service-level preacher. */
-  person?: string
+  /** Who's doing this part (Elder leading prayer, scripture reader, etc.) — a role name from
+   *  the same catalog Assignments uses (LibrarySettings.roleGroups), not a Person id directly:
+   *  the actual person is whoever that service's Assignments has for this role, so assigning it
+   *  there is what fills this in (and keeps conflict-detection/templates consistent). Optional
+   *  and often absent — a "Silent Preparation" bulletin note, for example, needs no one
+   *  assigned at all. Distinct from the service-level preacher (Service.preacherId), which is
+   *  its own separate assignment. */
+  role?: string
+  /** Overrides this item's default Order of Worship heading (e.g. Scripture's hardcoded
+   *  "Scripture Reading:" becomes "Scriptural Call to Worship:"; a song, which has no default
+   *  label at all, can be given one like "Tithes and Offerings:"). */
+  bulletinLabel?: string
+  /** An optional second line under this item's Order of Worship entry (e.g. "(after this song
+   *  children up to grade 4 can be dismissed to a children's lesson)") — the operator types the
+   *  full text themselves; nothing here is auto-punctuated. */
+  bulletinNote?: string
 }
 
 export interface RoleAssignment {
   role: string
-  volunteerId?: string
+  personId?: string
   tentative: boolean
+}
+
+/** What a single ServiceTemplate entry seeds when a new service is created from its template:
+ *  either a real order-of-service item (with a placeholder standing in for content that must be
+ *  picked/typed) or, for 'role-only', just a RoleAssignment row with no line in the order of
+ *  service at all (e.g. "2 Greeters"). */
+export interface ServiceTemplateItem {
+  id: string
+  kind: 'bulletin-note' | 'sermon' | 'song' | 'scripture' | 'slide' | 'media' | 'other' | 'role-only'
+  /** Bulletin heading / placeholder description (e.g. "Opening Song") / role-only's own display
+   *  label. */
+  label: string
+  /** bulletin-note kind only. */
+  note?: string
+  /** Optional for content kinds, required for role-only. */
+  role?: string
+  /** role-only kind only, default 1 (e.g. 2 Greeters). */
+  count?: number
+}
+
+/** An ordered shell for a service type — songs, scripture, sermon, bulletin notes, role-only
+ *  assignments — filled in once per church and applied at service creation (see
+ *  applyServiceTemplate, called from CreateServiceView); never re-applied to already-created
+ *  services afterward. Order matters: items seed Service.items in this same order. */
+export interface ServiceTemplate {
+  serviceType: string
+  items: ServiceTemplateItem[]
 }
 
 export interface Service {
   id: string
   date: string
   type: string
-  preacher?: string
+  preacherId?: string
   sermonTitle?: string
   keyPassage?: string
   items: ServiceItem[]
   /** Operator-only notes, keyed by service item id. */
   presenterNotes?: Record<string, string>
-  volunteerRoster?: RoleAssignment[]
+  assignments?: RoleAssignment[]
   updatedAt: string
   updatedByDevice: string
 }

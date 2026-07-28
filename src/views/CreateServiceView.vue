@@ -1,41 +1,58 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getAdapter } from '@/adapters'
 import { useServicesStore } from '@/stores/services'
-import type { LibrarySettings } from '@/models/settings'
+import { useSettingsStore } from '@/stores/settings'
+import { usePeopleStore } from '@/stores/people'
 import type { Service } from '@/models/service'
+import { personDisplayName, sortByPreferredRole } from '@/models/library'
+import { applyServiceTemplate } from '@/utils/serviceTemplate'
 
 const router = useRouter()
 const store = useServicesStore()
+const settingsStore = useSettingsStore()
+const peopleStore = usePeopleStore()
 
 const date = ref(new Date().toISOString().slice(0, 10))
 const type = ref('')
 const sermonTitle = ref('')
 const keyPassage = ref('')
-const preacher = ref('')
-
-const librarySettings = ref<LibrarySettings>()
+const preacherId = ref<string>()
 
 onMounted(async () => {
-  librarySettings.value = await getAdapter().settings.getLibrarySettings()
-  if (librarySettings.value.serviceTypes.length > 0) {
-    type.value = librarySettings.value.serviceTypes[0]
-  }
+  await Promise.all([settingsStore.load(), peopleStore.load()])
+  const serviceTypes = settingsStore.librarySettings?.serviceTypes ?? []
+  if (serviceTypes.length > 0) type.value = serviceTypes[0]
 })
+
+const preacherOptions = computed(() =>
+  sortByPreferredRole(peopleStore.people, 'Preacher').map((p) => ({ title: personDisplayName(p), value: p.id })),
+)
+
+// Seeds this service's items/assignments once from its type's Service Template (see Settings >
+// Service Templates) — after creation the two are independent; editing the template later never
+// touches an already-created service (see AssignmentsView/ServiceWorkspaceView, which only ever
+// read their own service's items/assignments, never the template again).
+function seedFromTemplate(): { items: Service['items']; assignments: Service['assignments'] } {
+  const template = settingsStore.librarySettings?.serviceTemplates.find((t) => t.serviceType === type.value)
+  if (!template) return { items: [], assignments: [] }
+  return applyServiceTemplate(template)
+}
 
 // Handed to the workspace via the store rather than saved here — nothing is written to
 // disk until its Save button is used, so backing out of a just-created service without
 // saving leaves no trace (see ServiceWorkspaceView, which consumes and clears this).
 function createService() {
+  const { items, assignments } = seedFromTemplate()
   const service: Service = {
     id: `service-${crypto.randomUUID()}`,
     date: date.value,
     type: type.value,
-    preacher: preacher.value || undefined,
+    preacherId: preacherId.value,
     sermonTitle: sermonTitle.value || undefined,
     keyPassage: keyPassage.value || undefined,
-    items: [],
+    items,
+    assignments,
     updatedAt: '',
     updatedByDevice: '',
   }
@@ -57,7 +74,7 @@ function createService() {
           <v-text-field v-model="date" type="date" label="Date" variant="outlined" />
         </v-col>
         <v-col cols="6">
-          <v-select v-model="type" :items="librarySettings?.serviceTypes ?? []" label="Type" variant="outlined" />
+          <v-select v-model="type" :items="settingsStore.librarySettings?.serviceTypes ?? []" label="Type" variant="outlined" />
         </v-col>
       </v-row>
 
@@ -80,13 +97,13 @@ function createService() {
           />
         </v-col>
         <v-col cols="6">
-          <v-combobox
-            v-model="preacher"
-            :items="librarySettings?.preachers ?? []"
+          <v-select
+            v-model="preacherId"
+            :items="preacherOptions"
             label="Preacher (optional)"
-            placeholder="Start typing or pick from list"
             variant="outlined"
-            hint="Managed in Settings"
+            clearable
+            hint="Managed on the People page"
             persistent-hint
           />
         </v-col>

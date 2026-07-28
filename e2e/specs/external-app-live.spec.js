@@ -49,12 +49,19 @@ describe('External App Hand-off (live launch/restore)', () => {
       await addButton.waitForClickable({ timeout: 10000 })
       await addButton.click()
 
-      const externalAppTab = await $('.v-tab*=External App')
-      await externalAppTab.waitForExist({ timeout: 10000 })
-      await externalAppTab.click()
-
       const dialog = await $('.v-dialog')
-      const select = await dialog.$('.v-select')
+      const typeSelect = await dialog.$('.v-select')
+      await typeSelect.waitForClickable({ timeout: 10000 })
+      await typeSelect.click()
+      // Scoped to the open menu's own overlay content — an unscoped query can match the
+      // persistent left nav's own .v-list-item entries instead.
+      const externalAppOption = await (await $('[role="listbox"]')).$('.v-list-item*=External App')
+      await externalAppOption.waitForClickable({ timeout: 10000 })
+      await externalAppOption.click()
+
+      // The App Profile select is looked up by its own label text, since the Type select
+      // above is also a plain .v-select and would otherwise be matched first.
+      const select = await dialog.$('.v-select*=App Profile')
       await select.waitForClickable({ timeout: 10000 })
       await select.click()
       const option = await $('.v-list-item*=E2E Live Notepad')

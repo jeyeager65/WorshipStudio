@@ -1,5 +1,7 @@
 import type { Service } from '@/models/service'
 import type { Song } from '@/models/song'
+import type { RoleGroup } from '@/models/settings'
+import { roleDisplayLabel } from '@/models/settings'
 
 export interface PlanningReportRow {
   serviceId: string
@@ -21,12 +23,18 @@ export interface PlanningReportFilter {
 }
 
 /**
- * Feature-spec.md's Multi-Week Planning Report (Volunteer Roster section): a read-only view
+ * Feature-spec.md's Multi-Week Planning Report (Assignments section): a read-only view
  * of praise team assignments and planned songs across a date range, matching the real-world
  * workflow of pre-planning a couple months of song/praise-team assignments at once — same
  * reporting pattern as CCLI usage (date range in, rows out), not a new editable grid.
  */
-export function buildPlanningReport(services: Service[], songs: Song[], volunteerNames: Map<string, string>, filter: PlanningReportFilter): PlanningReportRow[] {
+export function buildPlanningReport(
+  services: Service[],
+  songs: Song[],
+  personNames: Map<string, string>,
+  roleGroups: RoleGroup[],
+  filter: PlanningReportFilter,
+): PlanningReportRow[] {
   const songsById = new Map(songs.map((song) => [song.id, song]))
 
   const inRange = services
@@ -43,11 +51,11 @@ export function buildPlanningReport(services: Service[], songs: Song[], voluntee
       .filter((item) => item.type === 'song')
       .map((item) => songsById.get(item.songId)?.title ?? 'Unknown song')
 
-    const roster = (service.volunteerRoster ?? [])
-      .filter((assignment) => assignment.volunteerId)
+    const roster = (service.assignments ?? [])
+      .filter((assignment) => assignment.personId)
       .map((assignment) => {
-        const name = volunteerNames.get(assignment.volunteerId!) ?? 'Unassigned'
-        return `${assignment.role} — ${name}${assignment.tentative ? '?' : ''}`
+        const name = personNames.get(assignment.personId!) ?? 'Unassigned'
+        return `${roleDisplayLabel(assignment.role, roleGroups)} — ${name}${assignment.tentative ? '?' : ''}`
       })
 
     const dateLine = new Date(`${service.date}T00:00:00`).toLocaleDateString(undefined, {
@@ -62,7 +70,7 @@ export function buildPlanningReport(services: Service[], songs: Song[], voluntee
       date: service.date,
       dateLine,
       type: service.type,
-      preacher: service.preacher,
+      preacher: personNames.get(service.preacherId ?? ''),
       sermonTitle: service.sermonTitle,
       songTitles,
       roster,

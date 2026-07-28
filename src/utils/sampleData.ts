@@ -1,6 +1,7 @@
 import type { Song } from '@/models/song'
-import type { Service, RoleAssignment } from '@/models/service'
-import type { Volunteer, Theme } from '@/models/library'
+import type { Service, RoleAssignment, ServiceTemplate } from '@/models/service'
+import type { Person, Theme } from '@/models/library'
+import type { RoleGroup } from '@/models/settings'
 
 // Fixed (not random) IDs, all under a `sample-` sub-prefix — this is what makes "Load Sample
 // Data" idempotent: clicking it again just refreshes these same records in place (moving the
@@ -139,14 +140,15 @@ export const sampleSongs: Song[] = [
   },
 ]
 
-export const sampleVolunteers: Volunteer[] = [
-  { id: 'volunteer-sample-sarah-mitchell', firstName: 'Sarah', lastName: 'Mitchell', preferredRoles: ['Worship Leader', 'Vocals'], unavailableDateRanges: [], updatedAt: now, updatedByDevice: device },
-  { id: 'volunteer-sample-marcus-johnson', firstName: 'Marcus', lastName: 'Johnson', preferredRoles: ['Piano', 'Slides'], unavailableDateRanges: [], updatedAt: now, updatedByDevice: device },
-  { id: 'volunteer-sample-priya-patel', firstName: 'Priya', lastName: 'Patel', preferredRoles: ['Guitar'], unavailableDateRanges: [], updatedAt: now, updatedByDevice: device },
-  { id: 'volunteer-sample-daniel-kim', firstName: 'Daniel', lastName: 'Kim', preferredRoles: ['Drums'], unavailableDateRanges: [], updatedAt: now, updatedByDevice: device },
-  { id: 'volunteer-sample-rachel-nguyen', firstName: 'Rachel', lastName: 'Nguyen', preferredRoles: ['Sound Booth'], unavailableDateRanges: [], updatedAt: now, updatedByDevice: device },
-  { id: 'volunteer-sample-tom-alvarez', firstName: 'Tom', lastName: 'Alvarez', preferredRoles: ['Slides'], unavailableDateRanges: [], updatedAt: now, updatedByDevice: device },
-  { id: 'volunteer-sample-linda-brooks', firstName: 'Linda', lastName: 'Brooks', preferredRoles: ['Greeter', 'Nursery'], unavailableDateRanges: [], updatedAt: now, updatedByDevice: device },
+export const samplePeople: Person[] = [
+  { id: 'person-sample-daniel-renno', firstName: 'Daniel', lastName: 'Renno', displayName: 'Pastor Dan', preferredRoles: ['Preacher'], unavailableDateRanges: [], updatedAt: now, updatedByDevice: device },
+  { id: 'person-sample-sarah-mitchell', firstName: 'Sarah', lastName: 'Mitchell', preferredRoles: ['Worship Leader', 'Vocals'], unavailableDateRanges: [], updatedAt: now, updatedByDevice: device },
+  { id: 'person-sample-marcus-johnson', firstName: 'Marcus', lastName: 'Johnson', preferredRoles: ['Piano', 'Slides'], unavailableDateRanges: [], updatedAt: now, updatedByDevice: device },
+  { id: 'person-sample-priya-patel', firstName: 'Priya', lastName: 'Patel', preferredRoles: ['Guitar'], unavailableDateRanges: [], updatedAt: now, updatedByDevice: device },
+  { id: 'person-sample-daniel-kim', firstName: 'Daniel', lastName: 'Kim', preferredRoles: ['Drums'], unavailableDateRanges: [], updatedAt: now, updatedByDevice: device },
+  { id: 'person-sample-rachel-nguyen', firstName: 'Rachel', lastName: 'Nguyen', preferredRoles: ['Sound Booth'], unavailableDateRanges: [], updatedAt: now, updatedByDevice: device },
+  { id: 'person-sample-tom-alvarez', firstName: 'Tom', lastName: 'Alvarez', preferredRoles: ['Slides'], unavailableDateRanges: [], updatedAt: now, updatedByDevice: device },
+  { id: 'person-sample-linda-brooks', firstName: 'Linda', lastName: 'Brooks', preferredRoles: ['Greeter', 'Nursery'], unavailableDateRanges: [], updatedAt: now, updatedByDevice: device },
 ]
 
 export const sampleThemes: Theme[] = [
@@ -172,11 +174,49 @@ export const sampleThemes: Theme[] = [
   },
 ]
 
-/** Every role used by sampleVolunteers/rosters below — merged into LibrarySettings.volunteerRoles. */
-export const sampleVolunteerRoles = ['Worship Leader', 'Vocals', 'Piano', 'Guitar', 'Drums', 'Sound Booth', 'Slides', 'Greeter', 'Nursery']
+/** Every role used by samplePeople/rosters below, organized into categories — merged into
+ *  LibrarySettings.roleGroups. */
+export const sampleRoleGroups: RoleGroup[] = [
+  { name: 'Praise Team', roles: ['Worship Leader', 'Vocals', 'Piano', 'Guitar', 'Drums'] },
+  { name: 'Tech', roles: ['Sound Booth', 'Slides'] },
+  { name: 'Guest Care', roles: ['Greeter', 'Nursery'] },
+  { name: 'Ministry', roles: ['Preacher'] },
+]
 
 /** Every service type sampleServices uses — merged into LibrarySettings.serviceTypes. */
 export const sampleServiceTypes = ['Sunday Morning Worship', 'Wednesday Bible Study']
+
+/** One example per service type — merged into LibrarySettings.serviceTemplates. The Sunday
+ *  template mirrors a real printed bulletin's order (Welcome and Announcements through Closing
+ *  Song), mixing real bulletin-note items, content placeholders, a sermon placeholder, and
+ *  role-only entries for roles with no line of their own in the order of service. */
+export const sampleServiceTemplates: ServiceTemplate[] = [
+  {
+    serviceType: 'Sunday Morning Worship',
+    items: [
+      { id: 'tpl-welcome', kind: 'bulletin-note', label: 'Welcome and Announcements', role: 'Greeter' },
+      { id: 'tpl-silent-prep', kind: 'bulletin-note', label: 'Silent Preparation' },
+      { id: 'tpl-call-to-worship', kind: 'scripture', label: 'Scriptural Call to Worship' },
+      { id: 'tpl-opening-song', kind: 'song', label: 'Opening Song', role: 'Worship Leader' },
+      { id: 'tpl-prayer-praise', kind: 'bulletin-note', label: 'Prayer of Praise and Confession', role: 'Worship Leader' },
+      { id: 'tpl-scripture-reading', kind: 'scripture', label: 'Scripture Reading' },
+      { id: 'tpl-prayer-thanksgiving', kind: 'bulletin-note', label: 'Prayer of Thanksgiving and Petition', role: 'Worship Leader' },
+      { id: 'tpl-tithes-offering', kind: 'bulletin-note', label: 'Tithes and Offerings' },
+      { id: 'tpl-sermon', kind: 'sermon', label: 'Worship Through the Word', role: 'Preacher' },
+      { id: 'tpl-silent-reflection', kind: 'bulletin-note', label: 'Silent Reflection' },
+      { id: 'tpl-closing-song', kind: 'song', label: 'Closing Song' },
+      { id: 'tpl-piano', kind: 'role-only', label: 'Piano', role: 'Piano', count: 1 },
+      { id: 'tpl-guitar', kind: 'role-only', label: 'Guitar', role: 'Guitar', count: 1 },
+      { id: 'tpl-drums', kind: 'role-only', label: 'Drums', role: 'Drums', count: 1 },
+      { id: 'tpl-sound-booth', kind: 'role-only', label: 'Sound Booth', role: 'Sound Booth', count: 1 },
+      { id: 'tpl-slides', kind: 'role-only', label: 'Slides', role: 'Slides', count: 1 },
+    ],
+  },
+  {
+    serviceType: 'Wednesday Bible Study',
+    items: [{ id: 'tpl-wed-sound-booth', kind: 'role-only', label: 'Sound Booth', role: 'Sound Booth', count: 1 }],
+  },
+]
 
 const toIso = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
@@ -218,23 +258,23 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
   const future = nthSundayAfter(referenceDate, 3)
 
   const pastRoster: RoleAssignment[] = [
-    { role: 'Worship Leader', volunteerId: 'volunteer-sample-sarah-mitchell', tentative: false },
-    { role: 'Piano', volunteerId: 'volunteer-sample-marcus-johnson', tentative: false },
-    { role: 'Guitar', volunteerId: 'volunteer-sample-priya-patel', tentative: false },
-    { role: 'Drums', volunteerId: 'volunteer-sample-daniel-kim', tentative: false },
-    { role: 'Sound Booth', volunteerId: 'volunteer-sample-rachel-nguyen', tentative: false },
-    { role: 'Slides', volunteerId: 'volunteer-sample-tom-alvarez', tentative: false },
+    { role: 'Worship Leader', personId: 'person-sample-sarah-mitchell', tentative: false },
+    { role: 'Piano', personId: 'person-sample-marcus-johnson', tentative: false },
+    { role: 'Guitar', personId: 'person-sample-priya-patel', tentative: false },
+    { role: 'Drums', personId: 'person-sample-daniel-kim', tentative: false },
+    { role: 'Sound Booth', personId: 'person-sample-rachel-nguyen', tentative: false },
+    { role: 'Slides', personId: 'person-sample-tom-alvarez', tentative: false },
   ]
 
   // Marcus is deliberately double-booked (Piano AND Slides) — exercises the roster's
-  // same-week-two-roles conflict detection (see volunteerConflicts.ts).
+  // same-week-two-roles conflict detection (see rosterConflicts.ts).
   const soonRoster: RoleAssignment[] = [
-    { role: 'Worship Leader', volunteerId: 'volunteer-sample-sarah-mitchell', tentative: false },
-    { role: 'Piano', volunteerId: 'volunteer-sample-marcus-johnson', tentative: false },
-    { role: 'Slides', volunteerId: 'volunteer-sample-marcus-johnson', tentative: false },
-    { role: 'Guitar', volunteerId: 'volunteer-sample-priya-patel', tentative: true },
-    { role: 'Sound Booth', volunteerId: 'volunteer-sample-rachel-nguyen', tentative: false },
-    { role: 'Greeter', volunteerId: 'volunteer-sample-linda-brooks', tentative: false },
+    { role: 'Worship Leader', personId: 'person-sample-sarah-mitchell', tentative: false },
+    { role: 'Piano', personId: 'person-sample-marcus-johnson', tentative: false },
+    { role: 'Slides', personId: 'person-sample-marcus-johnson', tentative: false },
+    { role: 'Guitar', personId: 'person-sample-priya-patel', tentative: true },
+    { role: 'Sound Booth', personId: 'person-sample-rachel-nguyen', tentative: false },
+    { role: 'Greeter', personId: 'person-sample-linda-brooks', tentative: false },
   ]
 
   return [
@@ -242,7 +282,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       id: 'service-sample-past-sunday',
       date: toIso(past),
       type: 'Sunday Morning Worship',
-      preacher: 'Pastor Dan',
+      preacherId: 'person-sample-daniel-renno',
       sermonTitle: 'Walking in Faith',
       keyPassage: 'Hebrews 11:1-6',
       items: [
@@ -260,7 +300,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
         },
         { id: 'item-6', type: 'song', songId: 'song-sample-blessed-assurance', arrangement: { sequence: ['v1', 'c1', 'c1'] } },
       ],
-      volunteerRoster: pastRoster,
+      assignments: pastRoster,
       updatedAt: now,
       updatedByDevice: device,
     },
@@ -268,7 +308,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       id: 'service-sample-upcoming-sunday',
       date: toIso(soon),
       type: 'Sunday Morning Worship',
-      preacher: 'Pastor Dan',
+      preacherId: 'person-sample-daniel-renno',
       sermonTitle: 'The Good Shepherd',
       keyPassage: 'Psalm 23',
       items: [
@@ -283,7 +323,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
         },
         { id: 'item-6', type: 'song', songId: 'song-sample-amazing-grace', arrangement: { sequence: ['v1', 'v2', 'v3', 'v4'] } },
       ],
-      volunteerRoster: soonRoster,
+      assignments: soonRoster,
       updatedAt: now,
       updatedByDevice: device,
     },
@@ -291,14 +331,14 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       id: 'service-sample-wednesday-study',
       date: toIso(wednesday),
       type: 'Wednesday Bible Study',
-      preacher: 'Pastor Dan',
+      preacherId: 'person-sample-daniel-renno',
       sermonTitle: 'Romans 8: Grace and Faith',
       keyPassage: 'Romans 8:28-39',
       items: [
         { id: 'item-1', type: 'song', songId: 'song-sample-how-firm-a-foundation', arrangement: { sequence: ['v1', 'v2'] } },
         { id: 'item-2', type: 'scripture', reference: 'Romans 8:28-39', translation: 'KJV', displayMode: 'full' },
       ],
-      volunteerRoster: [{ role: 'Sound Booth', volunteerId: 'volunteer-sample-rachel-nguyen', tentative: false }],
+      assignments: [{ role: 'Sound Booth', personId: 'person-sample-rachel-nguyen', tentative: false }],
       updatedAt: now,
       updatedByDevice: device,
     },
@@ -309,7 +349,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       date: toIso(future),
       type: 'Sunday Morning Worship',
       items: [{ id: 'item-1', type: 'song', songId: 'song-sample-what-a-friend', arrangement: { sequence: ['v1', 'v2'] } }],
-      volunteerRoster: [{ role: 'Worship Leader', volunteerId: 'volunteer-sample-sarah-mitchell', tentative: true }],
+      assignments: [{ role: 'Worship Leader', personId: 'person-sample-sarah-mitchell', tentative: true }],
       updatedAt: now,
       updatedByDevice: device,
     },
