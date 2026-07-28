@@ -47,12 +47,19 @@ pub fn run() {
                     tauri::WebviewUrl::App("index.html".into()),
                 )
                 .title("Worship Studio")
-                .inner_size(800.0, 600.0)
+                // Sized to the logo + progress bar + status text (SplashScreen.vue) plus a
+                // small margin, not an arbitrary round window size — a taller window just
+                // centers that same content in more empty black space.
+                .inner_size(700.0, 360.0)
                 .resizable(false)
                 .decorations(false)
                 .center()
                 .always_on_top(true)
                 .skip_taskbar(true)
+                // Matches SplashScreen.vue's .splash-bg — without this, the OS paints the
+                // window's default (white) background for the moment between window creation
+                // and the webview's own content finishing its first paint.
+                .background_color(tauri::window::Color(0, 0, 0, 255))
                 .build()?;
             } else if let Some(main) = app.get_webview_window("main") {
                 let _ = main.show();

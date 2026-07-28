@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useTheme } from 'vuetify'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { emit, listen } from '@tauri-apps/api/event'
 import { getVersion } from '@tauri-apps/api/app'
 import { useRoute, useRouter } from 'vue-router'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -46,8 +47,9 @@ const identifyLabel = typeof window !== 'undefined' ? (new URLSearchParams(windo
 // The splash screen (feature-spec.md "Splash screen") is its own small, borderless native
 // window (see tauri.conf.json) rather than an overlay inside the main 1920x1080 window — at
 // that size, even a real loading delay looked like an instant, mistake-looking flash. This
-// window just shows branding; the main window below does the real loading, hidden, and closes
-// this one once it's both ready AND the minimum on-screen duration has elapsed.
+// window shows branding plus real loading status (via the splash:status event below); the
+// main window does the real loading, hidden, and closes this one once it's both done AND the
+// minimum on-screen duration has elapsed.
 const isSplashWindow =
   typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__ && getCurrentWindow().label === 'splash'
 
@@ -87,13 +89,19 @@ const appVersion = ref('')
 // matters for the splash window's own render below; the main window never shows it.
 const splashStatus = ref('Starting up…')
 
-// The splash window (see tauri.conf.json) is guaranteed at least this long on screen so a
-// fast startup on a small library doesn't just look like a flash/glitch. As the song/set
-// library grows, real load time naturally pushes past this floor on its own. E2E specs build
-// with VITE_E2E_TEST_MODE (see e2e/package.json's build:app) to skip the wait entirely — with
-// 19 spec files each launching a fresh app instance, that floor otherwise adds minutes to a
-// full suite run for no test value.
-const MIN_SPLASH_MS = import.meta.env.VITE_E2E_TEST_MODE === 'true' ? 0 : 3000
+// The splash window (see tauri.conf.json) stays on screen at least this long, so branding is
+// actually perceptible rather than a one-frame flash — splashStatus below is updated with each
+// real loading step as it actually happens, so as the services library grows over time, the
+// screen stays up for as long as loading genuinely takes (past this floor) and says what it's
+// doing, rather than a static message timed to a fake minimum. E2E specs build with
+// VITE_E2E_TEST_MODE (see e2e/package.json's build:app) to skip even this floor — with 19 spec
+// files each launching a fresh app instance, any wait here adds real minutes to a full suite
+// run for no test value.
+const MIN_SPLASH_MS = import.meta.env.VITE_E2E_TEST_MODE === 'true' ? 0 : 2000
+// Shown once loading finishes, on top of MIN_SPLASH_MS — without this, a load that already ran
+// past the floor would replace "Loading services…" with "Loading complete" for zero perceptible
+// time before the window closes.
+const READY_DISPLAY_MS = import.meta.env.VITE_E2E_TEST_MODE === 'true' ? 0 : 500
 const startedAt = Date.now()
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -113,7 +121,17 @@ function closeWindow() {
 }
 
 onMounted(async () => {
-  if (isSplashWindow || isPresentationWindow || isIdentifyWindow) return
+  // The splash and main windows are two separate native windows, each running its own
+  // independent copy of this same app bundle — a ref set in one has no effect on the other,
+  // so real progress has to cross via a Tauri event (same pattern as live:slide-changed for
+  // the presentation window) rather than shared reactive state.
+  if (isSplashWindow) {
+    await listen<string>('splash:status', (event) => {
+      splashStatus.value = event.payload
+    })
+    return
+  }
+  if (isPresentationWindow || isIdentifyWindow) return
 
   const thisWindow = getCurrentWindow()
   isMaximized.value = await thisWindow.isMaximized()
@@ -121,6 +139,7 @@ onMounted(async () => {
     isMaximized.value = await thisWindow.isMaximized()
   })
 
+  await emit('splash:status', 'Loading settings…')
   await settingsStore.load()
   const machineSettings = settingsStore.machineSettings!
   theme.change(machineSettings.darkMode ? 'worshipDark' : 'worshipLight')
@@ -137,10 +156,14 @@ onMounted(async () => {
   void syncStore.load()
   void getVersion().then((v) => (appVersion.value = v))
 
+  await emit('splash:status', 'Loading services…')
   await servicesStore.load()
 
   const elapsed = Date.now() - startedAt
   if (elapsed < MIN_SPLASH_MS) await sleep(MIN_SPLASH_MS - elapsed)
+
+  await emit('splash:status', 'Loading complete')
+  await sleep(READY_DISPLAY_MS)
 
   // E2E builds never create this window at all (see lib.rs's setup()) — the harness's
   // WebDriver session otherwise raced the splash webview's own faster startup, so avoiding

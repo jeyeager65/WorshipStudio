@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Worship Studio</title>
+    <!-- Matches the splash window's native background_color (src-tauri/src/lib.rs) and
+         SplashScreen.vue's .splash-bg — set synchronously here so there's no default-white
+         paint in the gap between this raw HTML parsing and Vue mounting/applying its own CSS. -->
+    <style>
+      html,
+      body {
+        background: #000;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>

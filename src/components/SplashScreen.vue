@@ -64,8 +64,10 @@ defineProps<{
   color: rgba(255, 255, 255, 0.75);
 }
 
-/* Indeterminate rather than tied to a real byte-count progress figure — nothing in the
-   loading sequence (settings + service list) exposes fine-grained progress to bind to. */
+/* Indeterminate rather than tied to a real percentage — statusText (App.vue) reflects real,
+   discrete loading steps (settings, then services) as they actually happen, but nothing
+   exposes fine-grained progress within a step (e.g. "service 45 of 230") to bind a real
+   percentage to. */
 @keyframes splash-indeterminate {
   0% {
     transform: translateX(-110%);
