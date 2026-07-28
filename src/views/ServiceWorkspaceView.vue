@@ -41,6 +41,53 @@ const selectedItemIndex = ref(0)
 /** -1 = nothing live yet; equal to flatSlides.length = live but past the last slide (blank). */
 const flatIndex = ref(-1)
 
+// Service details (date/type/sermon title/key passage/preacher) — the same fields
+// CreateServiceView collects up front, editable afterward via this dialog rather than a
+// separate screen, since it's the exact same small set of fields either way. Local drafts so
+// Cancel discards cleanly; Save writes back to the real service (picked up by the existing
+// deep watch on `service` below, same as any other in-place edit in this view).
+const serviceDetailsDialogOpen = ref(false)
+const editDate = ref('')
+const editType = ref('')
+const editSermonTitle = ref('')
+const editKeyPassage = ref('')
+const editPreacher = ref('')
+function openServiceDetailsDialog() {
+  if (!service.value) return
+  editDate.value = service.value.date
+  editType.value = service.value.type
+  editSermonTitle.value = service.value.sermonTitle ?? ''
+  editKeyPassage.value = service.value.keyPassage ?? ''
+  editPreacher.value = service.value.preacher ?? ''
+  serviceDetailsDialogOpen.value = true
+}
+function saveServiceDetails() {
+  if (!service.value) return
+  service.value.date = editDate.value
+  service.value.type = editType.value
+  service.value.sermonTitle = editSermonTitle.value || undefined
+  service.value.keyPassage = editKeyPassage.value || undefined
+  service.value.preacher = editPreacher.value || undefined
+  serviceDetailsDialogOpen.value = false
+}
+// Matches the "weekday, month day, year" format already used for the Order of Worship export
+// and planning report headers (see utils/orderOfWorship.ts/planningReport.ts) — one consistent
+// date presentation across the app instead of the raw "YYYY-MM-DD" stored on disk.
+const serviceDateLabel = computed(() =>
+  service.value
+    ? new Date(`${service.value.date}T00:00:00`).toLocaleDateString(undefined, {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : '',
+)
+// Same combine-and-skip-blanks pattern as ServiceCard's own subtitle line.
+const serviceSubtitle = computed(() =>
+  service.value ? [service.value.sermonTitle, service.value.keyPassage, service.value.preacher].filter(Boolean).join(' · ') : '',
+)
+
 const addDialogOpen = ref(false)
 const addQuery = ref('')
 
@@ -877,9 +924,12 @@ function updatePresenterNote(itemId: string, note: string) {
 <template>
   <div v-if="service" class="workspace-root">
     <div class="d-flex align-center justify-space-between px-4 py-2 border-b">
-      <div class="d-flex flex-column" style="line-height: 1.2">
-        <span class="text-body-2 font-weight-bold">{{ service.type }} — {{ service.date }}</span>
-        <span class="text-caption text-medium-emphasis">{{ service.sermonTitle }}</span>
+      <div class="d-flex align-center ga-1">
+        <div class="d-flex flex-column" style="line-height: 1.3">
+          <span class="text-body-2 font-weight-bold">{{ serviceDateLabel }} · {{ service.type }}</span>
+          <span v-if="serviceSubtitle" class="text-caption text-medium-emphasis">{{ serviceSubtitle }}</span>
+        </div>
+        <v-btn icon="mdi-pencil-outline" variant="text" size="small" title="Edit service details" @click="openServiceDetailsDialog" />
       </div>
       <div class="d-flex ga-2">
         <v-btn variant="outlined" prepend-icon="mdi-account-group-outline" :to="`/service/${service.id}/roster`">
@@ -1176,6 +1226,52 @@ function updatePresenterNote(itemId: string, note: string) {
         <v-btn variant="flat" color="error" append-icon="mdi-chevron-right" @click="next">Next</v-btn>
       </div>
     </div>
+
+    <v-dialog v-model="serviceDetailsDialogOpen" max-width="560">
+      <v-card>
+        <v-card-title>Edit Service Details</v-card-title>
+        <v-card-text>
+          <v-row>
+            <v-col cols="6">
+              <v-text-field v-model="editDate" type="date" label="Date" variant="outlined" />
+            </v-col>
+            <v-col cols="6">
+              <v-select v-model="editType" :items="settingsStore.librarySettings?.serviceTypes ?? []" label="Type" variant="outlined" />
+            </v-col>
+          </v-row>
+          <v-text-field
+            v-model="editSermonTitle"
+            label="Sermon Title (optional)"
+            placeholder="e.g. Our Lord's Prayer"
+            variant="outlined"
+          />
+          <v-row>
+            <v-col cols="6">
+              <v-text-field
+                v-model="editKeyPassage"
+                label="Key Passage (optional)"
+                placeholder="e.g. Matthew 6:9-13"
+                variant="outlined"
+              />
+            </v-col>
+            <v-col cols="6">
+              <v-combobox
+                v-model="editPreacher"
+                :items="settingsStore.librarySettings?.preachers ?? []"
+                label="Preacher (optional)"
+                placeholder="Start typing or pick from list"
+                variant="outlined"
+              />
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="serviceDetailsDialogOpen = false">Cancel</v-btn>
+          <v-btn variant="flat" color="primary" @click="saveServiceDetails">Save</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <v-dialog v-model="addDialogOpen" max-width="560">
       <v-card>
