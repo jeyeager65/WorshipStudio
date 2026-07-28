@@ -2,11 +2,13 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useMediaStore } from '@/stores/media'
 import { useUndoStore } from '@/stores/undo'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import ImportMediaDialog from '@/components/media/ImportMediaDialog.vue'
 import type { MediaItem } from '@/models/library'
 
 const store = useMediaStore()
 const undoStore = useUndoStore()
+const confirmDialog = useConfirmDialogStore()
 
 const query = ref('')
 const typeFilter = ref<'all' | 'image' | 'video'>('all')
@@ -42,7 +44,8 @@ const filteredItems = computed(() => {
     .sort((a, b) => a.filename.localeCompare(b.filename))
 })
 
-function deleteItem(item: MediaItem) {
+async function deleteItem(item: MediaItem) {
+  if (!(await confirmDialog.confirm(`Delete "${item.filename}"?`, 'Delete'))) return
   pendingDeleteIds.add(item.id)
   undoStore.push(
     `Deleted "${item.filename}"`,

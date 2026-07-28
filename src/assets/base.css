@@ -4,3 +4,11 @@
 html {
   font-size: 1.2rem;
 }
+
+/* Vuetify hard-codes the scrim's opacity in its own compiled CSS (0.32) regardless of the
+   `scrim` color prop (see plugins/vuetify.ts) — against this app's dark, near-black theme
+   that reads as barely-there dimming. Raised so dialogs get the standard, clearly visible
+   "gray out the background" treatment. */
+.v-overlay__scrim {
+  opacity: 0.6;
+}

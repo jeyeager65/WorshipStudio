@@ -3,11 +3,13 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSongsStore } from '@/stores/songs'
 import { useUndoStore } from '@/stores/undo'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import type { Song } from '@/models/song'
 
 const router = useRouter()
 const store = useSongsStore()
 const undoStore = useUndoStore()
+const confirmDialog = useConfirmDialogStore()
 
 const query = ref('')
 const importing = ref(false)
@@ -28,7 +30,8 @@ const filteredSongs = computed(() => {
   return sorted.filter((song) => [song.title, song.author].some((field) => field?.toLowerCase().includes(q)))
 })
 
-function deleteSong(song: Song) {
+async function deleteSong(song: Song) {
+  if (!(await confirmDialog.confirm(`Delete "${song.title}"?`, 'Delete'))) return
   pendingDeleteIds.add(song.id)
   undoStore.push(
     `Deleted "${song.title}"`,

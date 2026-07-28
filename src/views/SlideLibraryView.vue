@@ -3,11 +3,13 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSlidesStore } from '@/stores/slides'
 import { useUndoStore } from '@/stores/undo'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import type { SlideLibraryItem } from '@/models/library'
 
 const router = useRouter()
 const store = useSlidesStore()
 const undoStore = useUndoStore()
+const confirmDialog = useConfirmDialogStore()
 
 const query = ref('')
 // Deletion is soft until the undo toast expires (spec section 16) — see SongLibraryView for
@@ -25,7 +27,8 @@ const filteredSlides = computed(() => {
   return sorted.filter((item) => item.label.toLowerCase().includes(q))
 })
 
-function deleteSlide(item: SlideLibraryItem) {
+async function deleteSlide(item: SlideLibraryItem) {
+  if (!(await confirmDialog.confirm(`Delete "${item.label}"?`, 'Delete'))) return
   pendingDeleteIds.add(item.id)
   undoStore.push(
     `Deleted "${item.label}"`,

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, toRaw, watch } from 'vue'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import type { UnavailableDateRange, Volunteer } from '@/models/library'
 
 const props = defineProps<{ modelValue: boolean; volunteer?: Volunteer; roleOptions: string[] }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean]; save: [Volunteer] }>()
+const confirmDialog = useConfirmDialogStore()
 
 function blank(): Volunteer {
   return {
@@ -45,7 +47,8 @@ function addUnavailableRange() {
   newRangeStart.value = ''
   newRangeEnd.value = ''
 }
-function removeUnavailableRange(range: UnavailableDateRange) {
+async function removeUnavailableRange(range: UnavailableDateRange) {
+  if (!(await confirmDialog.confirm(`Remove the unavailable range ${range.start} – ${range.end}?`, 'Remove'))) return
   draft.value.unavailableDateRanges = draft.value.unavailableDateRanges.filter((r) => r !== range)
 }
 

@@ -483,10 +483,13 @@ function addApiBibleTranslation() {
   pickedCatalogEntry.value = undefined
 }
 
-function removeApiBibleTranslation(code: string) {
+async function removeApiBibleTranslation(code: string) {
   if (!librarySettings.value) return
   const index = librarySettings.value.apiBibleTranslations.findIndex((t) => t.code === code)
   if (index === -1) return
+  const target = librarySettings.value.apiBibleTranslations[index]
+  if (!(await confirmDialog.confirm(`Remove "${target.label}"?`, 'Remove'))) return
+  if (!librarySettings.value) return
   const [removed] = librarySettings.value.apiBibleTranslations.splice(index, 1)
   const wasDefault = librarySettings.value.defaultTranslationCode === code
   if (wasDefault) librarySettings.value.defaultTranslationCode = 'KJV'

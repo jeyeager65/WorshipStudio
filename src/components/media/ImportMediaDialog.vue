@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { getAdapter } from '@/adapters'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import type { StagedMediaFile, MediaImportCommit } from '@/adapters/types'
 import type { MediaItem } from '@/models/library'
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean]; imported: [MediaItem[]] }>()
+const confirmDialog = useConfirmDialogStore()
 
 interface StagedFileRow extends StagedMediaFile {
   tagsInput: string
@@ -52,8 +54,11 @@ async function browseFiles() {
   }
 }
 
-function removeRow(path: string) {
-  stagedRows.value = stagedRows.value.filter((row) => row.path !== path)
+async function removeRow(path: string) {
+  const row = stagedRows.value.find((r) => r.path === path)
+  if (!row) return
+  if (!(await confirmDialog.confirm(`Remove "${row.filename}" from this import?`, 'Remove'))) return
+  stagedRows.value = stagedRows.value.filter((r) => r.path !== path)
 }
 
 const includedRows = computed(() => stagedRows.value.filter((row) => !row.skip))

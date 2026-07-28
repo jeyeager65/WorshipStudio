@@ -7,6 +7,7 @@ import { getAdapter } from '@/adapters'
 import { useSongsStore } from '@/stores/songs'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useUndoStore } from '@/stores/undo'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { colorForBlockLabel } from '@/utils/contentColors'
 import type { Song, SongBlock } from '@/models/song'
 import type { LibrarySettings } from '@/models/settings'
@@ -16,6 +17,7 @@ const router = useRouter()
 const store = useSongsStore()
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const undoStore = useUndoStore()
+const confirmDialog = useConfirmDialogStore()
 
 const song = ref<Song>()
 const librarySettings = ref<LibrarySettings>()
@@ -95,20 +97,24 @@ const usageLabel = computed(() => {
 function addCollection() {
   song.value?.collections.push({ collectionId: '' })
 }
-function removeCollection(index: number) {
+async function removeCollection(index: number) {
   if (!song.value) return
-  const [removed] = song.value.collections.splice(index, 1)
+  const removed = song.value.collections[index]
   if (!removed) return
+  if (!(await confirmDialog.confirm(`Remove "${removed.collectionId || 'collection'}"?`, 'Remove'))) return
+  song.value.collections.splice(index, 1)
   undoStore.push(`Removed "${removed.collectionId || 'collection'}"`, () => song.value?.collections.splice(index, 0, removed))
 }
 
 function addBlock() {
   song.value?.blocks.push({ id: `block-${crypto.randomUUID()}`, label: 'New Part', text: '' })
 }
-function removeBlock(index: number) {
+async function removeBlock(index: number) {
   if (!song.value) return
-  const [removed] = song.value.blocks.splice(index, 1)
+  const removed = song.value.blocks[index]
   if (!removed) return
+  if (!(await confirmDialog.confirm(`Remove "${removed.label}"?`, 'Remove'))) return
+  song.value.blocks.splice(index, 1)
   const previousSequence = [...song.value.defaultArrangement.sequence]
   song.value.defaultArrangement.sequence = previousSequence.filter((id) => id !== removed.id)
   undoStore.push(`Removed "${removed.label}"`, () => {
@@ -123,11 +129,13 @@ function blockLabel(id: string): string {
 function addToArrangement(block: SongBlock) {
   song.value?.defaultArrangement.sequence.push(block.id)
 }
-function removeFromArrangement(index: number) {
+async function removeFromArrangement(index: number) {
   if (!song.value) return
   const sequence = song.value.defaultArrangement.sequence
   const removed = sequence[index]
+  if (removed === undefined) return
   const label = blockLabel(removed)
+  if (!(await confirmDialog.confirm(`Remove "${label}" from the Default Arrangement?`, 'Remove'))) return
   sequence.splice(index, 1)
   undoStore.push(`Removed "${label}" from Default Arrangement`, () => sequence.splice(index, 0, removed))
 }

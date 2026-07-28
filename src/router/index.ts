@@ -72,13 +72,19 @@ export function shouldConfirmUnsavedChanges(fromPath: string, toPath: string, is
 }
 
 // Song Editor and the workspace's arrangement/notes editing use an explicit Save button
-// rather than auto-save (see stores/unsavedChanges.ts) — warn before silently discarding
-// in-memory edits that were never written to disk.
+// rather than auto-save (see stores/unsavedChanges.ts) — offer to save before leaving rather
+// than just a discard-or-stay choice, since "leave without saving" was never actually what
+// most people meant to pick here.
 router.beforeEach(async (to, from) => {
   const unsavedChanges = useUnsavedChangesStore()
   if (!shouldConfirmUnsavedChanges(from.path, to.path, unsavedChanges.isDirty)) return true
-  const confirmed = await useConfirmDialogStore().confirm('You have unsaved changes. Leave without saving?')
-  if (!confirmed) return false
+  const result = await useConfirmDialogStore().confirmWithSave(
+    'You have unsaved changes. Save before leaving?',
+    'Leave Without Saving',
+    'Save & Leave',
+  )
+  if (result === 'cancel') return false
+  if (result === 'save') await unsavedChanges.saveHandler?.()
   unsavedChanges.isDirty = false
   return true
 })

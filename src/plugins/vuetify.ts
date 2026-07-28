@@ -40,6 +40,17 @@ export default createVuetify({
     VTextField: { autocomplete: 'suppress' },
     VTextarea: { autocomplete: 'suppress' },
     VCombobox: { autocomplete: 'suppress' },
+    // Vuetify's own scrim default derives from the theme's "on-surface" color — in a dark
+    // theme that's near-white, so the default scrim actually *lightens* the background rather
+    // than dimming it (the opposite of the intended effect, and barely visible either way
+    // against an already dark, near-black background). Forcing a real black here — the
+    // opacity that makes it read as a visible dim, not just a color, comes from the
+    // .v-overlay__scrim rule in base.css, since Vuetify hard-codes that opacity in its own
+    // compiled CSS regardless of what color this prop sets. VDialog owns its own `scrim` prop
+    // (forwarded to its internal overlay), so the default has to target VDialog specifically,
+    // not VOverlay — menus/selects use VOverlay directly with their own scrim: false and are
+    // unaffected.
+    VDialog: { scrim: '#000000' },
   },
   theme: {
     defaultTheme: 'worshipDark',

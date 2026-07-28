@@ -2,16 +2,19 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useServicesStore } from '@/stores/services'
 import { useUndoStore } from '@/stores/undo'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import ServiceCard from '@/components/ServiceCard.vue'
 import type { Service } from '@/models/service'
 
 const store = useServicesStore()
 const undoStore = useUndoStore()
+const confirmDialog = useConfirmDialogStore()
 // Deletion is soft until the undo toast expires (spec section 16) — see SongLibraryView for
 // the same pattern and its rationale.
 const pendingDeleteIds = reactive(new Set<string>())
 
-function deleteService(service: Service) {
+async function deleteService(service: Service) {
+  if (!(await confirmDialog.confirm(`Delete the "${service.type} — ${service.date}" service?`, 'Delete'))) return
   pendingDeleteIds.add(service.id)
   undoStore.push(
     `Deleted "${service.type} — ${service.date}"`,

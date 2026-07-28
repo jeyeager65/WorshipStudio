@@ -88,6 +88,8 @@ async function saveDraft() {
 }
 
 async function deleteTheme(id: string) {
+  const name = store.themes.find((t) => t.id === id)?.name ?? 'this theme'
+  if (!(await confirmDialog.confirm(`Delete "${name}"? This can't be undone.`, 'Delete'))) return
   if (selectedId.value === id) {
     draft.value = undefined
     selectedId.value = undefined

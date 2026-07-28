@@ -14,6 +14,7 @@ import { useExternalAppsStore } from '@/stores/externalApps'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useUndoStore } from '@/stores/undo'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useSettingsStore } from '@/stores/settings'
 import { flattenService, type FlatSlide } from '@/utils/flattenService'
 import { colorForBlockLabel, colorForItemType } from '@/utils/contentColors'
@@ -35,6 +36,7 @@ const settingsStore = useSettingsStore()
 const { isPresenting } = storeToRefs(useLiveSessionStore())
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const undoStore = useUndoStore()
+const confirmDialog = useConfirmDialogStore()
 
 const service = ref<Service>()
 const selectedItemIndex = ref(0)
@@ -344,11 +346,14 @@ function itemColor(item: ServiceItem): string {
   return colorForItemType(item.type)
 }
 
-function removeServiceItem(index: number) {
+async function removeServiceItem(index: number) {
   if (!service.value) return
+  const target = service.value.items[index]
+  if (!target) return
+  const label = itemLabel(target)
+  if (!(await confirmDialog.confirm(`Remove "${label}" from the service?`, 'Remove'))) return
   const [removed] = service.value.items.splice(index, 1)
   if (!removed) return
-  const label = itemLabel(removed)
   if (selectedItemIndex.value >= service.value.items.length) {
     selectedItemIndex.value = Math.max(0, service.value.items.length - 1)
   }
@@ -377,11 +382,12 @@ function itemHasLive(index: number): boolean {
 
 // In-workspace arrangement editing — edits only this service item's own copy of the
 // arrangement (spec section 3), never the library song's defaultArrangement.
-function removeFromArrangement(index: number) {
+async function removeFromArrangement(index: number) {
   const item = selectedItem.value
   if (item?.type !== 'song') return
   const blockId = item.arrangement.sequence[index]
   const label = blockLabelFor(blockId)
+  if (!(await confirmDialog.confirm(`Remove "${label}" from the arrangement?`, 'Remove'))) return
   item.arrangement.sequence.splice(index, 1)
   undoStore.push(`Removed "${label}" from arrangement`, () => item.arrangement.sequence.splice(index, 0, blockId))
 }
@@ -782,7 +788,10 @@ async function addSlideRefToService(slideItem: SlideLibraryItem) {
 function addNewTextSlideBlock() {
   newTextSlideBlocks.value.push({ id: `slide-part-${crypto.randomUUID()}`, label: `Slide ${newTextSlideBlocks.value.length + 1}`, text: '' })
 }
-function removeNewTextSlideBlock(index: number) {
+async function removeNewTextSlideBlock(index: number) {
+  const target = newTextSlideBlocks.value[index]
+  if (!target) return
+  if (!(await confirmDialog.confirm(`Remove "${target.label}"?`, 'Remove'))) return
   newTextSlideBlocks.value.splice(index, 1)
 }
 function addTextSlideToService() {

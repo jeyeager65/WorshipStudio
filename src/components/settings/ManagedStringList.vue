@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useUndoStore } from '@/stores/undo'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 
 /**
  * Add/remove editor for the small managed lists Settings needs in a few places
@@ -10,6 +11,7 @@ import { useUndoStore } from '@/stores/undo'
 const props = defineProps<{ modelValue: string[]; addLabel: string }>()
 const emit = defineEmits<{ 'update:modelValue': [string[]] }>()
 const undoStore = useUndoStore()
+const confirmDialog = useConfirmDialogStore()
 
 const newValue = ref('')
 
@@ -19,9 +21,10 @@ function add() {
   emit('update:modelValue', [...props.modelValue, value])
   newValue.value = ''
 }
-function remove(index: number) {
+async function remove(index: number) {
   const removedValue = props.modelValue[index]
   if (removedValue === undefined) return
+  if (!(await confirmDialog.confirm(`Remove "${removedValue}"?`, 'Remove'))) return
   emit(
     'update:modelValue',
     props.modelValue.filter((_, i) => i !== index),

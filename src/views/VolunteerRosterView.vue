@@ -7,6 +7,7 @@ import { useServicesStore } from '@/stores/services'
 import { useVolunteersStore } from '@/stores/volunteers'
 import { useSettingsStore } from '@/stores/settings'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import VolunteerEditorDialog from '@/components/volunteers/VolunteerEditorDialog.vue'
 import { findRoleConflicts, isDateUnavailable } from '@/utils/volunteerConflicts'
 import type { RoleAssignment, Service } from '@/models/service'
@@ -17,6 +18,7 @@ const servicesStore = useServicesStore()
 const volunteersStore = useVolunteersStore()
 const settingsStore = useSettingsStore()
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
+const confirmDialog = useConfirmDialogStore()
 
 const service = ref<Service>()
 
@@ -65,7 +67,11 @@ function assignmentsForRole(role: string): RoleAssignment[] {
 function addAssignment(role: string) {
   service.value?.volunteerRoster?.push({ role, tentative: false })
 }
-function removeAssignment(target: RoleAssignment) {
+async function removeAssignment(target: RoleAssignment) {
+  if (!service.value?.volunteerRoster) return
+  const name = volunteerName(target.volunteerId)
+  const label = name ? `${name} (${target.role})` : `this ${target.role} assignment`
+  if (!(await confirmDialog.confirm(`Remove ${label}?`, 'Remove'))) return
   if (!service.value?.volunteerRoster) return
   service.value.volunteerRoster = service.value.volunteerRoster.filter((a) => a !== target)
 }
