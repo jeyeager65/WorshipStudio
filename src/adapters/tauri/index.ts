@@ -52,6 +52,58 @@ export function createTauriAdapter(): StudioAdapter {
     return monitor.name ?? `monitor-${index}`
   }
 
+  interface PresentationBounds {
+    x: number
+    y: number
+    width: number
+    height: number
+    /** Single-monitor case only — the operator window has to shrink to make room. */
+    operatorReposition?: { x: number; y: number; width: number; height: number }
+  }
+
+  // Shared by openPresentationWindow (the real thing) and getPresentationSize (the operator's
+  // Previous/Current/Next preview thumbnails, which need the exact same size to make the same
+  // auto-fit sizing/wrapping decisions the real presentation window would) — computed once
+  // here so the two can never drift apart into two different answers for "how big is it".
+  async function computePresentationBounds(): Promise<PresentationBounds | undefined> {
+    const monitors = await availableMonitors()
+
+    if (monitors.length <= 1) {
+      // Single monitor (or none reported): split its work area — excluding the
+      // taskbar/dock, not the full physical resolution, or windows would get clipped by it —
+      // left (operator) / right (presentation) rather than overlapping windows, since
+      // there's nowhere else to put the second one.
+      const monitor = monitors[0]
+      if (!monitor) return undefined
+      const workAreaPosition = monitor.workArea.position.toLogical(monitor.scaleFactor)
+      const workAreaSize = monitor.workArea.size.toLogical(monitor.scaleFactor)
+      const halfWidth = Math.floor(workAreaSize.width / 2)
+      return {
+        x: workAreaPosition.x + halfWidth,
+        y: workAreaPosition.y,
+        width: workAreaSize.width - halfWidth,
+        height: workAreaSize.height,
+        operatorReposition: { x: workAreaPosition.x, y: workAreaPosition.y, width: halfWidth, height: workAreaSize.height },
+      }
+    }
+
+    // 2+ monitors: presentation goes fullscreen (within its work area — see above) on
+    // whichever monitor Display Setup (Settings) has assigned the "audience" role to, if
+    // any. Falls back to "the first monitor that isn't the primary/operator one" when
+    // nothing's been assigned yet, so this still works before a first-time setup.
+    const machineSettings = await invoke<MachineSettings>('get_machine_settings')
+    const assignedAudience = monitors.find((m, i) => machineSettings.displayRoles[monitorId(m, i)] === 'audience')
+    const primary = await primaryMonitor()
+    const secondary =
+      assignedAudience ??
+      monitors.find((m) => m.position.x !== primary?.position.x || m.position.y !== primary?.position.y) ??
+      monitors[1] ??
+      monitors[0]
+    const workAreaPosition = secondary.workArea.position.toLogical(secondary.scaleFactor)
+    const workAreaSize = secondary.workArea.size.toLogical(secondary.scaleFactor)
+    return { x: workAreaPosition.x, y: workAreaPosition.y, width: workAreaSize.width, height: workAreaSize.height }
+  }
+
   async function openPresentationWindow() {
     const operatorWindow = getCurrentWindow()
     const [outerPosition, innerSize, scaleFactor] = await Promise.all([
@@ -64,54 +116,19 @@ export function createTauriAdapter(): StudioAdapter {
       size: innerSize.toLogical(scaleFactor),
     }
 
-    const monitors = await availableMonitors()
-    let x: number, y: number, width: number, height: number
-
-    if (monitors.length <= 1) {
-      // Single monitor (or none reported): split its work area — excluding the
-      // taskbar/dock, not the full physical resolution, or windows would get clipped by it —
-      // left (operator) / right (presentation) rather than overlapping windows, since
-      // there's nowhere else to put the second one.
-      const monitor = monitors[0]
-      if (!monitor) return
-      const workAreaPosition = monitor.workArea.position.toLogical(monitor.scaleFactor)
-      const workAreaSize = monitor.workArea.size.toLogical(monitor.scaleFactor)
-      const halfWidth = Math.floor(workAreaSize.width / 2)
-
-      await operatorWindow.setPosition(new LogicalPosition(workAreaPosition.x, workAreaPosition.y))
-      await operatorWindow.setSize(new LogicalSize(halfWidth, workAreaSize.height))
-
-      x = workAreaPosition.x + halfWidth
-      y = workAreaPosition.y
-      width = workAreaSize.width - halfWidth
-      height = workAreaSize.height
-    } else {
-      // 2+ monitors: presentation goes fullscreen (within its work area — see above) on
-      // whichever monitor Display Setup (Settings) has assigned the "audience" role to, if
-      // any. Falls back to "the first monitor that isn't the primary/operator one" when
-      // nothing's been assigned yet, so this still works before a first-time setup.
-      const machineSettings = await invoke<MachineSettings>('get_machine_settings')
-      const assignedAudience = monitors.find((m, i) => machineSettings.displayRoles[monitorId(m, i)] === 'audience')
-      const primary = await primaryMonitor()
-      const secondary =
-        assignedAudience ??
-        monitors.find((m) => m.position.x !== primary?.position.x || m.position.y !== primary?.position.y) ??
-        monitors[1] ??
-        monitors[0]
-      const workAreaPosition = secondary.workArea.position.toLogical(secondary.scaleFactor)
-      const workAreaSize = secondary.workArea.size.toLogical(secondary.scaleFactor)
-      x = workAreaPosition.x
-      y = workAreaPosition.y
-      width = workAreaSize.width
-      height = workAreaSize.height
+    const bounds = await computePresentationBounds()
+    if (!bounds) return
+    if (bounds.operatorReposition) {
+      await operatorWindow.setPosition(new LogicalPosition(bounds.operatorReposition.x, bounds.operatorReposition.y))
+      await operatorWindow.setSize(new LogicalSize(bounds.operatorReposition.width, bounds.operatorReposition.height))
     }
 
     presentationWindow = new WebviewWindow('presentation', {
       url: 'index.html',
-      x,
-      y,
-      width,
-      height,
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
       title: 'Worship Studio — Presentation',
       resizable: false,
       focus: false,
@@ -278,6 +295,10 @@ export function createTauriAdapter(): StudioAdapter {
       setLiveContent: async (content) => {
         lastLiveContent = content ?? null
         await emit('live:slide-changed', lastLiveContent)
+      },
+      getPresentationSize: async () => {
+        const bounds = await computePresentationBounds()
+        return bounds ? { width: bounds.width, height: bounds.height } : undefined
       },
     },
     // displays/externalApps are Windows-only in practice (live-presentation role

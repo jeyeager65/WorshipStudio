@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useRoute } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import SlideContentRenderer from '@/components/live/SlideContentRenderer.vue'
 import { getAdapter } from '@/adapters'
 import { useServicesStore } from '@/stores/services'
 import { useSongsStore } from '@/stores/songs'
@@ -104,6 +105,7 @@ onMounted(async () => {
   if (!slidesStore.loaded) await slidesStore.load()
   if (!mediaStore.loaded) await mediaStore.load()
   if (!externalAppsStore.loaded) await externalAppsStore.load()
+  await loadPresentationSize()
   // A just-created service arrives via the store instead of disk — see CreateServiceView —
   // so it's never persisted until Save is actually pressed.
   const isDraft = servicesStore.draftService?.id === route.params.id
@@ -406,9 +408,10 @@ function togglePresenting() {
 const liveSlide = computed(() =>
   flatIndex.value >= 0 && flatIndex.value < flatSlides.value.length ? flatSlides.value[flatIndex.value] : undefined,
 )
-const liveContentPayload = computed<LiveSlideContent | undefined>(() => {
-  if (!liveSlide.value) return undefined
-  const slide = liveSlide.value
+// Shared by the live payload (sent to the presentation window/remote) and the Previous/Next
+// preview thumbnails below — same slide data, same settings, just a different destination.
+function buildLiveContent(slide: FlatSlide | undefined): LiveSlideContent | undefined {
+  if (!slide) return undefined
   const mediaUrl = slide.mediaId ? mediaUrlById.get(slide.mediaId) : undefined
   return {
     itemLabel: slide.itemLabel,
@@ -425,7 +428,46 @@ const liveContentPayload = computed<LiveSlideContent | undefined>(() => {
     headerFontSizePx: settingsStore.librarySettings?.slideHeaderFontSizePx,
     footerFontSizePx: settingsStore.librarySettings?.slideFooterFontSizePx,
   }
-})
+}
+const liveContentPayload = computed<LiveSlideContent | undefined>(() => buildLiveContent(liveSlide.value))
+
+// Previous/current/next preview thumbnails (right-hand column) — relative to the live
+// position, i.e. exactly what Previous/Next in the footer would move to/from, not whatever's
+// merely selected in the left panel.
+const previousPreview = computed(() => buildLiveContent(flatSlides.value[flatIndex.value - 1]))
+const nextPreview = computed(() => buildLiveContent(flatSlides.value[flatIndex.value + 1]))
+const previewSlots = computed(() => [
+  { label: 'Previous', content: previousPreview.value, live: false },
+  { label: 'Current', content: liveContentPayload.value, live: true },
+  { label: 'Next', content: nextPreview.value, live: false },
+])
+
+// The preview thumbnails render SlideContentRenderer at a fixed "virtual" size and visually
+// shrink the whole thing down via CSS transform, so the exact same auto-fit math that runs on
+// the real presentation window decides font sizes/wrapping here too — an absolute px font
+// range (e.g. scripture's 28-72px) would mean almost nothing if computed directly against a
+// box this small. That only actually matches the real thing if the virtual size is the *real*
+// presentation window's own logical size, not a guess — a 1920x1080 assumption looks fine for
+// a real second monitor but is nowhere close to correct when there's only one monitor (the
+// presentation window is just half its work area, a much less widescreen shape — see
+// adapters/tauri's computePresentationBounds), which visibly picked a different size/wrap
+// point than the real thing (a real, reported mismatch). getPresentationSize mirrors whatever
+// startPresenting would actually do right now; falls back to 1920x1080 in the mock/browser
+// adapter, which has no real monitors to measure.
+const DEFAULT_PREVIEW_VIRTUAL_SIZE = { width: 1920, height: 1080 }
+const presentationSize = ref(DEFAULT_PREVIEW_VIRTUAL_SIZE)
+async function loadPresentationSize() {
+  try {
+    presentationSize.value = (await getAdapter().live.getPresentationSize?.()) ?? DEFAULT_PREVIEW_VIRTUAL_SIZE
+  } catch (e) {
+    console.error('Failed to measure the presentation window size:', e)
+    presentationSize.value = DEFAULT_PREVIEW_VIRTUAL_SIZE
+  }
+}
+const PREVIEW_VIRTUAL_SIZE = computed(() => presentationSize.value)
+const PREVIEW_THUMB_WIDTH = 360
+const previewScale = computed(() => PREVIEW_THUMB_WIDTH / PREVIEW_VIRTUAL_SIZE.value.width)
+const previewThumbHeight = computed(() => Math.round(PREVIEW_VIRTUAL_SIZE.value.height * previewScale.value))
 watch(liveContentPayload, (content) => {
   if (isPresenting.value) {
     // While an External App Hand-off item is live, Worship Studio's own presentation window
@@ -1082,6 +1124,28 @@ function updatePresenterNote(itemId: string, note: string) {
         </template>
         <p v-else class="text-medium-emphasis">This service has no items yet.</p>
       </div>
+
+      <div class="preview-panel">
+        <div class="text-overline text-medium-emphasis px-3 py-2 border-b">Preview</div>
+        <div class="preview-list">
+          <div v-for="preview in previewSlots" :key="preview.label" class="preview-item">
+            <div class="text-caption text-medium-emphasis mb-1">{{ preview.label }}</div>
+            <div
+              class="preview-thumb"
+              :class="{ 'preview-thumb--live': preview.live }"
+              :style="{ width: `${PREVIEW_THUMB_WIDTH}px`, height: `${previewThumbHeight}px` }"
+            >
+              <SlideContentRenderer
+                :content="preview.content"
+                :fixed-size="PREVIEW_VIRTUAL_SIZE"
+                :video-autoplay="false"
+                :video-controls="false"
+                :style="{ transform: `scale(${previewScale})`, transformOrigin: 'top left' }"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- External App Hand-off failure — operator-only, never shown to the congregation (spec
@@ -1453,7 +1517,7 @@ function updatePresenterNote(itemId: string, note: string) {
 }
 .workspace-layout {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 260px 1fr 400px;
   grid-template-rows: minmax(0, 1fr);
   flex: 1;
   min-height: 0;
@@ -1463,6 +1527,28 @@ function updatePresenterNote(itemId: string, note: string) {
   flex-direction: column;
   border-right: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   min-height: 0;
+}
+.preview-panel {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  min-height: 0;
+  overflow-y: auto;
+}
+.preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 12px;
+}
+.preview-thumb {
+  overflow: hidden;
+  border-radius: 4px;
+  background: #000;
+}
+.preview-thumb--live {
+  outline: 2px solid rgb(var(--v-theme-error));
+  outline-offset: 2px;
 }
 .service-item {
   display: flex;

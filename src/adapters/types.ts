@@ -204,6 +204,15 @@ export interface LivePresentationPort {
   previous(): Promise<void>
   /** Broadcasts the current slide (or `undefined` for blank) to the presentation window. */
   setLiveContent(content: LiveSlideContent | undefined): Promise<void>
+  /**
+   * The real logical pixel size the presentation window would open at right now — a genuine
+   * second/audience monitor's full work area, or half the single monitor's work area when
+   * there's nowhere else to put it (see startPresenting's own doc comment). Used to size the
+   * operator's Previous/Current/Next preview thumbnails so the same auto-fit sizing/wrapping
+   * decisions get made there as on the real thing, rather than assuming a fixed 1920x1080.
+   * Undefined in the mock/browser adapter (no real monitors to measure).
+   */
+  getPresentationSize?(): Promise<{ width: number; height: number } | undefined>
 }
 
 export interface WindowPosition {
