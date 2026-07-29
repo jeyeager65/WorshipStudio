@@ -71,6 +71,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::files::read_text_file,
+            commands::files::write_text_file,
+            commands::files::write_binary_file,
             commands::songs::list_songs,
             commands::songs::get_song,
             commands::songs::save_song,

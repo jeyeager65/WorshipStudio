@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildOrderOfWorship, toHtml, toPlainText } from '@/utils/orderOfWorship'
+import { buildOrderOfWorship, toDocxBlob, toHtml, toPlainText } from '@/utils/orderOfWorship'
 import type { Service } from '@/models/service'
 import type { Song } from '@/models/song'
 import type { SlideLibraryItem } from '@/models/library'
@@ -9,6 +9,17 @@ const songs: Song[] = [
     id: 'song-1',
     title: 'Come Behold the Wondrous Mystery',
     collections: [{ collectionId: 'hymnal', number: '184' }],
+    tags: [],
+    blocks: [],
+    defaultArrangement: { sequence: [] },
+    usage: { usesPastYear: 0 },
+    updatedAt: '',
+    updatedByDevice: '',
+  },
+  {
+    id: 'song-2',
+    title: 'It Is Well',
+    collections: [],
     tags: [],
     blocks: [],
     defaultArrangement: { sequence: [] },
@@ -47,7 +58,7 @@ describe('buildOrderOfWorship', () => {
       items: [{ id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: [] } }],
     })
     const doc = buildOrderOfWorship(service, songs, slides, new Map())
-    expect(doc.lines).toEqual([{ text: 'Come Behold the Wondrous Mystery 184', person: undefined }])
+    expect(doc.lines).toMatchObject([{ text: 'Come Behold the Wondrous Mystery 184', person: undefined }])
   })
 
   it("resolves an item's person via its role's Assignments entry, not a direct id", () => {
@@ -65,7 +76,7 @@ describe('buildOrderOfWorship', () => {
       ],
     })
     const doc = buildOrderOfWorship(service, songs, slides, new Map([['person-david', 'David Hamilton']]))
-    expect(doc.lines).toEqual([{ role: 'Scripture Reading:', text: 'Matthew 25:1-30', person: 'David Hamilton' }])
+    expect(doc.lines).toMatchObject([{ role: 'Scripture Reading:', text: 'Matthew 25:1-30', person: 'David Hamilton' }])
   })
 
   it('shows no one when a role has no matching (or no) Assignments entry', () => {
@@ -122,7 +133,7 @@ describe('buildOrderOfWorship', () => {
     })
   })
 
-  it('a sermon line uses only the main passage, the service preacher, and the plain sermon title as its default note', () => {
+  it('a sermon line uses the sermon title as its heading and the main passage as its note', () => {
     const service = baseService({
       assignments: [{ role: 'Preacher', personId: 'person-dan', tentative: false }],
       items: [
@@ -141,15 +152,31 @@ describe('buildOrderOfWorship', () => {
       ],
     })
     const doc = buildOrderOfWorship(service, songs, slides, new Map([['person-dan', 'Pastor Dan']]))
-    expect(doc.lines[0]).toEqual({
-      role: 'Worship Through the Word',
-      text: 'Mark 5:1-20',
+    expect(doc.lines[0]).toMatchObject({
+      role: 'From Chained to Commissioned',
+      text: '',
       person: 'Pastor Dan',
-      note: 'From Chained to Commissioned',
+      note: 'Mark 5:1-20',
     })
   })
 
-  it("a sermon's own bulletinNote overrides the default sermon title", () => {
+  it('falls back to the generic "Worship Through the Word" heading when the sermon has no title', () => {
+    const service = baseService({
+      items: [
+        {
+          id: 'item-1',
+          type: 'sermon',
+          passages: [{ id: 'p1', reference: 'Mark 5:1-20', translation: 'ESV', displayMode: 'full' }],
+          mainPassageId: 'p1',
+          outline: [],
+        },
+      ],
+    })
+    const doc = buildOrderOfWorship(service, songs, slides, new Map())
+    expect(doc.lines[0]).toMatchObject({ role: 'Worship Through the Word', note: 'Mark 5:1-20' })
+  })
+
+  it("a sermon's own bulletinNote overrides the main passage as the note, but the title still shows as the heading", () => {
     const service = baseService({
       items: [
         {
@@ -164,7 +191,7 @@ describe('buildOrderOfWorship', () => {
       ],
     })
     const doc = buildOrderOfWorship(service, songs, slides, new Map())
-    expect(doc.lines[0]?.note).toBe('Custom note')
+    expect(doc.lines[0]).toMatchObject({ role: 'From Chained to Commissioned', note: 'Custom note' })
   })
 
   it('a bulletin-note item renders its label/note/role-resolved person and never a slide-worthy text', () => {
@@ -181,7 +208,7 @@ describe('buildOrderOfWorship', () => {
       ],
     })
     const doc = buildOrderOfWorship(service, songs, slides, new Map([['person-elder', 'Elder Bruce Barton']]))
-    expect(doc.lines[0]).toEqual({
+    expect(doc.lines[0]).toMatchObject({
       role: 'Prayer of Praise and Confession',
       text: '',
       person: 'Elder Bruce Barton',
@@ -194,7 +221,7 @@ describe('buildOrderOfWorship', () => {
       items: [{ id: 'item-1', type: 'bulletin-note', bulletinLabel: 'Silent Preparation' }],
     })
     const doc = buildOrderOfWorship(service, songs, slides, new Map())
-    expect(doc.lines[0]).toEqual({ role: 'Silent Preparation', text: '', person: undefined, note: undefined })
+    expect(doc.lines[0]).toMatchObject({ role: 'Silent Preparation', text: '', person: undefined, note: undefined })
   })
 
   it("an unreplaced placeholder shows its label, its role's resolved person, and '(to be filled in)'", () => {
@@ -203,12 +230,36 @@ describe('buildOrderOfWorship', () => {
       items: [{ id: 'item-1', type: 'placeholder', label: 'Scripture Reading', role: 'Scripture Reader' }],
     })
     const doc = buildOrderOfWorship(service, songs, slides, new Map([['person-david', 'David Hamilton']]))
-    expect(doc.lines[0]).toEqual({
+    expect(doc.lines[0]).toMatchObject({
       role: 'Scripture Reading',
       text: '(to be filled in)',
       person: 'David Hamilton',
       note: undefined,
     })
+  })
+
+  it('never separates two consecutive songs, but separates every other item boundary', () => {
+    const service = baseService({
+      items: [
+        { id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: [] } },
+        { id: 'item-2', type: 'song', songId: 'song-2', arrangement: { sequence: [] } },
+        {
+          id: 'item-3',
+          type: 'scripture',
+          reference: 'Matthew 25:1-30',
+          translation: 'ESV',
+          displayMode: 'full',
+        },
+        { id: 'item-4', type: 'song', songId: 'song-1', arrangement: { sequence: [] } },
+      ],
+    })
+    const doc = buildOrderOfWorship(service, songs, slides, new Map())
+    expect(doc.lines.map((line) => ({ kind: line.kind, separatorBefore: line.separatorBefore }))).toEqual([
+      { kind: 'song', separatorBefore: false }, // first line, never separated
+      { kind: 'song', separatorBefore: false }, // song after song — no separator
+      { kind: 'scripture', separatorBefore: true }, // song -> scripture — separated
+      { kind: 'song', separatorBefore: true }, // scripture -> song — separated
+    ])
   })
 })
 
@@ -230,6 +281,19 @@ describe('toPlainText', () => {
     })
     expect(text).toContain('Worship Through the Word Mark 5:1-20 — David Hamilton\n"From Chained to Commissioned"')
   })
+
+  it('adds a blank line before a line with separatorBefore, and none otherwise', () => {
+    const text = toPlainText({
+      title: 'Order of Worship',
+      dateLine: 'Sunday',
+      lines: [
+        { kind: 'song', text: 'Song One', separatorBefore: false },
+        { kind: 'song', text: 'Song Two', separatorBefore: false },
+        { kind: 'scripture', text: 'Matthew 25:1-30', separatorBefore: true },
+      ],
+    })
+    expect(text).toContain('Song One\nSong Two\n\nMatthew 25:1-30')
+  })
 })
 
 describe('toHtml', () => {
@@ -250,5 +314,48 @@ describe('toHtml', () => {
       lines: [{ text: 'Mark 5:1-20', note: '<b>note</b>' }],
     })
     expect(html).toContain('&lt;b&gt;note&lt;/b&gt;')
+  })
+
+  it('adds extra spacing before a separated line, but never a visible rule/line', () => {
+    const html = toHtml({
+      title: 'Order of Worship',
+      dateLine: 'Sunday',
+      lines: [
+        { kind: 'song', text: 'Song One', separatorBefore: false },
+        { kind: 'song', text: 'Song Two', separatorBefore: false },
+        { kind: 'scripture', text: 'Matthew 25:1-30', separatorBefore: true },
+      ],
+    })
+    expect(html).not.toContain('<hr')
+    expect(html).toContain('margin:2px 0')
+    expect(html).toContain('margin:8px 0 2px 0')
+  })
+})
+
+describe('toDocxBlob', () => {
+  it('produces a real zip-based .docx file, not an HTML-in-disguise one', async () => {
+    const blob = await toDocxBlob({
+      title: 'Order of Worship',
+      dateLine: 'Sunday, July 26, 2026 · Sunday Morning Worship',
+      lines: [
+        { role: 'Scripture Reading:', text: 'Matthew 25:1-30', person: 'David Hamilton', kind: 'scripture', separatorBefore: false },
+        {
+          role: 'From Chained to Commissioned',
+          text: '',
+          person: 'Pastor Dan',
+          note: 'Mark 5:1-20',
+          kind: 'sermon',
+          separatorBefore: true,
+        },
+      ],
+    })
+
+    expect(blob.size).toBeGreaterThan(0)
+
+    // A real .docx is a zip archive — every zip file starts with the "PK" magic bytes ("local
+    // file header signature"), which plain HTML/text never does. This is what actually
+    // distinguishes a genuine .docx from the old "HTML saved with a .doc extension" trick.
+    const firstBytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 2)
+    expect(String.fromCharCode(...firstBytes)).toBe('PK')
   })
 })

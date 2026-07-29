@@ -1,3 +1,4 @@
+import { AlignmentType, Document, HeadingLevel, Packer, Paragraph, Table, TableBorders, TableCell, TableRow, TextRun, WidthType } from 'docx'
 import type { Service, ServiceItem, RoleAssignment } from '@/models/service'
 import type { Song } from '@/models/song'
 import type { SlideLibraryItem } from '@/models/library'
@@ -8,8 +9,16 @@ export interface OrderOfWorshipLine {
   text: string
   person?: string
   /** An optional second line under this entry, e.g. "(after this song children up to grade 4
-   *  can be dismissed to a children's lesson)" or a sermon's title. */
+   *  can be dismissed to a children's lesson)" or a sermon's main passage reference. */
   note?: string
+  /** The originating item's type — only used to decide spacing/separators (see
+   *  `separatorBefore` below), so hand-built lines in tests are free to omit it. */
+  kind?: ServiceItem['type']
+  /** Whether a visual separator (and normal spacing) should precede this line when rendered.
+   *  False only when this and the previous line are both songs, so a multi-song worship set
+   *  reads as one flowing block instead of being chopped up by a divider/blank line between
+   *  every single song — every other item boundary gets one. Always false for the first line. */
+  separatorBefore?: boolean
 }
 
 export interface OrderOfWorshipDoc {
@@ -85,8 +94,26 @@ function buildLines(
   personNames: Map<string, string>,
 ): OrderOfWorshipLine[] {
   const assignments = service.assignments
-  return service.items.map((item): OrderOfWorshipLine => {
-    switch (item.type) {
+  const lines = service.items.map((item): OrderOfWorshipLine => {
+    const line = lineFor(item, songs, slides, assignments, personNames)
+    return { ...line, kind: item.type }
+  })
+  // A pure post-pass (rather than computed inline above) since it needs to look at the
+  // *previous* item's kind, which isn't available yet while still building the current line.
+  return lines.map((line, index) => ({
+    ...line,
+    separatorBefore: index > 0 && !(line.kind === 'song' && lines[index - 1].kind === 'song'),
+  }))
+}
+
+function lineFor(
+  item: ServiceItem,
+  songs: Map<string, Song>,
+  slides: Map<string, SlideLibraryItem>,
+  assignments: RoleAssignment[] | undefined,
+  personNames: Map<string, string>,
+): OrderOfWorshipLine {
+  switch (item.type) {
       case 'song':
         return songLine(item, songs, assignments, personNames)
       case 'scripture':
@@ -148,12 +175,16 @@ function buildLines(
           note: item.bulletinNote,
         }
       case 'sermon': {
+        // The sermon's own title (when set) is the heading — a real bulletin names the sermon,
+        // not a generic "Worship Through the Word" label — with the main passage reference as
+        // the line below it; an explicit bulletinNote (a deliberately typed note, distinct from
+        // the title) still wins that second-line slot when someone's set one.
         const mainPassage = item.passages.find((p) => p.id === item.mainPassageId) ?? item.passages[0]
         return {
-          role: roleFor(item, 'Worship Through the Word'),
-          text: mainPassage?.reference ?? '',
+          role: roleFor(item, item.title ?? 'Worship Through the Word'),
+          text: '',
           person: resolveRolePerson(item.role, assignments, personNames),
-          note: item.bulletinNote ?? item.title,
+          note: item.bulletinNote ?? mainPassage?.reference,
         }
       }
       case 'bulletin-note':
@@ -170,8 +201,7 @@ function buildLines(
           person: resolveRolePerson(item.role, assignments, personNames),
           note: item.bulletinNote,
         }
-    }
-  })
+  }
 }
 
 export function buildOrderOfWorship(
@@ -199,6 +229,9 @@ export function buildOrderOfWorship(
 export function toPlainText(doc: OrderOfWorshipDoc): string {
   const parts = [doc.title, doc.dateLine, '']
   for (const line of doc.lines) {
+    // A blank line marks a real separator between items — skipped between consecutive songs
+    // (see `separatorBefore`'s doc comment) so a multi-song worship set isn't broken up by gaps.
+    if (line.separatorBefore) parts.push('')
     const label = line.role ? `${line.role} ` : ''
     const person = line.person ? ` — ${line.person}` : ''
     parts.push(`${label}${line.text}${person}`.trim())
@@ -211,19 +244,22 @@ export function toHtml(doc: OrderOfWorshipDoc): string {
   const lineHtml = doc.lines
     .map((line) => {
       const label = line.role ? `<strong>${escapeHtml(line.role)}</strong> ` : ''
-      const note = line.note ? `<p style="margin:0;color:#555;">${escapeHtml(line.note)}</p>` : ''
+      const note = line.note ? `<p style="margin:0 0 6px 0;color:#555;">${escapeHtml(line.note)}</p>` : ''
+      // Extra space between items (skipped between consecutive songs so a multi-song worship
+      // set reads as one flowing block) — no visible rule/line, just spacing.
+      const margin = line.separatorBefore ? '8px 0 2px 0' : '2px 0'
       // A table row (rather than float/flex) keeps the person's name reliably right-aligned
       // when this markup is pasted into email clients or opened in Word, both of which have
       // spotty CSS support.
       if (line.person) {
         return (
-          `<table style="width:100%;border-collapse:collapse;"><tr>` +
+          `<table style="width:100%;border-collapse:collapse;margin:${margin};"><tr>` +
           `<td style="text-align:left;padding:0;">${label}${escapeHtml(line.text)}</td>` +
           `<td style="text-align:right;padding:0;white-space:nowrap;"><em>${escapeHtml(line.person)}</em></td>` +
           `</tr></table>${note}`
         )
       }
-      return `<p>${label}${escapeHtml(line.text)}</p>${note}`
+      return `<p style="margin:${margin};">${label}${escapeHtml(line.text)}</p>${note}`
     })
     .join('\n')
   return (
@@ -233,6 +269,75 @@ export function toHtml(doc: OrderOfWorshipDoc): string {
     lineHtml +
     `</div>`
   )
+}
+
+// One line's worth of paragraphs/table (the role/text (+ person, right-aligned via a borderless
+// table row) and an optional note) — returned as an array since a single line can expand into
+// up to two block-level children.
+function docxLineBlocks(line: OrderOfWorshipLine): (Paragraph | Table)[] {
+  const blocks: (Paragraph | Table)[] = []
+  // Extra space between items, skipped between consecutive songs — same rule as toHtml — so a
+  // multi-song worship set reads as one flowing block instead of being visually chopped up.
+  const spacingBefore = line.separatorBefore ? 120 : 0
+
+  const mainRuns = [
+    ...(line.role ? [new TextRun({ text: `${line.role} `, bold: true })] : []),
+    ...(line.text ? [new TextRun({ text: line.text })] : []),
+  ]
+  if (line.person) {
+    // A borderless table (rather than a tab stop) keeps the person's name reliably right-aligned
+    // regardless of how long the role/text on the left runs — same reasoning as toHtml's table.
+    blocks.push(
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: TableBorders.NONE,
+        rows: [
+          new TableRow({
+            children: [
+              new TableCell({ width: { size: 70, type: WidthType.PERCENTAGE }, children: [new Paragraph({ children: mainRuns, spacing: { before: spacingBefore } })] }),
+              new TableCell({
+                width: { size: 30, type: WidthType.PERCENTAGE },
+                children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: line.person, italics: true })] })],
+              }),
+            ],
+          }),
+        ],
+      }),
+    )
+  } else {
+    blocks.push(new Paragraph({ children: mainRuns, spacing: { before: spacingBefore, after: 40 } }))
+  }
+
+  if (line.note) {
+    blocks.push(new Paragraph({ children: [new TextRun({ text: line.note, italics: true, color: '888888', size: 18 })], spacing: { after: 40 } }))
+  }
+  return blocks
+}
+
+/**
+ * A real .docx (OOXML) file — genuinely opens in Word, Google Docs, mobile Office apps, and
+ * anything else that checks actual file contents, unlike the older "HTML saved with a .doc
+ * extension" trick this used before. Built directly from the same OrderOfWorshipDoc/Line
+ * structure toHtml/toPlainText use (including separatorBefore), rather than converting the HTML
+ * output, so all three renderers stay in sync from one source of truth.
+ */
+export function toDocxBlob(doc: OrderOfWorshipDoc): Promise<Blob> {
+  const document = new Document({
+    sections: [
+      {
+        children: [
+          new Paragraph({ heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER, children: [new TextRun({ text: doc.title })] }),
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 200 },
+            children: [new TextRun({ text: doc.dateLine, color: '555555', size: 20 })],
+          }),
+          ...doc.lines.flatMap(docxLineBlocks),
+        ],
+      },
+    ],
+  })
+  return Packer.toBlob(document)
 }
 
 function escapeHtml(value: string): string {
