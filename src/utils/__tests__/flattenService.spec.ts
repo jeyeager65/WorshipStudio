@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { flattenService } from '@/utils/flattenService'
+import { OLD_TESTAMENT_FRACTION } from '@/utils/scriptureReference'
 import type { Service } from '@/models/service'
 import type { Song } from '@/models/song'
 import type { SlideLibraryItem } from '@/models/library'
@@ -325,6 +326,22 @@ describe('flattenService — scripture', () => {
     })
     const flat = flattenService(service, new Map())
     expect(flat[0]?.wayfindingBooks).toBeUndefined()
+  })
+
+  it('gives a New Testament reference-only passage a bibleProgress past the Old Testament fraction', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'scripture', reference: 'John 3:16-17', translation: 'KJV', displayMode: 'reference-only' }],
+    })
+    const flat = flattenService(service, new Map())
+    expect(flat[0]?.bibleProgress).toBeGreaterThan(OLD_TESTAMENT_FRACTION)
+  })
+
+  it('gives an Old Testament reference-only passage a bibleProgress before the Old Testament fraction', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'scripture', reference: 'Psalm 23', translation: 'KJV', displayMode: 'reference-only' }],
+    })
+    const flat = flattenService(service, new Map())
+    expect(flat[0]?.bibleProgress).toBeLessThan(OLD_TESTAMENT_FRACTION)
   })
 })
 

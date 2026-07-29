@@ -184,6 +184,9 @@ export interface LiveSlideContent {
   text: string
   /** Reference-only scripture slides only — the surrounding-books wayfinding visual (spec section 1). */
   wayfindingBooks?: { name: string; distance: number }[]
+  /** Reference-only scripture slides only — 0-1 fraction of the way through the whole Bible
+   *  (by KJV verse count) this reference falls at, for the wayfinding progress bar. */
+  bibleProgress?: number
   /** Media/Video items only — the actual image/video to display live (spec sections 1/3). */
   media?: LiveMediaRef
   /** Countdown items only (spec section 1) — the ticking clock's target and optional custom text. */
@@ -195,6 +198,12 @@ export interface LiveSlideContent {
   /** Song/scripture/text-slide items only — fixed (not auto-fit) size for itemLabel/subLabel, shown as a pinned header/footer rather than above the main text. */
   headerFontSizePx?: number
   footerFontSizePx?: number
+  /** Reference-only scripture slides only — configured (Settings > Font Sizes) sizes for the
+   *  wayfinding display: the reference itself and the nearest surrounding book approach
+   *  wayfindingMaxFontSizePx, the farthest surrounding book shown uses wayfindingMinFontSizePx,
+   *  everything in between is linearly interpolated by distance. */
+  wayfindingMinFontSizePx?: number
+  wayfindingMaxFontSizePx?: number
 }
 
 export interface LivePresentationPort {

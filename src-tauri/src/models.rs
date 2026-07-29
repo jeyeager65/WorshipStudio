@@ -513,6 +513,15 @@ pub struct LibrarySettings {
     pub slide_header_font_size_px: u32,
     #[serde(default = "default_slide_footer_font_size_px")]
     pub slide_footer_font_size_px: u32,
+    /// Reference-only scripture display's "wayfinding" visual (surrounding book names fading
+    /// out toward the edges, centered on the reference itself) — the reference and nearest book
+    /// approach the max size, the farthest book shown uses the min, everything between is
+    /// linearly interpolated by distance. Unlike scripture/song, there's no auto-fit shrink-to-
+    /// fit safety net for this text.
+    #[serde(default = "default_wayfinding_min_font_size_px")]
+    pub wayfinding_min_font_size_px: u32,
+    #[serde(default = "default_wayfinding_max_font_size_px")]
+    pub wayfinding_max_font_size_px: u32,
 }
 
 fn default_scripture_min_font_size_px() -> u32 {
@@ -537,6 +546,14 @@ fn default_slide_header_font_size_px() -> u32 {
 
 fn default_slide_footer_font_size_px() -> u32 {
     24
+}
+
+fn default_wayfinding_min_font_size_px() -> u32 {
+    56
+}
+
+fn default_wayfinding_max_font_size_px() -> u32 {
+    150
 }
 
 /// api.bible sends an explicit JSON `null` for some entries' `description` (not merely an
@@ -727,5 +744,7 @@ mod tests {
         assert_eq!(settings.song_max_font_size_px, 72);
         assert_eq!(settings.slide_header_font_size_px, 24);
         assert_eq!(settings.slide_footer_font_size_px, 24);
+        assert_eq!(settings.wayfinding_min_font_size_px, 56);
+        assert_eq!(settings.wayfinding_max_font_size_px, 150);
     }
 }

@@ -2,7 +2,7 @@ import type { Service, ServiceItem } from '@/models/service'
 import type { Song } from '@/models/song'
 import type { SlideLibraryItem } from '@/models/library'
 import type { ScripturePassage, ExternalAppProfile } from '@/adapters/types'
-import { getWayfindingBooks, parseReference, type WayfindingBook } from '@/utils/scriptureReference'
+import { getBibleProgress, getWayfindingBooks, parseReference, type WayfindingBook } from '@/utils/scriptureReference'
 import { paginateTextUnits, type FontSizeRange } from '@/utils/textAutoFit'
 
 // Matches LibrarySettings' scriptureMin/MaxFontSizePx defaults (see models/settings.ts) — used
@@ -26,6 +26,9 @@ export interface FlatSlide {
   text: string
   /** Reference-only scripture slides only — the surrounding-books wayfinding visual (spec section 1). */
   wayfindingBooks?: WayfindingBook[]
+  /** Reference-only scripture slides only — 0-1 fraction of the way through the whole Bible
+   *  (by KJV verse count) this reference falls at, for the wayfinding progress bar. */
+  bibleProgress?: number
   /** Media/Video items only — resolved to an actual displayable URL by the caller (see ServiceWorkspaceView), since that needs an async Rust round trip flattenService can't make. */
   mediaId?: string
   mediaKind?: 'image' | 'video'
@@ -82,7 +85,7 @@ function pushScriptureSlides(
   scriptureFontRange: FontSizeRange,
 ): number {
   if (displayMode === 'reference-only') {
-    const book = parseReference(reference)?.book
+    const parsed = parseReference(reference)
     flat.push({
       key: `${keyPrefix}:${startSubIndex}`,
       itemIndex,
@@ -90,7 +93,8 @@ function pushScriptureSlides(
       itemLabel: reference,
       subLabel: 'Reference Only',
       text: '',
-      wayfindingBooks: book ? getWayfindingBooks(book) : undefined,
+      wayfindingBooks: parsed?.book ? getWayfindingBooks(parsed.book) : undefined,
+      bibleProgress: parsed ? getBibleProgress(parsed) : undefined,
     })
     return 1
   }

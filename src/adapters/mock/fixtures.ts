@@ -141,6 +141,8 @@ export const seedLibrarySettings: LibrarySettings = {
   songMaxFontSizePx: 72,
   slideHeaderFontSizePx: 24,
   slideFooterFontSizePx: 24,
+  wayfindingMinFontSizePx: 56,
+  wayfindingMaxFontSizePx: 150,
 }
 
 export const seedMachineSettings: MachineSettings = {

@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 import {
   findBook,
   formatReference,
+  getBibleProgress,
   getChapterCount,
   getVerseCount,
   getWayfindingBooks,
   isValidReference,
+  OLD_TESTAMENT_FRACTION,
   parseReference,
 } from '@/utils/scriptureReference'
 
@@ -130,6 +132,27 @@ describe('getWayfindingBooks', () => {
 
   it('returns an empty list for an unknown book', () => {
     expect(getWayfindingBooks('Not A Book')).toEqual([])
+  })
+})
+
+describe('getBibleProgress', () => {
+  it('places Genesis 1:1 near the very start', () => {
+    const progress = getBibleProgress({ book: 'Genesis', startChapter: 1, startVerse: 1, endChapter: 1, endVerse: 1 })
+    expect(progress).toBeCloseTo(0, 3)
+  })
+
+  it('places the last verse of Malachi exactly at the Old Testament fraction', () => {
+    const progress = getBibleProgress({ book: 'Malachi', startChapter: 4, startVerse: 6, endChapter: 4, endVerse: 6 })
+    expect(progress).toBeCloseTo(OLD_TESTAMENT_FRACTION, 10)
+  })
+
+  it('places the last verse of Revelation at exactly 1', () => {
+    const progress = getBibleProgress({ book: 'Revelation', startChapter: 22, startVerse: 21, endChapter: 22, endVerse: 21 })
+    expect(progress).toBeCloseTo(1, 10)
+  })
+
+  it('returns undefined for an unknown book', () => {
+    expect(getBibleProgress({ book: 'Not A Book', startChapter: 1, startVerse: 1, endChapter: 1, endVerse: 1 })).toBeUndefined()
   })
 })
 

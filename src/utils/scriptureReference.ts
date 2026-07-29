@@ -116,6 +116,35 @@ export function getWayfindingBooks(bookName: string, radius = 2): WayfindingBook
   return books
 }
 
+function totalVerses(book: BibleBookRef): number {
+  return book.chapters.reduce((sum, count) => sum + count, 0)
+}
+
+// bibleBooks.json is the canonical 66-book order with no testament field of its own — Malachi
+// (index 38) is the last Old Testament book and Matthew (index 39) the first New Testament one.
+// Its chapters arrays (verse count per chapter, already used for reference validation above)
+// double as a length proxy for the wayfinding progress bar below, without needing the full
+// bundled KJV text.
+const OLD_TESTAMENT_BOOK_COUNT = 39
+const TOTAL_OT_VERSES = bibleBooks.slice(0, OLD_TESTAMENT_BOOK_COUNT).reduce((sum, b) => sum + totalVerses(b), 0)
+const TOTAL_BIBLE_VERSES = bibleBooks.reduce((sum, b) => sum + totalVerses(b), 0)
+
+/** Fraction of the whole Bible (by KJV verse count) that falls at the end of the Old Testament —
+ *  the OT/NT split point for the wayfinding progress bar (see getBibleProgress). */
+export const OLD_TESTAMENT_FRACTION = TOTAL_OT_VERSES / TOTAL_BIBLE_VERSES
+
+/** How far into the whole Bible (0-1, by cumulative KJV verse count) a reference's starting
+ *  point falls — Genesis near 0, Revelation at 1 — mirroring the physical feel of flipping open
+ *  a Bible near the front or the back. Used for the wayfinding display's progress bar. */
+export function getBibleProgress(ref: ScriptureReference): number | undefined {
+  const book = findBook(ref.book)
+  if (!book) return undefined
+  const index = bibleBooks.findIndex((b) => b.name === book.name)
+  const versesBeforeBook = bibleBooks.slice(0, index).reduce((sum, b) => sum + totalVerses(b), 0)
+  const versesBeforeChapter = book.chapters.slice(0, ref.startChapter - 1).reduce((sum, c) => sum + c, 0)
+  return (versesBeforeBook + versesBeforeChapter + ref.startVerse) / TOTAL_BIBLE_VERSES
+}
+
 export function formatReference(ref: ScriptureReference): string {
   const wholeChapter = ref.startVerse === 1 && ref.endChapter === ref.startChapter && ref.endVerse === getVerseCount(ref.book, ref.startChapter)
   if (wholeChapter) return `${ref.book} ${ref.startChapter}`

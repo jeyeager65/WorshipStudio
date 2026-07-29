@@ -63,6 +63,15 @@ export interface LibrarySettings {
    */
   slideHeaderFontSizePx: number
   slideFooterFontSizePx: number
+  /**
+   * Reference-only scripture display's "wayfinding" visual (surrounding book names fading out
+   * toward the edges, centered on the reference itself) — the reference and nearest book
+   * approach the max size, the farthest book shown uses the min, everything between is linearly
+   * interpolated by distance. Unlike scripture/song, there's no auto-fit shrink-to-fit safety
+   * net for this text.
+   */
+  wayfindingMinFontSizePx: number
+  wayfindingMaxFontSizePx: number
 }
 
 /** Per-machine settings — Tauri app-data dir, never synced. */

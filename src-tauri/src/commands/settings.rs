@@ -39,6 +39,8 @@ fn default_library_settings() -> LibrarySettings {
         song_max_font_size_px: 72,
         slide_header_font_size_px: 24,
         slide_footer_font_size_px: 24,
+        wayfinding_min_font_size_px: 56,
+        wayfinding_max_font_size_px: 150,
     }
 }
 

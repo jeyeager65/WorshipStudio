@@ -1135,6 +1135,32 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
             min="1"
           />
         </div>
+
+        <h3 class="text-subtitle-2 mb-2">Wayfinding Display</h3>
+        <p class="text-medium-emphasis text-body-2 mb-4">
+          The reference-only scripture display's surrounding book names and centered reference — the reference and
+          nearest book approach the maximum size, the farthest book shown uses the minimum, with sizes in between
+          scaled by distance. Unlike scripture/song text above, there's no auto-shrink safety net, so very large
+          sizes can overflow a long reference.
+        </p>
+        <div class="d-flex ga-3" style="max-width: 420px">
+          <v-text-field
+            v-model.number="librarySettings.wayfindingMinFontSizePx"
+            label="Minimum size (px)"
+            type="number"
+            variant="outlined"
+            density="compact"
+            min="1"
+          />
+          <v-text-field
+            v-model.number="librarySettings.wayfindingMaxFontSizePx"
+            label="Maximum size (px)"
+            type="number"
+            variant="outlined"
+            density="compact"
+            min="1"
+          />
+        </div>
       </template>
 
       <template v-else-if="activeSection === 'themes'">

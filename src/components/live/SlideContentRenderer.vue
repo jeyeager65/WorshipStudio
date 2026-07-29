@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { formatCountdown } from '@/utils/countdown'
 import { wrapLineAtPunctuation } from '@/utils/textAutoFit'
+import { OLD_TESTAMENT_FRACTION } from '@/utils/scriptureReference'
 import type { LiveSlideContent } from '@/adapters/types'
 
 /**
@@ -177,13 +178,35 @@ onUnmounted(() => resizeObserver?.disconnect())
 
 // Wayfinding (reference-only scripture, spec section 1): books further from the current one
 // shrink and fade, one fade level per book regardless of length — mirrors flipping through a
-// physical Bible and seeing nearby book names.
+// physical Bible and seeing nearby book names. Size is linearly interpolated by distance
+// between the configured max (Settings > Font Sizes; approached by the nearest book, used
+// directly by the reference itself) and min (the farthest book actually shown) — using
+// Math.abs on every distance here, not just the current one, since the farthest book present
+// isn't always at the full configured radius (e.g. Revelation has no books after it).
 function bookStyle(distance: number) {
   const level = Math.abs(distance)
-  const sizes = ['clamp(16px, 3cqw, 34px)', 'clamp(12px, 2cqw, 24px)']
+  const maxPx = props.content?.wayfindingMaxFontSizePx ?? 150
+  const minPx = props.content?.wayfindingMinFontSizePx ?? 56
+  const radius = Math.max(1, ...(props.content?.wayfindingBooks ?? []).map((b) => Math.abs(b.distance)))
+  const t = level / radius
   const opacities = [0.55, 0.3]
-  return { fontSize: sizes[level - 1] ?? sizes[sizes.length - 1], opacity: opacities[level - 1] ?? opacities[opacities.length - 1] }
+  return { fontSize: `${maxPx + (minPx - maxPx) * t}px`, opacity: opacities[level - 1] ?? opacities[opacities.length - 1] }
 }
+
+// The wayfinding progress bar's four segment widths (as 0-1 fractions of the whole bar) — Old
+// Testament and New Testament each split into a "read so far" (solid) and "remaining" (dim)
+// portion, sized by OLD_TESTAMENT_FRACTION and the current reference's overall bibleProgress.
+// Always sums to exactly 1.
+const progressSegments = computed(() => {
+  const bibleProgress = props.content?.bibleProgress
+  if (bibleProgress === undefined) return undefined
+  return {
+    otFilled: Math.min(bibleProgress, OLD_TESTAMENT_FRACTION),
+    otUnfilled: Math.max(0, OLD_TESTAMENT_FRACTION - bibleProgress),
+    ntFilled: Math.max(0, Math.min(bibleProgress, 1) - OLD_TESTAMENT_FRACTION),
+    ntUnfilled: Math.max(0, 1 - Math.max(bibleProgress, OLD_TESTAMENT_FRACTION)),
+  }
+})
 </script>
 
 <template>
@@ -201,7 +224,9 @@ function bookStyle(distance: number) {
       >
         {{ book.name }}
       </div>
-      <div class="wayfinding-reference">{{ content.itemLabel }}</div>
+      <div class="wayfinding-reference" :style="{ fontSize: `${content.wayfindingMaxFontSizePx ?? 150}px` }">
+        {{ content.itemLabel }}
+      </div>
       <div
         v-for="book in content.wayfindingBooks.filter((b) => b.distance > 0)"
         :key="book.name"
@@ -209,6 +234,36 @@ function bookStyle(distance: number) {
         :style="bookStyle(book.distance)"
       >
         {{ book.name }}
+      </div>
+    </div>
+    <div v-if="progressSegments" class="wayfinding-progress-container">
+      <div class="wayfinding-progress-labels">
+        <span class="wayfinding-progress-label" style="color: #d4af37">Old Testament</span>
+        <span class="wayfinding-progress-label" style="color: #4fa8d8">New Testament</span>
+      </div>
+      <!-- A sibling of both the labels and the bar-wrapper (not nested in either) so its height
+           can span from near the label text down through the bar — its left position is still
+           a percentage of the same width as the bar below, since neither it nor the bar-wrapper
+           add any side padding/margin. -->
+      <div class="wayfinding-progress-boundary" :style="{ left: `${OLD_TESTAMENT_FRACTION * 100}%` }" />
+      <div class="wayfinding-progress-bar-wrapper">
+        <div class="wayfinding-progress">
+          <div
+            v-for="(segment, index) in [
+              { width: progressSegments.otFilled, color: '#d4af37', opacity: 1 },
+              { width: progressSegments.otUnfilled, color: '#d4af37', opacity: 0.25 },
+              { width: progressSegments.ntFilled, color: '#4fa8d8', opacity: 1 },
+              { width: progressSegments.ntUnfilled, color: '#4fa8d8', opacity: 0.25 },
+            ]"
+            :key="index"
+            :style="{ flexBasis: `${segment.width * 100}%`, background: segment.color, opacity: segment.opacity }"
+          />
+        </div>
+        <!-- A sibling of (not nested in) .wayfinding-progress — that bar clips to a rounded
+             pill via overflow:hidden, which would cut off this extending past its height. Its
+             own vertical centering is relative to this wrapper (the bar's own box), not the
+             taller .wayfinding-progress-container above, so it centers on the bar itself. -->
+        <div class="wayfinding-progress-marker" :style="{ left: `${(content?.bibleProgress ?? 0) * 100}%` }" />
       </div>
     </div>
     <img
@@ -347,14 +402,82 @@ function bookStyle(distance: number) {
   flex-direction: column;
   align-items: center;
   gap: 10px;
+  max-width: 90cqw;
 }
 .wayfinding-book {
   font-weight: 600;
   letter-spacing: 0.04em;
 }
 .wayfinding-reference {
-  font-size: clamp(40px, 7cqw, 90px);
   font-weight: 700;
   margin: 18px 0;
+  text-align: center;
+  max-width: 90cqw;
+}
+.wayfinding-progress-container {
+  isolation: isolate;
+  position: absolute;
+  left: 50%;
+  bottom: clamp(24px, 5cqh, 56px);
+  transform: translateX(-50%);
+  width: 85cqw;
+}
+.wayfinding-progress-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: clamp(18px, 2.6cqw, 34px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.wayfinding-progress-bar-wrapper {
+  position: relative;
+}
+.wayfinding-progress {
+  display: flex;
+  width: 100%;
+  height: clamp(10px, 1.2cqw, 20px);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+/* Marks the Old/New Testament boundary regardless of fill state — without this, a filled and
+   unfilled segment of the *same* color (just different opacity) don't read as a clear split.
+   Spans from near the top of the "Old Testament"/"New Testament" labels down through (and
+   slightly past) the bar, so it reads as a divider for the whole labeled block, not just the
+   bar's own edge — a direct child of .wayfinding-progress-container (a sibling of the labels
+   and the bar-wrapper), not nested in .wayfinding-progress, which clips its own contents to a
+   rounded pill and would otherwise cut this off. z-index sits above the bar (0) but below the
+   position marker (2), so it's visible over the bar's fill without covering the marker. */
+.wayfinding-progress-boundary {
+  position: absolute;
+  z-index: 1;
+  top: 6px;
+  bottom: -6px;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.8);
+}
+/* "You are here" — the current reference's exact position. A circle, not a line, and a
+   distinct accent color from both the boundary divider and the gold/blue testament colors, so
+   it can't be confused with either even when a reference falls right at the Old/New Testament
+   split. Highest z-index of the three layers, so it's never covered by the boundary line. */
+.wayfinding-progress-marker {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  /* Deliberately bigger than the bar's own clamp(10px, 1.2cqw, 20px) at every size (both the
+     min and max here exceed the bar's), not just equal to its max — a previous version used a
+     flat 20px, which coincidentally matched the bar's own max and so never looked "bigger".
+     translate(-50%, -50%), not a fixed negative margin, keeps it centered regardless of which
+     end of the clamp actually resolves. */
+  width: clamp(18px, 1.8cqw, 30px);
+  height: clamp(18px, 1.8cqw, 30px);
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #ff453a;
+  border: 2px solid #fff;
+  box-shadow: 0 0 8px rgba(255, 69, 58, 0.8);
 }
 </style>

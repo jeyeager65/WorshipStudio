@@ -14,8 +14,10 @@ const emit = defineEmits<{ delete: [] }>()
 
 const dateLabel = computed(() =>
   new Date(`${props.service.date}T00:00:00`).toLocaleDateString(undefined, {
+    weekday: 'long',
     month: 'long',
     day: 'numeric',
+    year: 'numeric',
   }),
 )
 
@@ -63,7 +65,7 @@ const dateStatus = computed<'today' | 'future' | 'past'>(() => {
         />
       </template>
       <v-card-title class="text-body-1 font-weight-bold">{{ service.type }} — {{ dateLabel }}</v-card-title>
-      <v-card-subtitle v-if="subtitle" class="text-primary opacity-100">{{ subtitle }}</v-card-subtitle>
+      <v-card-subtitle v-if="subtitle" class="subtitle-accent opacity-100">{{ subtitle }}</v-card-subtitle>
       <div class="text-caption text-medium-emphasis mt-1">
         {{ songCount }} song{{ songCount === 1 ? '' : 's' }} · {{ statusLabel }}
       </div>
@@ -92,6 +94,15 @@ const dateStatus = computed<'today' | 'future' | 'past'>(() => {
   background: rgba(var(--v-theme-slate), 0.22);
   border-color: rgb(var(--v-theme-slate));
   border-left: 4px solid rgb(var(--v-theme-slate));
+}
+/* Vuetify's real v-card-subtitle size (0.875rem) reads smaller than the plain caption div
+   below it, since that div's "text-caption" class isn't an actual Vuetify utility in this
+   build and just inherits the app's root font-size (see base.css) instead of a true small
+   caption size — matching that same root-relative size here rather than chasing Vuetify's
+   own (smaller) subtitle default. */
+.subtitle-accent {
+  font-size: 1rem;
+  color: color-mix(in srgb, rgb(var(--v-theme-primary)) 35%, white);
 }
 .row-remove {
   opacity: 0;

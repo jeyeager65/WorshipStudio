@@ -193,6 +193,24 @@ async function updateSermonPassageTranslation(itemId: string, passageId: string,
   if (passage.displayMode !== 'reference-only') await resolvePassage(`${itemId}:${passageId}`, passage.reference, translation)
 }
 
+// Switching to/from reference-only after the item's already been added — same "re-resolve in
+// place" reasoning as translation above. Switching TO 'full' needs a fresh resolve, since
+// reference-only never resolves verse text in the first place.
+async function updateScriptureDisplayMode(itemId: string, displayMode: 'full' | 'reference-only') {
+  const item = service.value?.items.find((i) => i.id === itemId)
+  if (!item || item.type !== 'scripture') return
+  item.displayMode = displayMode
+  if (displayMode === 'full') await resolveScriptureItem(item)
+}
+async function updateSermonPassageDisplayMode(itemId: string, passageId: string, displayMode: 'full' | 'reference-only') {
+  const item = service.value?.items.find((i) => i.id === itemId)
+  if (!item || item.type !== 'sermon') return
+  const passage = item.passages.find((p) => p.id === passageId)
+  if (!passage) return
+  passage.displayMode = displayMode
+  if (displayMode === 'full') await resolvePassage(`${itemId}:${passageId}`, passage.reference, passage.translation)
+}
+
 // Resolved media file src, keyed by MediaItem id (not service item id — several service items
 // could reuse the same media). getFilePath is a real Rust round trip (only the Rust side
 // knows library_root/local_media_root), so this can't happen inside flattenService's
@@ -353,6 +371,41 @@ const flatSlides = computed<FlatSlide[]>(() =>
 )
 
 const selectedItem = computed<ServiceItem | undefined>(() => service.value?.items[selectedItemIndex.value])
+
+// Changing a reference after the item's already been added — e.g. the operator picked the
+// wrong verse range. A local draft (rather than binding straight to the item, like bulletinLabel
+// does elsewhere in this view) so re-resolving — a real backend/API call, unlike a plain text
+// field — only fires once on blur, not on every keystroke while typing a whole reference.
+const scriptureReferenceDraft = ref('')
+const sermonPassageReferenceDrafts = reactive<Record<string, string>>({})
+watch(
+  selectedItem,
+  (item) => {
+    if (item?.type === 'scripture') scriptureReferenceDraft.value = item.reference
+    if (item?.type === 'sermon') {
+      for (const passage of item.passages) sermonPassageReferenceDrafts[passage.id] = passage.reference
+    }
+  },
+  { immediate: true },
+)
+async function commitScriptureReference(itemId: string) {
+  const item = service.value?.items.find((i) => i.id === itemId)
+  if (!item || item.type !== 'scripture') return
+  const reference = scriptureReferenceDraft.value.trim()
+  if (!reference || reference === item.reference) return
+  item.reference = reference
+  await resolveScriptureItem(item)
+}
+async function commitSermonPassageReference(itemId: string, passageId: string) {
+  const item = service.value?.items.find((i) => i.id === itemId)
+  if (!item || item.type !== 'sermon') return
+  const passage = item.passages.find((p) => p.id === passageId)
+  const reference = sermonPassageReferenceDrafts[passageId]?.trim()
+  if (!passage || !reference || reference === passage.reference) return
+  passage.reference = reference
+  if (passage.displayMode !== 'reference-only') await resolvePassage(`${itemId}:${passageId}`, reference, passage.translation)
+}
+
 const selectedSong = computed<Song | undefined>(() => {
   const item = selectedItem.value
   return item?.type === 'song' ? songsById.value.get(item.songId) : undefined
@@ -613,6 +666,7 @@ function buildLiveContent(slide: FlatSlide | undefined): LiveSlideContent | unde
     subLabel: slide.subLabel,
     text: slide.text,
     wayfindingBooks: slide.wayfindingBooks,
+    bibleProgress: slide.bibleProgress,
     media:
       mediaUrl && slide.mediaId && slide.mediaKind && slide.mediaFit
         ? { url: mediaUrl, mediaId: slide.mediaId, kind: slide.mediaKind, fit: slide.mediaFit }
@@ -622,6 +676,8 @@ function buildLiveContent(slide: FlatSlide | undefined): LiveSlideContent | unde
     lineWrap: slide.lineWrap,
     headerFontSizePx: settingsStore.librarySettings?.slideHeaderFontSizePx,
     footerFontSizePx: settingsStore.librarySettings?.slideFooterFontSizePx,
+    wayfindingMinFontSizePx: settingsStore.librarySettings?.wayfindingMinFontSizePx,
+    wayfindingMaxFontSizePx: settingsStore.librarySettings?.wayfindingMaxFontSizePx,
   }
 }
 const liveContentPayload = computed<LiveSlideContent | undefined>(() => buildLiveContent(liveSlide.value))
@@ -1327,6 +1383,27 @@ function updateRolePerson(role: string, personId: string | undefined) {
           </template>
 
           <template v-else-if="selectedItem.type === 'scripture'">
+            <v-text-field
+              v-model="scriptureReferenceDraft"
+              label="Reference"
+              placeholder="e.g. John 3:16-17"
+              variant="outlined"
+              density="compact"
+              style="max-width: 460px"
+              class="mb-2"
+              @blur="commitScriptureReference(selectedItem!.id)"
+            />
+            <v-btn-toggle
+              :model-value="selectedItem.displayMode"
+              mandatory
+              density="compact"
+              divided
+              class="mb-2"
+              @update:model-value="(value: 'full' | 'reference-only') => updateScriptureDisplayMode(selectedItem!.id, value)"
+            >
+              <v-btn value="full" size="small">Show Full Text</v-btn>
+              <v-btn value="reference-only" size="small">Reference Only</v-btn>
+            </v-btn-toggle>
             <v-select
               v-if="selectedItem.displayMode === 'full'"
               :model-value="selectedItem.translation"
@@ -1444,6 +1521,27 @@ function updateRolePerson(role: string, personId: string | undefined) {
               <div class="text-caption font-weight-bold text-medium-emphasis mb-1">
                 Passage {{ index + 1 }}<span v-if="passage.id === selectedItem.mainPassageId"> · Main (printed in the bulletin)</span>
               </div>
+              <v-text-field
+                v-model="sermonPassageReferenceDrafts[passage.id]"
+                label="Reference"
+                placeholder="e.g. John 3:16-17"
+                variant="outlined"
+                density="compact"
+                style="max-width: 460px"
+                class="mb-2"
+                @blur="commitSermonPassageReference(selectedItem!.id, passage.id)"
+              />
+              <v-btn-toggle
+                :model-value="passage.displayMode"
+                mandatory
+                density="compact"
+                divided
+                class="mb-2"
+                @update:model-value="(value: 'full' | 'reference-only') => updateSermonPassageDisplayMode(selectedItem!.id, passage.id, value)"
+              >
+                <v-btn value="full" size="small">Show Full Text</v-btn>
+                <v-btn value="reference-only" size="small">Reference Only</v-btn>
+              </v-btn-toggle>
               <v-select
                 v-if="passage.displayMode === 'full'"
                 :model-value="passage.translation"
@@ -1466,7 +1564,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
                 }"
               >
                 <div v-if="passage.displayMode === 'reference-only'" class="text-body-2 text-medium-emphasis">
-                  {{ passage.reference }} — reference only, no verse text shown.
+                  Reference only — no verse text shown.
                 </div>
                 <div v-else-if="scriptureErrors.get(`${selectedItem.id}:${passage.id}`)" class="text-body-2 text-error">
                   {{ scriptureErrors.get(`${selectedItem.id}:${passage.id}`) }}
@@ -2128,7 +2226,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
   padding: 5px 12px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 15px;
+  font-size: 17px;
   margin-bottom: 1px;
 }
 .service-item:hover {
