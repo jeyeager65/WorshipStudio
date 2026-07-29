@@ -35,6 +35,37 @@ function nowStamp() {
   return { updatedAt: new Date().toISOString(), updatedByDevice: 'demo-machine' }
 }
 
+// Mirrors the Tauri backend's songs::recompute_usage — recomputed from every saved service
+// rather than incremented on each save, so "last used" stays correct if a service's songs or
+// date are edited later, or the most recent service referencing a song is deleted. lastUsedAt
+// is the service's own date, not when it was saved. Only songs whose stats actually changed are
+// re-saved.
+async function recomputeSongUsage(songs: MockCollection<Song>, services: MockCollection<Service>) {
+  const allServices = (await services.list()) as Service[]
+  const oneYearAgo = new Date()
+  oneYearAgo.setDate(oneYearAgo.getDate() - 365)
+  const oneYearAgoStr = oneYearAgo.toISOString().slice(0, 10)
+
+  const lastUsedAt = new Map<string, string>()
+  const usesPastYear = new Map<string, number>()
+  for (const service of allServices) {
+    for (const item of service.items) {
+      if (item.type !== 'song') continue
+      const current = lastUsedAt.get(item.songId)
+      if (!current || service.date > current) lastUsedAt.set(item.songId, service.date)
+      if (service.date >= oneYearAgoStr) usesPastYear.set(item.songId, (usesPastYear.get(item.songId) ?? 0) + 1)
+    }
+  }
+
+  const allSongs = (await songs.list()) as Song[]
+  for (const song of allSongs) {
+    const newLastUsedAt = lastUsedAt.get(song.id)
+    const newUsesPastYear = usesPastYear.get(song.id) ?? 0
+    if (song.usage.lastUsedAt === newLastUsedAt && song.usage.usesPastYear === newUsesPastYear) continue
+    await songs.save({ ...song, usage: { lastUsedAt: newLastUsedAt, usesPastYear: newUsesPastYear }, ...nowStamp() })
+  }
+}
+
 export function createMockAdapter(): StudioAdapter {
   const songs = new MockCollection('songs', seedSongs)
   const services = new MockCollection('services', seedServices)
@@ -107,8 +138,14 @@ export function createMockAdapter(): StudioAdapter {
     services: {
       list: () => services.list() as Promise<Service[]>,
       get: (id) => services.get(id) as Promise<Service | undefined>,
-      save: (service) => services.save({ ...service, ...nowStamp() }),
-      delete: (id) => services.delete(id),
+      save: async (service) => {
+        await services.save({ ...service, ...nowStamp() })
+        await recomputeSongUsage(songs, services)
+      },
+      delete: async (id) => {
+        await services.delete(id)
+        await recomputeSongUsage(songs, services)
+      },
       listUpcoming: async (fromDate, toDate) => {
         const all = (await services.list()) as Service[]
         return all.filter((s) => s.date >= fromDate && s.date <= toDate)

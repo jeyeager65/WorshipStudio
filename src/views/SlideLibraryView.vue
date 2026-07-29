@@ -21,7 +21,9 @@ onMounted(() => {
 })
 
 const filteredSlides = computed(() => {
-  const q = query.value.trim().toLowerCase()
+  // Vuetify's clearable button sets the model to null, not '' — clearing without this guard
+  // throws mid-computed (.trim() on null), which silently breaks the clear button.
+  const q = (query.value ?? '').trim().toLowerCase()
   const sorted = [...store.slides].filter((item) => !pendingDeleteIds.has(item.id)).sort((a, b) => a.label.localeCompare(b.label))
   if (!q) return sorted
   return sorted.filter((item) => item.label.toLowerCase().includes(q))

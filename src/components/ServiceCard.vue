@@ -27,6 +27,14 @@ const subtitle = computed(() =>
 const songCount = computed(() => props.service.items.filter((item) => item.type === 'song').length)
 
 const statusLabel = computed(() => (props.service.items.length === 0 ? 'not yet started' : 'draft'))
+
+// Distinct background per date bucket — today's service should stand out at a glance from the
+// pile of past/future ones on the same page (Home tab shows Today + Upcoming together).
+const dateStatus = computed<'today' | 'future' | 'past'>(() => {
+  const todayIso = new Date().toISOString().slice(0, 10)
+  if (props.service.date === todayIso) return 'today'
+  return props.service.date > todayIso ? 'future' : 'past'
+})
 </script>
 
 <template>
@@ -35,7 +43,7 @@ const statusLabel = computed(() => (props.service.items.length === 0 ? 'not yet 
     variant="outlined"
     rounded="lg"
     class="service-card mb-2"
-    :class="{ 'service-card--highlight': badge }"
+    :class="`service-card--${dateStatus}`"
   >
     <v-card-item>
       <template #append>
@@ -67,9 +75,20 @@ const statusLabel = computed(() => (props.service.items.length === 0 ? 'not yet 
 .service-card:hover {
   border-color: rgb(var(--v-theme-primary));
 }
-.service-card--highlight {
-  background: rgba(var(--v-theme-primary), 0.06);
-  border-color: rgba(var(--v-theme-primary), 0.5);
+.service-card--today {
+  background: rgba(var(--v-theme-amber), 0.22);
+  border-color: rgb(var(--v-theme-amber));
+  border-left: 4px solid rgb(var(--v-theme-amber));
+}
+.service-card--future {
+  background: rgba(var(--v-theme-teal), 0.22);
+  border-color: rgb(var(--v-theme-teal));
+  border-left: 4px solid rgb(var(--v-theme-teal));
+}
+.service-card--past {
+  background: rgba(var(--v-theme-slate), 0.22);
+  border-color: rgb(var(--v-theme-slate));
+  border-left: 4px solid rgb(var(--v-theme-slate));
 }
 .row-remove {
   opacity: 0;

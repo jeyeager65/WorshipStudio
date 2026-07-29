@@ -34,7 +34,9 @@ function sortKey(person: Person): string {
 
 const searchQuery = ref('')
 const filteredPeople = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase()
+  // Vuetify's clearable button sets the model to null, not '' — clearing without this guard
+  // throws mid-computed (.trim() on null), which silently breaks the clear button.
+  const q = (searchQuery.value ?? '').trim().toLowerCase()
   const matches = peopleStore.people.filter((person) => {
     if (!q) return true
     if (person.firstName.toLowerCase().includes(q)) return true

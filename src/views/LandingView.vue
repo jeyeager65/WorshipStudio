@@ -4,6 +4,7 @@ import { useServicesStore } from '@/stores/services'
 import { useUndoStore } from '@/stores/undo'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { usePeopleStore } from '@/stores/people'
+import { useSongsStore } from '@/stores/songs'
 import ServiceCard from '@/components/ServiceCard.vue'
 import type { Service } from '@/models/service'
 import { personDisplayName } from '@/models/library'
@@ -12,6 +13,7 @@ const store = useServicesStore()
 const undoStore = useUndoStore()
 const confirmDialog = useConfirmDialogStore()
 const peopleStore = usePeopleStore()
+const songsStore = useSongsStore()
 // Deletion is soft until the undo toast expires (spec section 16) — see SongLibraryView for
 // the same pattern and its rationale.
 const pendingDeleteIds = reactive(new Set<string>())
@@ -25,6 +27,9 @@ async function deleteService(service: Service) {
     async () => {
       await store.remove(service.id)
       pendingDeleteIds.delete(service.id)
+      // Deleting a service silently updates any of its songs' usage stats on the backend (see
+      // songs::recompute_usage) — refresh the shared songs store so that shows up immediately.
+      await songsStore.load()
     },
   )
 }
@@ -59,7 +64,9 @@ const pastServices = computed(() =>
 )
 
 const browseResults = computed(() => {
-  const query = browseQuery.value.trim().toLowerCase()
+  // Vuetify's clearable button sets the model to null, not '' — clearing without this guard
+  // throws mid-computed (.trim() on null), which is what silently broke the clear button.
+  const query = (browseQuery.value ?? '').trim().toLowerCase()
   if (!query) return pastServices.value.slice(0, 10)
   return visibleServices.value.filter((service) =>
     [service.type, service.sermonTitle, preacherName(service), service.keyPassage].some((field) =>
@@ -94,9 +101,9 @@ const browseResults = computed(() => {
 
         <div class="d-flex align-center justify-space-between mt-6 mb-2">
           <div class="text-overline text-medium-emphasis">Upcoming</div>
-          <router-link to="/planning-ahead" class="text-caption text-primary text-decoration-none">
-            Planning Ahead →
-          </router-link>
+          <v-btn variant="flat" color="primary" prepend-icon="mdi-calendar-month-outline" to="/planning-ahead">
+            Planning Ahead
+          </v-btn>
         </div>
         <ServiceCard
           v-for="service in upcomingServices"

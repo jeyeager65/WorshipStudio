@@ -54,4 +54,25 @@ describe('ServiceCard', () => {
     })
     expect(wrapper.text()).toContain('TODAY')
   })
+
+  it('gives today, future, and past services their own distinct background class', () => {
+    const todayIso = new Date().toISOString().slice(0, 10)
+    const future = mount(ServiceCard, {
+      props: { service: sampleService({ date: '2099-01-01' }) },
+      global: { plugins: [vuetify, router] },
+    })
+    expect(future.classes()).toContain('service-card--future')
+
+    const past = mount(ServiceCard, {
+      props: { service: sampleService({ date: '2000-01-01' }) },
+      global: { plugins: [vuetify, router] },
+    })
+    expect(past.classes()).toContain('service-card--past')
+
+    const today = mount(ServiceCard, {
+      props: { service: sampleService({ date: todayIso }) },
+      global: { plugins: [vuetify, router] },
+    })
+    expect(today.classes()).toContain('service-card--today')
+  })
 })

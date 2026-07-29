@@ -36,7 +36,9 @@ const tagCounts = computed(() => {
 })
 
 const filteredItems = computed(() => {
-  const q = query.value.trim().toLowerCase()
+  // Vuetify's clearable button sets the model to null, not '' — clearing without this guard
+  // throws mid-computed (.trim() on null), which silently breaks the clear button.
+  const q = (query.value ?? '').trim().toLowerCase()
   return visibleItems.value
     .filter((item) => typeFilter.value === 'all' || item.kind === typeFilter.value)
     .filter((item) => !activeTag.value || item.tags.includes(activeTag.value))

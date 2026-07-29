@@ -89,9 +89,12 @@ async function saveSong() {
 const usageLabel = computed(() => {
   if (!song.value) return ''
   const { lastUsedAt, usesPastYear } = song.value.usage
-  if (usesPastYear === 0) return 'Not yet used'
-  const last = lastUsedAt ? new Date(lastUsedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : undefined
-  return last ? `Last used ${last} · used ${usesPastYear}x this year` : `Used ${usesPastYear}x this year`
+  // A song can have a lastUsedAt with usesPastYear still 0 — used before, just not within the
+  // last 365 days (recompute_usage tracks these independently; a song doesn't need any use in
+  // the past year to have ever been used at all).
+  if (!lastUsedAt) return 'Not yet used'
+  const last = new Date(`${lastUsedAt}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+  return usesPastYear > 0 ? `Last used ${last} · used ${usesPastYear}x this year` : `Last used ${last}`
 })
 
 function addCollection() {

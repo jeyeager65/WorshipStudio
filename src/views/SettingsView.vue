@@ -59,20 +59,29 @@ const activeSection = ref<Section>('general')
 const sections: { key: Section; label: string; group: string }[] = [
   { key: 'general', label: 'General', group: 'App' },
   { key: 'sync', label: 'Sync Status', group: 'App' },
+  // Display groups everything about how content actually renders on screen — the physical
+  // setup (Display Setup), sizing (Font Sizes), visual styling (Themes), and hand-off to other
+  // on-screen apps (External Apps/Remote Control) — not just monitor configuration narrowly.
   { key: 'display', label: 'Display Setup', group: 'Display' },
   { key: 'font-sizes', label: 'Font Sizes', group: 'Display' },
+  { key: 'themes', label: 'Themes', group: 'Display' },
   // Windows-only (Win32 window hand-off) — the port is entirely absent on the macOS/demo
   // build, unlike Display Setup which still has something to show (real monitors) in mock.
   ...(getAdapter().externalApps ? [{ key: 'external-apps' as const, label: 'External Apps', group: 'Display' }] : []),
   // Needs the bundled local HTTP server (see adapters/types.ts's RemotePort doc comment) —
   // not meaningful in the static/mock demo build even though the port itself exists there.
   ...(getAdapter().kind === 'tauri' ? [{ key: 'remote-control' as const, label: 'Remote Control', group: 'Display' }] : []),
-  { key: 'service-types', label: 'Service Types', group: 'Content Library' },
+  // Content Library is genuinely just the shared library content itself — song categorization
+  // and the scripture translations resolved into services, not anything about how a service
+  // is structured or staffed (that's Services & Scheduling below).
   { key: 'collections', label: 'Song Collections', group: 'Content Library' },
   { key: 'bible-translations', label: 'Bible Translations', group: 'Content Library' },
-  { key: 'themes', label: 'Themes', group: 'Content Library' },
-  { key: 'roles', label: 'Roles', group: 'Content Library' },
-  { key: 'service-templates', label: 'Service Templates', group: 'Content Library' },
+  // What a service looks like (its types, its shell/template) and who fills it (roles) — these
+  // three were previously scattered across Content Library despite having nothing to do with
+  // library content.
+  { key: 'service-types', label: 'Service Types', group: 'Services & Scheduling' },
+  { key: 'roles', label: 'Roles', group: 'Services & Scheduling' },
+  { key: 'service-templates', label: 'Service Templates', group: 'Services & Scheduling' },
 ]
 const groupedSections = computed(() => {
   const groups: { name: string; items: typeof sections }[] = []
@@ -527,7 +536,7 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
   <div v-if="librarySettings && machineSettings" class="settings-layout">
     <div class="settings-nav">
       <template v-for="group in groupedSections" :key="group.name">
-        <div class="text-overline text-medium-emphasis px-3 pt-3">{{ group.name }}</div>
+        <div class="text-overline font-weight-bold text-primary px-3 pt-3">{{ group.name }}</div>
         <v-list density="compact" nav>
           <v-list-item
             v-for="section in group.items"

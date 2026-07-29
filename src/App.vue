@@ -190,15 +190,35 @@ onMounted(async () => {
         <div class="mx-2 mt-2 mb-4">
           <img :src="logoSrc" alt="Worship Studio" class="sidebar-logo-img" />
         </div>
-        <v-list-item to="/" prepend-icon="mdi-home" title="Services" rounded="lg" class="mx-2 mb-1 sidebar-item" />
-        <v-list-item to="/library/songs" prepend-icon="mdi-bookshelf" title="Songs" rounded="lg" class="mx-2 mb-1 sidebar-item" />
-        <v-list-item to="/library/slides" prepend-icon="mdi-image-multiple" title="Slides" rounded="lg" class="mx-2 mb-1 sidebar-item" />
-        <v-list-item to="/library/media" prepend-icon="mdi-file-image-outline" title="Media" rounded="lg" class="mx-2 mb-1 sidebar-item" />
-        <v-list-item to="/people" prepend-icon="mdi-account-multiple" title="People" rounded="lg" class="mx-2 mb-1 sidebar-item" />
-        <v-list-item to="/reports" prepend-icon="mdi-file-chart-outline" title="Reports" rounded="lg" class="mx-2 mb-1 sidebar-item" />
-        <v-list-item to="/settings" prepend-icon="mdi-cog" title="Settings" rounded="lg" class="mx-2 mb-1 sidebar-item" />
+        <v-divider class="mx-2 mb-2" />
+        <v-list-item to="/" title="Services" rounded="lg" class="mx-2 mb-1 sidebar-item">
+          <template #prepend><v-icon icon="mdi-home" color="primary" /></template>
+        </v-list-item>
+        <v-list-item to="/library/songs" title="Songs" rounded="lg" class="mx-2 mb-1 sidebar-item">
+          <template #prepend><v-icon icon="mdi-bookshelf" color="teal" /></template>
+        </v-list-item>
+        <v-list-item to="/library/slides" title="Slides" rounded="lg" class="mx-2 mb-1 sidebar-item">
+          <template #prepend><v-icon icon="mdi-image-multiple" color="violet" /></template>
+        </v-list-item>
+        <v-list-item to="/library/media" title="Media" rounded="lg" class="mx-2 mb-1 sidebar-item">
+          <template #prepend><v-icon icon="mdi-file-image-outline" color="rose" /></template>
+        </v-list-item>
+        <v-list-item to="/people" title="People" rounded="lg" class="mx-2 mb-1 sidebar-item">
+          <template #prepend><v-icon icon="mdi-account-multiple" color="amber" /></template>
+        </v-list-item>
+        <v-divider class="mx-2 mt-2" />
       </v-list>
       <template #append>
+        <v-divider class="mb-2" />
+        <v-list nav density="comfortable" class="py-0">
+          <v-list-item to="/reports" title="Reports" rounded="lg" class="mx-2 mb-1 sidebar-item">
+            <template #prepend><v-icon icon="mdi-file-chart-outline" color="secondary" /></template>
+          </v-list-item>
+          <v-list-item to="/settings" title="Settings" rounded="lg" class="mx-2 mb-1 sidebar-item">
+            <template #prepend><v-icon icon="mdi-cog" color="slate" /></template>
+          </v-list-item>
+        </v-list>
+        <v-divider />
         <div v-if="appVersion" class="pa-3 text-center text-caption text-medium-emphasis">v{{ appVersion }}</div>
       </template>
     </v-navigation-drawer>
@@ -282,6 +302,7 @@ onMounted(async () => {
 }
 .sidebar-item :deep(.v-list-item-title) {
   font-size: 1rem;
+  line-height: 1.4rem;
 }
 
 /* Custom title bar (tauri.conf.json's "decorations": false) — square corners and a red

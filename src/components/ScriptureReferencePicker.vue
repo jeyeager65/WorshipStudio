@@ -206,7 +206,7 @@ defineExpose({
       <span v-if="previewLoading" class="text-medium-emphasis text-body-2">Loading preview…</span>
       <span v-else-if="previewError" class="text-error text-body-2">{{ previewError }}</span>
       <div v-else-if="preview">
-        <div class="text-caption text-medium-emphasis mb-1">{{ preview.reference }} ({{ preview.translation }})</div>
+        <div class="text-caption text-medium-emphasis mb-1">{{ preview.reference }}</div>
         <p class="text-body-2">{{ previewText }}</p>
       </div>
     </div>

@@ -45,6 +45,25 @@ const selectedItemIndex = ref(0)
 /** -1 = nothing live yet; equal to flatSlides.length = live but past the last slide (blank). */
 const flatIndex = ref(-1)
 
+// Off by default — accidental drags while just browsing/clicking the Service Order list would
+// be far more disruptive here than useful, so reordering is opt-in via the toggle next to the
+// header rather than always-on.
+const reorderMode = ref(false)
+// selectedItemIndex is a raw array position, not an id — capture the selected item's own id
+// before a drag starts so it can be re-found by id afterward, otherwise the "selected" item
+// would silently become whatever ended up at that same index once the drag reshuffles the array.
+const draggingItemId = ref<string>()
+function onReorderStart() {
+  draggingItemId.value = selectedItem.value?.id
+}
+function onReorderEnd() {
+  if (service.value && draggingItemId.value) {
+    const newIndex = service.value.items.findIndex((i) => i.id === draggingItemId.value)
+    if (newIndex !== -1) selectedItemIndex.value = newIndex
+  }
+  draggingItemId.value = undefined
+}
+
 // Service details (date/type/sermon title/key passage/preacher) — the same fields
 // CreateServiceView collects up front, editable afterward via this dialog rather than a
 // separate screen, since it's the exact same small set of fields either way. Local drafts so
@@ -239,7 +258,13 @@ onMounted(async () => {
   // (README's adapter-status note) — best-effort and last, so a rejected invoke() here can
   // never take down the wiring above it and silently break Save for every service.
   try {
-    scriptureTranslations.value = await getAdapter().scripture.listTranslations()
+    // "English Standard Version (ESV)" rather than just the full name — makes the abbreviation
+    // shown elsewhere (the slide footer, the required ESV attribution tag) recognizable here
+    // too, instead of only spelled out in full.
+    scriptureTranslations.value = (await getAdapter().scripture.listTranslations()).map((t) => ({
+      ...t,
+      name: `${t.name} (${t.code})`,
+    }))
     const defaultCode = settingsStore.librarySettings?.defaultTranslationCode
     const defaultAvailable = scriptureTranslations.value.some((t) => t.code === defaultCode)
     // Seeds the Scripture tab's initial translation choice — ScriptureReferencePicker falls
@@ -278,6 +303,10 @@ async function saveService() {
   try {
     await servicesStore.save(service.value)
     isDirty.value = false
+    // Saving a service silently updates any of its songs' usage stats on the backend (see
+    // songs::recompute_usage) — refresh the shared songs store so that shows up immediately
+    // (e.g. on the Songs list) rather than only after some unrelated reload.
+    await songsStore.load()
   } finally {
     saving.value = false
   }
@@ -394,6 +423,45 @@ function itemIcon(item: ServiceItem): string {
   }
 }
 
+// The Service Order list's icon is the same generic "?" for every placeholder regardless of
+// what kind of content it wants (see itemIcon) — this is what actually distinguishes them at a
+// glance in that list when the template didn't give this slot its own bulletin heading.
+const PLACEHOLDER_TYPE_NAMES: Record<string, string> = {
+  songs: 'Song',
+  scripture: 'Scripture',
+  slides: 'Slide',
+  media: 'Media',
+  sermon: 'Sermon',
+}
+function placeholderTypeName(suggestedTab: string | undefined): string {
+  return PLACEHOLDER_TYPE_NAMES[suggestedTab ?? ''] ?? 'Item'
+}
+
+// The Service Order list's sermon row shows its main passage as a second line — same
+// "main passage wins" resolution as the printed Order of Worship (see orderOfWorship.ts).
+function sermonMainReference(item: Extract<ServiceItem, { type: 'sermon' }>): string {
+  const mainPassage = item.passages.find((p) => p.id === item.mainPassageId) ?? item.passages[0]
+  return mainPassage?.reference ?? ''
+}
+
+// sermon/bulletin-note/placeholder already resolve bulletinLabel as their own itemLabel() —
+// showing it again as a distinct first line would just repeat the exact same text.
+const BULLETIN_LABEL_DRIVEN_TYPES = new Set(['sermon', 'bulletin-note', 'placeholder'])
+
+// For every other item type, an explicit bulletinLabel override takes the first line (with
+// the item's own default content — song title, scripture reference, etc. — moved to the
+// second line below), same as sermon/bulletin-note already prioritize it as their whole label.
+function serviceOrderPrimaryLabel(item: ServiceItem): string {
+  if (item.bulletinLabel && !BULLETIN_LABEL_DRIVEN_TYPES.has(item.type)) return item.bulletinLabel
+  return itemLabel(item)
+}
+
+function serviceOrderSecondaryLabel(item: ServiceItem): string | undefined {
+  if (item.type === 'sermon') return sermonMainReference(item) || undefined
+  if (item.bulletinLabel && !BULLETIN_LABEL_DRIVEN_TYPES.has(item.type)) return itemLabel(item)
+  return undefined
+}
+
 function itemLabel(item: ServiceItem): string {
   if (item.type === 'song') return songsById.value.get(item.songId)?.title ?? 'Unknown Song'
   if (item.type === 'scripture') return item.reference
@@ -405,7 +473,7 @@ function itemLabel(item: ServiceItem): string {
   if (item.type === 'countdown') return item.text || 'Countdown'
   if (item.type === 'sermon') return item.bulletinLabel || 'Worship Through the Word'
   if (item.type === 'bulletin-note') return item.bulletinLabel || 'Bulletin Note'
-  if (item.type === 'placeholder') return item.label
+  if (item.type === 'placeholder') return item.bulletinLabel || item.label || `${placeholderTypeName(item.suggestedTab)} Placeholder`
   return item.type
 }
 
@@ -1119,29 +1187,66 @@ function updateRolePerson(role: string, personId: string | undefined) {
 
     <div class="workspace-layout">
       <div class="service-panel">
-        <div class="text-overline text-medium-emphasis px-3 py-2 border-b">Service Order</div>
+        <div class="d-flex align-center justify-space-between px-3 py-2 border-b">
+          <span class="text-overline text-medium-emphasis">Service Order</span>
+          <v-btn
+            :icon="reorderMode ? 'mdi-check' : 'mdi-swap-vertical'"
+            variant="text"
+            size="small"
+            :title="reorderMode ? 'Done reordering' : 'Reorder items'"
+            @click="reorderMode = !reorderMode"
+          />
+        </div>
         <div class="flex-grow-1 overflow-y-auto pa-2">
-          <div
-            v-for="(item, index) in service.items"
-            :key="item.id"
-            class="service-item"
-            :class="{ 'service-item--selected': index === selectedItemIndex, 'service-item--live': itemHasLive(index) }"
-            @click="selectedItemIndex = index"
+          <VueDraggable
+            v-if="reorderMode"
+            v-model="service.items"
+            handle=".service-item-drag-handle"
+            :animation="150"
+            :on-start="onReorderStart"
+            :on-end="onReorderEnd"
           >
-            <v-icon :icon="itemIcon(item)" :color="itemColor(item)" size="small" />
-            <span class="text-truncate flex-grow-1">{{ itemLabel(item) }}</span>
-            <v-chip v-if="item.type === 'placeholder'" size="x-small" color="amber" variant="flat" class="mr-1">
-              Needs content
-            </v-chip>
-            <v-btn
-              icon="mdi-trash-can-outline"
-              variant="flat"
-              color="error"
-              class="row-remove"
-              size="x-small"
-              @click.stop="removeServiceItem(index)"
-            />
-          </div>
+            <div
+              v-for="(item, index) in service.items"
+              :key="item.id"
+              class="service-item"
+              :class="{ 'service-item--selected': index === selectedItemIndex, 'service-item--live': itemHasLive(index) }"
+              @click="selectedItemIndex = index"
+            >
+              <v-icon icon="mdi-drag-vertical" class="service-item-drag-handle" size="small" style="cursor: grab" />
+              <div class="flex-grow-1" style="min-width: 0">
+                <div :class="{ 'font-italic': item.type === 'placeholder' }">{{ serviceOrderPrimaryLabel(item) }}</div>
+                <div v-if="serviceOrderSecondaryLabel(item)" class="text-caption text-medium-emphasis">
+                  {{ serviceOrderSecondaryLabel(item) }}
+                </div>
+              </div>
+            </div>
+          </VueDraggable>
+          <template v-else>
+            <div
+              v-for="(item, index) in service.items"
+              :key="item.id"
+              class="service-item"
+              :class="{ 'service-item--selected': index === selectedItemIndex, 'service-item--live': itemHasLive(index) }"
+              @click="selectedItemIndex = index"
+            >
+              <v-icon :icon="itemIcon(item)" :color="itemColor(item)" size="small" />
+              <div class="flex-grow-1" style="min-width: 0">
+                <div :class="{ 'font-italic': item.type === 'placeholder' }">{{ serviceOrderPrimaryLabel(item) }}</div>
+                <div v-if="serviceOrderSecondaryLabel(item)" class="text-caption text-medium-emphasis">
+                  {{ serviceOrderSecondaryLabel(item) }}
+                </div>
+              </div>
+              <v-btn
+                icon="mdi-trash-can-outline"
+                variant="flat"
+                color="error"
+                class="row-remove"
+                size="x-small"
+                @click.stop="removeServiceItem(index)"
+              />
+            </div>
+          </template>
         </div>
         <v-btn variant="flat" color="primary" class="ma-2" prepend-icon="mdi-plus" @click="addDialogOpen = true">
           Add to Service
@@ -1163,7 +1268,6 @@ function updateRolePerson(role: string, personId: string | undefined) {
               handle=".drag-handle"
               :animation="150"
               class="d-flex flex-column ga-1"
-              style="max-width: 460px"
             >
               <div
                 v-for="(blockId, index) in selectedItem.arrangement.sequence"
@@ -1230,7 +1334,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
               class="slide-row"
               :class="{ 'slide-row--live': itemHasLive(selectedItemIndex) }"
               :style="[
-                { maxWidth: '460px', whiteSpace: 'pre-line' },
+                { whiteSpace: 'pre-line' },
                 itemHasLive(selectedItemIndex)
                   ? {}
                   : {
@@ -1247,9 +1351,6 @@ function updateRolePerson(role: string, personId: string | undefined) {
               <div v-else-if="selectedScriptureError" class="text-body-2 text-error">{{ selectedScriptureError }}</div>
               <template v-else-if="selectedScripturePassage">
                 <div class="text-body-2">{{ selectedScriptureText }}</div>
-                <div class="text-caption text-medium-emphasis mt-2">
-                  {{ selectedScripturePassage.copyright ?? selectedScripturePassage.translation }}
-                </div>
               </template>
               <div v-else class="text-body-2 text-medium-emphasis">Loading…</div>
             </div>
@@ -1329,7 +1430,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
           </template>
 
           <template v-else-if="selectedItem.type === 'sermon'">
-            <div v-for="(passage, index) in selectedItem.passages" :key="passage.id" class="mb-3" style="max-width: 460px">
+            <div v-for="(passage, index) in selectedItem.passages" :key="passage.id" class="mb-3">
               <div class="text-caption font-weight-bold text-medium-emphasis mb-1">
                 Passage {{ index + 1 }}<span v-if="passage.id === selectedItem.mainPassageId"> · Main (printed in the bulletin)</span>
               </div>
@@ -1342,6 +1443,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
                 label="Translation"
                 variant="outlined"
                 density="compact"
+                style="max-width: 300px"
                 class="mb-2"
                 @update:model-value="(value: string) => updateSermonPassageTranslation(selectedItem!.id, passage.id, value)"
               />
@@ -1361,9 +1463,6 @@ function updateRolePerson(role: string, personId: string | undefined) {
                 </div>
                 <template v-else-if="scriptureById.get(`${selectedItem.id}:${passage.id}`)">
                   <div class="text-body-2">{{ sermonPassageText(selectedItem.id, passage.id) }}</div>
-                  <div class="text-caption text-medium-emphasis mt-2">
-                    {{ scriptureById.get(`${selectedItem.id}:${passage.id}`)?.translation }}
-                  </div>
                 </template>
                 <div v-else class="text-body-2 text-medium-emphasis">Loading…</div>
               </div>
@@ -2009,11 +2108,11 @@ function updateRolePerson(role: string, personId: string | undefined) {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 5px 12px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 15px;
-  margin-bottom: 2px;
+  margin-bottom: 1px;
 }
 .service-item:hover {
   background: rgba(var(--v-theme-primary), 0.08);
