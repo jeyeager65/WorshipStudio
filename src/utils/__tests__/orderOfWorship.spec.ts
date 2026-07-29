@@ -124,12 +124,13 @@ describe('buildOrderOfWorship', () => {
 
   it('a sermon line uses only the main passage, the service preacher, and the plain sermon title as its default note', () => {
     const service = baseService({
-      preacherId: 'person-dan',
-      sermonTitle: 'From Chained to Commissioned',
+      assignments: [{ role: 'Preacher', personId: 'person-dan', tentative: false }],
       items: [
         {
           id: 'item-1',
           type: 'sermon',
+          title: 'From Chained to Commissioned',
+          role: 'Preacher',
           passages: [
             { id: 'p1', reference: 'Romans 8:28', translation: 'ESV', displayMode: 'full' },
             { id: 'p2', reference: 'Mark 5:1-20', translation: 'ESV', displayMode: 'full' },
@@ -150,11 +151,11 @@ describe('buildOrderOfWorship', () => {
 
   it("a sermon's own bulletinNote overrides the default sermon title", () => {
     const service = baseService({
-      sermonTitle: 'From Chained to Commissioned',
       items: [
         {
           id: 'item-1',
           type: 'sermon',
+          title: 'From Chained to Commissioned',
           passages: [{ id: 'p1', reference: 'Mark 5:1-20', translation: 'ESV', displayMode: 'full' }],
           mainPassageId: 'p1',
           outline: [],

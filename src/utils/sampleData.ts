@@ -258,6 +258,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
   const future = nthSundayAfter(referenceDate, 3)
 
   const pastRoster: RoleAssignment[] = [
+    { role: 'Preacher', personId: 'person-sample-daniel-renno', tentative: false },
     { role: 'Worship Leader', personId: 'person-sample-sarah-mitchell', tentative: false },
     { role: 'Piano', personId: 'person-sample-marcus-johnson', tentative: false },
     { role: 'Guitar', personId: 'person-sample-priya-patel', tentative: false },
@@ -269,6 +270,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
   // Marcus is deliberately double-booked (Piano AND Slides) — exercises the roster's
   // same-week-two-roles conflict detection (see rosterConflicts.ts).
   const soonRoster: RoleAssignment[] = [
+    { role: 'Preacher', personId: 'person-sample-daniel-renno', tentative: false },
     { role: 'Worship Leader', personId: 'person-sample-sarah-mitchell', tentative: false },
     { role: 'Piano', personId: 'person-sample-marcus-johnson', tentative: false },
     { role: 'Slides', personId: 'person-sample-marcus-johnson', tentative: false },
@@ -282,9 +284,6 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       id: 'service-sample-past-sunday',
       date: toIso(past),
       type: 'Sunday Morning Worship',
-      preacherId: 'person-sample-daniel-renno',
-      sermonTitle: 'Walking in Faith',
-      keyPassage: 'Hebrews 11:1-6',
       items: [
         { id: 'item-1', type: 'countdown', targetTime: countdownTarget(past, 9, 25), text: 'Service begins soon' },
         { id: 'item-2', type: 'song', songId: 'song-sample-come-thou-fount', arrangement: { sequence: ['v1', 'v2'] } },
@@ -299,6 +298,15 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
           ],
         },
         { id: 'item-6', type: 'song', songId: 'song-sample-blessed-assurance', arrangement: { sequence: ['v1', 'c1', 'c1'] } },
+        {
+          id: 'item-sermon',
+          type: 'sermon',
+          title: 'Walking in Faith',
+          passages: [{ id: 'passage-sermon', reference: 'Hebrews 11:1-6', translation: 'KJV', displayMode: 'full' }],
+          mainPassageId: 'passage-sermon',
+          outline: [],
+          role: 'Preacher',
+        },
       ],
       assignments: pastRoster,
       updatedAt: now,
@@ -308,9 +316,6 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       id: 'service-sample-upcoming-sunday',
       date: toIso(soon),
       type: 'Sunday Morning Worship',
-      preacherId: 'person-sample-daniel-renno',
-      sermonTitle: 'The Good Shepherd',
-      keyPassage: 'Psalm 23',
       items: [
         { id: 'item-1', type: 'countdown', targetTime: countdownTarget(soon, 9, 25), text: 'Service begins soon' },
         { id: 'item-2', type: 'song', songId: 'song-sample-holy-holy-holy', arrangement: { sequence: ['v1', 'v2', 'v3'] } },
@@ -322,6 +327,15 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
           slides: [{ id: 's1', label: 'Announcement', text: 'Vacation Bible School registration is now open — sign up at the welcome desk.' }],
         },
         { id: 'item-6', type: 'song', songId: 'song-sample-amazing-grace', arrangement: { sequence: ['v1', 'v2', 'v3', 'v4'] } },
+        {
+          id: 'item-sermon',
+          type: 'sermon',
+          title: 'The Good Shepherd',
+          passages: [{ id: 'passage-sermon', reference: 'Psalm 23', translation: 'KJV', displayMode: 'reference-only' }],
+          mainPassageId: 'passage-sermon',
+          outline: [],
+          role: 'Preacher',
+        },
       ],
       assignments: soonRoster,
       updatedAt: now,
@@ -331,14 +345,23 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       id: 'service-sample-wednesday-study',
       date: toIso(wednesday),
       type: 'Wednesday Bible Study',
-      preacherId: 'person-sample-daniel-renno',
-      sermonTitle: 'Romans 8: Grace and Faith',
-      keyPassage: 'Romans 8:28-39',
       items: [
         { id: 'item-1', type: 'song', songId: 'song-sample-how-firm-a-foundation', arrangement: { sequence: ['v1', 'v2'] } },
         { id: 'item-2', type: 'scripture', reference: 'Romans 8:28-39', translation: 'KJV', displayMode: 'full' },
+        {
+          id: 'item-sermon',
+          type: 'sermon',
+          title: 'Romans 8: Grace and Faith',
+          passages: [{ id: 'passage-sermon', reference: 'Romans 8:28-39', translation: 'KJV', displayMode: 'full' }],
+          mainPassageId: 'passage-sermon',
+          outline: [],
+          role: 'Preacher',
+        },
       ],
-      assignments: [{ role: 'Sound Booth', personId: 'person-sample-rachel-nguyen', tentative: false }],
+      assignments: [
+        { role: 'Preacher', personId: 'person-sample-daniel-renno', tentative: false },
+        { role: 'Sound Booth', personId: 'person-sample-rachel-nguyen', tentative: false },
+      ],
       updatedAt: now,
       updatedByDevice: device,
     },

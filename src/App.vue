@@ -12,6 +12,7 @@ import UndoToastStack from '@/components/UndoToastStack.vue'
 import SplashScreen from '@/components/SplashScreen.vue'
 import PresentationView from '@/views/PresentationView.vue'
 import IdentifyView from '@/views/IdentifyView.vue'
+import { getAdapter } from '@/adapters'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useSyncStore } from '@/stores/sync'
@@ -155,6 +156,9 @@ onMounted(async () => {
   // and the app-bar badge below just stays hidden until it resolves.
   void syncStore.load()
   void getVersion().then((v) => (appVersion.value = v))
+
+  await emit('splash:status', 'Preparing library…')
+  await getAdapter().services.migrateLegacySermonFields()
 
   await emit('splash:status', 'Loading services…')
   await servicesStore.load()

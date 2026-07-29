@@ -220,9 +220,6 @@ mod tests {
             id: id.to_string(),
             date: date.to_string(),
             service_type: "Sunday Morning Worship".to_string(),
-            preacher_id: None,
-            sermon_title: None,
-            key_passage: None,
             items: vec![crate::models::ServiceItem {
                 id: format!("item-{song_id}"),
                 content: ServiceItemContent::Song {

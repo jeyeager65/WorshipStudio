@@ -18,12 +18,6 @@ export interface OrderOfWorshipDoc {
   lines: OrderOfWorshipLine[]
 }
 
-// The preacher is a direct Person id (Service.preacherId), unlike an item's own "who's doing
-// this" — the sermon line resolves it directly rather than through a role/Assignments lookup.
-function resolvePersonId(personId: string | undefined, personNames: Map<string, string>): string | undefined {
-  return personId ? personNames.get(personId) : undefined
-}
-
 // An item's "who's doing this" is a role name, not a Person id directly — the actual person is
 // whoever that service's Assignments has for this role (RoleAssignment.personId), so assigning
 // it there is what fills this in. Absent role (or no matching/unassigned RoleAssignment) means
@@ -158,8 +152,8 @@ function buildLines(
         return {
           role: roleFor(item, 'Worship Through the Word'),
           text: mainPassage?.reference ?? '',
-          person: resolvePersonId(service.preacherId, personNames),
-          note: item.bulletinNote ?? service.sermonTitle,
+          person: resolveRolePerson(item.role, assignments, personNames),
+          note: item.bulletinNote ?? item.title,
         }
       }
       case 'bulletin-note':

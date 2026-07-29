@@ -41,10 +41,14 @@ describe('buildPlanningReport', () => {
         id: 'svc-2',
         date: '2026-02-01',
         type: 'Sunday Morning Worship',
-        sermonTitle: 'Grace Abounds',
-        preacherId: 'person-3',
-        items: [{ id: 'i1', type: 'song', songId: 'song-2', arrangement: { sequence: [] } }],
-        assignments: [{ role: 'Piano', personId: 'person-1', tentative: false }],
+        items: [
+          { id: 'i1', type: 'song', songId: 'song-2', arrangement: { sequence: [] } },
+          { id: 'i2', type: 'sermon', title: 'Grace Abounds', role: 'Preacher', passages: [], mainPassageId: '', outline: [] },
+        ],
+        assignments: [
+          { role: 'Piano', personId: 'person-1', tentative: false },
+          { role: 'Preacher', personId: 'person-3', tentative: false },
+        ],
       }),
       service({
         id: 'svc-1',
@@ -63,7 +67,7 @@ describe('buildPlanningReport', () => {
       sermonTitle: 'Grace Abounds',
       preacher: 'Pastor Dan',
       songTitles: ["Our Lord's Prayer"],
-      roster: ['Praise Team - Piano — Marlene'],
+      roster: ['Praise Team - Piano — Marlene', 'Preacher — Pastor Dan'],
     })
   })
 

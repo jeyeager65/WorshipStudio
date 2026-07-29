@@ -47,3 +47,15 @@ pub fn list_upcoming_services(
 ) -> Result<Vec<Service>, String> {
     services::list_upcoming(&library_root(&app), &from_date, &to_date).map_err(|e| e.to_string())
 }
+
+/// One-time backfill run at app startup (see App.vue's boot sequence) for services saved before
+/// the sermon ServiceItem became the sole source of truth — see
+/// services::migrate_legacy_sermon_fields's own doc comment. Cheap no-op on every call after the
+/// first real one, so it's safe to invoke unconditionally on every launch.
+#[tauri::command]
+pub fn migrate_legacy_sermon_fields(app: AppHandle) -> Result<(), String> {
+    let root = library_root(&app);
+    let now = now_iso();
+    let device = this_device_name(&app);
+    services::migrate_legacy_sermon_fields(&root, &device, &now).map_err(|e| e.to_string())
+}

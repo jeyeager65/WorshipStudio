@@ -39,6 +39,13 @@ export interface ServicePort {
    * which always returns undefined.
    */
   importOpenSongSets(year: number, defaultServiceType: string): Promise<ImportSetsSummary | undefined>
+  /**
+   * One-time backfill (see App.vue's boot sequence) for services saved before the sermon item
+   * became the sole source of truth for a service's sermon title/passage/preacher. A cheap
+   * no-op on every call after the first real one. Pure filesystem transform in Tauri; the mock
+   * adapter's fixtures already model the current shape directly, so this is a no-op there.
+   */
+  migrateLegacySermonFields(): Promise<void>
 }
 
 export interface SlideLibraryPort {

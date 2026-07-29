@@ -20,6 +20,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { usePeopleStore } from '@/stores/people'
 import { flattenService, type FlatSlide } from '@/utils/flattenService'
 import { colorForBlockLabel, colorForItemType } from '@/utils/contentColors'
+import { applySermonEdit, defaultSermonRole, findSermonItem, sermonMainReference, sermonPreacherId } from '@/utils/sermonInfo'
 import { formatCountdown } from '@/utils/countdown'
 import type { Service, ServiceItem, SermonPassage } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
@@ -79,25 +80,35 @@ function openServiceDetailsDialog() {
   if (!service.value) return
   editDate.value = service.value.date
   editType.value = service.value.type
-  editSermonTitle.value = service.value.sermonTitle ?? ''
-  editKeyPassage.value = service.value.keyPassage ?? ''
-  editPreacherId.value = service.value.preacherId
+  const sermonItem = findSermonItem(service.value)
+  editSermonTitle.value = sermonItem?.title ?? ''
+  editKeyPassage.value = sermonItem ? sermonMainReference(sermonItem) : ''
+  editPreacherId.value = sermonPreacherId(service.value, sermonItem)
   serviceDetailsDialogOpen.value = true
 }
 function saveServiceDetails() {
   if (!service.value) return
   service.value.date = editDate.value
   service.value.type = editType.value
-  service.value.sermonTitle = editSermonTitle.value || undefined
-  service.value.keyPassage = editKeyPassage.value || undefined
-  service.value.preacherId = editPreacherId.value || undefined
+  // Only touch the sermon item if there's something to touch — editing just Date/Type on a
+  // service with no sermon at all shouldn't spuriously create a blank one.
+  if (editSermonTitle.value || editKeyPassage.value || editPreacherId.value || findSermonItem(service.value)) {
+    applySermonEdit(
+      service.value,
+      { title: editSermonTitle.value, passageReference: editKeyPassage.value, preacherId: editPreacherId.value },
+      defaultSermonRole(settingsStore.librarySettings?.serviceTemplates, service.value.type),
+      settingsStore.librarySettings?.defaultTranslationCode ?? 'KJV',
+    )
+  }
   serviceDetailsDialogOpen.value = false
 }
 const preacherOptions = computed(() =>
   sortByPreferredRole(peopleStore.people, 'Preacher').map((p) => ({ title: personDisplayName(p), value: p.id })),
 )
 const preacherName = computed(() => {
-  const person = peopleStore.people.find((p) => p.id === service.value?.preacherId)
+  const currentService = service.value
+  if (!currentService) return undefined
+  const person = peopleStore.people.find((p) => p.id === sermonPreacherId(currentService))
   return person ? personDisplayName(person) : undefined
 })
 // Matches the "weekday, month day, year" format already used for the Order of Worship export
@@ -114,9 +125,12 @@ const serviceDateLabel = computed(() =>
     : '',
 )
 // Same combine-and-skip-blanks pattern as ServiceCard's own subtitle line.
-const serviceSubtitle = computed(() =>
-  service.value ? [service.value.sermonTitle, service.value.keyPassage, preacherName.value].filter(Boolean).join(' · ') : '',
-)
+const serviceSubtitle = computed(() => {
+  if (!service.value) return ''
+  const sermonItem = findSermonItem(service.value)
+  const passage = sermonItem ? sermonMainReference(sermonItem) : ''
+  return [sermonItem?.title, passage, preacherName.value].filter(Boolean).join(' · ')
+})
 
 const addDialogOpen = ref(false)
 const addQuery = ref('')
@@ -437,13 +451,6 @@ function placeholderTypeName(suggestedTab: string | undefined): string {
   return PLACEHOLDER_TYPE_NAMES[suggestedTab ?? ''] ?? 'Item'
 }
 
-// The Service Order list's sermon row shows its main passage as a second line — same
-// "main passage wins" resolution as the printed Order of Worship (see orderOfWorship.ts).
-function sermonMainReference(item: Extract<ServiceItem, { type: 'sermon' }>): string {
-  const mainPassage = item.passages.find((p) => p.id === item.mainPassageId) ?? item.passages[0]
-  return mainPassage?.reference ?? ''
-}
-
 // sermon/bulletin-note/placeholder already resolve bulletinLabel as their own itemLabel() —
 // showing it again as a distinct first line would just repeat the exact same text.
 const BULLETIN_LABEL_DRIVEN_TYPES = new Set(['sermon', 'bulletin-note', 'placeholder'])
@@ -471,7 +478,7 @@ function itemLabel(item: ServiceItem): string {
   if (item.type === 'video') return mediaById.value.get(item.mediaId)?.filename ?? 'Unknown Video'
   if (item.type === 'external-app') return externalAppProfilesById.value.get(item.profileId)?.name ?? 'Unknown App'
   if (item.type === 'countdown') return item.text || 'Countdown'
-  if (item.type === 'sermon') return item.bulletinLabel || 'Worship Through the Word'
+  if (item.type === 'sermon') return item.bulletinLabel || item.title || 'Worship Through the Word'
   if (item.type === 'bulletin-note') return item.bulletinLabel || 'Bulletin Note'
   if (item.type === 'placeholder') return item.bulletinLabel || item.label || `${placeholderTypeName(item.suggestedTab)} Placeholder`
   return item.type
@@ -1000,6 +1007,7 @@ interface SermonPassageDraft {
   id: string
   value: ScriptureReferenceValue
 }
+const sermonTitleDraft = ref('')
 const sermonPassages = ref<SermonPassageDraft[]>([])
 const sermonMainPassageId = ref<string>()
 const sermonOutlineBlocks = ref<SongBlock[]>([])
@@ -1054,6 +1062,7 @@ async function addSermonToService() {
     const item: ServiceItem = {
       id: `item-${crypto.randomUUID()}`,
       type: 'sermon',
+      title: sermonTitleDraft.value.trim() || undefined,
       passages,
       mainPassageId: sermonMainPassageId.value,
       outline: sermonOutlineBlocks.value.map((block) => ({ ...block })),
@@ -1106,6 +1115,7 @@ function closeAddDialog() {
   externalAppAddError.value = undefined
   countdownTargetTime.value = ''
   countdownText.value = ''
+  sermonTitleDraft.value = ''
   sermonPassages.value = []
   sermonMainPassageId.value = undefined
   sermonOutlineBlocks.value = []
@@ -1960,6 +1970,13 @@ function updateRolePerson(role: string, personId: string | undefined) {
             </v-window-item>
 
             <v-window-item value="sermon">
+              <v-text-field
+                v-model="sermonTitleDraft"
+                label="Sermon Title (optional)"
+                placeholder="e.g. Our Lord's Prayer"
+                variant="outlined"
+                class="mb-3"
+              />
               <div class="text-overline text-medium-emphasis mb-2">Passages</div>
               <v-card v-for="passage in sermonPassages" :key="passage.id" variant="outlined" rounded="lg" class="pa-3 mb-3">
                 <div class="d-flex align-center justify-space-between mb-2">

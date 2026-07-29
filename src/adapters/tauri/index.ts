@@ -234,6 +234,7 @@ export function createTauriAdapter(): StudioAdapter {
         if (!folder || Array.isArray(folder)) return undefined
         return invoke<ImportSetsSummary>('import_opensong_sets', { setsFolder: folder, year, defaultServiceType })
       },
+      migrateLegacySermonFields: () => invoke('migrate_legacy_sermon_fields'),
     },
     slides: {
       list: () => invoke<SlideLibraryItem[]>('list_slides'),

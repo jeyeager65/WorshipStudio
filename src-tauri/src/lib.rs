@@ -81,6 +81,7 @@ pub fn run() {
             commands::services::save_service,
             commands::services::delete_service,
             commands::services::list_upcoming_services,
+            commands::services::migrate_legacy_sermon_fields,
             commands::slides::list_slides,
             commands::slides::get_slide,
             commands::slides::save_slide,

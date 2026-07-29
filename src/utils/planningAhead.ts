@@ -1,4 +1,5 @@
 import type { Service } from '@/models/service'
+import { sermonPreacherId } from '@/utils/sermonInfo'
 
 export interface PlanningAheadMonth {
   /** "2026-03" — sorts and dedupes naturally as a plain string key. */
@@ -33,7 +34,7 @@ export function groupUpcomingByMonth(services: Service[], todayIso: string): Pla
 }
 
 export function needsPreacher(service: Service): boolean {
-  return !service.preacherId
+  return !sermonPreacherId(service)
 }
 
 export function hasStarted(service: Service): boolean {

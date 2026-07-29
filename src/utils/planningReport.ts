@@ -2,6 +2,7 @@ import type { Service } from '@/models/service'
 import type { Song } from '@/models/song'
 import type { RoleGroup } from '@/models/settings'
 import { roleDisplayLabel } from '@/models/settings'
+import { findSermonItem, sermonPreacherId } from '@/utils/sermonInfo'
 
 export interface PlanningReportRow {
   serviceId: string
@@ -65,13 +66,15 @@ export function buildPlanningReport(
       year: 'numeric',
     })
 
+    const sermonItem = findSermonItem(service)
+
     return {
       serviceId: service.id,
       date: service.date,
       dateLine,
       type: service.type,
-      preacher: personNames.get(service.preacherId ?? ''),
-      sermonTitle: service.sermonTitle,
+      preacher: personNames.get(sermonPreacherId(service, sermonItem) ?? ''),
+      sermonTitle: sermonItem?.title,
       songTitles,
       roster,
     }

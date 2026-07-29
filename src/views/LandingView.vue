@@ -8,6 +8,7 @@ import { useSongsStore } from '@/stores/songs'
 import ServiceCard from '@/components/ServiceCard.vue'
 import type { Service } from '@/models/service'
 import { personDisplayName } from '@/models/library'
+import { findSermonItem, sermonMainReference, sermonPreacherId } from '@/utils/sermonInfo'
 
 const store = useServicesStore()
 const undoStore = useUndoStore()
@@ -39,7 +40,7 @@ onMounted(() => {
 })
 
 function preacherName(service: Service): string | undefined {
-  const person = peopleStore.people.find((p) => p.id === service.preacherId)
+  const person = peopleStore.people.find((p) => p.id === sermonPreacherId(service))
   return person ? personDisplayName(person) : undefined
 }
 
@@ -68,11 +69,11 @@ const browseResults = computed(() => {
   // throws mid-computed (.trim() on null), which is what silently broke the clear button.
   const query = (browseQuery.value ?? '').trim().toLowerCase()
   if (!query) return pastServices.value.slice(0, 10)
-  return visibleServices.value.filter((service) =>
-    [service.type, service.sermonTitle, preacherName(service), service.keyPassage].some((field) =>
-      field?.toLowerCase().includes(query),
-    ),
-  )
+  return visibleServices.value.filter((service) => {
+    const sermonItem = findSermonItem(service)
+    const passage = sermonItem ? sermonMainReference(sermonItem) : undefined
+    return [service.type, sermonItem?.title, preacherName(service), passage].some((field) => field?.toLowerCase().includes(query))
+  })
 })
 </script>
 

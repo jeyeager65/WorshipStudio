@@ -129,10 +129,12 @@ pub enum ServiceItemContent {
         caption: Option<String>,
     },
     /// "Worship Through the Word" — presentable passage(s) plus an outline, positioned wherever
-    /// it actually falls in the service rather than pinned to a fixed header (see
-    /// Service::sermon_title/key_passage/preacher_id, which remain the quick-glance summary
-    /// fields used by cards/reports, independent of this item's own content).
+    /// it actually falls in the service rather than pinned to a fixed header. This item is the
+    /// sole source of truth for the service's sermon (title/passage/preacher, the last via the
+    /// shared `role` field on `ServiceItem`) — there is no separate service-level sermon summary.
     Sermon {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
         #[serde(default)]
         passages: Vec<SermonPassage>,
         main_passage_id: String,
@@ -164,8 +166,8 @@ pub struct ServiceItem {
     /// directly: the actual person is whoever that service's Assignments has for this role, so
     /// assigning it there is what fills this in (and keeps conflict-detection/templates
     /// consistent). Optional and often absent — a "Silent Preparation" bulletin note, for
-    /// example, needs no one assigned at all. Distinct from the service-level preacher
-    /// (Service::preacher_id), which is its own separate assignment.
+    /// example, needs no one assigned at all. For the sermon item this is how its preacher is
+    /// resolved too — the same role/assignments mechanism as every other item type.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
     /// Overrides this item's default Order of Worship heading (e.g. Scripture's hardcoded
@@ -363,12 +365,6 @@ pub struct Service {
     pub date: String,
     #[serde(rename = "type")]
     pub service_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub preacher_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sermon_title: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_passage: Option<String>,
     #[serde(default)]
     pub items: Vec<ServiceItem>,
     #[serde(skip_serializing_if = "Option::is_none")]

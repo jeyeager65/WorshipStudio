@@ -152,6 +152,8 @@ export function createMockAdapter(): StudioAdapter {
       },
       // No real filesystem to pick an OpenSong Sets folder from in the browser demo.
       importOpenSongSets: async () => undefined,
+      // Nothing to backfill — this adapter's fixtures already model the current (item-based) shape.
+      migrateLegacySermonFields: async () => {},
     },
     slides: {
       list: () => slides.list(),

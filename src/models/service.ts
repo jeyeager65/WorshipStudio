@@ -28,10 +28,10 @@ export type ServiceItemContent =
   | { type: 'countdown'; targetTime: string; text?: string }
   | { type: 'qr'; url: string; caption?: string }
   /** "Worship Through the Word" — presentable passage(s) plus an outline, positioned wherever
-   *  it actually falls in the service rather than pinned to a fixed header (see
-   *  Service.sermonTitle/keyPassage/preacherId, which remain the quick-glance summary fields
-   *  used by cards/reports, independent of this item's own content). */
-  | { type: 'sermon'; passages: SermonPassage[]; mainPassageId: string; outline: SongBlock[] }
+   *  it actually falls in the service rather than pinned to a fixed header. This item is the
+   *  sole source of truth for the service's sermon (title/passage/preacher, the last via the
+   *  shared role field below) — there is no separate service-level sermon summary. */
+  | { type: 'sermon'; title?: string; passages: SermonPassage[]; mainPassageId: string; outline: SongBlock[] }
   /** A bulletin-only line (e.g. "Silent Preparation", a named prayer) — never presented on
    *  screen (see flattenService.ts); its heading/body are the shared bulletinLabel/bulletinNote
    *  fields below, not fields of its own. */
@@ -49,8 +49,8 @@ export type ServiceItem = ServiceItemContent & {
    *  the actual person is whoever that service's Assignments has for this role, so assigning it
    *  there is what fills this in (and keeps conflict-detection/templates consistent). Optional
    *  and often absent — a "Silent Preparation" bulletin note, for example, needs no one
-   *  assigned at all. Distinct from the service-level preacher (Service.preacherId), which is
-   *  its own separate assignment. */
+   *  assigned at all. For the sermon item this is how its preacher is resolved too — the same
+   *  role/assignments mechanism as every other item type, no special-cased field. */
   role?: string
   /** Overrides this item's default Order of Worship heading (e.g. Scripture's hardcoded
    *  "Scripture Reading:" becomes "Scriptural Call to Worship:"; a song, which has no default
@@ -99,9 +99,6 @@ export interface Service {
   id: string
   date: string
   type: string
-  preacherId?: string
-  sermonTitle?: string
-  keyPassage?: string
   items: ServiceItem[]
   /** Operator-only notes, keyed by service item id. */
   presenterNotes?: Record<string, string>

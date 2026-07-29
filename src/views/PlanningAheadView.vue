@@ -6,6 +6,7 @@ import { usePeopleStore } from '@/stores/people'
 import { groupUpcomingByMonth, hasStarted, needsPreacher } from '@/utils/planningAhead'
 import { personDisplayName } from '@/models/library'
 import type { Service } from '@/models/service'
+import { findSermonItem, sermonPreacherId } from '@/utils/sermonInfo'
 
 const store = useServicesStore()
 const peopleStore = usePeopleStore()
@@ -17,7 +18,7 @@ onMounted(() => {
 })
 
 function preacherName(service: Service): string | undefined {
-  const person = peopleStore.people.find((p) => p.id === service.preacherId)
+  const person = peopleStore.people.find((p) => p.id === sermonPreacherId(service))
   return person ? personDisplayName(person) : undefined
 }
 
@@ -74,7 +75,7 @@ function openService(serviceId: string) {
             </td>
             <td>{{ service.type }}</td>
             <td>
-              <span v-if="service.sermonTitle">{{ service.sermonTitle }}</span>
+              <span v-if="findSermonItem(service)?.title">{{ findSermonItem(service)?.title }}</span>
               <span v-else class="text-medium-emphasis font-italic">Not yet decided</span>
             </td>
             <td>

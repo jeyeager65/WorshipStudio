@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Service } from '@/models/service'
+import { findSermonItem, sermonMainReference } from '@/utils/sermonInfo'
 
 const props = defineProps<{
   service: Service
   badge?: string
-  /** Resolved by the parent (see LandingView) from service.preacherId — kept a dumb
-   *  presentational prop here rather than this card reaching into the people store itself. */
+  /** Resolved by the parent (see LandingView) from the sermon item's role/assignments — kept a
+   *  dumb presentational prop here rather than this card reaching into the people store itself. */
   preacherName?: string
 }>()
 const emit = defineEmits<{ delete: [] }>()
@@ -18,11 +19,13 @@ const dateLabel = computed(() =>
   }),
 )
 
-// Sermon title + key passage + preacher, combined on one line per spec section 9's
+// Sermon title + main passage + preacher, combined on one line per spec section 9's
 // three-line service card layout.
-const subtitle = computed(() =>
-  [props.service.sermonTitle, props.service.keyPassage, props.preacherName].filter(Boolean).join(' · '),
-)
+const subtitle = computed(() => {
+  const sermonItem = findSermonItem(props.service)
+  const passage = sermonItem ? sermonMainReference(sermonItem) : ''
+  return [sermonItem?.title, passage, props.preacherName].filter(Boolean).join(' · ')
+})
 
 const songCount = computed(() => props.service.items.filter((item) => item.type === 'song').length)
 

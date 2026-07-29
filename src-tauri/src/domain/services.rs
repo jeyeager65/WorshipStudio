@@ -1,9 +1,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::models::Service;
+use crate::models::{
+    DisplayMode, LibrarySettings, RoleAssignment, SermonPassage, Service, ServiceItem,
+    ServiceItemContent, ServiceTemplateItemKind,
+};
 
-use super::{read_json_dir, write_json_file};
+use super::{read_json_dir, read_json_file, write_json_file};
 
 fn services_root(root: &Path) -> PathBuf {
     root.join("services")
@@ -87,6 +90,196 @@ pub fn list_upcoming(root: &Path, from_date: &str, to_date: &str) -> std::io::Re
         .collect())
 }
 
+/// One-time backfill for services saved before the sermon `ServiceItem` became the sole source
+/// of truth for a service's sermon title/passage/preacher — those used to live only in
+/// `Service`'s now-removed `sermonTitle`/`keyPassage`/`preacherId` fields. Since the typed
+/// `Service` struct no longer declares them, an ordinary deserialize silently drops them (as it
+/// already silently drops any unknown JSON field) — this is the only way to still recover them,
+/// by re-parsing each file's raw bytes as a `serde_json::Value` alongside the normal typed read.
+/// Idempotent and cheap on repeat runs: once a file has been migrated, `save()` has already
+/// rewritten it through the (legacy-field-free) typed struct, so the raw parse finds nothing and
+/// the file is skipped entirely — no separate "already migrated" flag is needed.
+pub fn migrate_legacy_sermon_fields(root: &Path, device: &str, now: &str) -> std::io::Result<()> {
+    let library_settings: Option<LibrarySettings> =
+        read_json_file(&root.join("library-settings.json"));
+
+    for service in list(root)? {
+        let year = year_of(&service.date).to_string();
+        let path = service_path(root, &year, &service.id);
+        let Some(raw) = read_json_file::<serde_json::Value>(&path) else {
+            continue;
+        };
+        let legacy_title = raw
+            .get("sermonTitle")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let legacy_passage = raw
+            .get("keyPassage")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let legacy_preacher_id = raw
+            .get("preacherId")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        if legacy_title.is_none() && legacy_passage.is_none() && legacy_preacher_id.is_none() {
+            continue;
+        }
+
+        let mut service = service;
+        if apply_legacy_sermon_fields(
+            &mut service,
+            legacy_title,
+            legacy_passage,
+            legacy_preacher_id,
+            library_settings.as_ref(),
+        ) {
+            save(root, service, device, now)?;
+        }
+    }
+    Ok(())
+}
+
+/// Folds recovered legacy sermon fields into a real sermon `ServiceItem` (see
+/// `migrate_legacy_sermon_fields`'s doc comment for why they need recovering at all). Returns
+/// whether anything actually changed, so the caller only rewrites files that needed it.
+fn apply_legacy_sermon_fields(
+    service: &mut Service,
+    legacy_title: Option<String>,
+    legacy_passage: Option<String>,
+    legacy_preacher_id: Option<String>,
+    library_settings: Option<&LibrarySettings>,
+) -> bool {
+    let mut changed = false;
+
+    // Prefer an existing sermon item; else a still-unfilled sermon placeholder to replace in
+    // place (mirroring the frontend's own insertItem/beginReplacePlaceholder logic — its
+    // role/bulletinLabel, if the church's ServiceTemplate set any, are untouched since only
+    // `.content` is swapped); else synthesize a brand new one appended at the end.
+    let sermon_index = service
+        .items
+        .iter()
+        .position(|i| matches!(i.content, ServiceItemContent::Sermon { .. }));
+    let target_index = sermon_index.or_else(|| {
+        service.items.iter().position(|i| {
+            matches!(&i.content, ServiceItemContent::Placeholder { suggested_tab, .. }
+                if suggested_tab.as_deref() == Some("sermon"))
+        })
+    });
+
+    let blank_sermon = || ServiceItemContent::Sermon {
+        title: None,
+        passages: vec![],
+        main_passage_id: String::new(),
+        outline: vec![],
+    };
+
+    let index = match target_index {
+        Some(i) => i,
+        None => {
+            service.items.push(ServiceItem {
+                id: format!("sermon-migrated-{}", service.id),
+                content: blank_sermon(),
+                role: None,
+                bulletin_label: None,
+                bulletin_note: None,
+            });
+            changed = true;
+            service.items.len() - 1
+        }
+    };
+    if sermon_index.is_none()
+        && matches!(
+            service.items[index].content,
+            ServiceItemContent::Placeholder { .. }
+        )
+    {
+        service.items[index].content = blank_sermon();
+        changed = true;
+    }
+
+    let ServiceItemContent::Sermon {
+        title,
+        passages,
+        main_passage_id,
+        ..
+    } = &mut service.items[index].content
+    else {
+        unreachable!("index always refers to a sermon item by this point")
+    };
+
+    if title.is_none() {
+        if let Some(legacy_title) = legacy_title {
+            *title = Some(legacy_title);
+            changed = true;
+        }
+    }
+
+    if passages.is_empty() {
+        if let Some(reference) = legacy_passage {
+            let translation = library_settings
+                .and_then(|s| s.default_translation_code.clone())
+                .unwrap_or_else(|| "KJV".to_string());
+            let passage_id = format!("passage-migrated-{}", service.id);
+            passages.push(SermonPassage {
+                id: passage_id.clone(),
+                reference,
+                translation,
+                display_mode: DisplayMode::Full,
+            });
+            *main_passage_id = passage_id;
+            changed = true;
+        }
+    }
+
+    // Resolve a role name to attach the legacy preacher to: the item's own role if it already
+    // has one, else whatever role the church's configured ServiceTemplate uses for this service
+    // type's sermon row — never a fabricated default (a hardcoded "Preacher" role would be wrong
+    // for churches whose actual configured role is named something else entirely, and could
+    // create a stray assignment nothing else ever references).
+    let role = service.items[index].role.clone().or_else(|| {
+        library_settings
+            .and_then(|s| {
+                s.service_templates
+                    .iter()
+                    .find(|t| t.service_type == service.service_type)
+            })
+            .and_then(|t| {
+                t.items
+                    .iter()
+                    .find(|i| matches!(i.kind, ServiceTemplateItemKind::Sermon))
+            })
+            .and_then(|i| i.role.clone())
+    });
+
+    if let Some(role) = role {
+        if service.items[index].role.is_none() {
+            service.items[index].role = Some(role.clone());
+            changed = true;
+        }
+        if let Some(person_id) = legacy_preacher_id {
+            let assignments = service.assignments.get_or_insert_with(Vec::new);
+            if let Some(existing) = assignments.iter_mut().find(|a| a.role == role) {
+                if existing.person_id.is_none() {
+                    existing.person_id = Some(person_id);
+                    changed = true;
+                }
+                // else: already assigned to a different person — the sermon item/assignments
+                // are the source of truth now, so the disagreeing legacy value is dropped rather
+                // than guessed at.
+            } else {
+                assignments.push(RoleAssignment {
+                    role,
+                    person_id: Some(person_id),
+                    tentative: false,
+                });
+                changed = true;
+            }
+        }
+    }
+
+    changed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -96,9 +289,6 @@ mod tests {
             id: id.to_string(),
             date: date.to_string(),
             service_type: "Sunday Morning Worship".to_string(),
-            preacher_id: None,
-            sermon_title: None,
-            key_passage: None,
             items: vec![],
             presenter_notes: None,
             assignments: None,
@@ -142,5 +332,167 @@ mod tests {
         let upcoming = list_upcoming(dir.path(), "2026-07-19", "2026-07-31").unwrap();
         assert_eq!(upcoming.len(), 1);
         assert_eq!(upcoming[0].id, "svc-2");
+    }
+
+    // Writes a raw pre-migration service file directly (bypassing the typed `Service` struct,
+    // which no longer has fields for the legacy sermonTitle/keyPassage/preacherId keys these
+    // tests need to simulate) — `extra` merges in whatever legacy/items/assignments fields a
+    // given test cares about.
+    fn write_legacy_json(dir: &Path, id: &str, date: &str, extra: serde_json::Value) {
+        let mut obj = serde_json::json!({
+            "id": id,
+            "date": date,
+            "type": "Sunday Morning Worship",
+            "items": [],
+            "updatedAt": "original",
+            "updatedByDevice": "original-device",
+        });
+        if let (Some(obj_map), Some(extra_map)) = (obj.as_object_mut(), extra.as_object()) {
+            for (key, value) in extra_map {
+                obj_map.insert(key.clone(), value.clone());
+            }
+        }
+        let year = &date[0..4];
+        let path = dir.join("services").join(year).join(format!("{id}.json"));
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, serde_json::to_vec_pretty(&obj).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn migration_replaces_a_still_unfilled_sermon_placeholder_in_place() {
+        let dir = tempfile::tempdir().unwrap();
+        write_legacy_json(
+            dir.path(),
+            "svc-1",
+            "2026-07-19",
+            serde_json::json!({
+                "sermonTitle": "Grace Alone",
+                "keyPassage": "Ephesians 2:8-9",
+                "items": [{ "id": "item-1", "type": "placeholder", "label": "Sermon", "suggestedTab": "sermon" }],
+            }),
+        );
+
+        migrate_legacy_sermon_fields(dir.path(), "d", "migrated-time").unwrap();
+
+        let service = get(dir.path(), "svc-1").unwrap();
+        assert_eq!(
+            service.items.len(),
+            1,
+            "placeholder should be replaced in place, not appended alongside"
+        );
+        let ServiceItemContent::Sermon {
+            title,
+            passages,
+            main_passage_id,
+            ..
+        } = &service.items[0].content
+        else {
+            panic!("expected the placeholder to become a sermon item");
+        };
+        assert_eq!(title.as_deref(), Some("Grace Alone"));
+        assert_eq!(passages.len(), 1);
+        assert_eq!(passages[0].reference, "Ephesians 2:8-9");
+        assert_eq!(&passages[0].id, main_passage_id);
+    }
+
+    #[test]
+    fn migration_recovers_a_role_from_the_service_template_when_nothing_else_has_one() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("library-settings.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "serviceTypes": [],
+                "collections": [],
+                "roleGroups": [],
+                "serviceTemplates": [{
+                    "serviceType": "Sunday Morning Worship",
+                    "items": [{ "id": "t1", "kind": "sermon", "label": "Sermon", "role": "Worship Through the Word" }],
+                }],
+                "branding": { "churchName": "", "primaryColor": "#000", "secondaryColor": "#000" },
+                "apiBibleTranslations": [],
+                "mediaMaxSyncedFileSizeMb": 50,
+                "scriptureMinFontSizePx": 28,
+                "scriptureMaxFontSizePx": 72,
+                "songMinFontSizePx": 16,
+                "songMaxFontSizePx": 72,
+                "slideHeaderFontSizePx": 24,
+                "slideFooterFontSizePx": 24,
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        // No existing sermon item or placeholder at all — the append path.
+        write_legacy_json(
+            dir.path(),
+            "svc-1",
+            "2026-07-19",
+            serde_json::json!({ "sermonTitle": "Grace Alone", "preacherId": "person-1" }),
+        );
+
+        migrate_legacy_sermon_fields(dir.path(), "d", "migrated-time").unwrap();
+
+        let service = get(dir.path(), "svc-1").unwrap();
+        assert_eq!(service.items.len(), 1);
+        assert_eq!(
+            service.items[0].role.as_deref(),
+            Some("Worship Through the Word")
+        );
+        let assignments = service.assignments.unwrap();
+        assert_eq!(assignments.len(), 1);
+        assert_eq!(assignments[0].role, "Worship Through the Word");
+        assert_eq!(assignments[0].person_id.as_deref(), Some("person-1"));
+    }
+
+    #[test]
+    fn migration_leaves_a_differing_existing_assignment_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        write_legacy_json(
+            dir.path(),
+            "svc-1",
+            "2026-07-19",
+            serde_json::json!({
+                "preacherId": "person-legacy",
+                "items": [{
+                    "id": "item-1",
+                    "type": "sermon",
+                    "role": "Worship Through the Word",
+                    "passages": [],
+                    "mainPassageId": "",
+                    "outline": [],
+                }],
+                "assignments": [{ "role": "Worship Through the Word", "personId": "person-already-assigned", "tentative": false }],
+            }),
+        );
+
+        migrate_legacy_sermon_fields(dir.path(), "d", "migrated-time").unwrap();
+
+        let service = get(dir.path(), "svc-1").unwrap();
+        let assignments = service.assignments.unwrap();
+        assert_eq!(assignments.len(), 1);
+        assert_eq!(
+            assignments[0].person_id.as_deref(),
+            Some("person-already-assigned"),
+            "an already-assigned person should win over a disagreeing legacy preacherId"
+        );
+    }
+
+    #[test]
+    fn migration_is_a_no_op_on_a_second_run() {
+        let dir = tempfile::tempdir().unwrap();
+        write_legacy_json(
+            dir.path(),
+            "svc-1",
+            "2026-07-19",
+            serde_json::json!({ "sermonTitle": "Grace Alone" }),
+        );
+
+        migrate_legacy_sermon_fields(dir.path(), "d", "first-run-time").unwrap();
+        migrate_legacy_sermon_fields(dir.path(), "d", "second-run-time").unwrap();
+
+        let service = get(dir.path(), "svc-1").unwrap();
+        assert_eq!(
+            service.updated_at, "first-run-time",
+            "a second run should find nothing left to migrate and skip rewriting the file"
+        );
     }
 }

@@ -36,7 +36,17 @@ describe('groupUpcomingByMonth', () => {
 describe('needsPreacher', () => {
   it('flags a missing preacher', () => {
     expect(needsPreacher(service({ id: '1', date: '2026-01-01', type: 'x' }))).toBe(true)
-    expect(needsPreacher(service({ id: '1', date: '2026-01-01', type: 'x', preacherId: 'person-daniel-renno' }))).toBe(false)
+    expect(
+      needsPreacher(
+        service({
+          id: '1',
+          date: '2026-01-01',
+          type: 'x',
+          items: [{ id: 'item-sermon', type: 'sermon', role: 'Preacher', passages: [], mainPassageId: '', outline: [] }],
+          assignments: [{ role: 'Preacher', personId: 'person-daniel-renno', tentative: false }],
+        }),
+      ),
+    ).toBe(false)
   })
 })
 

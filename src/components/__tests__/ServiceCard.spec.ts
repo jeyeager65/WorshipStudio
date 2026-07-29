@@ -16,8 +16,10 @@ function sampleService(overrides: Partial<Service> = {}): Service {
     id: 'service-1',
     date: '2026-07-19',
     type: 'Sunday Morning Worship',
-    sermonTitle: 'Our Lord’s Prayer',
-    items: [{ id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: [] } }],
+    items: [
+      { id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: [] } },
+      { id: 'item-sermon', type: 'sermon', title: 'Our Lord’s Prayer', passages: [], mainPassageId: '', outline: [] },
+    ],
     updatedAt: '',
     updatedByDevice: '',
     ...overrides,
