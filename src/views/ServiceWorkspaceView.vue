@@ -1186,7 +1186,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
           Assignments
         </v-btn>
         <v-btn variant="outlined" prepend-icon="mdi-file-document-outline" :to="`/service/${service.id}/order-of-worship`">
-          Order of Worship
+          Bulletin
         </v-btn>
         <v-btn :color="isPresenting ? 'error' : 'primary'" variant="flat" @click="togglePresenting">
           <v-icon :icon="isPresenting ? 'mdi-stop' : 'mdi-play'" start />
@@ -1198,7 +1198,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
     <div class="workspace-layout">
       <div class="service-panel">
         <div class="d-flex align-center justify-space-between px-3 py-2 border-b">
-          <span class="text-overline text-medium-emphasis">Service Order</span>
+          <span class="text-overline text-medium-emphasis">Order of Worship</span>
           <v-btn
             :icon="reorderMode ? 'mdi-check' : 'mdi-swap-vertical'"
             variant="text"

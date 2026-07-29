@@ -17,7 +17,7 @@ describe('Order of Worship Export', () => {
     await workspaceSaveBtn.waitForClickable({ timeout: 15000 })
     await workspaceSaveBtn.click()
 
-    const oowLink = await $('a*=Order of Worship')
+    const oowLink = await $('a*=Bulletin')
     await oowLink.waitForExist({ timeout: 15000 })
     await oowLink.click()
 
