@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { getCurrentWindow, availableMonitors, primaryMonitor, LogicalPosition, LogicalSize } from '@tauri-apps/api/window'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
@@ -259,6 +259,15 @@ export function createTauriAdapter(): StudioAdapter {
       detectDuplicates: (item) => invoke<MediaItem[]>('detect_media_duplicates', { item }),
       delete: (id) => invoke('delete_media', { id }),
       getFilePath: (id) => invoke<string>('get_media_file_path', { id }),
+      getPreviewUrl: async (id) => {
+        try {
+          return convertFileSrc(await invoke<string>('get_media_file_path', { id }))
+        } catch {
+          // Missing file, deleted item, etc. — the grid falls back to a placeholder rather
+          // than surface an error for what's just a thumbnail.
+          return undefined
+        }
+      },
     },
     themes: {
       list: () => invoke<Theme[]>('list_themes'),

@@ -53,6 +53,8 @@ export const seedMedia: MediaItem[] = [
   {
     id: 'media-worship-hands-sunset',
     filename: 'worship-hands-sunset.jpg',
+    title: 'Worship Hands at Sunset',
+    description: 'Raised hands silhouetted against a sunset — used for the opening worship set.',
     kind: 'image',
     tags: ['Worship'],
     location: 'synced',
@@ -64,6 +66,8 @@ export const seedMedia: MediaItem[] = [
   {
     id: 'media-gentle-water-loop',
     filename: 'gentle-water-loop.mp4',
+    title: 'Gentle Water Loop',
+    description: 'A slow-moving water background loop for quiet/reflective moments.',
     kind: 'video',
     tags: ['Nature'],
     location: 'synced',

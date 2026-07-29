@@ -98,6 +98,14 @@ export function createMockAdapter(): StudioAdapter {
   function fakeContentHash(file: File): string {
     return `${file.name}:${file.size}`
   }
+  function titleFromFilename(filename: string): string {
+    return filename.replace(/\.[^.]+$/, '')
+  }
+  // Real bytes for a committed item, kept only in memory (never JSON-serialized/persisted —
+  // see MockCollection's localStorage-based persistence) so the Media Library grid can show a
+  // real thumbnail for anything imported this session. Revoked on delete; there's no other
+  // cleanup opportunity in a browser demo (no app-close hook to rely on either way).
+  const mediaPreviewUrls = new Map<string, string>()
 
   async function importOpenSongXml(xml: string): Promise<Song> {
     const parsed = parseOpenSongXml(xml)
@@ -192,6 +200,8 @@ export function createMockAdapter(): StudioAdapter {
           const item: MediaItem = {
             id: newId('media'),
             filename: file.filename,
+            title: file.title.trim() || titleFromFilename(file.filename),
+            description: file.description,
             kind: source ? guessMediaKind(source) : 'image',
             tags: file.tags,
             location: file.location,
@@ -200,6 +210,7 @@ export function createMockAdapter(): StudioAdapter {
             usage: { usesPastYear: 0 },
             ...nowStamp(),
           }
+          if (source) mediaPreviewUrls.set(item.id, URL.createObjectURL(source))
           await media.save(item)
           created.push(item)
         }
@@ -209,7 +220,15 @@ export function createMockAdapter(): StudioAdapter {
         const all = (await media.list()) as MediaItem[]
         return all.filter((other) => other.id !== item.id && other.contentHash === item.contentHash)
       },
-      delete: (id) => media.delete(id),
+      delete: async (id) => {
+        const url = mediaPreviewUrls.get(id)
+        if (url) {
+          URL.revokeObjectURL(url)
+          mediaPreviewUrls.delete(id)
+        }
+        await media.delete(id)
+      },
+      getPreviewUrl: async (id) => mediaPreviewUrls.get(id),
     },
     themes: {
       list: () => themes.list(),

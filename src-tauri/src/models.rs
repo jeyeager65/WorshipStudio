@@ -411,6 +411,14 @@ pub struct SlideLibraryItem {
 pub struct MediaItem {
     pub id: String,
     pub filename: String,
+    /// Required, unlike filename — the human-facing label everywhere this item is shown.
+    /// Defaults to empty for files saved before this field existed; domain::media normalizes
+    /// that (deriving one from the filename) on read rather than here, since a default fn has
+    /// no access to this item's own filename to derive from.
+    #[serde(default)]
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     /// "image" | "video" — a plain string rather than an enum, same convention as
     /// `service_type`/`location` elsewhere in this file for simple open-ended value sets.
     pub kind: String,

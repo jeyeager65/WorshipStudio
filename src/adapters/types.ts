@@ -68,6 +68,8 @@ export interface StagedMediaFile {
 export interface MediaImportCommit {
   path: string
   filename: string
+  title: string
+  description?: string
   tags: string[]
   location: 'synced' | 'local'
   duplicateOfId?: string
@@ -90,6 +92,15 @@ export interface MediaPort {
    * local file to point at.
    */
   getFilePath?(id: string): Promise<string>
+  /**
+   * A ready-to-use `<img>`/`<video>` src for the Media Library's own grid thumbnails — unlike
+   * getFilePath above, this is never a raw filesystem path the caller has to know how to turn
+   * into a URL itself: Tauri wraps its file path in `convertFileSrc` internally, and the mock
+   * adapter returns an in-memory blob: URL for whatever it still has bytes for. Resolves to
+   * undefined (not a rejection) when no preview is available — e.g. mock fixture items with no
+   * real file behind them — so callers can fall back to a placeholder rather than show an error.
+   */
+  getPreviewUrl(id: string): Promise<string | undefined>
 }
 
 export interface ThemePort {

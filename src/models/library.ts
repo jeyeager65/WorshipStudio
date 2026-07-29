@@ -21,6 +21,9 @@ export interface SlideLibraryItem {
 export interface MediaItem {
   id: string
   filename: string
+  /** Required — the human-facing label shown everywhere this item appears, instead of the raw filename. */
+  title: string
+  description?: string
   kind: 'image' | 'video'
   tags: string[]
   location: 'synced' | 'local'

@@ -10,9 +10,19 @@ const emit = defineEmits<{ 'update:modelValue': [boolean]; imported: [MediaItem[
 const confirmDialog = useConfirmDialogStore()
 
 interface StagedFileRow extends StagedMediaFile {
+  titleInput: string
+  descriptionInput: string
   tagsInput: string
   skip: boolean
   localOnly: boolean
+}
+
+// A starting point the operator can edit or replace outright, not a real title — required
+// everywhere a MediaItem is displayed, so this dialog is where it has to be collected (nothing
+// downstream generates one on its own beyond this same fallback, see domain::media's
+// title_from_filename on the Tauri side / titleFromFilename in the mock adapter).
+function titleFromFilename(filename: string): string {
+  return filename.replace(/\.[^.]+$/, '')
 }
 
 const stagedRows = ref<StagedFileRow[]>([])
@@ -47,6 +57,8 @@ async function browseFiles() {
   for (const file of staged) {
     stagedRows.value.push({
       ...file,
+      titleInput: titleFromFilename(file.filename),
+      descriptionInput: '',
       tagsInput: bulkTag.value,
       skip: !!file.duplicateOfId,
       localOnly: file.sizeBytes > maxSyncedBytes.value,
@@ -64,17 +76,21 @@ async function removeRow(path: string) {
 const includedRows = computed(() => stagedRows.value.filter((row) => !row.skip))
 const duplicateCount = computed(() => stagedRows.value.filter((row) => row.duplicateOfId).length)
 const localOnlyCount = computed(() => stagedRows.value.filter((row) => row.localOnly && !row.skip).length)
+const hasBlankTitle = computed(() => includedRows.value.some((row) => !row.titleInput.trim()))
 
 async function confirmImport() {
   if (includedRows.value.length === 0) {
     emit('update:modelValue', false)
     return
   }
+  if (hasBlankTitle.value) return
   importing.value = true
   try {
     const files: MediaImportCommit[] = includedRows.value.map((row) => ({
       path: row.path,
       filename: row.filename,
+      title: row.titleInput.trim(),
+      description: row.descriptionInput.trim() || undefined,
       tags: row.tagsInput
         .split(',')
         .map((t) => t.trim())
@@ -122,9 +138,26 @@ async function confirmImport() {
         >
           <v-icon :icon="row.kind === 'video' ? 'mdi-movie-open-outline' : 'mdi-image-outline'" size="20" />
           <div class="flex-grow-1" style="min-width: 0">
-            <div class="text-body-2 font-weight-bold text-truncate">
-              {{ row.filename }} <span class="text-caption text-medium-emphasis">({{ formatSize(row.sizeBytes) }})</span>
+            <div class="text-caption text-medium-emphasis text-truncate">
+              {{ row.filename }} ({{ formatSize(row.sizeBytes) }})
             </div>
+            <v-text-field
+              v-model="row.titleInput"
+              label="Title"
+              density="compact"
+              variant="underlined"
+              :error="!row.titleInput.trim()"
+              :error-messages="row.titleInput.trim() ? [] : ['Title is required']"
+              class="mb-1"
+            />
+            <v-text-field
+              v-model="row.descriptionInput"
+              label="Description (optional)"
+              density="compact"
+              variant="underlined"
+              hide-details
+              class="mb-1"
+            />
             <v-text-field
               v-model="row.tagsInput"
               label="Tags (comma-separated)"
@@ -154,7 +187,13 @@ async function confirmImport() {
         </span>
         <v-spacer />
         <v-btn variant="outlined" class="mr-2" @click="emit('update:modelValue', false)">Cancel</v-btn>
-        <v-btn variant="flat" color="primary" :loading="importing" :disabled="includedRows.length === 0" @click="confirmImport">
+        <v-btn
+          variant="flat"
+          color="primary"
+          :loading="importing"
+          :disabled="includedRows.length === 0 || hasBlankTitle"
+          @click="confirmImport"
+        >
           Import {{ includedRows.length }} File{{ includedRows.length === 1 ? '' : 's' }}
         </v-btn>
       </v-card-actions>

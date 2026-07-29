@@ -25,7 +25,29 @@ pub fn synced_media_dir(root: &Path) -> PathBuf {
 }
 
 pub fn list(root: &Path) -> std::io::Result<Vec<MediaItem>> {
-    read_json_dir(&media_items_dir(root))
+    Ok(read_json_dir(&media_items_dir(root))?
+        .into_iter()
+        .map(normalize_title)
+        .collect())
+}
+
+/// A title is required everywhere this item is displayed, but on-disk records saved before
+/// this field existed have an empty one (see MediaItem::title) — backfilled here from the
+/// filename on every read rather than eagerly rewritten to disk, since re-deriving it is cheap
+/// and idempotent, and doesn't force a write the first time an old library is opened.
+fn normalize_title(mut item: MediaItem) -> MediaItem {
+    if item.title.trim().is_empty() {
+        item.title = title_from_filename(&item.filename);
+    }
+    item
+}
+
+fn title_from_filename(filename: &str) -> String {
+    Path::new(filename)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(filename)
+        .to_string()
 }
 
 /// The actual file on disk backing a MediaItem — needed for real playback/display (spec
@@ -41,7 +63,7 @@ pub fn file_path(root: &Path, local_media_root: &Path, item: &MediaItem) -> Path
 }
 
 pub fn get(root: &Path, id: &str) -> Option<MediaItem> {
-    read_json_file(&media_item_path(root, id))
+    read_json_file(&media_item_path(root, id)).map(normalize_title)
 }
 
 pub fn save(
@@ -138,6 +160,9 @@ pub fn stage_imports(root: &Path, paths: &[String]) -> std::io::Result<Vec<Stage
 pub struct MediaImportCommit {
     pub path: String,
     pub filename: String,
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
     pub location: String,
@@ -198,6 +223,12 @@ pub fn commit_imports(
             id: format!("media-{}", uuid::Uuid::new_v4()),
             kind: guess_kind(&file.filename),
             filename: dest_filename,
+            title: if file.title.trim().is_empty() {
+                title_from_filename(&file.filename)
+            } else {
+                file.title
+            },
+            description: file.description,
             tags: file.tags,
             location: file.location,
             duplicate_of_id: file.duplicate_of_id,
@@ -233,6 +264,8 @@ mod tests {
         MediaItem {
             id: id.to_string(),
             filename: filename.to_string(),
+            title: filename.to_string(),
+            description: None,
             kind: guess_kind(filename),
             tags: vec![],
             location: location.to_string(),
@@ -345,6 +378,8 @@ mod tests {
             vec![MediaImportCommit {
                 path: file_path.to_string_lossy().to_string(),
                 filename: "sunset.jpg".to_string(),
+                title: "Sunset Over the Hills".to_string(),
+                description: Some("Taken after the Easter service".to_string()),
                 tags: vec!["Worship".to_string()],
                 location: "synced".to_string(),
                 duplicate_of_id: None,
@@ -356,6 +391,11 @@ mod tests {
 
         assert_eq!(created.len(), 1);
         assert_eq!(created[0].filename, "sunset.jpg");
+        assert_eq!(created[0].title, "Sunset Over the Hills");
+        assert_eq!(
+            created[0].description.as_deref(),
+            Some("Taken after the Easter service")
+        );
         assert_eq!(created[0].tags, vec!["Worship".to_string()]);
         assert!(synced_media_dir(root_dir.path())
             .join("sunset.jpg")
@@ -376,6 +416,8 @@ mod tests {
             vec![MediaImportCommit {
                 path: file_path.to_string_lossy().to_string(),
                 filename: "big-loop.mp4".to_string(),
+                title: "Big Loop".to_string(),
+                description: None,
                 tags: vec![],
                 location: "local".to_string(),
                 duplicate_of_id: None,
@@ -405,6 +447,8 @@ mod tests {
         let make = |path: &Path| MediaImportCommit {
             path: path.to_string_lossy().to_string(),
             filename: "bg.jpg".to_string(),
+            title: "Background".to_string(),
+            description: None,
             tags: vec![],
             location: "synced".to_string(),
             duplicate_of_id: None,
@@ -448,6 +492,8 @@ mod tests {
             vec![MediaImportCommit {
                 path: file_path.to_string_lossy().to_string(),
                 filename: "gone.jpg".to_string(),
+                title: "Gone".to_string(),
+                description: None,
                 tags: vec![],
                 location: "synced".to_string(),
                 duplicate_of_id: None,
@@ -475,5 +521,60 @@ mod tests {
         let duplicates = detect_duplicates(dir.path(), &a).unwrap();
         assert_eq!(duplicates.len(), 1);
         assert_eq!(duplicates[0].id, "media-b");
+    }
+
+    #[test]
+    fn get_and_list_backfill_a_missing_title_from_the_filename() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut item = sample("media-1", "cross-hill-sunset.jpg", "synced", "abc");
+        item.title = String::new();
+        save(dir.path(), item, "d", "now").unwrap();
+
+        assert_eq!(
+            get(dir.path(), "media-1").unwrap().title,
+            "cross-hill-sunset"
+        );
+        assert_eq!(list(dir.path()).unwrap()[0].title, "cross-hill-sunset");
+    }
+
+    #[test]
+    fn get_and_list_leave_an_existing_title_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut item = sample("media-1", "cross-hill-sunset.jpg", "synced", "abc");
+        item.title = "Cross Hill at Sunset".to_string();
+        save(dir.path(), item, "d", "now").unwrap();
+
+        assert_eq!(
+            get(dir.path(), "media-1").unwrap().title,
+            "Cross Hill at Sunset"
+        );
+    }
+
+    #[test]
+    fn commit_imports_derives_a_title_from_the_filename_when_none_is_sent() {
+        let root_dir = tempfile::tempdir().unwrap();
+        let local_dir = tempfile::tempdir().unwrap();
+        let source_dir = tempfile::tempdir().unwrap();
+        let file_path = source_dir.path().join("wide-open-field.jpg");
+        fs::write(&file_path, b"pixels").unwrap();
+
+        let created = commit_imports(
+            root_dir.path(),
+            local_dir.path(),
+            vec![MediaImportCommit {
+                path: file_path.to_string_lossy().to_string(),
+                filename: "wide-open-field.jpg".to_string(),
+                title: String::new(),
+                description: None,
+                tags: vec![],
+                location: "synced".to_string(),
+                duplicate_of_id: None,
+            }],
+            "d",
+            "now",
+        )
+        .unwrap();
+
+        assert_eq!(created[0].title, "wide-open-field");
     }
 }
