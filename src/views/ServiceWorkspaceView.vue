@@ -1169,9 +1169,9 @@ function updateRolePerson(role: string, personId: string | undefined) {
                 v-for="(blockId, index) in selectedItem.arrangement.sequence"
                 :key="index"
                 class="slide-row"
-                :class="{ 'slide-row--live': itemHasLive(selectedItemIndex) && flatIndex === index }"
-                :style="slideRowStyle(blockId, itemHasLive(selectedItemIndex) && flatIndex === index)"
-                @click="goLive(index)"
+                :class="{ 'slide-row--live': flatIndex === slideFlatIndex(selectedItem.id, index) }"
+                :style="slideRowStyle(blockId, flatIndex === slideFlatIndex(selectedItem.id, index))"
+                @click="goLive(slideFlatIndex(selectedItem.id, index))"
               >
                 <v-icon icon="mdi-drag-vertical" class="drag-handle" size="small" style="cursor: grab" />
                 <div class="flex-grow-1" style="min-width: 0">
@@ -1622,7 +1622,11 @@ function updateRolePerson(role: string, personId: string | undefined) {
     </v-dialog>
 
     <v-dialog v-model="addDialogOpen" max-width="560">
-      <v-card class="add-service-card">
+      <!-- height must be the v-card PROP, not a height CSS class — Vuetify's own dialog
+           stylesheet applies `flex: 1 1 var(--v-card-height, 100%)` to any .v-card inside a
+           .v-dialog, and flex-basis overrides a plain `height` for sizing purposes regardless
+           of specificity. Only the height PROP populates that --v-card-height variable. -->
+      <v-card height="640" class="add-service-card">
         <v-card-title>Add to Service</v-card-title>
         <div class="px-4 pb-3 add-service-tabs">
           <v-select
@@ -2086,11 +2090,11 @@ function updateRolePerson(role: string, personId: string | undefined) {
 }
 /* Add-to-Service dialog: one fixed size regardless of which type is selected — a long song
    library, several sermon passages, or the outline editor could otherwise each drive the card
-   to a different (and sometimes viewport-exceeding) height. An explicit height + flex column
-   here, with only the content area scrolling internally, keeps title/type-select/Cancel fixed
-   and always visible no matter what's selected. */
+   to a different (and sometimes viewport-exceeding) height. An explicit height (via the v-card
+   height prop, see the template comment above) + flex column here, with only the content area
+   scrolling internally, keeps title/type-select/Cancel fixed and always visible no matter what's
+   selected. */
 .add-service-card {
-  height: 640px;
   display: flex;
   flex-direction: column;
 }

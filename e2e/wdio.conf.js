@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { appDataDir } from './helpers/appDataDir.js'
 
@@ -101,6 +102,23 @@ export const config = {
       const file = path.join(dir, `${test.parent} - ${test.title}`.replace(/[^a-z0-9-_ ]/gi, '_') + '.png')
       await browser.saveScreenshot(file)
       console.log(`Screenshot saved: ${file}`)
+    }
+  },
+
+  // @wdio/tauri-service's own teardown (driverPool.stopAll()) doesn't reliably kill the
+  // external tauri-driver.exe process on Windows, nor its own msedgedriver.exe child — every
+  // run was silently leaking one of each, which piled up into dozens of orphaned processes
+  // over a long session and eventually caused new runs to fail outright (a stale tauri-driver
+  // squatting on the port a fresh run tries to bind). Best-effort and platform-guarded since
+  // this is cleaning up after a dependency bug, not something core to the test run itself.
+  onComplete: function () {
+    if (process.platform !== 'win32') return
+    for (const image of ['tauri-driver.exe', 'msedgedriver.exe']) {
+      try {
+        execFileSync('taskkill', ['/F', '/IM', image, '/T'], { stdio: 'ignore' })
+      } catch {
+        // Not running — fine.
+      }
     }
   },
 }

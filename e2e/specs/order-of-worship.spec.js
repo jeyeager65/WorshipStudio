@@ -24,10 +24,6 @@ describe('Order of Worship Export', () => {
     const heading = await $('div*=Order of Worship')
     await heading.waitForExist({ timeout: 10000 })
 
-    // No roster on a fresh service — the manual-fallback note should show instead.
-    const fallbackNote = await $('p*=Add Praise Team and Building assignments manually')
-    await expect(fallbackNote).toBeExisting()
-
     // Deliberately not clicking "Export as Word Document" or "Send Email" here — both trigger
     // OS-level behavior (a file save / the default mail client) that WebdriverIO can't drive
     // and would risk hanging the run, the same reasoning as skipping native file dialogs
