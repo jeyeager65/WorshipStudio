@@ -13,10 +13,15 @@ import { ref } from 'vue'
  * (App.vue) instead of a per-page toolbar that would scroll out of view — whichever view is
  * mounted registers its own save function here and clears it on unmount, so the app bar
  * only shows a Save button when a screen actually has one.
+ *
+ * pageTitleOverride follows the same registration pattern for a deeper page (one with no
+ * static router/index.ts meta.title) that still wants a dynamic title in the app bar — set on
+ * mount/whenever its content changes, cleared on unmount, same as saveHandler above.
  */
 export const useUnsavedChangesStore = defineStore('unsavedChanges', () => {
   const isDirty = ref(false)
   const saving = ref(false)
   const saveHandler = ref<(() => void | Promise<void>) | undefined>()
-  return { isDirty, saving, saveHandler }
+  const pageTitleOverride = ref<string | undefined>()
+  return { isDirty, saving, saveHandler, pageTitleOverride }
 })

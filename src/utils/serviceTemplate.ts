@@ -1,4 +1,4 @@
-import type { RoleAssignment, ServiceItem, ServiceTemplate, ServiceTemplateItem } from '@/models/service'
+import type { RoleAssignment, Service, ServiceItem, ServiceTemplate, ServiceTemplateItem } from '@/models/service'
 
 // Pre-selects the right Add-to-Service tab when a placeholder is replaced — 'other' has no
 // single best tab, so it's left unmapped (falls back to whatever the dialog defaults to).
@@ -57,4 +57,55 @@ export function applyServiceTemplate(template: ServiceTemplate): { items: Servic
   }
 
   return { items, assignments }
+}
+
+export interface AssignmentResetPlan {
+  toAdd: RoleAssignment[]
+  toRemove: RoleAssignment[]
+}
+
+/**
+ * Diffs a service's existing assignments against a template's 'role-only' items (e.g. "2
+ * Greeters"), so an operator who edits a template after already creating services in advance
+ * can bring those older services' staffing back in sync without re-creating them.
+ *
+ * Deliberately scoped to 'role-only' items — roles tied to an actual service item (e.g. the
+ * sermon's Preacher) are already governed by that item's own presence/content, not the
+ * template, so they and their assignments are left untouched no matter what the template says.
+ */
+export function planAssignmentResetFromTemplate(
+  service: Pick<Service, 'items' | 'assignments'>,
+  template: ServiceTemplate,
+): AssignmentResetPlan {
+  const itemRoles = new Set(service.items.map((item) => item.role).filter((role): role is string => !!role))
+
+  const desiredCounts = new Map<string, number>()
+  for (const templateItem of template.items) {
+    if (templateItem.kind !== 'role-only' || !templateItem.role) continue
+    desiredCounts.set(templateItem.role, (desiredCounts.get(templateItem.role) ?? 0) + (templateItem.count ?? 1))
+  }
+
+  const existingByRole = new Map<string, RoleAssignment[]>()
+  for (const assignment of service.assignments ?? []) {
+    if (itemRoles.has(assignment.role)) continue
+    const list = existingByRole.get(assignment.role) ?? []
+    list.push(assignment)
+    existingByRole.set(assignment.role, list)
+  }
+
+  const toAdd: RoleAssignment[] = []
+  const toRemove: RoleAssignment[] = []
+  for (const role of new Set([...desiredCounts.keys(), ...existingByRole.keys()])) {
+    const existing = existingByRole.get(role) ?? []
+    const desired = desiredCounts.get(role) ?? 0
+    if (existing.length < desired) {
+      for (let i = existing.length; i < desired; i++) toAdd.push({ role, tentative: false })
+    } else if (existing.length > desired) {
+      // Unassigned rows are trimmed before assigned ones, so a person already picked for a
+      // role is the last thing dropped when a template's count shrinks.
+      const byAssignedLast = [...existing].sort((a, b) => Number(!!a.personId) - Number(!!b.personId))
+      toRemove.push(...byAssignedLast.slice(0, existing.length - desired))
+    }
+  }
+  return { toAdd, toRemove }
 }

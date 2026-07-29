@@ -22,7 +22,7 @@ import logoDark from '@/assets/logo-dark.png'
 import logoLight from '@/assets/logo-light.png'
 
 const { blockedMessage } = storeToRefs(useLiveSessionStore())
-const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
+const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsavedChangesStore())
 const syncStore = useSyncStore()
 const settingsStore = useSettingsStore()
 const servicesStore = useServicesStore()
@@ -74,8 +74,9 @@ const isSetupWizard = computed(() => route.name === 'setup-wizard')
 // Only top-level pages reachable from the sidebar set meta.title (router/index.ts) — deeper
 // pages (song/slide editors, the service workspace, etc.) render their own in-content
 // heading instead, often a dynamic one (the actual song/service name), which wouldn't fit
-// here.
-const pageTitle = computed(() => route.meta.title)
+// here. A page that still wants a dynamic app-bar title (e.g. Assignments) can register one
+// via pageTitleOverride instead — see unsavedChanges.ts's doc comment.
+const pageTitle = computed(() => pageTitleOverride.value ?? route.meta.title)
 
 // The dark logo's white wordmark reads fine on the dark theme's near-black sidebar but nearly
 // disappears on the light theme's — same swap LandingView used to do before this moved here.

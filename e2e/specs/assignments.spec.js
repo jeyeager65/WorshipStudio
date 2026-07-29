@@ -92,7 +92,7 @@ describe('Assignments', () => {
     await vocalsOption.click()
 
     // Assign Ashley to both new roles — a real double-booking, which should be flagged.
-    const personSelects = await $$('.role-row .v-select')
+    const personSelects = await $$('.assignment-row .v-select')
     for (const select of personSelects) {
       await select.click()
       const option = await $('.v-list-item*=Ashley E2ETest')

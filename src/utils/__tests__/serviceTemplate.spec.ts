@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { applyServiceTemplate } from '@/utils/serviceTemplate'
-import type { ServiceTemplate } from '@/models/service'
+import { applyServiceTemplate, planAssignmentResetFromTemplate } from '@/utils/serviceTemplate'
+import type { Service, ServiceTemplate } from '@/models/service'
 
 describe('applyServiceTemplate', () => {
   it("seeds only assignments for a 'role-only' entry, no order-of-service item", () => {
@@ -92,5 +92,69 @@ describe('applyServiceTemplate', () => {
     }
     const { items } = applyServiceTemplate(template)
     expect(new Set(items.map((item) => item.id)).size).toBe(items.length)
+  })
+})
+
+describe('planAssignmentResetFromTemplate', () => {
+  function service(overrides: Partial<Pick<Service, 'items' | 'assignments'>> = {}): Pick<Service, 'items' | 'assignments'> {
+    return { items: [], assignments: [], ...overrides }
+  }
+
+  it("adds a missing role-only assignment introduced by the template", () => {
+    const template: ServiceTemplate = {
+      serviceType: 'Sunday Morning Worship',
+      items: [{ id: 't1', kind: 'role-only', label: 'Greeter', role: 'Greeter', count: 2 }],
+    }
+    const plan = planAssignmentResetFromTemplate(service(), template)
+    expect(plan.toAdd).toEqual([
+      { role: 'Greeter', tentative: false },
+      { role: 'Greeter', tentative: false },
+    ])
+    expect(plan.toRemove).toEqual([])
+  })
+
+  it('removes a role-only assignment no longer in the template', () => {
+    const template: ServiceTemplate = { serviceType: 'Sunday Morning Worship', items: [] }
+    const existing = { role: 'Greeter', personId: 'person-1', tentative: false }
+    const plan = planAssignmentResetFromTemplate(service({ assignments: [existing] }), template)
+    expect(plan.toAdd).toEqual([])
+    expect(plan.toRemove).toEqual([existing])
+  })
+
+  it('trims unassigned rows before assigned ones when a count shrinks', () => {
+    const template: ServiceTemplate = {
+      serviceType: 'Sunday Morning Worship',
+      items: [{ id: 't1', kind: 'role-only', label: 'Greeter', role: 'Greeter', count: 1 }],
+    }
+    const assigned = { role: 'Greeter', personId: 'person-1', tentative: false }
+    const unassigned = { role: 'Greeter', tentative: false }
+    const plan = planAssignmentResetFromTemplate(service({ assignments: [assigned, unassigned] }), template)
+    expect(plan.toAdd).toEqual([])
+    expect(plan.toRemove).toEqual([unassigned])
+  })
+
+  it('leaves an existing role-only assignment alone when the template count already matches', () => {
+    const template: ServiceTemplate = {
+      serviceType: 'Sunday Morning Worship',
+      items: [{ id: 't1', kind: 'role-only', label: 'Greeter', role: 'Greeter', count: 1 }],
+    }
+    const existing = { role: 'Greeter', personId: 'person-1', tentative: false }
+    const plan = planAssignmentResetFromTemplate(service({ assignments: [existing] }), template)
+    expect(plan.toAdd).toEqual([])
+    expect(plan.toRemove).toEqual([])
+  })
+
+  it("never touches a role tied to an actual service item, even if the template's role-only items disagree", () => {
+    const template: ServiceTemplate = { serviceType: 'Sunday Morning Worship', items: [] }
+    const preacherAssignment = { role: 'Preacher', personId: 'person-1', tentative: false }
+    const plan = planAssignmentResetFromTemplate(
+      service({
+        items: [{ id: 'item-1', type: 'placeholder', label: 'Sermon', role: 'Preacher' }],
+        assignments: [preacherAssignment],
+      }),
+      template,
+    )
+    expect(plan.toAdd).toEqual([])
+    expect(plan.toRemove).toEqual([])
   })
 })
