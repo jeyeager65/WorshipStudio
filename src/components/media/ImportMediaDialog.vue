@@ -116,7 +116,7 @@ async function confirmImport() {
       <v-card-text style="max-height: 55vh; overflow-y: auto">
         <div class="drop-zone mb-4" @click="browseFiles">
           <v-icon icon="mdi-folder-open-outline" size="28" class="mb-2" />
-          <div>Browse for images and video loops…</div>
+          <div>Browse for images and videos…</div>
         </div>
 
         <v-text-field

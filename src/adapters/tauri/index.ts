@@ -252,7 +252,7 @@ export function createTauriAdapter(): StudioAdapter {
         const selection = await open({
           multiple: true,
           title: 'Import Media',
-          filters: [{ name: 'Images & Video Loops', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'webm', 'm4v'] }],
+          filters: [{ name: 'Images & Videos', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'webm', 'm4v'] }],
         })
         if (!selection) return []
         const paths = Array.isArray(selection) ? selection : [selection]

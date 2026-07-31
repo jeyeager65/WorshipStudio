@@ -35,20 +35,34 @@ const roleOptions = computed<RoleOption[]>(() => {
   return items
 })
 
-const templatedTypes = computed(() => new Set(props.modelValue.map((t) => t.serviceType)))
-const addTemplateTypeItems = computed(() => props.serviceTypes.filter((t) => !templatedTypes.value.has(t)))
-const typeToAdd = ref<string | null>(null)
+const templateNameToAdd = ref('')
 
-function addTemplate(serviceType: string | null) {
-  if (!serviceType) return
-  emit('update:modelValue', [...props.modelValue, { serviceType, items: [] }])
-  typeToAdd.value = null
+function addTemplate() {
+  const name = templateNameToAdd.value.trim()
+  if (!name || props.modelValue.some((template) => template.serviceType.toLowerCase() === name.toLowerCase())) return
+  emit('update:modelValue', [...props.modelValue, { serviceType: name, defaultForServiceTypes: [], items: [] }])
+  templateNameToAdd.value = ''
+}
+
+function effectiveDefaultTypes(template: ServiceTemplate): string[] {
+  if (template.defaultForServiceTypes !== undefined) return template.defaultForServiceTypes
+  return props.serviceTypes.includes(template.serviceType) ? [template.serviceType] : []
+}
+
+function setDefaultTypes(templateIndex: number, serviceTypes: string[]) {
+  const selected = new Set(serviceTypes)
+  const templates = props.modelValue.map((template, index) => ({
+    ...template,
+    defaultForServiceTypes:
+      index === templateIndex ? [...selected] : effectiveDefaultTypes(template).filter((type) => !selected.has(type)),
+  }))
+  emit('update:modelValue', templates)
 }
 
 async function removeTemplate(index: number) {
   const template = props.modelValue[index]
   if (!template) return
-  if (!(await confirmDialog.confirm(`Remove the service template for "${template.serviceType}"?`, 'Remove'))) return
+  if (!(await confirmDialog.confirm(`Remove the "${template.serviceType}" service template?`, 'Remove'))) return
   emit(
     'update:modelValue',
     props.modelValue.filter((_, i) => i !== index),
@@ -97,6 +111,20 @@ async function removeItem(templateIndex: number, itemIndex: number) {
         <span class="text-subtitle-2 font-weight-bold">{{ template.serviceType }}</span>
         <v-btn icon="mdi-delete-outline" variant="text" size="small" @click="removeTemplate(templateIndex)" />
       </div>
+
+      <v-select
+        :model-value="effectiveDefaultTypes(template)"
+        :items="serviceTypes"
+        label="Default for Service Types"
+        variant="outlined"
+        density="compact"
+        multiple
+        chips
+        closable-chips
+        hide-details
+        class="mb-3"
+        @update:model-value="(types: string[]) => setDefaultTypes(templateIndex, types)"
+      />
 
       <VueDraggable
         :model-value="template.items"
@@ -178,14 +206,19 @@ async function removeItem(templateIndex: number, itemIndex: number) {
     </v-card>
     <p v-if="modelValue.length === 0" class="text-medium-emphasis text-body-2 mb-3">No templates yet.</p>
 
-    <v-select
-      v-model="typeToAdd"
-      :items="addTemplateTypeItems"
-      label="+ Add Template for Service Type"
-      variant="outlined"
-      density="compact"
-      style="max-width: 320px"
-      @update:model-value="addTemplate"
-    />
+    <div class="d-flex align-center ga-2" style="max-width: 480px">
+      <v-text-field
+        v-model="templateNameToAdd"
+        label="New Template Name"
+        placeholder="e.g. Sunday Worship"
+        variant="outlined"
+        density="compact"
+        hide-details
+        @keydown.enter="addTemplate"
+      />
+      <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" :disabled="!templateNameToAdd.trim()" @click="addTemplate">
+        Add Template
+      </v-btn>
+    </div>
   </div>
 </template>

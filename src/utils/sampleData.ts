@@ -283,6 +283,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
     {
       id: 'service-sample-past-sunday',
       date: toIso(past),
+      time: '10:30',
       type: 'Sunday Morning Worship',
       items: [
         { id: 'item-1', type: 'countdown', targetTime: countdownTarget(past, 9, 25), text: 'Service begins soon' },
@@ -315,6 +316,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
     {
       id: 'service-sample-upcoming-sunday',
       date: toIso(soon),
+      time: '10:30',
       type: 'Sunday Morning Worship',
       items: [
         { id: 'item-1', type: 'countdown', targetTime: countdownTarget(soon, 9, 25), text: 'Service begins soon' },
@@ -344,6 +346,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
     {
       id: 'service-sample-wednesday-study',
       date: toIso(wednesday),
+      time: '19:00',
       type: 'Wednesday Bible Study',
       items: [
         { id: 'item-1', type: 'song', songId: 'song-sample-how-firm-a-foundation', arrangement: { sequence: ['v1', 'v2'] } },
@@ -370,6 +373,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       // to show what a service still mid-planning realistically looks like.
       id: 'service-sample-future-sunday',
       date: toIso(future),
+      time: '10:30',
       type: 'Sunday Morning Worship',
       items: [{ id: 'item-1', type: 'song', songId: 'song-sample-what-a-friend', arrangement: { sequence: ['v1', 'v2'] } }],
       assignments: [{ role: 'Worship Leader', personId: 'person-sample-sarah-mitchell', tentative: true }],

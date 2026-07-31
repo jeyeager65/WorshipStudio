@@ -91,13 +91,22 @@ export interface ServiceTemplateItem {
  *  applyServiceTemplate, called from CreateServiceView); never re-applied to already-created
  *  services afterward. Order matters: items seed Service.items in this same order. */
 export interface ServiceTemplate {
+  /** The template's existing stable name. Historically this also implied which service type
+   *  used it; defaultForServiceTypes now makes that association explicit while preserving the
+   *  old field and stored libraries. */
   serviceType: string
+  /** Service types that select this template by default. Undefined means a legacy template,
+   *  which still defaults to the matching serviceType; an empty array explicitly means none. */
+  defaultForServiceTypes?: string[]
   items: ServiceTemplateItem[]
 }
 
 export interface Service {
   id: string
   date: string
+  /** Local service start time in 24-hour HH:mm form. Optional for services created before
+   *  start times were introduced. */
+  time?: string
   type: string
   items: ServiceItem[]
   /** Operator-only notes, keyed by service item id. */

@@ -5,7 +5,6 @@ import { useTheme } from 'vuetify'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { emit, listen } from '@tauri-apps/api/event'
-import { getVersion } from '@tauri-apps/api/app'
 import { useRoute, useRouter } from 'vue-router'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import UndoToastStack from '@/components/UndoToastStack.vue'
@@ -18,8 +17,6 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useSyncStore } from '@/stores/sync'
 import { useSettingsStore } from '@/stores/settings'
 import { useServicesStore } from '@/stores/services'
-import logoDark from '@/assets/logo-dark.png'
-import logoLight from '@/assets/logo-light.png'
 
 const { blockedMessage } = storeToRefs(useLiveSessionStore())
 const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsavedChangesStore())
@@ -78,13 +75,7 @@ const isSetupWizard = computed(() => route.name === 'setup-wizard')
 // via pageTitleOverride instead — see unsavedChanges.ts's doc comment.
 const pageTitle = computed(() => pageTitleOverride.value ?? route.meta.title)
 
-// The dark logo's white wordmark reads fine on the dark theme's near-black sidebar but nearly
-// disappears on the light theme's — same swap LandingView used to do before this moved here.
-const logoSrc = computed(() => (theme.global.current.value.dark ? logoDark : logoLight))
-
-// Shown at the foot of the sidebar — useful when a church reports an issue, so it's clear
-// which build they're actually running.
-const appVersion = ref('')
+const navigationCollapsed = ref(false)
 
 // Splash screen (feature-spec.md section "Splash screen") — see the `isSplashWindow` comment
 // above for why this now lives in its own window instead of an overlay here. This ref only
@@ -156,7 +147,6 @@ onMounted(async () => {
   // Fire-and-forget — a slow/failed sync-status check shouldn't block the rest of startup,
   // and the app-bar badge below just stays hidden until it resolves.
   void syncStore.load()
-  void getVersion().then((v) => (appVersion.value = v))
 
   await emit('splash:status', 'Preparing library…')
   await getAdapter().services.migrateLegacySermonFields()
@@ -190,12 +180,16 @@ onMounted(async () => {
     <SplashScreen :status-text="splashStatus" />
   </v-app>
   <v-app v-else>
-    <v-navigation-drawer v-if="!isSetupWizard" permanent width="224" class="app-nav-no-print">
+    <v-navigation-drawer
+      v-if="!isSetupWizard"
+      permanent
+      :rail="navigationCollapsed"
+      :width="224"
+      :rail-width="68"
+      class="app-nav app-nav-no-print"
+      :class="{ 'app-nav--collapsed': navigationCollapsed }"
+    >
       <v-list nav density="comfortable" class="pt-2">
-        <div class="mx-2 mt-2 mb-4">
-          <img :src="logoSrc" alt="Worship Studio" class="sidebar-logo-img" />
-        </div>
-        <v-divider class="mx-2 mb-2" />
         <v-list-item to="/" title="Services" rounded="lg" class="mx-2 mb-1 sidebar-item">
           <template #prepend><v-icon icon="mdi-home" color="primary" /></template>
         </v-list-item>
@@ -223,15 +217,23 @@ onMounted(async () => {
             <template #prepend><v-icon icon="mdi-cog" color="slate" /></template>
           </v-list-item>
         </v-list>
-        <v-divider />
-        <div v-if="appVersion" class="pa-3 text-center text-caption text-medium-emphasis">v{{ appVersion }}</div>
       </template>
     </v-navigation-drawer>
     <!-- Always rendered, even during the setup wizard (which hides the sidebar/nav) — this is
          the only window chrome now that decorations are off, so it's what lets the operator
          drag, minimize, or close the window at every point in the app, wizard included. -->
-    <v-app-bar density="compact" elevation="0" class="border-b app-bar-no-print">
-      <span v-if="pageTitle" class="page-title text-h5 font-weight-bold ml-4">{{ pageTitle }}</span>
+    <v-app-bar order="-1" density="compact" elevation="0" class="app-bar app-bar-no-print">
+      <v-btn
+        v-if="!isSetupWizard"
+        icon="mdi-menu"
+        variant="text"
+        class="navigation-toggle ml-1"
+        :title="navigationCollapsed ? 'Expand navigation' : 'Collapse navigation'"
+        @click="navigationCollapsed = !navigationCollapsed"
+      />
+      <span class="app-brand" :class="{ 'ml-4': isSetupWizard }">Worship Studio</span>
+      <v-divider v-if="pageTitle" vertical inset class="app-brand-divider mx-3" />
+      <span v-if="pageTitle" class="page-title">{{ pageTitle }}</span>
       <!-- data-tauri-drag-region only takes effect on the exact element it's applied to (no
            ancestor/child matching), so it has to sit on this actual empty spacer rather than
            the app-bar as a whole — that's what silently made the whole bar undraggable. The
@@ -300,14 +302,102 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.sidebar-logo-img {
-  display: block;
-  width: 100%;
-  height: auto;
+.app-nav {
+  background: rgb(var(--v-theme-surface));
+  border-right-color: rgba(var(--v-theme-on-surface), 0.08);
 }
 .sidebar-item :deep(.v-list-item-title) {
-  font-size: 1rem;
-  line-height: 1.4rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+.app-brand {
+  flex-shrink: 0;
+  color: rgba(var(--v-theme-on-surface), 0.94);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+}
+.app-bar {
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.09);
+  background: rgba(var(--v-theme-surface), 0.97);
+}
+.navigation-toggle {
+  margin-right: 6px;
+  color: rgba(var(--v-theme-on-surface), 0.74);
+}
+.app-brand-divider {
+  opacity: 0.6;
+}
+.page-title {
+  color: rgba(var(--v-theme-on-surface), 0.68);
+  font-size: 0.82rem;
+  font-weight: 550;
+}
+.sidebar-item {
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+.sidebar-item.v-list-item--active {
+  background: rgba(var(--v-theme-primary), 0.14);
+}
+.sidebar-item.v-list-item--active::before {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: rgb(var(--v-theme-primary));
+  content: '';
+}
+.app-nav--collapsed .sidebar-item {
+  width: 40px;
+  min-height: 40px;
+  margin-right: auto !important;
+  margin-bottom: 6px !important;
+  margin-left: auto !important;
+  padding-inline: 8px !important;
+  border: 1px solid transparent;
+  border-radius: 9px !important;
+  grid-template-columns: 24px !important;
+  grid-template-areas: 'prepend' !important;
+  justify-content: center;
+}
+.app-nav--collapsed .sidebar-item :deep(.v-list-item__prepend) {
+  width: 24px;
+  justify-content: center;
+}
+.app-nav--collapsed .sidebar-item :deep(.v-list-item__prepend .v-list-item__spacer),
+.app-nav--collapsed .sidebar-item :deep(.v-list-item__content) {
+  display: none;
+}
+.app-nav--collapsed .sidebar-item :deep(.v-icon) {
+  opacity: 0.82;
+}
+.app-nav--collapsed .sidebar-item:hover {
+  border-color: rgba(var(--v-theme-on-surface), 0.08);
+  background: rgba(var(--v-theme-on-surface), 0.055);
+}
+.app-nav--collapsed .sidebar-item.v-list-item--active {
+  border-color: rgba(var(--v-theme-primary), 0.2);
+  background: rgba(var(--v-theme-primary), 0.18);
+}
+.app-nav--collapsed .sidebar-item.v-list-item--active::before {
+  display: none;
+}
+.app-nav--collapsed .sidebar-item.v-list-item--active :deep(.v-icon) {
+  opacity: 1;
+}
+.app-nav--collapsed :deep(.v-list > .v-divider) {
+  width: 40px;
+  margin-right: auto !important;
+  margin-left: auto !important;
+}
+.app-nav--collapsed :deep(.v-navigation-drawer__append > .v-divider) {
+  width: 40px;
+  margin-right: auto;
+  margin-left: auto;
 }
 
 /* Custom title bar (tauri.conf.json's "decorations": false) — square corners and a red

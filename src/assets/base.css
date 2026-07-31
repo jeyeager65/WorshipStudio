@@ -1,8 +1,40 @@
-/* Vuetify's whole typography/spacing scale is rem-based, so bumping the root size here scales
-   the entire app proportionally (headings, body text, button labels, rem-based spacing
-   utilities) rather than needing to override font-size in dozens of individual places. */
+/* Use an accessibility-conscious base size for a volunteer-operated application. This sits
+   between Vuetify's compact 16px default and the previous 19.2px scale: comfortably readable
+   at a booth without making every control feel oversized. */
 html {
-  font-size: 1.2rem;
+  font-size: 18px;
+  text-rendering: optimizeLegibility;
+}
+
+:root {
+  --ws-space-1: 4px;
+  --ws-space-2: 8px;
+  --ws-space-3: 12px;
+  --ws-space-4: 16px;
+  --ws-space-6: 24px;
+  --ws-radius-sm: 6px;
+  --ws-radius-md: 8px;
+  --ws-radius-lg: 12px;
+  --ws-transition-fast: 140ms ease;
+}
+
+body {
+  background: rgb(var(--v-theme-background));
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.v-application {
+  font-family: inherit;
+}
+
+* {
+  scrollbar-color: rgba(var(--v-theme-on-surface), 0.24) transparent;
+  scrollbar-width: thin;
+}
+
+::selection {
+  background: rgba(var(--v-theme-primary), 0.35);
 }
 
 /* Vuetify hard-codes the scrim's opacity in its own compiled CSS (0.32) regardless of the

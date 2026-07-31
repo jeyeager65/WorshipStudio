@@ -2,6 +2,7 @@ import { AlignmentType, Document, HeadingLevel, Packer, Paragraph, Table, TableB
 import type { Service, ServiceItem, RoleAssignment } from '@/models/service'
 import type { Song } from '@/models/song'
 import type { SlideLibraryItem } from '@/models/library'
+import { formatServiceTime } from '@/utils/serviceTime'
 
 export interface OrderOfWorshipLine {
   /** Bold label, e.g. "Scripture Reading:" — absent for a plain song line. */
@@ -212,12 +213,14 @@ export function buildOrderOfWorship(
 ): OrderOfWorshipDoc {
   const songs = new Map(songList.map((s) => [s.id, s]))
   const slides = new Map(slideList.map((s) => [s.id, s]))
-  const dateLine = `${new Date(`${service.date}T00:00:00`).toLocaleDateString(undefined, {
+  const dateLabel = new Date(`${service.date}T00:00:00`).toLocaleDateString(undefined, {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
     year: 'numeric',
-  })} · ${service.type}`
+  })
+  const timeLabel = formatServiceTime(service.time)
+  const dateLine = `${dateLabel}${timeLabel ? ` · ${timeLabel}` : ''} · ${service.type}`
 
   return {
     title: 'Order of Worship',

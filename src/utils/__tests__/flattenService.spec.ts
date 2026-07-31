@@ -351,6 +351,7 @@ describe('flattenService — slide-ref', () => {
     return {
       id: 'slide-1',
       label: 'Announcements',
+      tags: [],
       documentVersion: 2,
       slides: [
         { id: 'a', label: 'Slide 1', scene: { ...createBlankScene(), elements: [createTextElement('Welcome!')] }, source: { type: 'native' } },

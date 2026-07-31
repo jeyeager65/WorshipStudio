@@ -48,8 +48,23 @@ onUnmounted(() => clearInterval(nowTickInterval))
 // branch below, as opposed to wayfinding/media/countdown which have their own distinct designs
 // and don't get a header/footer. Matches that branch's v-else-if fallthrough condition exactly.
 const isTextSlide = computed(
-  () => !!props.content && !props.content.scene && !props.content.wayfindingBooks && !props.content.media && !props.content.countdown,
+  () =>
+    !!props.content &&
+    !props.content.backgroundOnly &&
+    !props.content.scene &&
+    !props.content.wayfindingBooks &&
+    !props.content.media &&
+    !props.content.countdown,
 )
+
+// Background Only is a presentation override, not a mutation of the saved scene. Advanced
+// slides keep their configured color/image background while temporarily omitting every scene
+// element; the other foreground-only slide types naturally fall back to the black canvas.
+const renderedScene = computed(() => {
+  const scene = props.content?.scene
+  if (!scene || !props.content?.backgroundOnly) return scene
+  return { ...scene, elements: [] }
+})
 
 // Auto-fit sizing (spec section 1): flattenService already decided *how much content* goes on
 // this slide (verse-boundary-safe splitting for scripture, one block per slide for songs — see
@@ -199,6 +214,7 @@ function bookStyle(distance: number) {
 // portion, sized by OLD_TESTAMENT_FRACTION and the current reference's overall bibleProgress.
 // Always sums to exactly 1.
 const progressSegments = computed(() => {
+  if (props.content?.backgroundOnly) return undefined
   const bibleProgress = props.content?.bibleProgress
   if (bibleProgress === undefined) return undefined
   return {
@@ -216,8 +232,8 @@ const progressSegments = computed(() => {
     class="slide-root"
     :style="fixedSize ? { width: `${fixedSize.width}px`, height: `${fixedSize.height}px` } : undefined"
   >
-    <SlideSceneRenderer v-if="content?.scene" :scene="content.scene" />
-    <div v-else-if="content?.wayfindingBooks" class="wayfinding-content">
+    <SlideSceneRenderer v-if="renderedScene" :scene="renderedScene" />
+    <div v-else-if="content?.wayfindingBooks && !content.backgroundOnly" class="wayfinding-content">
       <div
         v-for="book in content.wayfindingBooks.filter((b) => b.distance < 0)"
         :key="book.name"
@@ -285,13 +301,13 @@ const progressSegments = computed(() => {
       :autoplay="videoAutoplay"
       :controls="videoControls"
     />
-    <div v-else-if="content?.countdown" class="slide-content">
+    <div v-else-if="content?.countdown && !content.backgroundOnly" class="slide-content">
       <div v-if="content.countdown.text" class="slide-label" style="text-transform: none; letter-spacing: normal">
         {{ content.countdown.text }}
       </div>
       <div class="countdown-clock">{{ formatCountdown(content.countdown.targetTime, nowTick) }}</div>
     </div>
-    <div v-else-if="content && !content.scene && !content.wayfindingBooks" class="slide-content">
+    <div v-else-if="content && !content.backgroundOnly && !content.scene && !content.wayfindingBooks" class="slide-content">
       <div
         ref="textRef"
         class="slide-text"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
@@ -22,6 +22,7 @@ import { flattenService, type FlatSlide } from '@/utils/flattenService'
 import { colorForBlockLabel, colorForItemType } from '@/utils/contentColors'
 import { applySermonEdit, defaultSermonRole, findSermonItem, sermonMainReference, sermonPreacherId } from '@/utils/sermonInfo'
 import { formatCountdown } from '@/utils/countdown'
+import { formatServiceTime } from '@/utils/serviceTime'
 import type { Service, ServiceItem, SermonPassage } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
 import type { SlideLibraryItem, MediaItem, LibrarySlide } from '@/models/library'
@@ -46,6 +47,8 @@ const service = ref<Service>()
 const selectedItemIndex = ref(0)
 /** -1 = nothing live yet; equal to flatSlides.length = live but past the last slide (blank). */
 const flatIndex = ref(-1)
+const backgroundOnly = ref(false)
+const indexBeforeBlank = ref(-1)
 
 // Off by default — accidental drags while just browsing/clicking the Service Order list would
 // be far more disruptive here than useful, so reordering is opt-in via the toggle next to the
@@ -73,6 +76,7 @@ function onReorderEnd() {
 // deep watch on `service` below, same as any other in-place edit in this view).
 const serviceDetailsDialogOpen = ref(false)
 const editDate = ref('')
+const editTime = ref('')
 const editType = ref('')
 const editSermonTitle = ref('')
 const editKeyPassage = ref('')
@@ -80,6 +84,7 @@ const editPreacherId = ref<string>()
 function openServiceDetailsDialog() {
   if (!service.value) return
   editDate.value = service.value.date
+  editTime.value = service.value.time ?? ''
   editType.value = service.value.type
   const sermonItem = findSermonItem(service.value)
   editSermonTitle.value = sermonItem?.title ?? ''
@@ -90,6 +95,7 @@ function openServiceDetailsDialog() {
 function saveServiceDetails() {
   if (!service.value) return
   service.value.date = editDate.value
+  service.value.time = editTime.value || undefined
   service.value.type = editType.value
   // Only touch the sermon item if there's something to touch — editing just Date/Type on a
   // service with no sermon at all shouldn't spuriously create a blank one.
@@ -115,16 +121,17 @@ const preacherName = computed(() => {
 // Matches the "weekday, month day, year" format already used for the Order of Worship export
 // and planning report headers (see utils/orderOfWorship.ts/planningReport.ts) — one consistent
 // date presentation across the app instead of the raw "YYYY-MM-DD" stored on disk.
-const serviceDateLabel = computed(() =>
-  service.value
-    ? new Date(`${service.value.date}T00:00:00`).toLocaleDateString(undefined, {
+const serviceDateLabel = computed(() => {
+  if (!service.value) return ''
+  const date = new Date(`${service.value.date}T00:00:00`).toLocaleDateString(undefined, {
         weekday: 'long',
         month: 'long',
         day: 'numeric',
         year: 'numeric',
       })
-    : '',
-)
+  const time = formatServiceTime(service.value.time)
+  return time ? `${date} · ${time}` : date
+})
 // Same combine-and-skip-blanks pattern as ServiceCard's own subtitle line.
 const serviceSubtitle = computed(() => {
   if (!service.value) return ''
@@ -243,6 +250,11 @@ let nowTickInterval: ReturnType<typeof setInterval> | undefined
 
 onMounted(async () => {
   nowTickInterval = setInterval(() => (nowTick.value = new Date()), 1000)
+  if (typeof ResizeObserver !== 'undefined') {
+    previewResizeObserver = new ResizeObserver(([entry]) => {
+      if (entry) previewThumbWidth.value = Math.max(240, Math.floor(entry.contentRect.width - 32))
+    })
+  }
   if (!songsStore.loaded) await songsStore.load()
   if (!slidesStore.loaded) await slidesStore.load()
   if (!mediaStore.loaded) await mediaStore.load()
@@ -258,6 +270,8 @@ onMounted(async () => {
   } else {
     service.value = await getAdapter().services.get(route.params.id as string)
   }
+  await nextTick()
+  if (previewPanelRef.value) previewResizeObserver?.observe(previewPanelRef.value)
   window.addEventListener('keydown', onKeydown)
   // A freshly created service is inherently unsaved — starting dirty (rather than false, as
   // for an existing service) enables the Save button and the router guard's
@@ -325,6 +339,7 @@ onUnmounted(() => {
   isPresenting.value = false
   stopServiceWatch?.()
   unlistenRemoteCommand?.()
+  previewResizeObserver?.disconnect()
   isDirty.value = false
   saveHandler.value = undefined
   undoStore.bottomOffsetPx = 0
@@ -608,10 +623,15 @@ function describeSlide(index: number): string {
   if (slide) return `${slide.itemLabel} — ${slide.subLabel}`
   return flatSlides.value.length === 0 ? 'Service is empty' : 'End of service'
 }
-const nextIndex = computed(() => (flatIndex.value === -1 ? 0 : Math.min(flatIndex.value + 1, flatSlides.value.length)))
+const nextIndex = computed(() =>
+  flatIndex.value === -1 ? 0 : Math.min(flatIndex.value + 1, Math.max(flatSlides.value.length - 1, 0)),
+)
 const prevIndex = computed(() => Math.max(flatIndex.value - 1, 0))
-const nextPreviewLabel = computed(() => describeSlide(nextIndex.value))
-const prevPreviewLabel = computed(() => describeSlide(prevIndex.value))
+const previousDisabled = computed(() => flatSlides.value.length === 0 || flatIndex.value <= 0)
+const nextDisabled = computed(() => flatSlides.value.length === 0 || flatIndex.value >= flatSlides.value.length - 1)
+const isBlankScreen = computed(() => flatIndex.value >= 0 && flatIndex.value === flatSlides.value.length)
+const nextPreviewLabel = computed(() => (nextDisabled.value ? 'End of service' : describeSlide(nextIndex.value)))
+const prevPreviewLabel = computed(() => (previousDisabled.value ? 'Beginning of service' : describeSlide(prevIndex.value)))
 
 function goLive(index: number) {
   flatIndex.value = index
@@ -636,11 +656,26 @@ async function tryForwardKeystroke(direction: 'next' | 'previous'): Promise<bool
 }
 async function next() {
   if (await tryForwardKeystroke('next')) return
+  if (nextDisabled.value) return
   flatIndex.value = nextIndex.value
 }
 async function previous() {
   if (await tryForwardKeystroke('previous')) return
+  if (previousDisabled.value) return
   flatIndex.value = prevIndex.value
+}
+function toggleBlankScreen() {
+  if (isBlankScreen.value) {
+    flatIndex.value = indexBeforeBlank.value
+    return
+  }
+  indexBeforeBlank.value = flatIndex.value
+  backgroundOnly.value = false
+  flatIndex.value = flatSlides.value.length
+}
+function toggleBackgroundOnly() {
+  if (!liveSlide.value) return
+  backgroundOnly.value = !backgroundOnly.value
 }
 function togglePresenting() {
   isPresenting.value = !isPresenting.value
@@ -685,7 +720,10 @@ function buildLiveContent(slide: FlatSlide | undefined): LiveSlideContent | unde
     wayfindingMaxFontSizePx: settingsStore.librarySettings?.wayfindingMaxFontSizePx,
   }
 }
-const liveContentPayload = computed<LiveSlideContent | undefined>(() => buildLiveContent(liveSlide.value))
+const liveContentPayload = computed<LiveSlideContent | undefined>(() => {
+  const content = buildLiveContent(liveSlide.value)
+  return content ? { ...content, backgroundOnly: backgroundOnly.value } : undefined
+})
 
 // Previous/current/next preview thumbnails (right-hand column) — relative to the live
 // position, i.e. exactly what Previous/Next in the footer would move to/from, not whatever's
@@ -721,8 +759,10 @@ async function loadPresentationSize() {
   }
 }
 const PREVIEW_VIRTUAL_SIZE = computed(() => presentationSize.value)
-const PREVIEW_THUMB_WIDTH = 360
-const previewScale = computed(() => PREVIEW_THUMB_WIDTH / PREVIEW_VIRTUAL_SIZE.value.width)
+const previewPanelRef = ref<HTMLElement>()
+const previewThumbWidth = ref(340)
+let previewResizeObserver: ResizeObserver | undefined
+const previewScale = computed(() => previewThumbWidth.value / PREVIEW_VIRTUAL_SIZE.value.width)
 const previewThumbHeight = computed(() => Math.round(PREVIEW_VIRTUAL_SIZE.value.height * previewScale.value))
 watch(liveContentPayload, (content) => {
   if (isPresenting.value) {
@@ -778,10 +818,16 @@ function skipExternalAppError() {
   // is skipped for external-app slides either way).
   externalAppError.value = undefined
 }
-const liveStatusText = computed(() => {
-  if (!isPresenting.value) return 'Not Presenting'
-  if (!liveSlide.value) return 'LIVE: Blank'
-  return `LIVE: ${liveSlide.value.itemLabel} — ${liveSlide.value.subLabel}`
+const currentSlideLabel = computed(() => {
+  if (isBlankScreen.value) return 'Blank Screen'
+  if (!liveSlide.value) return 'No Slide Selected'
+  return `${liveSlide.value.itemLabel} — ${liveSlide.value.subLabel}`
+})
+const slidePositionLabel = computed(() => {
+  if (flatSlides.value.length === 0) return 'No Slides'
+  if (isBlankScreen.value) return 'Screen Blank'
+  if (flatIndex.value < 0) return `${flatSlides.value.length} Slides Ready`
+  return `Slide ${flatIndex.value + 1} of ${flatSlides.value.length}`
 })
 const liveContextSnippet = computed(() => {
   const firstLine = liveSlide.value?.text.split('\n')[0]
@@ -809,37 +855,48 @@ function onKeydown(event: KeyboardEvent) {
       event.preventDefault()
       next()
       break
+    case 'b':
+    case 'B':
+      event.preventDefault()
+      toggleBlankScreen()
+      break
+    case 'g':
+    case 'G':
+      event.preventDefault()
+      toggleBackgroundOnly()
+      break
   }
 }
 
-// "+ Add to Service" — tabbed picker (spec section 2): Songs (search), Scripture (a
-// reference builder rather than a browsable list, since scripture isn't a library), Slides
-// (pick from the library, or quick-create service-only text slides), Media/Video (pick
-// from the Media Library, filtered by kind), and External App (pick a configured profile from
-// Settings). No Audio tab yet — the Media Library's MediaItem only models 'image' | 'video'
-// today, so there's no real data an Audio tab could list; that's a Media Library extension,
-// not just an Add-to-Service tab. The full unified fuzzy search across every type is still a
-// later slice.
-const addTab = ref<'songs' | 'scripture' | 'slides' | 'media' | 'video' | 'external-app' | 'countdown' | 'sermon' | 'bulletin-note'>('songs')
-// A menu/select rather than a tab strip — with 9 item types (and counting), a horizontal tab
-// bar was cramped; picking the type first keeps this a single, predictable choice regardless
-// of how many more types get added later.
+// The Add Item menu chooses the item type before opening its focused form. All forms still
+// share one dialog and reset path below, so selecting a type doesn't duplicate any of the
+// existing add behavior or draft state.
+type AddItemType = 'songs' | 'scripture' | 'slides' | 'media' | 'video' | 'external-app' | 'countdown' | 'sermon' | 'bulletin-note'
+const addTab = ref<AddItemType>('songs')
 const addTabOptions = computed(() => {
-  const options: { title: string; value: typeof addTab.value }[] = [
-    { title: 'Songs', value: 'songs' },
-    { title: 'Scripture', value: 'scripture' },
-    { title: 'Slides', value: 'slides' },
-    { title: 'Media', value: 'media' },
-    { title: 'Video', value: 'video' },
+  const options: { title: string; description: string; icon: string; value: AddItemType }[] = [
+    { title: 'Song', description: 'Add lyrics from the song library', icon: 'mdi-music-note', value: 'songs' },
+    { title: 'Scripture', description: 'Build a passage or reference slide', icon: 'mdi-book-open-page-variant', value: 'scripture' },
+    { title: 'Slides', description: 'Use library or service-only slides', icon: 'mdi-presentation', value: 'slides' },
+    { title: 'Media', description: 'Add an image from the media library', icon: 'mdi-image-outline', value: 'media' },
+    { title: 'Video', description: 'Add a video from the media library', icon: 'mdi-movie-open-outline', value: 'video' },
   ]
-  if (getAdapter().externalApps) options.push({ title: 'External App', value: 'external-app' })
+  if (getAdapter().externalApps) {
+    options.push({ title: 'External App', description: 'Hand off to a configured application', icon: 'mdi-application-outline', value: 'external-app' })
+  }
   options.push(
-    { title: 'Countdown', value: 'countdown' },
-    { title: 'Sermon', value: 'sermon' },
-    { title: 'Bulletin Note', value: 'bulletin-note' },
+    { title: 'Countdown', description: 'Show a countdown to a target time', icon: 'mdi-timer-outline', value: 'countdown' },
+    { title: 'Sermon', description: 'Add passages and sermon outline slides', icon: 'mdi-podium', value: 'sermon' },
+    { title: 'Bulletin Note', description: 'Add a printed, non-presented item', icon: 'mdi-file-document-outline', value: 'bulletin-note' },
   )
   return options
 })
+const activeAddTypeTitle = computed(() => addTabOptions.value.find((option) => option.value === addTab.value)?.title ?? 'Item')
+
+function openAddDialog(type: AddItemType) {
+  addTab.value = type
+  addDialogOpen.value = true
+}
 
 // Set only while filling in a Service Template's placeholder (see beginReplacePlaceholder) —
 // makes every add*ToService function below splice the new item into the placeholder's own
@@ -936,7 +993,9 @@ const newTextSlideBlocks = ref<SongBlock[]>([])
 
 const filteredSlidesForAdd = computed(() => {
   const q = slideQuery.value.trim().toLowerCase()
-  return slidesStore.slides.filter((item) => !q || item.label.toLowerCase().includes(q))
+  return slidesStore.slides.filter(
+    (item) => !q || item.label.toLowerCase().includes(q) || (item.tags ?? []).some((tag) => tag.toLowerCase().includes(q)),
+  )
 })
 
 async function addSlideRefToService(slideItem: SlideLibraryItem) {
@@ -1234,22 +1293,42 @@ function updateRolePerson(role: string, personId: string | undefined) {
 
 <template>
   <div v-if="service" class="workspace-root">
-    <div class="d-flex align-center justify-space-between px-4 py-2 border-b">
-      <div class="d-flex align-center ga-1">
-        <div class="d-flex flex-column" style="line-height: 1.3">
-          <span class="text-body-2 font-weight-bold">{{ serviceDateLabel }} · {{ service.type }}</span>
-          <span v-if="serviceSubtitle" class="text-caption text-medium-emphasis">{{ serviceSubtitle }}</span>
+    <div class="workspace-toolbar">
+      <div class="workspace-service-context">
+        <v-btn icon="mdi-arrow-left" variant="text" size="small" to="/" class="service-back-button" aria-label="Back to services" />
+        <span class="workspace-service-icon"><v-icon icon="mdi-church-outline" size="22" /></span>
+        <div class="workspace-service-heading">
+          <div class="workspace-title-line">
+            <span class="workspace-service-title">{{ service.type }}</span>
+            <span v-if="isPresenting" class="presenting-badge"><i />Live</span>
+          </div>
+          <div class="workspace-service-metadata">
+            <span class="workspace-service-date"><v-icon icon="mdi-calendar-clock-outline" size="16" />{{ serviceDateLabel }}</span>
+            <span v-if="serviceSubtitle" class="workspace-service-sermon">
+              <v-icon icon="mdi-book-open-page-variant-outline" size="16" />{{ serviceSubtitle }}
+            </span>
+          </div>
         </div>
-        <v-btn icon="mdi-pencil-outline" variant="text" size="small" title="Edit service details" @click="openServiceDetailsDialog" />
+        <v-btn
+          icon="mdi-pencil-outline"
+          variant="tonal"
+          color="primary"
+          size="small"
+          class="edit-service-button"
+          title="Edit service details"
+          aria-label="Edit service details"
+          @click="openServiceDetailsDialog"
+        />
       </div>
-      <div class="d-flex ga-2">
-        <v-btn variant="outlined" prepend-icon="mdi-account-group-outline" :to="`/service/${service.id}/assignments`">
+      <div class="workspace-actions">
+        <v-btn variant="tonal" prepend-icon="mdi-account-group-outline" :to="`/service/${service.id}/assignments`">
           Assignments
         </v-btn>
-        <v-btn variant="outlined" prepend-icon="mdi-file-document-outline" :to="`/service/${service.id}/order-of-worship`">
+        <v-btn variant="tonal" prepend-icon="mdi-file-document-outline" :to="`/service/${service.id}/order-of-worship`">
           Bulletin
         </v-btn>
-        <v-btn :color="isPresenting ? 'error' : 'primary'" variant="flat" @click="togglePresenting">
+        <span class="action-divider" />
+        <v-btn :color="isPresenting ? 'error' : 'primary'" variant="flat" class="present-button" @click="togglePresenting">
           <v-icon :icon="isPresenting ? 'mdi-stop' : 'mdi-play'" start />
           {{ isPresenting ? 'Stop Presenting' : 'Start Presenting' }}
         </v-btn>
@@ -1258,8 +1337,11 @@ function updateRolePerson(role: string, personId: string | undefined) {
 
     <div class="workspace-layout">
       <div class="service-panel">
-        <div class="d-flex align-center justify-space-between px-3 py-2 border-b">
-          <span class="text-overline text-medium-emphasis">Order of Worship</span>
+        <div class="service-panel-header">
+          <div>
+            <div class="panel-title">Order of Service</div>
+            <div class="panel-subtitle">{{ service.items.length }} item{{ service.items.length === 1 ? '' : 's' }}</div>
+          </div>
           <v-btn
             :icon="reorderMode ? 'mdi-check' : 'mdi-swap-vertical'"
             variant="text"
@@ -1268,7 +1350,34 @@ function updateRolePerson(role: string, personId: string | undefined) {
             @click="reorderMode = !reorderMode"
           />
         </div>
-        <div class="flex-grow-1 overflow-y-auto pa-2">
+        <v-menu location="bottom" :close-on-content-click="true">
+          <template #activator="{ props }">
+            <button
+              v-bind="props"
+              type="button"
+              class="add-service-button"
+            >
+              <span class="add-service-button-main">
+                <v-icon icon="mdi-plus" size="20" />
+                <span>Add Item</span>
+              </span>
+              <span class="add-service-button-chevron">
+                <v-icon icon="mdi-chevron-down" size="18" />
+              </span>
+            </button>
+          </template>
+          <v-list class="add-item-menu" density="compact">
+            <v-list-item
+              v-for="option in addTabOptions"
+              :key="option.value"
+              :title="option.title"
+              :subtitle="option.description"
+              :prepend-icon="option.icon"
+              @click="openAddDialog(option.value)"
+            />
+          </v-list>
+        </v-menu>
+        <div class="service-list flex-grow-1 overflow-y-auto">
           <VueDraggable
             v-if="reorderMode"
             v-model="service.items"
@@ -1284,6 +1393,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
               :class="{ 'service-item--selected': index === selectedItemIndex, 'service-item--live': itemHasLive(index) }"
               @click="selectedItemIndex = index"
             >
+              <span class="service-item-index">{{ index + 1 }}</span>
               <v-icon icon="mdi-drag-vertical" class="service-item-drag-handle" size="small" style="cursor: grab" />
               <div class="flex-grow-1" style="min-width: 0">
                 <div :class="{ 'font-italic': item.type === 'placeholder' }">{{ serviceOrderPrimaryLabel(item) }}</div>
@@ -1301,34 +1411,43 @@ function updateRolePerson(role: string, personId: string | undefined) {
               :class="{ 'service-item--selected': index === selectedItemIndex, 'service-item--live': itemHasLive(index) }"
               @click="selectedItemIndex = index"
             >
-              <v-icon :icon="itemIcon(item)" :color="itemColor(item)" size="small" />
+              <span class="service-item-index">{{ index + 1 }}</span>
+              <span class="service-item-icon" :style="{ color: `rgb(var(--v-theme-${itemColor(item)}))` }">
+                <v-icon :icon="itemIcon(item)" size="17" />
+              </span>
               <div class="flex-grow-1" style="min-width: 0">
-                <div :class="{ 'font-italic': item.type === 'placeholder' }">{{ serviceOrderPrimaryLabel(item) }}</div>
+                <div class="service-item-title" :class="{ 'font-italic': item.type === 'placeholder' }">
+                  {{ serviceOrderPrimaryLabel(item) }}
+                </div>
                 <div v-if="serviceOrderSecondaryLabel(item)" class="text-caption text-medium-emphasis">
                   {{ serviceOrderSecondaryLabel(item) }}
                 </div>
               </div>
               <v-btn
                 icon="mdi-trash-can-outline"
-                variant="flat"
-                color="error"
+                variant="text"
                 class="row-remove"
                 size="x-small"
+                title="Remove from service"
                 @click.stop="removeServiceItem(index)"
               />
             </div>
           </template>
         </div>
-        <v-btn variant="flat" color="primary" class="ma-2" prepend-icon="mdi-plus" @click="addDialogOpen = true">
-          Add to Service
-        </v-btn>
+        <div v-if="reorderMode" class="service-panel-footer">
+          <v-icon icon="mdi-drag-vertical" size="14" />
+          <span>Drag items into order</span>
+        </div>
       </div>
 
       <div class="center-panel">
         <template v-if="selectedItem">
-          <div class="mb-3">
-            <h2 class="text-h6">{{ itemLabel(selectedItem) }}</h2>
-            <p class="text-caption text-medium-emphasis">
+          <div class="editor-heading">
+            <div>
+              <div class="editor-eyebrow">Selected item</div>
+              <h2 class="editor-title">{{ itemLabel(selectedItem) }}</h2>
+            </div>
+            <p class="editor-hint">
               Click a slide to make it live · Next/Prev moves through the whole service
             </p>
           </div>
@@ -1609,28 +1728,15 @@ function updateRolePerson(role: string, personId: string | undefined) {
           </template>
 
           <template v-else-if="selectedItem.type === 'bulletin-note'">
-            <p class="text-body-2 text-medium-emphasis mb-4" style="max-width: 460px">
-              This item only appears in the printed Order of Worship — it never becomes a slide.
-            </p>
-            <v-text-field
-              :model-value="selectedItem.bulletinLabel"
-              label="Bulletin Label"
-              variant="outlined"
-              density="compact"
-              style="max-width: 460px"
-              class="mb-2"
-              @update:model-value="(value: string) => (selectedItem!.bulletinLabel = value)"
-            />
-            <v-textarea
-              :model-value="selectedItem.bulletinNote"
-              label="Bulletin Note (optional)"
-              variant="outlined"
-              density="compact"
-              rows="2"
-              auto-grow
-              style="max-width: 460px"
-              @update:model-value="(value: string) => (selectedItem!.bulletinNote = value)"
-            />
+            <div class="bulletin-only-callout">
+              <span class="bulletin-only-icon"><v-icon icon="mdi-file-document-outline" size="20" /></span>
+              <div>
+                <div class="font-weight-bold text-body-2">Printed service item</div>
+                <div class="text-caption text-medium-emphasis">
+                  This appears in the Order of Worship and never becomes a presentation slide.
+                </div>
+              </div>
+            </div>
           </template>
 
           <template v-else-if="selectedItem.type === 'placeholder'">
@@ -1674,76 +1780,100 @@ function updateRolePerson(role: string, personId: string | undefined) {
             </div>
           </template>
 
-          <div v-if="selectedItem.type !== 'bulletin-note'" class="mt-6" style="max-width: 460px">
-            <div class="text-overline text-medium-emphasis mb-2">Bulletin Label (optional)</div>
-            <v-text-field
-              :model-value="selectedItem.bulletinLabel"
-              variant="outlined"
-              density="compact"
-              clearable
-              placeholder="Overrides this item's default Order of Worship heading…"
-              @update:model-value="(value: string | undefined) => (selectedItem!.bulletinLabel = value || undefined)"
-            />
-            <div class="text-overline text-medium-emphasis mb-2">Bulletin Note (optional)</div>
-            <v-textarea
-              :model-value="selectedItem.bulletinNote"
-              variant="outlined"
-              density="compact"
-              rows="2"
-              placeholder='A second line under this entry, e.g. "(after this song children up to grade 4 can be dismissed)"…'
-              @update:model-value="(value: string) => (selectedItem!.bulletinNote = value || undefined)"
-            />
-          </div>
+          <div class="property-inspector">
+            <section class="property-section">
+              <div class="property-section-title">Order of Worship</div>
+              <label class="property-row">
+                <span>Label</span>
+                <v-text-field
+                  :model-value="selectedItem.bulletinLabel"
+                  variant="outlined"
+                  density="compact"
+                  clearable
+                  hide-details
+                  :placeholder="selectedItem.type === 'bulletin-note' ? 'Bulletin heading' : 'Use default heading'"
+                  @update:model-value="(value: string | undefined) => (selectedItem!.bulletinLabel = value || undefined)"
+                />
+              </label>
+              <label class="property-row property-row--top">
+                <span>Note</span>
+                <v-textarea
+                  :model-value="selectedItem.bulletinNote"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  rows="2"
+                  placeholder="Optional printed note"
+                  @update:model-value="(value: string) => (selectedItem!.bulletinNote = value || undefined)"
+                />
+              </label>
+            </section>
 
-          <div class="mt-4" style="max-width: 460px">
-            <div class="text-overline text-medium-emphasis mb-2">Role</div>
-            <v-select
-              :model-value="selectedItem.role"
-              :items="itemRoleOptions"
-              variant="outlined"
-              density="compact"
-              clearable
-              placeholder="Who's doing this part…"
-              @update:model-value="(value: string | undefined) => updateItemRole(selectedItem!.id, value)"
-            />
-            <v-select
-              v-if="selectedItem.role"
-              :model-value="assignedPersonId(selectedItem.role)"
-              :items="rolePersonOptions"
-              label="Assigned Person"
-              variant="outlined"
-              density="compact"
-              clearable
-              class="mt-2"
-              placeholder="Not yet assigned…"
-              @update:model-value="(value: string | undefined) => updateRolePerson(selectedItem!.role!, value)"
-            />
-          </div>
+            <section class="property-section">
+              <div class="property-section-title">People</div>
+              <label class="property-row">
+                <span>Role</span>
+                <v-select
+                  :model-value="selectedItem.role"
+                  :items="itemRoleOptions"
+                  variant="outlined"
+                  density="compact"
+                  clearable
+                  hide-details
+                  placeholder="No role"
+                  @update:model-value="(value: string | undefined) => updateItemRole(selectedItem!.id, value)"
+                />
+              </label>
+              <label v-if="selectedItem.role" class="property-row">
+                <span>Assigned</span>
+                <v-select
+                  :model-value="assignedPersonId(selectedItem.role)"
+                  :items="rolePersonOptions"
+                  variant="outlined"
+                  density="compact"
+                  clearable
+                  hide-details
+                  placeholder="Not assigned"
+                  @update:model-value="(value: string | undefined) => updateRolePerson(selectedItem!.role!, value)"
+                />
+              </label>
+            </section>
 
-          <div class="mt-4" style="max-width: 460px">
-            <div class="text-overline text-medium-emphasis mb-2">Presenter Notes</div>
-            <v-textarea
-              :model-value="service.presenterNotes?.[selectedItem.id]"
-              variant="outlined"
-              density="compact"
-              rows="2"
-              placeholder="Notes visible only on operator screen…"
-              @update:model-value="(value: string) => updatePresenterNote(selectedItem!.id, value)"
-            />
+            <section class="property-section">
+              <div class="property-section-title">Operator</div>
+              <label class="property-row property-row--top">
+                <span>Notes</span>
+                <v-textarea
+                  :model-value="service.presenterNotes?.[selectedItem.id]"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  rows="2"
+                  placeholder="Only visible to the operator"
+                  @update:model-value="(value: string) => updatePresenterNote(selectedItem!.id, value)"
+                />
+              </label>
+            </section>
           </div>
         </template>
         <p v-else class="text-medium-emphasis">This service has no items yet.</p>
       </div>
 
-      <div class="preview-panel">
-        <div class="text-overline text-medium-emphasis px-3 py-2 border-b">Preview</div>
+      <div ref="previewPanelRef" class="preview-panel">
+        <div class="preview-panel-header">
+          <div class="panel-title">Presentation</div>
+          <div class="panel-subtitle">Previous · Current · Next</div>
+        </div>
         <div class="preview-list">
           <div v-for="preview in previewSlots" :key="preview.label" class="preview-item">
-            <div class="text-caption text-medium-emphasis mb-1">{{ preview.label }}</div>
+            <div class="preview-label" :class="{ 'preview-label--live': preview.live }">
+              <span v-if="preview.live" class="live-dot" />
+              {{ preview.label }}
+            </div>
             <div
               class="preview-thumb"
               :class="{ 'preview-thumb--live': preview.live }"
-              :style="{ width: `${PREVIEW_THUMB_WIDTH}px`, height: `${previewThumbHeight}px` }"
+              :style="{ width: `${previewThumbWidth}px`, height: `${previewThumbHeight}px` }"
             >
               <SlideContentRenderer
                 :content="preview.content"
@@ -1770,21 +1900,60 @@ function updateRolePerson(role: string, personId: string | undefined) {
     </v-alert>
 
     <div class="live-footer">
-      <div class="d-flex align-center ga-3">
-        <v-btn variant="flat" color="error" prepend-icon="mdi-chevron-left" @click="previous">Previous</v-btn>
-        <span class="text-caption text-medium-emphasis text-truncate" style="max-width: 140px">{{ prevPreviewLabel }}</span>
+      <button type="button" class="transport-destination transport-destination--previous" :disabled="previousDisabled" @click="previous">
+        <v-icon icon="mdi-chevron-left" size="25" />
+        <span class="destination-copy">
+          <small>Previous</small>
+          <strong>{{ prevPreviewLabel }}</strong>
+        </span>
+        <kbd>←</kbd>
+      </button>
+
+      <div class="transport-center">
+        <div class="transport-current">
+          <span class="transport-mode" :class="{ 'transport-mode--live': isPresenting }">
+            <i />{{ isPresenting ? 'Live' : 'Preview' }}
+          </span>
+          <div class="current-slide-copy">
+            <strong>{{ currentSlideLabel }}</strong>
+            <span v-if="liveContextSnippet">{{ liveContextSnippet }}</span>
+          </div>
+          <span class="slide-position">{{ slidePositionLabel }}</span>
+        </div>
+        <div class="screen-overrides" aria-label="Screen overrides">
+          <v-btn
+            :variant="backgroundOnly ? 'flat' : 'tonal'"
+            :color="backgroundOnly ? 'primary' : undefined"
+            prepend-icon="mdi-image-outline"
+            size="small"
+            :disabled="!liveSlide"
+            class="screen-override-button"
+            @click="toggleBackgroundOnly"
+          >
+            Background Only <kbd>G</kbd>
+          </v-btn>
+          <v-btn
+            :variant="isBlankScreen ? 'flat' : 'tonal'"
+            :color="isBlankScreen ? 'primary' : undefined"
+            prepend-icon="mdi-monitor-off"
+            size="small"
+            class="screen-override-button"
+            :aria-pressed="isBlankScreen"
+            @click="toggleBlankScreen"
+          >
+            {{ isBlankScreen ? 'Restore Screen' : 'Blank Screen' }} <kbd>B</kbd>
+          </v-btn>
+        </div>
       </div>
 
-      <div class="live-status" :class="{ 'text-error': isPresenting }">
-        <span v-if="isPresenting" class="live-blink" />
-        <span class="font-weight-bold">{{ liveStatusText }}</span>
-        <span class="text-medium-emphasis text-truncate">{{ liveContextSnippet }}</span>
-      </div>
-
-      <div class="d-flex align-center ga-3">
-        <span class="text-caption text-medium-emphasis text-truncate" style="max-width: 140px">{{ nextPreviewLabel }}</span>
-        <v-btn variant="flat" color="error" append-icon="mdi-chevron-right" @click="next">Next</v-btn>
-      </div>
+      <button type="button" class="transport-destination transport-destination--next" :disabled="nextDisabled" @click="next">
+        <kbd>→</kbd>
+        <span class="destination-copy">
+          <small>Next</small>
+          <strong>{{ nextPreviewLabel }}</strong>
+        </span>
+        <v-icon icon="mdi-chevron-right" size="25" />
+      </button>
     </div>
 
     <v-dialog v-model="serviceDetailsDialogOpen" max-width="560">
@@ -1796,9 +1965,10 @@ function updateRolePerson(role: string, personId: string | undefined) {
               <v-text-field v-model="editDate" type="date" label="Date" variant="outlined" />
             </v-col>
             <v-col cols="6">
-              <v-select v-model="editType" :items="settingsStore.librarySettings?.serviceTypes ?? []" label="Type" variant="outlined" />
+              <v-text-field v-model="editTime" type="time" step="300" label="Start Time" variant="outlined" clearable />
             </v-col>
           </v-row>
+          <v-select v-model="editType" :items="settingsStore.librarySettings?.serviceTypes ?? []" label="Type" variant="outlined" />
           <v-text-field
             v-model="editSermonTitle"
             label="Sermon Title (optional)"
@@ -1839,17 +2009,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
            .v-dialog, and flex-basis overrides a plain `height` for sizing purposes regardless
            of specificity. Only the height PROP populates that --v-card-height variable. -->
       <v-card height="640" class="add-service-card">
-        <v-card-title>Add to Service</v-card-title>
-        <div class="px-4 pb-3 add-service-tabs">
-          <v-select
-            v-model="addTab"
-            :items="addTabOptions"
-            label="Type"
-            variant="outlined"
-            density="compact"
-            hide-details
-          />
-        </div>
+        <v-card-title>Add {{ activeAddTypeTitle }}</v-card-title>
         <v-card-text>
           <v-window v-model="addTab">
             <v-window-item value="songs">
@@ -2188,68 +2348,426 @@ function updateRolePerson(role: string, personId: string | undefined) {
   flex-direction: column;
   height: calc(100vh - 49px);
   overflow: hidden;
+  background: rgb(var(--v-theme-background));
+  color: rgba(var(--v-theme-on-background), 0.92);
+}
+.workspace-toolbar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 82px;
+  gap: 24px;
+  padding: 11px 18px 11px 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  background:
+    linear-gradient(90deg, rgba(var(--v-theme-primary), 0.035), transparent 420px),
+    rgba(var(--v-theme-surface), 0.88);
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
+  z-index: 2;
+}
+.workspace-service-context {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 36px 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+.service-back-button {
+  color: rgba(var(--v-theme-on-surface), 0.56);
+}
+.workspace-service-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgba(var(--v-theme-primary), 0.2);
+  border-radius: 10px;
+  background: rgba(var(--v-theme-primary), 0.11);
+  color: rgb(var(--v-theme-primary));
+}
+.workspace-service-heading {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  line-height: 1.25;
+}
+.workspace-title-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
+.workspace-service-title {
+  overflow: hidden;
+  color: rgba(var(--v-theme-on-surface), 0.96);
+  font-size: 1.04rem;
+  font-weight: 700;
+  letter-spacing: -0.018em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.presenting-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 7px;
+  border: 1px solid rgba(var(--v-theme-error), 0.25);
+  border-radius: 5px;
+  background: rgba(var(--v-theme-error), 0.1);
+  color: rgb(var(--v-theme-error));
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.presenting-badge i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px rgba(var(--v-theme-error), 0.12);
+}
+.workspace-service-metadata {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
+}
+.workspace-service-date,
+.workspace-service-sermon {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  color: rgba(var(--v-theme-on-surface), 0.56);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.workspace-service-date {
+  flex: none;
+}
+.workspace-service-date .v-icon {
+  color: rgb(var(--v-theme-primary));
+}
+.workspace-service-sermon {
+  overflow: hidden;
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  text-overflow: ellipsis;
+}
+.workspace-service-sermon .v-icon {
+  flex: none;
+  color: rgb(var(--v-theme-violet));
+}
+.edit-service-button {
+  align-self: center;
+}
+.workspace-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+.workspace-actions :deep(.v-btn) {
+  font-size: 0.72rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.action-divider {
+  width: 1px;
+  height: 30px;
+  margin: 0 3px;
+  background: rgba(var(--v-theme-on-surface), 0.09);
+}
+.present-button {
+  min-width: 158px;
+}
+@media (max-width: 1060px) {
+  .workspace-service-sermon {
+    display: none;
+  }
+  .workspace-actions .v-btn:not(.present-button),
+  .action-divider {
+    display: none;
+  }
 }
 .workspace-layout {
   display: grid;
-  grid-template-columns: 340px 1fr 400px;
+  grid-template-columns: minmax(280px, 330px) minmax(430px, 1fr) minmax(320px, 380px);
   grid-template-rows: minmax(0, 1fr);
   flex: 1;
   min-height: 0;
+  background: rgb(var(--v-theme-background));
 }
 .service-panel {
   display: flex;
   flex-direction: column;
-  border-right: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-right: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  background: rgb(var(--v-theme-surface));
   min-height: 0;
+}
+.service-panel-header,
+.preview-panel-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 62px;
+  padding: 11px 16px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+}
+.panel-title {
+  color: rgba(var(--v-theme-on-surface), 0.92);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+.panel-subtitle {
+  margin-top: 2px;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-size: 0.7rem;
+}
+.add-service-button {
+  display: flex;
+  flex-shrink: 0;
+  align-items: stretch;
+  width: calc(100% - 24px);
+  height: 42px;
+  margin: 12px 12px 5px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-primary), 0.24);
+  border-radius: 7px;
+  background: rgba(var(--v-theme-surface-variant), 0.42);
+  color: rgb(var(--v-theme-primary));
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-align: left;
+  transition:
+    border-color var(--ws-transition-fast),
+    background-color var(--ws-transition-fast),
+    box-shadow var(--ws-transition-fast);
+}
+.add-service-button:hover,
+.add-service-button[aria-expanded='true'] {
+  border-color: rgba(var(--v-theme-primary), 0.48);
+  background: rgba(var(--v-theme-primary), 0.1);
+}
+.add-service-button:focus-visible {
+  outline: 2px solid rgba(var(--v-theme-primary), 0.72);
+  outline-offset: 2px;
+}
+.add-service-button-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  padding: 0 13px;
+}
+.add-service-button-chevron {
+  display: grid;
+  width: 40px;
+  flex: 0 0 40px;
+  place-items: center;
+  border-left: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  color: rgba(var(--v-theme-on-surface), 0.62);
+}
+.add-item-menu {
+  width: 330px;
+  max-height: min(620px, calc(100vh - 120px));
+  padding: 6px;
+  overflow-y: auto;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+  background: rgb(var(--v-theme-surface));
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.28);
+}
+.add-item-menu :deep(.v-list-item) {
+  min-height: 52px;
+  margin-bottom: 2px;
+  border-radius: 7px;
+}
+.add-item-menu :deep(.v-list-item-subtitle) {
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-size: 0.72rem;
+}
+.service-list {
+  padding: 7px 8px 10px;
+}
+.service-panel-footer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 38px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+  color: rgba(var(--v-theme-on-surface), 0.45);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 .preview-panel {
   display: flex;
   flex-direction: column;
-  border-left: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-left: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  background: rgb(var(--v-theme-surface));
   min-height: 0;
   overflow-y: auto;
 }
 .preview-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 12px;
+  gap: 18px;
+  padding: 14px 16px 22px;
+}
+.preview-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 7px;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.preview-label--live {
+  color: rgb(var(--v-theme-error));
+}
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px rgba(var(--v-theme-error), 0.12);
 }
 .preview-thumb {
   overflow: hidden;
-  border-radius: 4px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.11);
+  border-radius: 7px;
   background: #000;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
 }
 .preview-thumb--live {
   outline: 2px solid rgb(var(--v-theme-error));
-  outline-offset: 2px;
+  outline-offset: 3px;
+  box-shadow: 0 8px 24px rgba(var(--v-theme-error), 0.13);
 }
 .service-item {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 12px;
-  border-radius: 8px;
+  gap: 9px;
+  min-height: 53px;
+  padding: 7px 8px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.055);
+  border-radius: 7px;
+  background: rgba(var(--v-theme-surface-variant), 0.3);
   cursor: pointer;
-  font-size: 17px;
-  margin-bottom: 1px;
+  font-size: 0.84rem;
+  margin-bottom: 5px;
+  transition:
+    background-color 130ms ease,
+    border-color 130ms ease,
+    box-shadow 130ms ease,
+    transform 130ms ease;
 }
 .service-item:hover {
+  border-color: rgba(var(--v-theme-primary), 0.25);
   background: rgba(var(--v-theme-primary), 0.08);
 }
 .service-item--selected {
-  background: rgba(var(--v-theme-primary), 0.12);
-  font-weight: 600;
-  color: rgb(var(--v-theme-primary));
+  border-color: rgba(var(--v-theme-primary), 0.42);
+  background: rgba(var(--v-theme-primary), 0.14);
+  box-shadow: inset 3px 0 rgb(var(--v-theme-primary));
 }
 .service-item--live {
-  border-left: 3px solid rgb(var(--v-theme-error));
-  padding-left: 7px;
+  box-shadow: inset 3px 0 rgb(var(--v-theme-error));
+}
+.service-item--selected.service-item--live {
+  box-shadow:
+    inset 3px 0 rgb(var(--v-theme-error)),
+    inset 0 0 0 1px rgba(var(--v-theme-primary), 0.2);
+}
+.service-item-index {
+  width: 16px;
+  flex: 0 0 16px;
+  color: rgba(var(--v-theme-on-surface), 0.42);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.service-item-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  border-radius: 6px;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+.service-item-title {
+  overflow: hidden;
+  color: rgba(var(--v-theme-on-surface), 0.94);
+  font-weight: 600;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .center-panel {
-  padding: 20px 24px;
+  padding: 0 24px 28px;
   overflow-y: auto;
   min-height: 0;
+  background:
+    radial-gradient(circle at 50% 0, rgba(var(--v-theme-primary), 0.045), transparent 340px),
+    rgb(var(--v-theme-background));
+}
+.center-panel :deep(.v-field) {
+  border-radius: 6px;
+  background: rgba(var(--v-theme-surface), 0.62);
+}
+.editor-heading {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 74px;
+  margin: 0 -24px 18px;
+  padding: 12px 24px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+  background: rgba(var(--v-theme-background), 0.94);
+  backdrop-filter: blur(12px);
+}
+.editor-eyebrow {
+  margin-bottom: 2px;
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.editor-title {
+  font-size: 1.12rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+}
+.editor-hint {
+  max-width: 280px;
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  text-align: right;
 }
 .slide-row {
   display: flex;
@@ -2257,10 +2775,15 @@ function updateRolePerson(role: string, personId: string | undefined) {
   gap: 10px;
   padding: 10px 12px;
   border-radius: 8px;
+  border: 1px solid transparent;
   cursor: pointer;
+  transition:
+    background-color 130ms ease,
+    border-color 130ms ease;
 }
 .slide-row:hover {
   background: rgba(var(--v-theme-primary), 0.08);
+  border-color: rgba(var(--v-theme-primary), 0.18);
 }
 .media-preview {
   max-width: 100%;
@@ -2274,10 +2797,89 @@ function updateRolePerson(role: string, personId: string | undefined) {
 }
 .row-remove {
   opacity: 0;
+  color: rgba(var(--v-theme-on-surface), 0.58);
+  transition:
+    opacity 120ms ease,
+    color 120ms ease;
 }
 .slide-row:hover .row-remove,
 .service-item:hover .row-remove {
   opacity: 1;
+}
+.row-remove:hover {
+  color: rgb(var(--v-theme-error));
+}
+.bulletin-only-callout {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 680px;
+  padding: 13px 15px;
+  border: 1px solid rgba(var(--v-theme-secondary), 0.2);
+  border-radius: 8px;
+  background: rgba(var(--v-theme-secondary), 0.07);
+}
+.bulletin-only-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-secondary), 0.14);
+  color: rgb(var(--v-theme-secondary));
+}
+.property-inspector {
+  max-width: 680px;
+  margin-top: 28px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 9px;
+  background: rgba(var(--v-theme-surface), 0.68);
+}
+.property-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 15px 16px 17px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+.property-section:last-child {
+  border-bottom: 0;
+}
+.property-section-title {
+  margin-bottom: 3px;
+  color: rgba(var(--v-theme-on-surface), 0.58);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.085em;
+  text-transform: uppercase;
+}
+.property-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+}
+.property-row > span {
+  color: rgba(var(--v-theme-on-surface), 0.7);
+  font-size: 0.76rem;
+}
+.property-row--top {
+  align-items: start;
+}
+.property-row--top > span {
+  padding-top: 9px;
+}
+.property-inspector :deep(.v-field) {
+  border-radius: 6px;
+  background: rgba(var(--v-theme-background), 0.55);
+  font-size: 0.8rem;
+}
+.property-inspector :deep(.v-field__input) {
+  min-height: 38px;
+  padding-top: 7px;
+  padding-bottom: 7px;
 }
 .external-app-alert {
   flex-shrink: 0;
@@ -2285,27 +2887,216 @@ function updateRolePerson(role: string, personId: string | undefined) {
 }
 .live-footer {
   flex-shrink: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(390px, 1.35fr) minmax(220px, 1fr);
   align-items: center;
-  gap: 16px;
-  padding: 10px 20px;
-  background: rgb(var(--v-theme-surface));
-  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  gap: 12px;
+  min-height: 82px;
+  padding: 9px 14px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.09);
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-surface), 0.98), rgba(var(--v-theme-surface-variant), 0.48));
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08);
 }
-.live-status {
-  flex: 1;
+.transport-destination {
+  display: grid;
+  min-width: 0;
+  min-height: 58px;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.09);
+  border-radius: 8px;
+  background: rgba(var(--v-theme-background), 0.35);
+  color: rgba(var(--v-theme-on-surface), 0.72);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition:
+    border-color var(--ws-transition-fast),
+    background-color var(--ws-transition-fast),
+    color var(--ws-transition-fast);
+}
+.transport-destination:hover:not(:disabled) {
+  border-color: rgba(var(--v-theme-primary), 0.28);
+  background: rgba(var(--v-theme-primary), 0.065);
+  color: rgba(var(--v-theme-on-surface), 0.94);
+}
+.transport-destination:focus-visible {
+  outline: 2px solid rgba(var(--v-theme-primary), 0.55);
+  outline-offset: 1px;
+}
+.transport-destination:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+.transport-destination--next {
+  border-color: rgba(var(--v-theme-primary), 0.18);
+  background: rgba(var(--v-theme-primary), 0.08);
+}
+.transport-destination--next .destination-copy {
+  text-align: right;
+}
+.destination-copy {
   display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.destination-copy small {
+  color: rgba(var(--v-theme-on-surface), 0.42);
+  font-size: 0.61rem;
+  font-weight: 720;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+.destination-copy strong {
+  overflow: hidden;
+  color: inherit;
+  font-size: 0.72rem;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.live-footer kbd {
+  display: inline-grid;
+  min-width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0 5px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-bottom-color: rgba(var(--v-theme-on-surface), 0.2);
+  border-radius: 5px;
+  background: rgba(var(--v-theme-on-surface), 0.055);
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-family: inherit;
+  font-size: 0.66rem;
+  font-weight: 650;
+  line-height: 1;
+}
+.transport-center {
+  display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-width: 0;
+  gap: 11px;
 }
-.live-blink {
-  width: 8px;
-  height: 8px;
+.transport-current {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+.transport-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 7px;
+  border: 1px solid rgba(var(--v-theme-slate), 0.22);
+  border-radius: 5px;
+  background: rgba(var(--v-theme-slate), 0.09);
+  color: rgb(var(--v-theme-slate));
+  font-size: 0.61rem;
+  font-weight: 760;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.transport-mode i {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: rgb(var(--v-theme-error));
-  flex-shrink: 0;
+  background: currentColor;
+}
+.transport-mode--live {
+  border-color: rgba(var(--v-theme-error), 0.28);
+  background: rgba(var(--v-theme-error), 0.1);
+  color: rgb(var(--v-theme-error));
+}
+.transport-mode--live i {
+  box-shadow: 0 0 0 3px rgba(var(--v-theme-error), 0.12);
+}
+.current-slide-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  text-align: center;
+}
+.current-slide-copy strong,
+.current-slide-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.current-slide-copy strong {
+  color: rgba(var(--v-theme-on-surface), 0.9);
+  font-size: 0.78rem;
+  font-weight: 680;
+}
+.current-slide-copy span {
+  color: rgba(var(--v-theme-on-surface), 0.46);
+  font-size: 0.67rem;
+}
+.slide-position {
+  color: rgba(var(--v-theme-on-surface), 0.45);
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.screen-overrides {
+  display: grid;
+  flex: none;
+  gap: 4px;
+}
+.screen-override-button {
+  justify-content: flex-start;
+  width: 100%;
+  flex: none;
+  padding-inline-end: 6px;
+  font-size: 0.67rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.screen-override-button :deep(.v-btn__content) {
+  min-width: 0;
+  flex: 1;
+  justify-content: flex-start;
+  gap: 10px;
+}
+.screen-override-button kbd {
+  min-width: 20px;
+  height: 20px;
+  margin-left: auto;
+  font-size: 0.6rem;
+}
+@media (max-width: 1250px) {
+  .live-footer {
+    grid-template-columns: minmax(190px, 0.9fr) minmax(330px, 1.2fr) minmax(190px, 0.9fr);
+    gap: 8px;
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+  .transport-destination > kbd,
+  .slide-position {
+    display: none;
+  }
+  .transport-destination--previous {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+  .transport-destination--next {
+    grid-template-columns: minmax(0, 1fr) 28px;
+  }
+}
+@media (max-width: 1500px) {
+  .workspace-layout {
+    grid-template-columns: 280px minmax(390px, 1fr) 320px;
+  }
+  .editor-hint {
+    display: none;
+  }
 }
 /* Add-to-Service dialog: one fixed size regardless of which type is selected — a long song
    library, several sermon passages, or the outline editor could otherwise each drive the card
@@ -2318,7 +3109,6 @@ function updateRolePerson(role: string, personId: string | undefined) {
   flex-direction: column;
 }
 :deep(.v-card-title),
-.add-service-tabs,
 :deep(.v-card-actions) {
   flex-shrink: 0;
 }

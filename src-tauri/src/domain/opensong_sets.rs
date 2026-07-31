@@ -136,6 +136,7 @@ pub fn import_sets(
         services.push(Service {
             id: format!("service-{}", uuid::Uuid::new_v4()),
             date: date_str,
+            time: None,
             service_type: default_service_type.to_string(),
             items,
             presenter_notes: None,

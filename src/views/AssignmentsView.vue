@@ -11,11 +11,12 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import PersonEditorDialog from '@/components/people/PersonEditorDialog.vue'
 import RoleAssignmentBlock from '@/components/assignments/RoleAssignmentBlock.vue'
 import { findRoleConflicts, isDateUnavailable } from '@/utils/rosterConflicts'
-import { planAssignmentResetFromTemplate } from '@/utils/serviceTemplate'
+import { defaultServiceTemplate, planAssignmentResetFromTemplate } from '@/utils/serviceTemplate'
 import type { RoleAssignment, Service } from '@/models/service'
 import type { Person } from '@/models/library'
 import { personDisplayName } from '@/models/library'
 import { roleDisplayLabel } from '@/models/settings'
+import { formatServiceTime } from '@/utils/serviceTime'
 
 const route = useRoute()
 const servicesStore = useServicesStore()
@@ -56,16 +57,17 @@ onUnmounted(() => {
 // planning report headers, and the service workspace's own heading (see
 // ServiceWorkspaceView.vue's identical serviceDateLabel) — one consistent date presentation
 // across the app instead of the raw "YYYY-MM-DD" stored on disk.
-const serviceDateLabel = computed(() =>
-  service.value
-    ? new Date(`${service.value.date}T00:00:00`).toLocaleDateString(undefined, {
+const serviceDateLabel = computed(() => {
+  if (!service.value) return ''
+  const date = new Date(`${service.value.date}T00:00:00`).toLocaleDateString(undefined, {
         weekday: 'long',
         month: 'long',
         day: 'numeric',
         year: 'numeric',
       })
-    : '',
-)
+  const time = formatServiceTime(service.value.time)
+  return time ? `${date} · ${time}` : date
+})
 // This page has no static router meta.title (see App.vue's pageTitle) since its content is
 // per-service — kept in sync here instead of only set once at mount, so renaming things
 // upstream (were that ever possible from this page) wouldn't leave a stale app-bar title.
@@ -122,7 +124,10 @@ interface DisplayGroup {
 // Stable per-category color (same category, same color, driven by the category's own position
 // in Settings → Roles) — mirrors PeopleView's categoryColor, reused here so a category reads
 // consistently across both pages rather than introducing an unrelated palette.
-const CATEGORY_COLORS = ['primary', 'secondary', 'teal', 'violet', 'rose', 'amber', 'slate', 'terracotta']
+// Keep category identity separate from operational warning/error colors. The most common
+// groups receive blue, teal, violet, and terracotta first; amber and brass are deliberately
+// last because they sit too close to the warning palette used for assignment conflicts.
+const CATEGORY_COLORS = ['primary', 'teal', 'violet', 'terracotta', 'rose', 'slate', 'secondary', 'amber']
 function categoryColor(groupName: string): string {
   const groups = settingsStore.librarySettings?.roleGroups ?? []
   const index = groups.findIndex((g) => g.name === groupName)
@@ -205,7 +210,7 @@ function onAddRole(role: string | null) {
 // sermon's Preacher) are never touched, template or no template.
 const resetDialogOpen = ref(false)
 const resetTemplate = computed(() =>
-  settingsStore.librarySettings?.serviceTemplates?.find((t) => t.serviceType === service.value?.type),
+  defaultServiceTemplate(settingsStore.librarySettings?.serviceTemplates, service.value?.type ?? ''),
 )
 const resetPlan = computed(() => {
   if (!service.value || !resetTemplate.value) return null
@@ -266,6 +271,9 @@ const unavailableLines = computed(() =>
     .filter((assignment) => isUnavailable(assignment))
     .map((assignment) => `${personName(assignment.personId)} marked unavailable this date (${roleLabel(assignment.role)})`),
 )
+const filledAssignmentCount = computed(() => roster.value.filter((assignment) => assignment.personId).length)
+const openAssignmentCount = computed(() => roster.value.filter((assignment) => !assignment.personId).length)
+const tentativeAssignmentCount = computed(() => roster.value.filter((assignment) => assignment.tentative).length)
 
 // People directory management — a lightweight "+ New Person" reachable right from the
 // assignments page, rather than only through the People page, since that's the moment it's
@@ -309,91 +317,171 @@ async function sendAssignmentsEmail() {
 </script>
 
 <template>
-  <v-container v-if="service" class="py-8" style="max-width: 780px">
-    <div class="d-flex align-center mb-1 ga-2">
-      <v-btn variant="text" size="small" prepend-icon="mdi-chevron-left" :to="`/service/${service.id}`">
-        {{ service.type }} — {{ serviceDateLabel }}
-      </v-btn>
-      <v-spacer />
-      <v-btn variant="text" size="small" prepend-icon="mdi-refresh" @click="openResetDialog">Reset from Template</v-btn>
+  <main v-if="service" class="assignments-page">
+    <header class="assignments-hero">
+      <div class="assignments-hero-toolbar">
+        <v-btn variant="text" size="small" prepend-icon="mdi-chevron-left" :to="`/service/${service.id}`">
+          Back to Service
+        </v-btn>
+        <v-btn variant="text" size="small" prepend-icon="mdi-refresh" @click="openResetDialog">
+          Reset from Template
+        </v-btn>
+      </div>
+      <div class="assignments-hero-content">
+        <div>
+          <div class="page-eyebrow">Service team</div>
+          <h1>Assignments</h1>
+          <p class="service-context">{{ service.type }} <span>·</span> {{ serviceDateLabel }}</p>
+          <p class="page-description">
+            Assign people to each role and resolve availability issues before the service.
+          </p>
+        </div>
+        <div class="roster-summary" aria-label="Assignment summary">
+          <div class="summary-stat summary-stat--assigned">
+            <strong>{{ filledAssignmentCount }}</strong>
+            <span>Assigned</span>
+          </div>
+          <div class="summary-stat" :class="{ 'summary-stat--attention': openAssignmentCount > 0 }">
+            <strong>{{ openAssignmentCount }}</strong>
+            <span>Open</span>
+          </div>
+          <div class="summary-stat">
+            <strong>{{ tentativeAssignmentCount }}</strong>
+            <span>Tentative</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div v-if="conflictLines.length || unavailableLines.length" class="assignment-alerts">
+      <v-alert v-if="conflictLines.length" type="warning" variant="tonal" density="compact">
+        <div class="alert-title">Double-booking to review</div>
+        <div v-for="(line, index) in conflictLines" :key="index">{{ line }}</div>
+      </v-alert>
+      <v-alert v-if="unavailableLines.length" type="error" variant="tonal" density="compact">
+        <div class="alert-title">Availability conflict</div>
+        <div v-for="(line, index) in unavailableLines" :key="index">{{ line }}</div>
+      </v-alert>
     </div>
-    <h1 class="text-h5 font-weight-bold mb-1">Assignments</h1>
-    <p class="text-subtitle-1 text-medium-emphasis mb-1">{{ service.type }} — {{ serviceDateLabel }}</p>
-    <p class="text-medium-emphasis text-body-2 mb-4">
-      Assign people to each role. Double-booked people are flagged as a heads-up (often fine); anyone marked
-      unavailable this date is flagged as an error.
-    </p>
 
-    <v-alert v-if="conflictLines.length" type="warning" variant="tonal" class="mb-3">
-      <div v-for="(line, index) in conflictLines" :key="index">⚠ {{ line }}</div>
-    </v-alert>
-    <v-alert v-if="unavailableLines.length" type="error" variant="tonal" class="mb-4">
-      <div v-for="(line, index) in unavailableLines" :key="index">⚠ {{ line }}</div>
-    </v-alert>
+    <div class="assignments-layout">
+      <div class="assignments-main">
+        <section v-if="orderOfServiceGroups.length" class="assignment-section">
+          <div class="section-heading">
+            <span class="section-icon section-icon--service">
+              <v-icon icon="mdi-book-open-page-variant-outline" size="21" />
+            </span>
+            <div>
+              <h2>Order of Service</h2>
+              <p>Roles connected directly to items in the service plan.</p>
+            </div>
+          </div>
+          <div
+            v-for="group in orderOfServiceGroups"
+            :key="group.name"
+            class="role-category"
+            :style="{ '--category-color': `rgb(var(--v-theme-${group.color}))` }"
+          >
+            <div class="category-heading">
+              <span class="category-marker"><v-icon icon="mdi-shape-outline" size="16" /></span>
+              <span>{{ group.name }}</span>
+              <span class="category-count">{{ group.roles.length }}</span>
+            </div>
+            <RoleAssignmentBlock
+              v-for="role in group.roles"
+              :key="role"
+              :label="role"
+              :assignments="assignmentsForRole(role)"
+              :person-options="personOptions"
+              :is-conflicted="isConflicted"
+              :is-unavailable="isUnavailable"
+              :color="group.color"
+              @add="addAssignment(role)"
+              @remove="removeAssignment"
+            />
+          </div>
+        </section>
 
-    <div v-if="orderOfServiceGroups.length" class="mb-6">
-      <div class="section-heading section-heading--order-of-service mb-3">
-        <v-icon icon="mdi-book-open-page-variant-outline" size="22" class="mr-2" />
-        Order of Service
+        <section v-if="groupedRoles.length" class="assignment-section">
+          <div class="section-heading">
+            <span class="section-icon section-icon--staffing"><v-icon icon="mdi-account-group-outline" size="21" /></span>
+            <div>
+              <h2>Service Team</h2>
+              <p>Staffing and volunteer roles supporting this service.</p>
+            </div>
+          </div>
+          <div
+            v-for="group in groupedRoles"
+            :key="group.name"
+            class="role-category"
+            :style="{ '--category-color': `rgb(var(--v-theme-${group.color}))` }"
+          >
+            <div class="category-heading">
+              <span class="category-marker"><v-icon icon="mdi-shape-outline" size="16" /></span>
+              <span>{{ group.name }}</span>
+              <span class="category-count">{{ group.roles.length }}</span>
+            </div>
+            <RoleAssignmentBlock
+              v-for="role in group.roles"
+              :key="role"
+              :label="role"
+              :assignments="assignmentsForRole(role)"
+              :person-options="personOptions"
+              :is-conflicted="isConflicted"
+              :is-unavailable="isUnavailable"
+              :color="group.color"
+              @add="addAssignment(role)"
+              @remove="removeAssignment"
+            />
+          </div>
+        </section>
+
+        <div v-if="orderOfServiceGroups.length === 0 && groupedRoles.length === 0" class="assignments-empty-state">
+          <span><v-icon icon="mdi-account-group-outline" size="28" /></span>
+          <h2>No roles yet</h2>
+          <p>Add a role to begin building this service team.</p>
+        </div>
       </div>
-      <div v-for="group in orderOfServiceGroups" :key="group.name" class="mb-4">
-        <div class="category-heading mb-2" :style="{ color: `rgb(var(--v-theme-${group.color}))` }">{{ group.name }}</div>
-        <RoleAssignmentBlock
-          v-for="role in group.roles"
-          :key="role"
-          :label="role"
-          :assignments="assignmentsForRole(role)"
-          :person-options="personOptions"
-          :is-conflicted="isConflicted"
-          :is-unavailable="isUnavailable"
-          :color="group.color"
-          @add="addAssignment(role)"
-          @remove="removeAssignment"
-        />
-      </div>
-    </div>
 
-    <div v-if="groupedRoles.length" class="mb-4">
-      <div class="section-heading section-heading--roles mb-3">
-        <v-icon icon="mdi-account-group-outline" size="22" class="mr-2" />
-        Roles
-      </div>
-      <div v-for="group in groupedRoles" :key="group.name" class="mb-4">
-        <div class="category-heading mb-2" :style="{ color: `rgb(var(--v-theme-${group.color}))` }">{{ group.name }}</div>
-        <RoleAssignmentBlock
-          v-for="role in group.roles"
-          :key="role"
-          :label="role"
-          :assignments="assignmentsForRole(role)"
-          :person-options="personOptions"
-          :is-conflicted="isConflicted"
-          :is-unavailable="isUnavailable"
-          :color="group.color"
-          @add="addAssignment(role)"
-          @remove="removeAssignment"
-        />
-      </div>
-    </div>
-    <p v-if="orderOfServiceGroups.length === 0 && groupedRoles.length === 0" class="text-medium-emphasis text-body-2 mb-2">
-      No roles assigned yet for this service.
-    </p>
+      <aside class="assignments-sidebar">
+        <section class="sidebar-panel">
+          <div class="sidebar-panel-title">Roster Tools</div>
+          <p class="sidebar-panel-description">Add roles or people without leaving this service.</p>
+          <label class="sidebar-field-label">Role</label>
+          <v-select
+            v-model="roleToAdd"
+            :items="addRoleItems"
+            label="+ Add Role"
+            variant="outlined"
+            density="compact"
+            hide-details
+            @update:model-value="onAddRole"
+          />
+          <v-btn block variant="tonal" color="primary" prepend-icon="mdi-account-plus-outline" @click="openAddPerson">
+            New Person
+          </v-btn>
+          <v-btn block variant="flat" color="primary" prepend-icon="mdi-email-outline" @click="openEmailDialog">
+            Send Assignments by Email
+          </v-btn>
+          <p class="settings-note">Roles are managed in Settings → Roles</p>
+        </section>
 
-    <v-select
-      v-model="roleToAdd"
-      :items="addRoleItems"
-      label="+ Add Role"
-      variant="outlined"
-      density="compact"
-      style="max-width: 280px"
-      @update:model-value="onAddRole"
-    />
-
-    <p class="text-caption text-medium-emphasis mt-6 mb-3">Roles are managed in Settings → Roles</p>
-    <div class="d-flex align-center justify-space-between flex-wrap ga-3">
-      <v-btn variant="tonal" color="primary" prepend-icon="mdi-account-plus-outline" @click="openAddPerson">New Person</v-btn>
-      <v-btn variant="flat" color="primary" prepend-icon="mdi-email-outline" @click="openEmailDialog">
-        Send Assignments by Email
-      </v-btn>
+        <section class="sidebar-panel">
+          <div class="sidebar-panel-title">Status Guide</div>
+          <div class="status-guide-row">
+            <span class="status-icon status-icon--tentative"><v-icon icon="mdi-clock-outline" size="17" /></span>
+            <div><strong>Tentative</strong><small>Assignment is not confirmed</small></div>
+          </div>
+          <div class="status-guide-row">
+            <span class="status-icon status-icon--warning"><v-icon icon="mdi-alert-outline" size="17" /></span>
+            <div><strong>Double-booked</strong><small>Review, but may be intentional</small></div>
+          </div>
+          <div class="status-guide-row">
+            <span class="status-icon status-icon--error"><v-icon icon="mdi-calendar-remove-outline" size="17" /></span>
+            <div><strong>Unavailable</strong><small>Choose someone available</small></div>
+          </div>
+        </section>
+      </aside>
     </div>
 
     <PersonEditorDialog v-model="personDialogOpen" :role-groups="allGroupedRoles" @save="savePerson" />
@@ -464,31 +552,370 @@ async function sendAssignmentsEmail() {
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </v-container>
+  </main>
   <v-container v-else class="py-8">
     <p class="text-medium-emphasis">Service not found.</p>
   </v-container>
 </template>
 
 <style scoped>
+.assignments-page {
+  min-height: calc(100vh - 49px);
+  padding: 24px clamp(24px, 3vw, 48px) 56px;
+  background:
+    radial-gradient(circle at 24% 0, rgba(var(--v-theme-primary), 0.055), transparent 420px),
+    rgb(var(--v-theme-background));
+}
+.assignments-hero,
+.assignment-section,
+.sidebar-panel {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 11px;
+  background: rgba(var(--v-theme-surface), 0.76);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.08);
+}
+.assignments-hero {
+  max-width: 1240px;
+  margin: 0 auto 18px;
+  overflow: hidden;
+}
+.assignments-hero-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 46px;
+  padding: 3px 12px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+.assignments-hero-content {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 36px;
+  padding: 24px 28px 27px;
+}
+.page-eyebrow {
+  margin-bottom: 4px;
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.assignments-hero h1 {
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.95);
+  font-size: 1.75rem;
+  font-weight: 680;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+.service-context {
+  margin: 7px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.72);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.service-context span {
+  padding: 0 4px;
+  color: rgba(var(--v-theme-on-surface), 0.32);
+}
+.page-description {
+  max-width: 590px;
+  margin: 7px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+.roster-summary {
+  display: flex;
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 9px;
+  background: rgba(var(--v-theme-background), 0.42);
+}
+.summary-stat {
+  display: flex;
+  min-width: 92px;
+  flex-direction: column;
+  align-items: center;
+  padding: 11px 16px;
+  border-right: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+.summary-stat:last-child {
+  border-right: 0;
+}
+.summary-stat strong {
+  color: rgba(var(--v-theme-on-surface), 0.94);
+  font-size: 1.12rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.summary-stat span {
+  margin-top: 4px;
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.76rem;
+  font-weight: 650;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+.summary-stat--assigned strong {
+  color: rgb(var(--v-theme-success));
+}
+.summary-stat--attention strong {
+  color: rgb(var(--v-theme-warning));
+}
+.assignment-alerts {
+  display: grid;
+  max-width: 1240px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 auto 18px;
+  font-size: 0.82rem;
+}
+.alert-title {
+  margin-bottom: 3px;
+  font-weight: 700;
+}
+.assignments-layout {
+  display: grid;
+  max-width: 1240px;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  align-items: start;
+  gap: 18px;
+  margin: 0 auto;
+}
+.assignments-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 18px;
+}
+.assignment-section {
+  overflow: hidden;
+}
 .section-heading {
   display: flex;
   align-items: center;
-  font-size: 20px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  gap: 12px;
+  min-height: 68px;
+  padding: 13px 18px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
 }
-.section-heading--order-of-service {
+.section-heading h2 {
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.92);
+  font-size: 1rem;
+  font-weight: 680;
+  letter-spacing: -0.01em;
+}
+.section-heading p {
+  margin: 2px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-size: 0.78rem;
+}
+.section-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  place-items: center;
+  border-radius: 8px;
+}
+.section-icon--service {
+  background: rgba(var(--v-theme-teal), 0.13);
   color: rgb(var(--v-theme-teal));
 }
-.section-heading--roles {
+.section-icon--staffing {
+  background: rgba(var(--v-theme-secondary), 0.13);
   color: rgb(var(--v-theme-secondary));
 }
+.role-category {
+  padding: 13px 18px 5px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.055);
+  box-shadow: inset 4px 0 var(--category-color);
+}
+.role-category:last-child {
+  border-bottom: 0;
+}
 .category-heading {
-  font-size: 16px;
-  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  margin: 0 0 11px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--category-color) 22%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--category-color) 10%, transparent);
+  color: var(--category-color);
+  font-size: 0.75rem;
+  font-weight: 680;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.075em;
+}
+.category-marker {
+  display: grid;
+  width: 23px;
+  height: 23px;
+  place-items: center;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--category-color) 16%, transparent);
+}
+.category-count {
+  display: grid;
+  min-width: 19px;
+  height: 19px;
+  place-items: center;
+  border-radius: 10px;
+  margin-left: 2px;
+  background: color-mix(in srgb, var(--category-color) 15%, transparent);
+  color: var(--category-color);
+  font-size: 0.7rem;
+}
+.assignments-sidebar {
+  position: sticky;
+  top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.sidebar-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 17px;
+}
+.sidebar-panel-title {
+  color: rgba(var(--v-theme-on-surface), 0.9);
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.sidebar-panel-description,
+.settings-note {
+  margin: -5px 0 1px;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+.sidebar-field-label {
+  margin-bottom: -7px;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.settings-note {
+  margin: 0;
+  text-align: center;
+}
+.sidebar-panel :deep(.v-field) {
+  border-radius: 6px;
+  background: rgba(var(--v-theme-background), 0.48);
+}
+.status-guide-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+.status-guide-row div {
+  display: flex;
+  flex-direction: column;
+}
+.status-guide-row strong {
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+.status-guide-row small {
+  margin-top: 1px;
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+.status-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 7px;
+}
+.status-icon--tentative {
+  border-color: rgba(var(--v-theme-on-surface), 0.2);
+  background: rgba(var(--v-theme-on-surface), 0.06);
+  color: rgba(var(--v-theme-on-surface), 0.62);
+}
+.status-icon--warning {
+  border-color: rgba(var(--v-theme-warning), 0.3);
+  background: rgba(var(--v-theme-warning), 0.1);
+  color: rgb(var(--v-theme-warning));
+}
+.status-icon--error {
+  border-color: rgba(var(--v-theme-error), 0.3);
+  background: rgba(var(--v-theme-error), 0.1);
+  color: rgb(var(--v-theme-error));
+}
+.assignments-empty-state {
+  display: flex;
+  min-height: 260px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed rgba(var(--v-theme-on-surface), 0.13);
+  border-radius: 11px;
+  color: rgba(var(--v-theme-on-surface), 0.52);
+  text-align: center;
+}
+.assignments-empty-state > span {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(var(--v-theme-primary), 0.1);
+  color: rgb(var(--v-theme-primary));
+}
+.assignments-empty-state h2 {
+  margin: 13px 0 2px;
+  color: rgba(var(--v-theme-on-surface), 0.84);
+  font-size: 1rem;
+}
+.assignments-empty-state p {
+  margin: 0;
+  font-size: 0.82rem;
+}
+@media (max-width: 1050px) {
+  .assignments-layout {
+    grid-template-columns: 1fr;
+  }
+  .assignments-sidebar {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 720px) {
+  .assignments-page {
+    padding: 14px 12px 40px;
+  }
+  .assignments-hero-content {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 20px;
+  }
+  .roster-summary {
+    width: 100%;
+  }
+  .summary-stat {
+    min-width: 0;
+    flex: 1;
+  }
+  .assignment-alerts,
+  .assignments-sidebar {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

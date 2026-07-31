@@ -9,6 +9,7 @@ import ServiceCard from '@/components/ServiceCard.vue'
 import type { Service } from '@/models/service'
 import { personDisplayName } from '@/models/library'
 import { findSermonItem, sermonMainReference, sermonPreacherId } from '@/utils/sermonInfo'
+import { formatServiceTime, serviceDateTimeSortKey } from '@/utils/serviceTime'
 
 const store = useServicesStore()
 const undoStore = useUndoStore()
@@ -46,100 +47,677 @@ function preacherName(service: Service): string | undefined {
 
 const tab = ref<'home' | 'browse'>('home')
 const browseQuery = ref('')
+const browseType = ref<string | null>(null)
+const browsePreacher = ref<string | null>(null)
+const browseBibleBook = ref<string | null>(null)
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
 const visibleServices = computed(() => store.services.filter((service) => !pendingDeleteIds.has(service.id)))
 
-const todayService = computed(() => visibleServices.value.find((service) => service.date === todayIso()))
+const todayServices = computed(() =>
+  visibleServices.value
+    .filter((service) => service.date === todayIso())
+    .sort((a, b) => serviceDateTimeSortKey(a).localeCompare(serviceDateTimeSortKey(b))),
+)
 
-const upcomingServices = computed(() =>
+const allUpcomingServices = computed(() =>
   visibleServices.value
     .filter((service) => service.date > todayIso())
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 5),
+    .sort((a, b) => serviceDateTimeSortKey(a).localeCompare(serviceDateTimeSortKey(b))),
 )
+const upcomingServices = computed(() => allUpcomingServices.value.slice(0, 5))
 
 const pastServices = computed(() =>
-  visibleServices.value.filter((service) => service.date < todayIso()).sort((a, b) => b.date.localeCompare(a.date)),
+  visibleServices.value
+    .filter((service) => service.date < todayIso())
+    .sort((a, b) => b.date.localeCompare(a.date) || serviceDateTimeSortKey(a).localeCompare(serviceDateTimeSortKey(b))),
 )
+
+function bibleBookFromReference(reference: string): string {
+  return reference.trim().match(/^(.+?)\s+\d/)?.[1]?.trim() ?? reference.trim()
+}
+
+function serviceBibleBooks(service: Service): string[] {
+  const sermon = findSermonItem(service)
+  if (!sermon) return []
+  return [...new Set(sermon.passages.map((passage) => bibleBookFromReference(passage.reference)).filter(Boolean))]
+}
+
+const serviceTypeOptions = computed(() => [...new Set(visibleServices.value.map((service) => service.type))].sort())
+const preacherOptions = computed(() =>
+  [...new Set(visibleServices.value.map((service) => preacherName(service)).filter((name): name is string => !!name))].sort(),
+)
+const bibleBookOptions = computed(() => [...new Set(visibleServices.value.flatMap(serviceBibleBooks))].sort())
+const hasBrowseFilters = computed(() => !!(browseQuery.value || browseType.value || browsePreacher.value || browseBibleBook.value))
+
+function clearBrowseFilters() {
+  browseQuery.value = ''
+  browseType.value = null
+  browsePreacher.value = null
+  browseBibleBook.value = null
+}
 
 const browseResults = computed(() => {
   // Vuetify's clearable button sets the model to null, not '' — clearing without this guard
   // throws mid-computed (.trim() on null), which is what silently broke the clear button.
   const query = (browseQuery.value ?? '').trim().toLowerCase()
-  if (!query) return pastServices.value.slice(0, 10)
-  return visibleServices.value.filter((service) => {
+  const candidates = hasBrowseFilters.value ? visibleServices.value : pastServices.value.slice(0, 10)
+  return candidates.filter((service) => {
+    if (browseType.value && service.type !== browseType.value) return false
+    if (browsePreacher.value && preacherName(service) !== browsePreacher.value) return false
+    if (browseBibleBook.value && !serviceBibleBooks(service).includes(browseBibleBook.value)) return false
+    if (!query) return true
     const sermonItem = findSermonItem(service)
     const passage = sermonItem ? sermonMainReference(sermonItem) : undefined
-    return [service.type, sermonItem?.title, preacherName(service), passage].some((field) => field?.toLowerCase().includes(query))
+    return [service.type, formatServiceTime(service.time), sermonItem?.title, preacherName(service), passage].some((field) =>
+      field?.toLowerCase().includes(query),
+    )
   })
 })
 </script>
 
 <template>
-  <v-container class="py-8" style="max-width: 720px">
-    <div class="text-center mb-6">
-      <p class="text-medium-emphasis">Select a service to continue, or create a new one</p>
-    </div>
+  <main class="services-page">
+    <header class="services-hero">
+      <div>
+        <div class="page-eyebrow">Service Planning</div>
+        <h1>Services</h1>
+        <p>Prepare upcoming worship services, review past plans, and open today’s presentation workspace.</p>
+      </div>
+      <div class="hero-side">
+        <div class="services-summary" aria-label="Services summary">
+          <div class="summary-stat"><strong>{{ allUpcomingServices.length }}</strong><span>Upcoming</span></div>
+          <div class="summary-stat"><strong>{{ pastServices.length }}</strong><span>Past</span></div>
+        </div>
+        <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" to="/create-service">Create Service</v-btn>
+      </div>
+    </header>
 
-    <v-tabs v-model="tab" class="mb-6">
-      <v-tab value="home">Home</v-tab>
-      <v-tab value="browse">Browse</v-tab>
-    </v-tabs>
-
-    <v-window v-model="tab">
-      <v-window-item value="home" class="pt-2">
-        <template v-if="todayService">
-          <div class="text-overline text-medium-emphasis mb-2">Today</div>
-          <ServiceCard
-            :service="todayService"
-            :preacher-name="preacherName(todayService)"
-            badge="TODAY"
-            @delete="deleteService(todayService)"
+    <section class="services-directory">
+      <div class="services-toolbar">
+        <div class="directory-title">
+          <h2>{{ tab === 'home' ? 'Service Schedule' : 'Browse Services' }}</h2>
+          <p>{{ tab === 'home' ? 'Today and the next services on your calendar' : 'Search current and previous service plans' }}</p>
+        </div>
+        <div class="toolbar-actions">
+          <v-text-field
+            v-if="tab === 'browse'"
+            v-model="browseQuery"
+            prepend-inner-icon="mdi-magnify"
+            placeholder="Search service, sermon, passage, or preacher"
+            aria-label="Search all services"
+            variant="outlined"
+            density="compact"
+            hide-details
+            clearable
+            class="service-search"
           />
-        </template>
-
-        <div class="d-flex align-center justify-space-between mt-6 mb-2">
-          <div class="text-overline text-medium-emphasis">Upcoming</div>
-          <v-btn variant="flat" color="primary" prepend-icon="mdi-calendar-month-outline" to="/planning-ahead">
+          <v-btn variant="tonal" color="primary" prepend-icon="mdi-calendar-month-outline" to="/planning-ahead">
             Planning Ahead
           </v-btn>
         </div>
-        <ServiceCard
-          v-for="service in upcomingServices"
-          :key="service.id"
-          :service="service"
-          :preacher-name="preacherName(service)"
-          @delete="deleteService(service)"
-        />
-        <p v-if="upcomingServices.length === 0" class="text-medium-emphasis text-body-2">No upcoming services yet.</p>
+      </div>
 
-        <v-btn variant="flat" color="primary" size="large" block class="mt-6" prepend-icon="mdi-plus" to="/create-service">
-          Create New Service
-        </v-btn>
-      </v-window-item>
+      <v-tabs v-model="tab" class="service-tabs">
+        <v-tab value="home" prepend-icon="mdi-calendar-today-outline">Schedule</v-tab>
+        <v-tab value="browse" prepend-icon="mdi-archive-search-outline">Browse</v-tab>
+      </v-tabs>
 
-      <v-window-item value="browse" class="pt-2">
-        <v-text-field
-          v-model="browseQuery"
-          prepend-inner-icon="mdi-magnify"
-          label="Search all services…"
-          variant="outlined"
-          density="comfortable"
-          class="mb-6"
-          clearable
-        />
-        <div class="text-overline text-medium-emphasis mb-2">{{ browseQuery ? 'Results' : 'Recent' }}</div>
-        <ServiceCard
-          v-for="service in browseResults"
-          :key="service.id"
-          :service="service"
-          :preacher-name="preacherName(service)"
-          @delete="deleteService(service)"
-        />
-        <p v-if="browseResults.length === 0" class="text-medium-emphasis text-body-2">No services found.</p>
-      </v-window-item>
-    </v-window>
-  </v-container>
+      <div class="directory-content">
+        <div v-if="tab === 'home'">
+          <section v-if="todayServices.length" class="service-group service-group--today">
+            <div class="group-heading">
+              <div>
+                <span class="group-kicker">Current</span>
+                <h3>Today’s Service</h3>
+              </div>
+              <span class="group-count">{{ todayServices.length }} {{ todayServices.length === 1 ? 'service' : 'services' }}</span>
+            </div>
+            <div class="service-list">
+              <ServiceCard
+                v-for="service in todayServices"
+                :key="service.id"
+                :service="service"
+                :preacher-name="preacherName(service)"
+                badge="TODAY"
+                @delete="deleteService(service)"
+              />
+            </div>
+          </section>
+
+          <section class="service-group">
+            <div class="group-heading">
+              <div>
+                <span class="group-kicker">Coming Up</span>
+                <h3>Upcoming Services</h3>
+              </div>
+              <span class="group-count">{{ allUpcomingServices.length }} scheduled</span>
+            </div>
+            <div v-if="upcomingServices.length" class="service-list">
+              <ServiceCard
+                v-for="service in upcomingServices"
+                :key="service.id"
+                :service="service"
+                :preacher-name="preacherName(service)"
+                @delete="deleteService(service)"
+              />
+            </div>
+            <div v-else class="services-empty">
+              <span><v-icon icon="mdi-calendar-plus-outline" size="29" /></span>
+              <div><h3>No Upcoming Services</h3><p>Create a service to begin planning your next gathering.</p></div>
+              <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" to="/create-service">Create Service</v-btn>
+            </div>
+          </section>
+        </div>
+
+        <div v-else class="browse-layout">
+          <aside class="browse-filters" aria-label="Filter services">
+            <div class="filter-header">
+              <div>
+                <span>Filters</span>
+                <small>Narrow the service history</small>
+              </div>
+              <v-btn v-if="hasBrowseFilters" variant="text" color="primary" size="small" @click="clearBrowseFilters">Clear</v-btn>
+            </div>
+            <div class="filter-fields">
+              <div class="filter-field">
+                <label><v-icon icon="mdi-church-outline" size="17" />Service Type</label>
+                <div class="visible-filter-options">
+                  <button
+                    type="button"
+                    class="visible-filter-option"
+                    :class="{ 'visible-filter-option--active': browseType === null }"
+                    :aria-pressed="browseType === null"
+                    @click="browseType = null"
+                  >
+                    <span>All Types</span><strong>{{ visibleServices.length }}</strong>
+                  </button>
+                  <button
+                    v-for="type in serviceTypeOptions"
+                    :key="type"
+                    type="button"
+                    class="visible-filter-option"
+                    :class="{ 'visible-filter-option--active': browseType === type }"
+                    :aria-pressed="browseType === type"
+                    @click="browseType = type"
+                  >
+                    <span>{{ type }}</span>
+                    <strong>{{ visibleServices.filter((service) => service.type === type).length }}</strong>
+                  </button>
+                </div>
+              </div>
+              <div class="filter-field">
+                <label><v-icon icon="mdi-account-voice" size="17" />Preacher</label>
+                <div class="visible-filter-options">
+                  <button
+                    type="button"
+                    class="visible-filter-option"
+                    :class="{ 'visible-filter-option--active': browsePreacher === null }"
+                    :aria-pressed="browsePreacher === null"
+                    @click="browsePreacher = null"
+                  >
+                    <span>All Preachers</span><strong>{{ visibleServices.filter((service) => !!preacherName(service)).length }}</strong>
+                  </button>
+                  <button
+                    v-for="preacher in preacherOptions"
+                    :key="preacher"
+                    type="button"
+                    class="visible-filter-option"
+                    :class="{ 'visible-filter-option--active': browsePreacher === preacher }"
+                    :aria-pressed="browsePreacher === preacher"
+                    @click="browsePreacher = preacher"
+                  >
+                    <span>{{ preacher }}</span>
+                    <strong>{{ visibleServices.filter((service) => preacherName(service) === preacher).length }}</strong>
+                  </button>
+                </div>
+              </div>
+              <div class="filter-field">
+                <label for="service-book-filter"><v-icon icon="mdi-book-open-page-variant-outline" size="17" />Bible Book</label>
+                <v-select
+                  id="service-book-filter"
+                  v-model="browseBibleBook"
+                  :items="bibleBookOptions"
+                  placeholder="All Books"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  clearable
+                />
+              </div>
+            </div>
+            <div class="filter-summary">
+              <v-icon icon="mdi-filter-check-outline" size="18" />
+              <span>{{ browseResults.length }} {{ browseResults.length === 1 ? 'service' : 'services' }} shown</span>
+            </div>
+          </aside>
+
+          <section class="service-group browse-group">
+            <div class="group-heading">
+              <div>
+                <span class="group-kicker">{{ hasBrowseFilters ? 'Filtered Results' : 'History' }}</span>
+                <h3>{{ hasBrowseFilters ? 'Matching Services' : 'Recent Services' }}</h3>
+              </div>
+              <span class="group-count">{{ browseResults.length }} {{ browseResults.length === 1 ? 'service' : 'services' }}</span>
+            </div>
+            <div v-if="browseResults.length" class="service-list">
+              <ServiceCard
+                v-for="service in browseResults"
+                :key="service.id"
+                :service="service"
+                :preacher-name="preacherName(service)"
+                @delete="deleteService(service)"
+              />
+            </div>
+            <div v-else class="services-empty services-empty--centered">
+              <span><v-icon icon="mdi-calendar-search-outline" size="29" /></span>
+              <div><h3>No Services Found</h3><p>Try changing the search or clearing one of the filters.</p></div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+  </main>
 </template>
+
+<style scoped>
+.services-page {
+  min-height: calc(100vh - 49px);
+  padding: 24px clamp(24px, 3vw, 48px) 56px;
+  background:
+    radial-gradient(circle at 24% 0, rgba(var(--v-theme-amber), 0.045), transparent 420px),
+    rgb(var(--v-theme-background));
+}
+.services-hero,
+.services-directory {
+  max-width: 1240px;
+  margin-right: auto;
+  margin-left: auto;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 11px;
+  background: rgba(var(--v-theme-surface), 0.76);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.08);
+}
+.services-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 36px;
+  margin-bottom: 18px;
+  padding: 25px 28px 27px;
+}
+.page-eyebrow {
+  margin-bottom: 4px;
+  color: rgb(var(--v-theme-amber));
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.services-hero h1 {
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.95);
+  font-size: 1.75rem;
+  font-weight: 680;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+.services-hero p {
+  max-width: 650px;
+  margin: 9px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.58);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+.hero-side {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 12px;
+}
+.services-summary {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 9px;
+  background: rgba(var(--v-theme-background), 0.42);
+}
+.summary-stat {
+  display: flex;
+  min-width: 92px;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 14px;
+  border-right: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+.summary-stat:last-child {
+  border-right: 0;
+}
+.summary-stat strong {
+  color: rgb(var(--v-theme-amber));
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.summary-stat span {
+  margin-top: 3px;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-size: 0.68rem;
+  font-weight: 680;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.services-directory {
+  overflow: hidden;
+}
+.services-toolbar {
+  display: flex;
+  min-height: 78px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 13px 18px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+.directory-title h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 680;
+}
+.directory-title p {
+  margin: 2px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-size: 0.76rem;
+}
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.service-search {
+  width: min(420px, 34vw);
+}
+.service-search :deep(.v-field) {
+  border-radius: 7px;
+  background: rgba(var(--v-theme-background), 0.48);
+  font-size: 0.8rem;
+}
+.service-tabs {
+  min-height: 49px;
+  padding: 0 12px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+.service-tabs :deep(.v-tab) {
+  font-size: 0.76rem;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.directory-content {
+  min-height: 420px;
+  padding: 20px;
+}
+.browse-layout {
+  display: grid;
+  grid-template-columns: 238px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.browse-filters {
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 9px;
+  background: rgba(var(--v-theme-background), 0.25);
+}
+.filter-header {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 12px 10px 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+.filter-header > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.filter-header span {
+  color: rgba(var(--v-theme-on-surface), 0.88);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.filter-header small {
+  margin-top: 2px;
+  color: rgba(var(--v-theme-on-surface), 0.44);
+  font-size: 0.66rem;
+}
+.filter-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 17px;
+  padding: 15px 13px 17px;
+}
+.filter-field label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 2px 7px;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.7rem;
+  font-weight: 680;
+  letter-spacing: 0.025em;
+}
+.filter-field label .v-icon {
+  color: rgb(var(--v-theme-amber));
+}
+.filter-field :deep(.v-field) {
+  border-radius: 7px;
+  background: rgba(var(--v-theme-surface), 0.62);
+  font-size: 0.76rem;
+}
+.filter-field :deep(.v-field__outline) {
+  --v-field-border-opacity: 0.12;
+}
+.visible-filter-options {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.visible-filter-option {
+  display: grid;
+  width: 100%;
+  min-height: 37px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 580;
+  text-align: left;
+  transition:
+    border-color var(--ws-transition-fast),
+    background-color var(--ws-transition-fast),
+    color var(--ws-transition-fast);
+}
+.visible-filter-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.visible-filter-option strong {
+  display: grid;
+  min-width: 23px;
+  height: 23px;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(var(--v-theme-on-surface), 0.06);
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+}
+.visible-filter-option:hover {
+  background: rgba(var(--v-theme-on-surface), 0.04);
+  color: rgba(var(--v-theme-on-surface), 0.88);
+}
+.visible-filter-option--active {
+  border-color: rgba(var(--v-theme-amber), 0.22);
+  background: rgba(var(--v-theme-amber), 0.08);
+  color: rgba(var(--v-theme-on-surface), 0.94);
+}
+.visible-filter-option--active strong {
+  background: rgba(var(--v-theme-amber), 0.13);
+  color: rgb(var(--v-theme-amber));
+}
+.visible-filter-option:focus-visible {
+  outline: 2px solid rgba(var(--v-theme-amber), 0.5);
+  outline-offset: 1px;
+}
+.filter-summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 11px 14px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.68rem;
+}
+.filter-summary .v-icon {
+  color: rgb(var(--v-theme-teal));
+}
+.browse-group {
+  min-width: 0;
+}
+.service-group + .service-group {
+  margin-top: 25px;
+  padding-top: 23px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+.group-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 12px;
+  padding: 0 2px;
+}
+.group-kicker {
+  display: block;
+  margin-bottom: 2px;
+  color: rgb(var(--v-theme-amber));
+  font-size: 0.67rem;
+  font-weight: 720;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.group-heading h3,
+.services-empty h3 {
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.9);
+  font-size: 0.9rem;
+  font-weight: 680;
+}
+.group-count {
+  color: rgba(var(--v-theme-on-surface), 0.45);
+  font-size: 0.72rem;
+}
+.service-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.services-empty {
+  display: grid;
+  min-height: 110px;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  border: 1px dashed rgba(var(--v-theme-on-surface), 0.14);
+  border-radius: 9px;
+  background: rgba(var(--v-theme-background), 0.26);
+}
+.services-empty > span {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(var(--v-theme-amber), 0.1);
+  color: rgb(var(--v-theme-amber));
+}
+.services-empty p {
+  margin: 4px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.74rem;
+}
+.services-empty--centered {
+  grid-template-columns: 46px minmax(0, 1fr);
+}
+@media (max-width: 850px) {
+  .services-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .hero-side {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .services-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 17px 18px;
+  }
+  .toolbar-actions,
+  .service-search {
+    width: 100%;
+  }
+  .browse-layout {
+    grid-template-columns: 1fr;
+  }
+  .filter-fields {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .services-page {
+    padding: 16px 12px 36px;
+  }
+  .services-hero {
+    padding: 20px;
+  }
+  .hero-side {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .services-summary {
+    align-self: flex-start;
+  }
+  .toolbar-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .directory-content {
+    padding: 14px 10px;
+  }
+  .filter-fields {
+    grid-template-columns: 1fr;
+  }
+  .services-empty {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+  .services-empty > :last-child {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+</style>

@@ -15,12 +15,12 @@ import { createVuetify } from 'vuetify'
 // auto-computed contrast text, so they read fine on either background) — only
 // background/surface actually flip between dark and light.
 const accentColors = {
-  primary: '#1553a5',
+  primary: '#4C7FE8',
   secondary: '#B08D3F',
   error: '#C1554A',
   success: '#4E9E75',
   warning: '#C79A3D',
-  info: '#1553a5',
+  info: '#4C7FE8',
   teal: '#4FAFA0',
   violet: '#8B6FC9',
   rose: '#D0708A',
@@ -37,6 +37,8 @@ export default createVuetify({
   // reload so Chromium's history can never match it to begin with. Set once here for every
   // v-text-field/v-textarea/v-combobox app-wide rather than per field.
   defaults: {
+    VBtn: { rounded: 'md' },
+    VCard: { rounded: 'lg' },
     VTextField: { autocomplete: 'suppress' },
     VTextarea: { autocomplete: 'suppress' },
     VCombobox: { autocomplete: 'suppress' },
@@ -58,10 +60,16 @@ export default createVuetify({
       worshipDark: {
         dark: true,
         colors: {
-          background: '#15171c',
-          surface: '#1b1e24',
-          'surface-variant': '#262a32',
+          background: '#0F141B',
+          surface: '#151B23',
+          'surface-variant': '#202833',
           ...accentColors,
+        },
+        variables: {
+          'border-color': '#9BA8BA',
+          'border-opacity': 0.12,
+          'high-emphasis-opacity': 0.92,
+          'medium-emphasis-opacity': 0.65,
         },
       },
       // Settings → General's dark-mode toggle (spec section 17/M7) switches to this.

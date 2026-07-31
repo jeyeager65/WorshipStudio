@@ -10,6 +10,19 @@ const SUGGESTED_TAB_BY_KIND: Partial<Record<ServiceTemplateItem['kind'], string>
   sermon: 'sermon',
 }
 
+/** Resolves the configured default while keeping pre-association libraries compatible. An
+ * explicit association wins; only templates without the new field use the historical
+ * same-name behavior. */
+export function defaultServiceTemplate(
+  templates: ServiceTemplate[] | undefined,
+  serviceType: string,
+): ServiceTemplate | undefined {
+  return (
+    templates?.find((template) => template.defaultForServiceTypes?.includes(serviceType)) ??
+    templates?.find((template) => template.defaultForServiceTypes === undefined && template.serviceType === serviceType)
+  )
+}
+
 /**
  * Expands a ServiceTemplate into the items/assignments a new service should start with:
  * - 'role-only' seeds only RoleAssignment rows (no line in the order of service, e.g. "2 Greeters").

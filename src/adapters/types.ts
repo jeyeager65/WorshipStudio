@@ -223,6 +223,8 @@ export interface LiveSlideContent {
   itemLabel: string
   subLabel: string
   text: string
+  /** Presentation override — preserve the slide's visual background while hiding foreground content. */
+  backgroundOnly?: boolean
   /** Advanced library slides — rendered by the same scene component used in the editor. */
   scene?: SlideScene
   /** Reference-only scripture slides only — the surrounding-books wayfinding visual (spec section 1). */

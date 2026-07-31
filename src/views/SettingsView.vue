@@ -3,6 +3,8 @@ import { computed, onMounted, onUnmounted, ref, toRaw, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useTheme } from 'vuetify'
+import { getVersion } from '@tauri-apps/api/app'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { getAdapter } from '@/adapters'
 import { useSettingsStore } from '@/stores/settings'
 import { useSyncStore } from '@/stores/sync'
@@ -19,6 +21,8 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import ManagedStringList from '@/components/settings/ManagedStringList.vue'
 import RoleGroupEditor from '@/components/settings/RoleGroupEditor.vue'
 import ServiceTemplateEditor from '@/components/settings/ServiceTemplateEditor.vue'
+import logoDark from '@/assets/logo-dark.png'
+import logoLight from '@/assets/logo-light.png'
 import type { ApiBibleCatalogEntry, DisplayInfo, DisplayRole, ExternalAppProfile, RemoteDevice } from '@/adapters/types'
 
 const store = useSettingsStore()
@@ -56,10 +60,12 @@ type Section =
   | 'external-apps'
   | 'remote-control'
   | 'canva'
+  | 'about'
 const activeSection = ref<Section>('general')
 const sections: { key: Section; label: string; group: string }[] = [
   { key: 'general', label: 'General', group: 'App' },
   { key: 'sync', label: 'Sync Status', group: 'App' },
+  { key: 'about', label: 'About', group: 'App' },
   // Display groups everything about how content actually renders on screen — the physical
   // setup (Display Setup), sizing (Font Sizes), visual styling (Themes), and hand-off to other
   // on-screen apps (External Apps/Remote Control) — not just monitor configuration narrowly.
@@ -150,6 +156,38 @@ async function saveSettings() {
 // but — like every other edit in this view — still needs Save pressed to persist for next
 // launch (see App.vue, which reads the saved value at startup).
 const theme = useTheme()
+const aboutLogo = computed(() => (theme.global.current.value.dark ? logoDark : logoLight))
+const appVersion = ref('')
+void getVersion()
+  .then((version) => (appVersion.value = version))
+  .catch(() => (appVersion.value = 'Development build'))
+
+const projectLinks = [
+  {
+    label: 'Source Code',
+    description: 'View the Worship Studio source on GitHub',
+    icon: 'mdi-github',
+    url: 'https://github.com/jeyeager65/WorshipStudio',
+  },
+  {
+    label: 'Report an Issue',
+    description: 'Report a bug or request a feature',
+    icon: 'mdi-bug-outline',
+    url: 'https://github.com/jeyeager65/WorshipStudio/issues',
+  },
+  {
+    label: 'Releases',
+    description: 'See release notes and available downloads',
+    icon: 'mdi-tag-outline',
+    url: 'https://github.com/jeyeager65/WorshipStudio/releases',
+  },
+] as const
+
+async function openProjectLink(url: string) {
+  if (getAdapter().kind === 'tauri') await openUrl(url)
+  else window.open(url, '_blank', 'noopener,noreferrer')
+}
+
 const darkMode = computed({
   get: () => machineSettings.value?.darkMode ?? true,
   set: (value: boolean) => {
@@ -652,6 +690,34 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
             Resolve {{ syncStore.status.conflictCount }} Conflict{{ syncStore.status.conflictCount === 1 ? '' : 's' }}
           </v-btn>
           <p v-else class="text-medium-emphasis text-body-2">No sync conflicts right now.</p>
+        </div>
+      </template>
+
+      <template v-else-if="activeSection === 'about'">
+        <h2 class="text-h6 mb-4">About Worship Studio</h2>
+        <div class="about-card">
+          <img :src="aboutLogo" alt="Worship Studio" class="about-logo" />
+          <div class="about-version">Version {{ appVersion || '…' }}</div>
+          <p class="about-description">
+            Worship planning and presentation software built for calm, confident operation during a service.
+          </p>
+
+          <div class="about-links">
+            <button
+              v-for="link in projectLinks"
+              :key="link.url"
+              type="button"
+              class="about-link"
+              @click="openProjectLink(link.url)"
+            >
+              <span class="about-link-icon"><v-icon :icon="link.icon" size="20" /></span>
+              <span class="about-link-copy">
+                <strong>{{ link.label }}</strong>
+                <small>{{ link.description }}</small>
+              </span>
+              <v-icon icon="mdi-open-in-new" size="16" class="about-link-arrow" />
+            </button>
+          </div>
         </div>
       </template>
 
@@ -1224,8 +1290,9 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
         <h2 class="text-h6 mb-4">Service Templates</h2>
         <p class="text-medium-emphasis text-body-2 mb-4">
           The shell of a typical service, in order — songs, scripture, sermon, bulletin notes, and
-          role-only assignments (e.g. 2 Greeters). Seeds a new service's items and Assignments once
-          when it's created; editing a template never changes services already created.
+          role-only assignments (e.g. 2 Greeters). Choose which service types use each template by
+          default; any template can still be selected while creating a service. Templates seed a new
+          service once, and later edits never change services already created.
         </p>
         <ServiceTemplateEditor
           v-model="librarySettings.serviceTemplates"
@@ -1258,5 +1325,91 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
   border-radius: 6px;
   padding: 8px 10px;
   color: rgba(var(--v-theme-on-surface), 0.7);
+}
+.about-card {
+  max-width: 600px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.09);
+  border-radius: 12px;
+  background: rgba(var(--v-theme-surface), 0.72);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.12);
+}
+.about-logo {
+  display: block;
+  width: min(360px, calc(100% - 64px));
+  height: auto;
+  margin: 38px auto 14px;
+}
+.about-version {
+  color: rgba(var(--v-theme-on-surface), 0.58);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.about-description {
+  max-width: 460px;
+  margin: 16px auto 30px;
+  padding: 0 24px;
+  color: rgba(var(--v-theme-on-surface), 0.68);
+  font-size: 0.8rem;
+  line-height: 1.55;
+  text-align: center;
+}
+.about-links {
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+}
+.about-link {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 18px;
+  border: 0;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: background-color var(--ws-transition-fast);
+}
+.about-link:last-child {
+  border-bottom: 0;
+}
+.about-link:hover,
+.about-link:focus-visible {
+  background: rgba(var(--v-theme-primary), 0.09);
+  outline: none;
+}
+.about-link:focus-visible {
+  box-shadow: inset 3px 0 rgb(var(--v-theme-primary));
+}
+.about-link-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-primary), 0.12);
+  color: rgb(var(--v-theme-primary));
+}
+.about-link-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.about-link-copy strong {
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+.about-link-copy small {
+  color: rgba(var(--v-theme-on-surface), 0.52);
+  font-size: 0.68rem;
+}
+.about-link-arrow {
+  color: rgba(var(--v-theme-on-surface), 0.38);
 }
 </style>

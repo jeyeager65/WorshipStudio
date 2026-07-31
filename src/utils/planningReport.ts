@@ -3,6 +3,7 @@ import type { Song } from '@/models/song'
 import type { RoleGroup } from '@/models/settings'
 import { roleDisplayLabel } from '@/models/settings'
 import { findSermonItem, sermonPreacherId } from '@/utils/sermonInfo'
+import { formatServiceTime } from '@/utils/serviceTime'
 
 export interface PlanningReportRow {
   serviceId: string
@@ -59,12 +60,14 @@ export function buildPlanningReport(
         return `${roleDisplayLabel(assignment.role, roleGroups)} — ${name}${assignment.tentative ? '?' : ''}`
       })
 
-    const dateLine = new Date(`${service.date}T00:00:00`).toLocaleDateString(undefined, {
+    const dateLabel = new Date(`${service.date}T00:00:00`).toLocaleDateString(undefined, {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
       year: 'numeric',
     })
+    const timeLabel = formatServiceTime(service.time)
+    const dateLine = timeLabel ? `${dateLabel} · ${timeLabel}` : dateLabel
 
     const sermonItem = findSermonItem(service)
 

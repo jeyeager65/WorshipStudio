@@ -1,6 +1,26 @@
 import { describe, expect, it } from 'vitest'
-import { applyServiceTemplate, planAssignmentResetFromTemplate } from '@/utils/serviceTemplate'
+import { applyServiceTemplate, defaultServiceTemplate, planAssignmentResetFromTemplate } from '@/utils/serviceTemplate'
 import type { Service, ServiceTemplate } from '@/models/service'
+
+describe('defaultServiceTemplate', () => {
+  it('prefers an explicit service-type association over the legacy same-name default', () => {
+    const templates: ServiceTemplate[] = [
+      { serviceType: 'Sunday Worship', items: [] },
+      { serviceType: 'Communion', defaultForServiceTypes: ['Sunday Worship'], items: [] },
+    ]
+    expect(defaultServiceTemplate(templates, 'Sunday Worship')?.serviceType).toBe('Communion')
+  })
+
+  it('keeps legacy same-name templates as defaults when no association has been saved', () => {
+    const templates: ServiceTemplate[] = [{ serviceType: 'Sunday Worship', items: [] }]
+    expect(defaultServiceTemplate(templates, 'Sunday Worship')?.serviceType).toBe('Sunday Worship')
+  })
+
+  it('honors an explicit empty association instead of restoring the legacy default', () => {
+    const templates: ServiceTemplate[] = [{ serviceType: 'Sunday Worship', defaultForServiceTypes: [], items: [] }]
+    expect(defaultServiceTemplate(templates, 'Sunday Worship')).toBeUndefined()
+  })
+})
 
 describe('applyServiceTemplate', () => {
   it("seeds only assignments for a 'role-only' entry, no order-of-service item", () => {

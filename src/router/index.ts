@@ -31,6 +31,7 @@ const router = createRouter({
     { path: '/library/media', name: 'media-library', component: () => import('@/views/MediaLibraryView.vue'), meta: { title: 'Media' } },
     { path: '/library/themes', name: 'theme-editor', component: () => import('@/views/ThemeEditorView.vue') },
     { path: '/people', name: 'people', component: () => import('@/views/PeopleView.vue'), meta: { title: 'People' } },
+    { path: '/people/:id', name: 'person-editor', component: () => import('@/views/PersonEditorView.vue') },
     { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue'), meta: { title: 'Settings' } },
     { path: '/sync-conflicts', name: 'sync-conflicts', component: () => import('@/views/SyncConflictsView.vue') },
     { path: '/reports', name: 'reports-home', component: () => import('@/views/ReportsHomeView.vue'), meta: { title: 'Reports' } },

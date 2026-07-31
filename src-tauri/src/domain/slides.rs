@@ -45,6 +45,7 @@ mod tests {
         SlideLibraryItem {
             id: id.to_string(),
             label: "Announcements".to_string(),
+            tags: vec!["Sunday".to_string()],
             document_version: 2,
             slides: vec![],
             background_id: None,
@@ -62,7 +63,9 @@ mod tests {
     fn save_then_get_round_trips() {
         let dir = tempfile::tempdir().unwrap();
         save(dir.path(), sample("slide-1"), "d", "now").unwrap();
-        assert_eq!(get(dir.path(), "slide-1").unwrap().label, "Announcements");
+        let item = get(dir.path(), "slide-1").unwrap();
+        assert_eq!(item.label, "Announcements");
+        assert_eq!(item.tags, vec!["Sunday"]);
     }
 
     #[test]

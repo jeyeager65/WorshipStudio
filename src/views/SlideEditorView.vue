@@ -52,6 +52,7 @@ function blankItem(): SlideLibraryItem {
   return {
     id: `slide-${crypto.randomUUID()}`,
     label: 'New Presentation',
+    tags: [],
     documentVersion: 2,
     slides: [slide],
     usage: { usesPastYear: 0 },
@@ -168,6 +169,7 @@ onMounted(async () => {
   const isNew = route.params.id === 'new'
   item.value = isNew ? blankItem() : await getAdapter().slides.get(route.params.id as string)
   if (item.value) {
+    item.value.tags ??= []
     for (const slide of item.value.slides) {
       for (const element of slide.scene.elements) {
         element.rotation = normalizeRotation(element.rotation)
@@ -600,16 +602,40 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
 
 <template>
   <div v-if="item && scene" class="editor">
+    <header class="editor-header">
+      <div class="editor-heading">
+        <v-btn to="/library/slides" variant="text" prepend-icon="mdi-arrow-left" class="back-button">Slides</v-btn>
+        <div>
+          <div class="editor-eyebrow">Slide Editor</div>
+          <h1>{{ item.label || 'Untitled Presentation' }}</h1>
+        </div>
+      </div>
+      <div class="editor-summary">
+        <span><v-icon icon="mdi-view-carousel-outline" size="17" />{{ item.slides.length }} {{ item.slides.length === 1 ? 'Slide' : 'Slides' }}</span>
+        <span><v-icon icon="mdi-history" size="17" />{{ item.usage.usesPastYear }}x This Year</span>
+      </div>
+    </header>
+
     <aside class="filmstrip">
-      <v-text-field
-        v-model="item.label"
-        label="Presentation name"
-        variant="outlined"
-        density="compact"
-        hide-details
-        class="ma-3"
-      />
-      <VueDraggable v-model="item.slides" handle=".slide-grip" :animation="150">
+      <div class="presentation-details">
+        <div class="panel-heading">Presentation Details</div>
+        <v-text-field v-model="item.label" label="Presentation Title" variant="outlined" density="compact" hide-details />
+        <v-combobox
+          v-model="item.tags"
+          label="Tags"
+          variant="outlined"
+          density="compact"
+          multiple
+          chips
+          closable-chips
+          hide-details
+        />
+      </div>
+      <div class="filmstrip-heading">
+        <span>Slides</span>
+        <strong>{{ item.slides.length }}</strong>
+      </div>
+      <VueDraggable v-model="item.slides" handle=".slide-grip" :animation="150" class="thumbnail-list">
         <div
           v-for="(slide, index) in item.slides"
           :key="slide.id"
@@ -617,7 +643,7 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
           :class="{ active: slide.id === selectedSlideId }"
           @click="selectSlide(slide.id)"
         >
-          <span class="slide-grip">{{ index + 1 }}</span>
+          <span class="slide-grip"><v-icon icon="mdi-drag-vertical" size="17" />{{ index + 1 }}</span>
           <div class="thumbnail"><SlideSceneRenderer :scene="slide.scene" /></div>
           <v-btn
             icon="mdi-close"
@@ -628,16 +654,18 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
           />
         </div>
       </VueDraggable>
-      <v-btn prepend-icon="mdi-plus" variant="text" block @click="addSlide">Add slide</v-btn>
+      <v-btn prepend-icon="mdi-plus" variant="tonal" color="primary" class="add-slide-button" @click="addSlide">Add Slide</v-btn>
     </aside>
 
     <main class="workspace">
       <div class="toolbar">
-        <v-btn prepend-icon="mdi-format-text" @click="addText">Text</v-btn>
-        <v-btn prepend-icon="mdi-image-outline" @click="openMediaPicker('add')">Image</v-btn>
+        <div class="toolbar-group">
+          <span class="toolbar-label">Add</span>
+          <v-btn prepend-icon="mdi-format-text" variant="tonal" @click="addText">Text</v-btn>
+          <v-btn prepend-icon="mdi-image-outline" variant="tonal" @click="openMediaPicker('add')">Image</v-btn>
         <v-menu>
           <template #activator="{ props }">
-            <v-btn v-bind="props" prepend-icon="mdi-shape-outline" append-icon="mdi-menu-down">Shape</v-btn>
+              <v-btn v-bind="props" prepend-icon="mdi-shape-outline" append-icon="mdi-menu-down" variant="tonal">Shape</v-btn>
           </template>
           <v-list density="compact">
             <v-list-item
@@ -649,10 +677,13 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
             />
           </v-list>
         </v-menu>
-        <v-divider vertical />
+        </div>
+        <v-divider vertical class="toolbar-divider" />
+        <div v-if="canvaStatus?.configured" class="toolbar-group">
+          <span class="toolbar-label">Canva</span>
         <v-btn
-          v-if="canvaStatus?.configured"
           prepend-icon="mdi-palette-outline"
+            variant="tonal"
           @click="openCanvaDialog"
         >
           Canva
@@ -665,33 +696,41 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
         >
           Edit in Canva
         </v-btn>
-        <v-divider v-if="canvaStatus?.configured" vertical />
+        </div>
+        <v-divider v-if="canvaStatus?.configured" vertical class="toolbar-divider" />
+        <div class="toolbar-group toolbar-group--icons">
+          <span class="toolbar-label">Arrange</span>
         <v-btn
           icon="mdi-arrange-bring-forward"
-          title="Bring forward"
+          title="Bring Forward"
+          variant="text"
           :disabled="!selectedElement"
           @click="moveLayer('forward')"
         />
         <v-btn
           icon="mdi-arrange-bring-to-front"
-          title="Bring to front"
+          title="Bring to Front"
+          variant="text"
           :disabled="!selectedElement"
           @click="moveLayer('front')"
         />
         <v-btn
           icon="mdi-arrange-send-backward"
-          title="Send backward"
+          title="Send Backward"
+          variant="text"
           :disabled="!selectedElement"
           @click="moveLayer('backward')"
         />
         <v-btn
           icon="mdi-arrange-send-to-back"
-          title="Send to back"
+          title="Send to Back"
+          variant="text"
           :disabled="!selectedElement"
           @click="moveLayer('back')"
         />
+        </div>
         <v-spacer />
-        <v-switch v-model="showSafeArea" label="Safe area" hide-details density="compact" />
+        <v-switch v-model="showSafeArea" label="Safe Area" hide-details density="compact" color="primary" />
       </div>
       <div class="canvas-scroll">
         <div
@@ -739,11 +778,16 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
     </main>
 
     <aside class="properties">
+      <div class="inspector-heading">
+        <div class="panel-heading">Properties</div>
+        <h2>{{ selectedElement?.name || (selectedElement ? 'Element' : selectedSlide?.label || 'Slide') }}</h2>
+        <p>{{ selectedElement ? 'Adjust the selected layer.' : 'Adjust this slide and its background.' }}</p>
+      </div>
       <template v-if="selectedElement">
-        <div class="text-overline mb-2">Element</div>
+        <div class="property-section-title">Layout</div>
         <v-text-field
           v-model="selectedElement.name"
-          label="Layer name"
+          label="Layer Name"
           density="compact"
           variant="outlined"
         />
@@ -787,7 +831,7 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
         </div>
         <v-switch
           v-model="lockAspectRatio"
-          label="Lock aspect ratio"
+          label="Lock Aspect Ratio"
           density="compact"
           hide-details
         />
@@ -803,6 +847,7 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
           thumb-label
         />
         <template v-if="textElement">
+          <div class="property-section-title property-section-title--spaced">Text</div>
           <v-textarea v-model="textElement.text" label="Text" variant="outlined" rows="4" />
           <v-combobox
             :model-value="textElement.style.fontFamily"
@@ -851,17 +896,17 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
             :items="[
               { title: 'None', value: 'none' },
               { title: 'Outline', value: 'outline' },
-              { title: 'Drop shadow', value: 'shadow' },
+              { title: 'Drop Shadow', value: 'shadow' },
               { title: 'Glow', value: 'glow' },
             ]"
-            label="Text effect"
+            label="Text Effect"
             density="compact"
             class="mt-4"
           />
           <div v-if="textEffectType !== 'none'" class="property-grid">
             <v-color-input
               v-model="textEffectColor"
-              label="Effect color"
+              label="Effect Color"
               density="compact"
             />
             <v-number-input
@@ -879,7 +924,7 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
           >
             <v-number-input
               v-model="textElement.style.effect.offsetX"
-              label="Horizontal offset"
+              label="Horizontal Offset"
               density="compact"
               control-variant="hidden"
               :min="-50"
@@ -887,7 +932,7 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
             />
             <v-number-input
               v-model="textElement.style.effect.offsetY"
-              label="Vertical offset"
+              label="Vertical Offset"
               density="compact"
               control-variant="hidden"
               :min="-50"
@@ -896,15 +941,17 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
           </div>
         </template>
         <template v-if="imageElement">
+          <div class="property-section-title property-section-title--spaced">Image</div>
           <v-select
             v-model="imageElement.fit"
             :items="['cover', 'contain', 'fill']"
-            label="Image fit"
+            label="Image Fit"
             density="compact"
           />
           <v-btn block variant="outlined" @click="openMediaPicker('replace')">Replace image</v-btn>
         </template>
         <template v-if="shapeElement">
+          <div class="property-section-title property-section-title--spaced">Shape</div>
           <v-select
             v-model="shapeElement.shape"
             :items="shapeOptions"
@@ -917,8 +964,8 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
             v-if="shapeElement.shape !== 'line'"
             v-model="shapeElement.fillMode"
             :items="[
-              { title: 'Solid fill', value: 'solid' },
-              { title: 'Outline only', value: 'outline' },
+              { title: 'Solid Fill', value: 'solid' },
+              { title: 'Outline Only', value: 'outline' },
             ]"
             label="Style"
             density="compact"
@@ -926,19 +973,19 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
           <v-color-input
             v-if="shapeElement.fillMode !== 'outline' && shapeElement.shape !== 'line'"
             v-model="shapeElement.fill"
-            label="Fill color"
+            label="Fill Color"
             density="compact"
           />
           <v-color-input
             v-if="shapeElement.fillMode === 'outline' || shapeElement.shape === 'line'"
             v-model="shapeStrokeColor"
-            label="Line color"
+            label="Line Color"
             density="compact"
           />
           <v-number-input
             v-if="shapeElement.fillMode === 'outline' || shapeElement.shape === 'line'"
             v-model="shapeStrokeWidth"
-            label="Line width"
+            label="Line Width"
             density="compact"
             control-variant="hidden"
             :min="1"
@@ -947,7 +994,7 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
           <v-number-input
             v-if="shapeElement.shape === 'rectangle'"
             v-model="shapeElement.cornerRadius"
-            label="Corner radius"
+            label="Corner Radius"
             density="compact"
             control-variant="hidden"
             :min="0"
@@ -961,31 +1008,31 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
           variant="tonal"
           prepend-icon="mdi-delete"
           @click="deleteElement"
-          >Delete element</v-btn
+          >Delete Element</v-btn
         >
       </template>
       <template v-else>
-        <div class="text-overline mb-2">Slide</div>
+        <div class="property-section-title">Slide</div>
         <v-text-field
           v-model="selectedSlide!.label"
-          label="Slide name"
+          label="Slide Name"
           density="compact"
           variant="outlined"
         />
         <v-color-input
           v-model="scene.background.color"
-          label="Background color"
+          label="Background Color"
           density="compact"
         />
         <v-btn block variant="outlined" prepend-icon="mdi-image" @click="openMediaPicker('background')"
-          >Choose background</v-btn
+          >Choose Background</v-btn
         >
         <v-btn
           v-if="scene.background.mediaId"
           block
           variant="text"
           @click="scene.background.mediaId = undefined"
-          >Remove background</v-btn
+          >Remove Background</v-btn
         >
         <p class="text-caption text-medium-emphasis mt-4">
           Blue marks the full-height 16:10 crop; yellow marks the full-height 4:3 crop.
@@ -1058,34 +1105,267 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
 <style scoped>
 .editor {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) 290px;
+  grid-template-columns: 250px minmax(0, 1fr) 320px;
+  grid-template-rows: 78px minmax(0, 1fr);
   height: calc(100vh - 48px);
   overflow: hidden;
+  background: rgb(var(--v-theme-background));
+}
+.editor-header {
+  z-index: 3;
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 11px 20px 11px 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  background: rgba(var(--v-theme-surface), 0.9);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.08);
+}
+.editor-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 13px;
+}
+.back-button {
+  flex: none;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.8rem;
+  text-transform: none;
+}
+.editor-eyebrow,
+.panel-heading,
+.property-section-title,
+.toolbar-label {
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.085em;
+  text-transform: uppercase;
+}
+.editor-eyebrow {
+  margin-bottom: 2px;
+  color: rgb(var(--v-theme-secondary));
+}
+.editor-heading h1 {
+  overflow: hidden;
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.96);
+  font-size: 1.12rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.editor-summary {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+}
+.editor-summary span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 7px;
+  background: rgba(var(--v-theme-background), 0.4);
+  color: rgba(var(--v-theme-on-surface), 0.57);
+  font-size: 0.72rem;
+  font-weight: 570;
 }
 .filmstrip,
 .properties {
+  min-height: 0;
   overflow-y: auto;
-  background: rgb(var(--v-theme-surface));
-  border-right: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  background: rgba(var(--v-theme-surface), 0.78);
+}
+.filmstrip {
+  border-right: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+}
+.presentation-details {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 15px 13px 16px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  background: rgba(var(--v-theme-background), 0.17);
+}
+.presentation-details :deep(.v-field),
+.properties :deep(.v-field) {
+  border-radius: 6px;
+  background: rgba(var(--v-theme-background), 0.5);
+  font-size: 0.78rem;
+}
+.presentation-details :deep(.v-chip) {
+  font-size: 0.67rem;
+}
+.filmstrip-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 8px;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+.filmstrip-heading strong {
+  display: grid;
+  min-width: 23px;
+  height: 23px;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(var(--v-theme-on-surface), 0.06);
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  font-size: 0.68rem;
+}
+.thumbnail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 9px;
+}
+.thumbnail-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 26px;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 6px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: rgba(var(--v-theme-background), 0.28);
+  cursor: pointer;
+  transition:
+    border-color var(--ws-transition-fast),
+    background-color var(--ws-transition-fast),
+    box-shadow var(--ws-transition-fast);
+}
+.thumbnail-row:hover {
+  border-color: rgba(var(--v-theme-secondary), 0.22);
+  background: rgba(var(--v-theme-secondary), 0.045);
+}
+.thumbnail-row.active {
+  border-color: rgba(var(--v-theme-secondary), 0.42);
+  background: rgba(var(--v-theme-secondary), 0.11);
+  box-shadow: inset 3px 0 rgb(var(--v-theme-secondary));
+}
+.slide-grip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  cursor: grab;
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+}
+.slide-grip:active {
+  cursor: grabbing;
+}
+.thumbnail {
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+  border-radius: 4px;
+  background: #000;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
+}
+.add-slide-button {
+  width: calc(100% - 18px);
+  margin: 10px 9px 14px;
+  font-size: 0.74rem;
+  text-transform: none;
 }
 .properties {
   border-right: 0;
-  border-left: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  padding: 16px;
+  border-left: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  padding: 0 16px 22px;
+}
+.inspector-heading {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  margin: 0 -16px 16px;
+  padding: 15px 16px 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  background: rgba(var(--v-theme-surface), 0.96);
+  backdrop-filter: blur(10px);
+}
+.inspector-heading h2 {
+  overflow: hidden;
+  margin: 3px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.94);
+  font-size: 0.98rem;
+  font-weight: 680;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inspector-heading p {
+  margin: 3px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.47);
+  font-size: 0.7rem;
+}
+.property-section-title {
+  margin: 2px 0 10px;
+  color: rgb(var(--v-theme-secondary));
+}
+.property-section-title--spaced {
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+}
+.properties :deep(.v-input) {
+  margin-bottom: 4px;
+}
+.properties :deep(.v-label) {
+  font-size: 0.77rem;
 }
 .workspace {
-  min-width: 0;
   display: flex;
+  min-width: 0;
+  min-height: 0;
   flex-direction: column;
-  background: #17191d;
+  background:
+    radial-gradient(circle at 50% 12%, rgba(var(--v-theme-secondary), 0.055), transparent 410px),
+    #14171c;
 }
 .toolbar {
-  min-height: 52px;
   display: flex;
-  gap: 6px;
+  min-height: 64px;
   align-items: center;
-  padding: 6px 10px;
-  background: rgb(var(--v-theme-surface));
+  gap: 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  background: rgba(var(--v-theme-surface), 0.9);
+}
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.toolbar-label {
+  margin-right: 2px;
+}
+.toolbar-group :deep(.v-btn) {
+  font-size: 0.72rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.toolbar-group--icons :deep(.v-btn) {
+  width: 34px;
+  height: 34px;
+}
+.toolbar-divider {
+  align-self: stretch;
+  height: auto;
+  margin: 5px 0;
+  opacity: 0.62;
 }
 .canva-grid {
   display: grid;
@@ -1107,45 +1387,34 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
   object-fit: cover;
 }
 .canvas-scroll {
-  flex: 1;
-  container-type: size;
-  overflow: auto;
   display: grid;
+  flex: 1;
   place-items: center;
-  padding: 16px;
+  padding: 26px;
+  overflow: auto;
+  container-type: size;
 }
 .canvas-host {
   position: relative;
-  flex: none;
   width: min(100cqw, 177.7778cqh);
+  flex: none;
   aspect-ratio: 16 / 9;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   background: #000;
-  box-shadow: 0 8px 32px #000a;
-}
-.thumbnail-row {
-  display: grid;
-  grid-template-columns: 24px 1fr 26px;
-  align-items: center;
-  gap: 5px;
-  padding: 8px;
-  cursor: pointer;
-}
-.thumbnail-row.active {
-  background: rgba(var(--v-theme-primary), 0.16);
-}
-.slide-grip {
-  font-size: 12px;
-  cursor: grab;
-  text-align: center;
-}
-.thumbnail {
-  aspect-ratio: 16 / 9;
-  background: #000;
-  overflow: hidden;
+  box-shadow: 0 16px 46px rgba(0, 0, 0, 0.5);
 }
 .property-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+@media (max-width: 1280px) {
+  .editor {
+    grid-template-columns: 225px minmax(0, 1fr) 290px;
+  }
+  .toolbar-label,
+  .editor-summary span:last-child {
+    display: none;
+  }
 }
 </style>

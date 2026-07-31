@@ -1,4 +1,5 @@
 import type { Service, ServiceItem, ServiceTemplate } from '@/models/service'
+import { defaultServiceTemplate } from '@/utils/serviceTemplate'
 
 export type SermonItem = Extract<ServiceItem, { type: 'sermon' }>
 
@@ -26,7 +27,7 @@ export function sermonPreacherId(service: Service, sermonItem = findSermonItem(s
  *  the same role-resolution priority used by the Rust migration for pre-existing services
  *  (existing item/placeholder role wins first; this is only the fallback). */
 export function defaultSermonRole(serviceTemplates: ServiceTemplate[] | undefined, serviceType: string): string | undefined {
-  return serviceTemplates?.find((t) => t.serviceType === serviceType)?.items.find((i) => i.kind === 'sermon')?.role
+  return defaultServiceTemplate(serviceTemplates, serviceType)?.items.find((i) => i.kind === 'sermon')?.role
 }
 
 export interface SermonEditInput {

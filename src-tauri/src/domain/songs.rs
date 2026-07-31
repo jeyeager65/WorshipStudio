@@ -219,6 +219,7 @@ mod tests {
         crate::models::Service {
             id: id.to_string(),
             date: date.to_string(),
+            time: None,
             service_type: "Sunday Morning Worship".to_string(),
             items: vec![crate::models::ServiceItem {
                 id: format!("item-{song_id}"),

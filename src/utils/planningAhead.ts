@@ -1,5 +1,6 @@
 import type { Service } from '@/models/service'
 import { sermonPreacherId } from '@/utils/sermonInfo'
+import { serviceDateTimeSortKey } from '@/utils/serviceTime'
 
 export interface PlanningAheadMonth {
   /** "2026-03" — sorts and dedupes naturally as a plain string key. */
@@ -17,7 +18,9 @@ export interface PlanningAheadMonth {
  * stays a read/fill-in view of real service records.
  */
 export function groupUpcomingByMonth(services: Service[], todayIso: string): PlanningAheadMonth[] {
-  const upcoming = services.filter((service) => service.date >= todayIso).sort((a, b) => a.date.localeCompare(b.date))
+  const upcoming = services
+    .filter((service) => service.date >= todayIso)
+    .sort((a, b) => serviceDateTimeSortKey(a).localeCompare(serviceDateTimeSortKey(b)))
 
   const months = new Map<string, PlanningAheadMonth>()
   for (const service of upcoming) {

@@ -145,237 +145,722 @@ async function removeFromArrangement(index: number) {
 </script>
 
 <template>
-  <div v-if="song">
+  <main v-if="song" class="song-editor-page">
+    <header class="editor-header">
+      <div class="header-content">
+        <v-btn to="/library/songs" variant="text" prepend-icon="mdi-arrow-left" class="back-button">Songs</v-btn>
+        <div class="title-row">
+          <div class="title-copy">
+            <div class="eyebrow">Song Editor</div>
+            <h1 class="song-title">{{ song.title || 'Untitled Song' }}</h1>
+          </div>
+          <div class="usage-status">
+            <v-icon icon="mdi-history" size="18" />
+            <span>{{ usageLabel }}</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
     <div class="editor-layout">
-      <div class="editor-panel">
-        <v-text-field
-          v-model="song.title"
-          variant="filled"
-          density="compact"
-          rounded="lg"
-          class="text-h5 font-weight-bold mb-1 song-title-field"
-          hide-details
-        />
-
-        <div class="text-overline text-medium-emphasis mb-2 mt-2">General</div>
-        <div class="d-flex flex-wrap ga-4 mb-1 align-end">
-          <v-text-field v-model="song.ccli" label="CCLI #" variant="outlined" density="compact" style="width: 130px" />
-          <v-text-field v-model="song.author" label="Author" variant="outlined" density="compact" style="width: 220px" />
-          <v-combobox
-            v-model="song.tags"
-            label="Tags"
-            variant="outlined"
-            density="compact"
-            multiple
-            chips
-            closable-chips
-            style="min-width: 220px"
-          />
-        </div>
-        <p class="text-caption text-medium-emphasis mb-6">{{ usageLabel }}</p>
-
-        <div class="text-overline text-medium-emphasis mb-2">Collections</div>
-        <div v-for="(entry, index) in song.collections" :key="index" class="d-flex ga-3 mb-2" style="max-width: 480px">
-          <v-combobox
-            v-model="entry.collectionId"
-            :items="librarySettings?.collections ?? []"
-            label="Collection"
-            variant="outlined"
-            density="compact"
-            class="flex-grow-1"
-          />
-          <v-text-field v-model="entry.number" label="#" variant="outlined" density="compact" style="width: 90px" />
-          <v-btn icon="mdi-trash-can-outline" variant="flat" color="error" size="small" @click="removeCollection(index)" />
-        </div>
-        <v-btn variant="flat" color="primary" class="mb-6" prepend-icon="mdi-plus" @click="addCollection">
-          Add To Collection
-        </v-btn>
-
-        <div class="text-overline text-medium-emphasis mb-2">Song Blocks</div>
-        <VueDraggable v-model="song.blocks" handle=".drag-handle" :animation="150" class="d-flex flex-column ga-3">
-          <v-card
-            v-for="(block, index) in song.blocks"
-            :key="block.id"
-            variant="outlined"
-            rounded="lg"
-            :style="{
-              borderColor: `rgb(var(--v-theme-${colorForBlockLabel(block.label)}))`,
-              '--block-accent': `rgb(var(--v-theme-${colorForBlockLabel(block.label)}))`,
-              '--block-accent-rgb': `var(--v-theme-${colorForBlockLabel(block.label)})`,
-            }"
-          >
-            <div class="d-flex align-center ga-2 px-3 py-2 border-b block-header">
-              <v-icon icon="mdi-drag-vertical" class="drag-handle" style="cursor: grab" />
-              <v-text-field
-                v-model="block.label"
-                variant="filled"
-                density="compact"
-                rounded="lg"
-                hide-details
-                :color="colorForBlockLabel(block.label)"
-                class="font-weight-bold flex-grow-1 block-label-field"
-              />
-              <v-btn variant="flat" color="error" prepend-icon="mdi-trash-can-outline" @click="removeBlock(index)">
-                Remove
-              </v-btn>
+      <div class="editor-main">
+        <section class="editor-section">
+          <div class="section-heading">
+            <div>
+              <h2>Song Details</h2>
+              <p>Information used to identify and organize this song.</p>
             </div>
-            <v-textarea
-              v-model="block.text"
-              variant="filled"
-              density="compact"
-              rows="3"
-              auto-grow
+          </div>
+          <div class="details-grid">
+            <v-text-field
+              v-model="song.title"
+              label="Song Title"
+              variant="outlined"
               hide-details
-              class="px-3 py-2 block-text-field"
+              class="title-detail-field"
             />
-          </v-card>
-        </VueDraggable>
-        <v-btn variant="flat" color="primary" class="mt-3 mb-6" prepend-icon="mdi-plus" @click="addBlock">
-          Add Block
-        </v-btn>
+            <v-text-field v-model="song.author" label="Author" variant="outlined" hide-details />
+            <v-text-field v-model="song.ccli" label="CCLI Number" variant="outlined" hide-details />
+            <v-combobox
+              v-model="song.tags"
+              label="Tags"
+              variant="outlined"
+              multiple
+              chips
+              closable-chips
+              hide-details
+              class="tags-field"
+            />
+          </div>
+        </section>
 
-        <div class="text-overline text-medium-emphasis mb-2">Notes</div>
-        <v-textarea
-          v-model="song.notes"
-          variant="outlined"
-          placeholder="Notes about this song — arrangement tips, key changes, performance reminders…"
-          rows="3"
-        />
+        <section class="editor-section">
+          <div class="section-heading section-heading-action">
+            <div>
+              <h2>Collections</h2>
+              <p>Place this song in one or more songbooks or library groups.</p>
+            </div>
+            <v-btn variant="tonal" color="primary" prepend-icon="mdi-plus" @click="addCollection">Add Collection</v-btn>
+          </div>
+          <div v-if="song.collections.length" class="collection-list">
+            <div v-for="(entry, index) in song.collections" :key="index" class="collection-row">
+              <v-combobox
+                v-model="entry.collectionId"
+                :items="librarySettings?.collections ?? []"
+                label="Collection"
+                variant="outlined"
+                hide-details
+              />
+              <v-text-field v-model="entry.number" label="Number" variant="outlined" hide-details />
+              <v-btn
+                icon="mdi-trash-can-outline"
+                variant="text"
+                color="error"
+                aria-label="Remove collection"
+                @click="removeCollection(index)"
+              />
+            </div>
+          </div>
+          <button v-else type="button" class="empty-inline" @click="addCollection">
+            <v-icon icon="mdi-bookshelf" size="24" />
+            <span>This song is not in a collection. Add one to make it easier to find.</span>
+          </button>
+        </section>
+
+        <section class="editor-section lyrics-section">
+          <div class="section-heading section-heading-action">
+            <div>
+              <h2>Lyrics</h2>
+              <p>Create reusable sections, then arrange them in the panel on the right.</p>
+            </div>
+            <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="addBlock">Add Block</v-btn>
+          </div>
+          <VueDraggable v-model="song.blocks" handle=".drag-handle" :animation="150" class="block-list">
+            <article
+              v-for="(block, index) in song.blocks"
+              :key="block.id"
+              class="lyric-block"
+              :style="{
+                '--block-accent': `rgb(var(--v-theme-${colorForBlockLabel(block.label)}))`,
+                '--block-accent-rgb': `var(--v-theme-${colorForBlockLabel(block.label)})`,
+              }"
+            >
+              <div class="block-rail" />
+              <div class="block-content">
+                <div class="block-header">
+                  <v-icon icon="mdi-drag-vertical" class="drag-handle" aria-label="Drag to reorder" />
+                  <span class="block-number">{{ index + 1 }}</span>
+                  <v-text-field
+                    v-model="block.label"
+                    aria-label="Block name"
+                    variant="plain"
+                    hide-details
+                    class="block-label-field"
+                  />
+                  <v-btn
+                    icon="mdi-trash-can-outline"
+                    variant="text"
+                    color="error"
+                    size="small"
+                    aria-label="Remove block"
+                    @click="removeBlock(index)"
+                  />
+                </div>
+                <v-textarea
+                  v-model="block.text"
+                  aria-label="Lyrics"
+                  variant="outlined"
+                  placeholder="Enter lyrics for this block…"
+                  rows="4"
+                  auto-grow
+                  hide-details
+                  class="block-text-field"
+                />
+              </div>
+            </article>
+          </VueDraggable>
+          <button v-if="!song.blocks.length" type="button" class="empty-lyrics" @click="addBlock">
+            <v-icon icon="mdi-text-box-plus-outline" size="30" />
+            <strong>Add Your First Lyric Block</strong>
+            <span>Start with a verse, chorus, or another section.</span>
+          </button>
+        </section>
+
+        <section class="editor-section">
+          <div class="section-heading">
+            <div>
+              <h2>Notes</h2>
+              <p>Keep arrangement details and service reminders with the song.</p>
+            </div>
+          </div>
+          <v-textarea
+            v-model="song.notes"
+            variant="outlined"
+            placeholder="Arrangement tips, key changes, or other reminders…"
+            rows="4"
+            hide-details
+          />
+        </section>
       </div>
 
-      <div class="arrangement-panel">
-        <div class="text-overline text-medium-emphasis mb-1">Default Arrangement</div>
-        <p class="text-caption text-medium-emphasis mb-4">
-          Used when this song is added to a service. Each service can override its own copy without changing this.
-        </p>
+      <aside class="arrangement-panel">
+        <div class="arrangement-heading">
+          <div class="arrangement-icon"><v-icon icon="mdi-format-list-numbered" size="21" /></div>
+          <div>
+            <h2>Default Arrangement</h2>
+            <p>Used when this song is added to a service.</p>
+          </div>
+        </div>
 
         <VueDraggable
           v-model="song.defaultArrangement.sequence"
           handle=".drag-handle"
           :animation="150"
-          class="d-flex flex-column ga-2"
+          class="arrangement-list"
         >
           <div
             v-for="(id, index) in song.defaultArrangement.sequence"
             :key="index"
-            class="d-flex align-center ga-1 pa-2 border rounded-lg arrangement-item"
-            :style="{
-              background: `rgba(var(--v-theme-${colorForBlockLabel(blockLabel(id))}), 0.1)`,
-              borderLeft: `3px solid rgb(var(--v-theme-${colorForBlockLabel(blockLabel(id))}))`,
-            }"
+            class="arrangement-item"
+            :style="{ '--item-accent': `rgb(var(--v-theme-${colorForBlockLabel(blockLabel(id))}))` }"
           >
-            <v-icon icon="mdi-drag-vertical" class="drag-handle" size="small" style="cursor: grab" />
-            <span class="text-body-2 flex-grow-1">{{ blockLabel(id) }}</span>
-            <v-btn icon="mdi-trash-can-outline" variant="flat" color="error" size="small" @click="removeFromArrangement(index)" />
+            <v-icon icon="mdi-drag-vertical" class="drag-handle" size="20" />
+            <span class="arrangement-number">{{ index + 1 }}</span>
+            <span class="arrangement-label">{{ blockLabel(id) }}</span>
+            <v-btn
+              icon="mdi-close"
+              variant="text"
+              size="x-small"
+              aria-label="Remove from arrangement"
+              @click="removeFromArrangement(index)"
+            />
           </div>
         </VueDraggable>
+        <div v-if="!song.defaultArrangement.sequence.length" class="arrangement-empty">
+          Add lyric blocks below to build the default order.
+        </div>
 
-        <div class="mt-4">
-          <div class="text-caption font-weight-bold text-medium-emphasis mb-2">Add:</div>
-          <div class="d-flex flex-wrap ga-2">
-            <v-chip
+        <div class="add-to-arrangement">
+          <div class="add-label">Add Block</div>
+          <div v-if="song.blocks.length" class="block-options">
+            <button
               v-for="block in song.blocks"
               :key="block.id"
-              variant="outlined"
-              :color="colorForBlockLabel(block.label)"
-              size="small"
-              class="cursor-pointer"
+              type="button"
+              class="block-option"
+              :style="{ '--item-accent': `rgb(var(--v-theme-${colorForBlockLabel(block.label)}))` }"
               @click="addToArrangement(block)"
             >
-              {{ block.label }}
-            </v-chip>
+              <span>{{ block.label }}</span>
+              <v-icon icon="mdi-plus" size="18" />
+            </button>
           </div>
+          <p v-else class="no-blocks">Create a lyric block before building an arrangement.</p>
         </div>
-      </div>
+        <p class="arrangement-help">Drag items to reorder them. Service arrangements can still be customized independently.</p>
+      </aside>
     </div>
-  </div>
+  </main>
   <v-container v-else class="py-8">
     <p class="text-medium-emphasis">Song not found.</p>
   </v-container>
 </template>
 
 <style scoped>
+.song-editor-page {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at 76% 0, rgba(var(--v-theme-teal), 0.045), transparent 420px),
+    rgb(var(--v-theme-background));
+}
+
+.editor-header {
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+  background: rgba(var(--v-theme-surface), 0.76);
+}
+
+.header-content,
+.editor-layout {
+  width: min(100%, 1440px);
+  margin: 0 auto;
+}
+
+.header-content {
+  padding: 18px 32px 22px;
+}
+
+.back-button {
+  margin: 0 0 8px -12px;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.82rem;
+  text-transform: none;
+}
+
+.title-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 28px;
+}
+
+.title-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.eyebrow {
+  margin-bottom: 1px;
+  color: rgb(var(--v-theme-teal));
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.song-title {
+  max-width: 760px;
+  overflow: hidden;
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.96);
+  font-size: clamp(1.65rem, 2.5vw, 2.2rem);
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 8px 12px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 8px;
+  color: rgba(var(--v-theme-on-surface), 0.58);
+  background: rgba(var(--v-theme-background), 0.42);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
 .editor-layout {
   display: grid;
-  grid-template-columns: 1fr 340px;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 24px;
   align-items: start;
+  padding: 28px 32px 48px;
 }
-.editor-panel {
-  padding: 24px 32px;
+
+.editor-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 20px;
 }
+
+.editor-section,
 .arrangement-panel {
-  padding: 20px;
-  border-left: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  min-height: calc(100vh - 49px);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 11px;
+  background: rgba(var(--v-theme-surface), 0.76);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.08);
 }
-/* arrangement-item backgrounds are set inline per block category — see colorForBlockLabel
-   in src/utils/contentColors.ts. block-header uses --block-accent-rgb (set inline on the
-   parent v-card, see below) since it also needs to reach the sibling lyric textarea. */
+
+.editor-section {
+  padding: 22px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 18px;
+}
+
+.section-heading h2,
+.arrangement-heading h2 {
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.95);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.section-heading p,
+.arrangement-heading p {
+  margin: 4px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.54);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.section-heading-action {
+  align-items: center;
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 180px minmax(240px, 1.25fr);
+  gap: 14px;
+}
+
+.title-detail-field {
+  grid-column: 1 / -1;
+}
+
+.editor-section :deep(.v-field) {
+  border-radius: 7px;
+  background: rgba(var(--v-theme-background), 0.48);
+}
+
+.editor-section :deep(.v-field__outline) {
+  --v-field-border-opacity: 0.13;
+}
+
+.editor-section :deep(.v-field--focused .v-field__outline) {
+  --v-field-border-opacity: 0.72;
+}
+
+.collection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.collection-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) 130px 44px;
+  gap: 12px;
+  align-items: center;
+}
+
+.empty-inline,
+.empty-lyrics {
+  width: 100%;
+  border: 1px dashed rgba(var(--v-theme-on-surface), 0.16);
+  color: rgba(var(--v-theme-on-surface), 0.56);
+  background: rgba(var(--v-theme-background), 0.3);
+  cursor: pointer;
+}
+
+.empty-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+}
+
+.empty-inline:hover,
+.empty-lyrics:hover {
+  border-color: rgba(var(--v-theme-teal), 0.4);
+  background: rgba(var(--v-theme-teal), 0.045);
+}
+
+.block-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.lyric-block {
+  position: relative;
+  display: grid;
+  grid-template-columns: 4px minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.09);
+  border-radius: 9px;
+  background: rgba(var(--v-theme-background), 0.34);
+}
+
+.block-rail {
+  background: var(--block-accent);
+}
+
+.block-content {
+  min-width: 0;
+  padding: 14px;
+}
+
 .block-header {
-  background: rgba(var(--block-accent-rgb), 0.12);
+  display: grid;
+  grid-template-columns: 24px 28px minmax(0, 1fr) 36px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 11px;
 }
 
-/* Vuetify's color prop tints the underline but not the typed text itself; --block-accent
-   (set inline on the block's v-card) pierces into the field's actual input element via
-   :deep() so the label text picks up the category color too. */
-.block-label-field :deep(.v-field__input) {
+.drag-handle {
+  color: rgba(var(--v-theme-on-surface), 0.42);
+  cursor: grab;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.block-number,
+.arrangement-number {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
   color: var(--block-accent);
+  background: rgba(var(--block-accent-rgb), 0.13);
+  font-size: 0.72rem;
+  font-weight: 700;
 }
-/* The header row already has a category-tinted background; the field's own default fill
-   either blends into it (too subtle) or, with a flat gray/white box, reads as a foreign
-   element dropped onto an otherwise color-themed block. A stronger tint of the block's own
-   category color (via --block-accent) stays visually part of the block while still reading
-   as a distinct, editable box — Vuetify's own "filled" variant renders a white
-   .v-field__overlay on top at partial opacity, which would wash out a custom color
-   underneath, so that overlay is suppressed here in favor of our own. */
+
+.block-label-field :deep(.v-field__input) {
+  min-height: 36px;
+  padding: 0 8px;
+  color: var(--block-accent);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
 .block-label-field :deep(.v-field) {
-  background: rgba(var(--block-accent-rgb), 0.3);
-  border: 1px solid rgba(var(--block-accent-rgb), 0.6);
+  border-radius: 6px;
+  background: rgba(var(--block-accent-rgb), 0.08);
 }
-.block-label-field :deep(.v-field__overlay) {
-  opacity: 0;
-}
-/* Filled/underlined variants render their own bottom line via .v-field__outline — redundant
-   and a bit odd now that the field already has a full border. Suppress it, but make the
-   focus state bold so it's still obvious which field is being edited. */
-.block-label-field :deep(.v-field__outline),
-.song-title-field :deep(.v-field__outline) {
+
+.block-label-field :deep(.v-field__outline) {
   display: none;
 }
+
 .block-label-field :deep(.v-field--focused) {
-  border-width: 2px;
-  border-color: var(--block-accent);
+  box-shadow: inset 0 0 0 1px var(--block-accent);
 }
 
-/* Lyric text box: same "this is editable" language (visible fill, border, bold on focus)
-   as the label field, but explicitly neutral — the block's category color stays on the
-   label/border/chips; the actual lyric text stays plain and readable, not tinted. */
-.block-text-field :deep(.v-field) {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-}
-.block-text-field :deep(.v-field__overlay) {
-  opacity: 0;
-}
-.block-text-field :deep(.v-field__outline) {
-  display: none;
-}
-.block-text-field :deep(.v-field--focused) {
-  border-width: 2px;
-  border-color: var(--block-accent);
+.block-text-field :deep(textarea) {
+  font-size: 0.86rem;
+  line-height: 1.55;
 }
 
-/* Song title: same "colored box" language as the block label fields (primary, since the
-   song itself is the default/primary content type), just without a per-block accent. */
-.song-title-field :deep(.v-field) {
-  background: rgba(var(--v-theme-primary), 0.3);
-  border: 1px solid rgba(var(--v-theme-primary), 0.6);
+.empty-lyrics {
+  display: flex;
+  min-height: 150px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 9px;
+  font: inherit;
 }
-.song-title-field :deep(.v-field__overlay) {
-  opacity: 0;
+
+.empty-lyrics strong {
+  color: rgba(var(--v-theme-on-surface), 0.9);
+  font-size: 0.86rem;
 }
-.song-title-field :deep(.v-field--focused) {
-  border-width: 2px;
-  border-color: rgb(var(--v-theme-primary));
+
+.empty-lyrics span {
+  font-size: 0.76rem;
+}
+
+.arrangement-panel {
+  position: sticky;
+  top: 72px;
+  overflow: hidden;
+  padding: 20px;
+}
+
+.arrangement-heading {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding-bottom: 17px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+
+.arrangement-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  color: rgb(var(--v-theme-teal));
+  background: rgba(var(--v-theme-teal), 0.11);
+}
+
+.arrangement-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.arrangement-item {
+  --block-accent: var(--item-accent);
+  display: grid;
+  grid-template-columns: 22px 24px minmax(0, 1fr) 28px;
+  gap: 7px;
+  align-items: center;
+  min-height: 44px;
+  padding: 5px 6px 5px 7px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-left: 3px solid var(--item-accent);
+  border-radius: 7px;
+  background: rgba(var(--v-theme-background), 0.34);
+}
+
+.arrangement-number {
+  color: var(--item-accent);
+  background: transparent;
+}
+
+.arrangement-label {
+  overflow: hidden;
+  color: rgba(var(--v-theme-on-surface), 0.88);
+  font-size: 0.81rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arrangement-empty {
+  margin-top: 16px;
+  padding: 18px 14px;
+  border: 1px dashed rgba(var(--v-theme-on-surface), 0.15);
+  border-radius: 8px;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.add-to-arrangement {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+
+.add-label {
+  margin-bottom: 10px;
+  color: rgba(var(--v-theme-on-surface), 0.88);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.block-options {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.block-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 10px 7px 12px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-left: 3px solid var(--item-accent);
+  border-radius: 7px;
+  color: rgba(var(--v-theme-on-surface), 0.82);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.block-option:hover {
+  border-color: color-mix(in srgb, var(--item-accent) 42%, transparent);
+  background: rgba(var(--v-theme-on-surface), 0.04);
+}
+
+.no-blocks,
+.arrangement-help {
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.no-blocks {
+  margin: 0;
+}
+
+.arrangement-help {
+  margin: 16px 0 0;
+}
+
+@media (max-width: 1050px) {
+  .editor-layout {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+
+  .details-grid {
+    grid-template-columns: minmax(180px, 1fr) 160px;
+  }
+
+  .tags-field {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 820px) {
+  .header-content,
+  .editor-layout {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .title-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .editor-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .arrangement-panel {
+    position: static;
+    grid-row: 1;
+  }
+}
+
+@media (max-width: 560px) {
+  .header-content {
+    padding: 14px 16px 18px;
+  }
+
+  .editor-layout {
+    gap: 16px;
+    padding: 18px 12px 32px;
+  }
+
+  .editor-section,
+  .arrangement-panel {
+    padding: 16px;
+  }
+
+  .section-heading-action {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .details-grid,
+  .collection-row {
+    grid-template-columns: 1fr;
+  }
+
+  .collection-row {
+    padding-bottom: 14px;
+    border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+  }
+
+  .collection-row > :last-child {
+    justify-self: end;
+  }
 }
 </style>

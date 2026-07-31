@@ -201,7 +201,13 @@
         return;
       }
       if (content.scene) {
-        renderScene(mirror, content.scene);
+        renderScene(mirror, content.backgroundOnly ? { ...content.scene, elements: [] } : content.scene);
+        return;
+      }
+      // Standalone image/video media is itself the slide background, so it remains visible.
+      // All other non-scene slide types are foreground-only and reveal the black canvas.
+      if (content.backgroundOnly && !content.media) {
+        mirror.innerHTML = '';
         return;
       }
       if (content.wayfindingBooks) {

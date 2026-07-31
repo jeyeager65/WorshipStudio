@@ -287,6 +287,11 @@ pub struct ServiceTemplateItem {
 #[serde(rename_all = "camelCase")]
 pub struct ServiceTemplate {
     pub service_type: String,
+    /// Service types that choose this template by default. None preserves the legacy behavior
+    /// where a template defaults to the service type with the same name; Some(empty) explicitly
+    /// means this template is not a default for any type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_for_service_types: Option<Vec<String>>,
     #[serde(default)]
     pub items: Vec<ServiceTemplateItem>,
 }
@@ -374,6 +379,9 @@ impl From<&RemoteDevice> for RemoteDeviceSummary {
 pub struct Service {
     pub id: String,
     pub date: String,
+    /// Local service start time in 24-hour HH:mm form. Optional for older service files.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time: Option<String>,
     #[serde(rename = "type")]
     pub service_type: String,
     #[serde(default)]
@@ -406,6 +414,8 @@ pub struct LoopConfig {
 pub struct SlideLibraryItem {
     pub id: String,
     pub label: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
     pub document_version: u32,
     #[serde(default)]
     pub slides: Vec<LibrarySlide>,
@@ -736,6 +746,8 @@ pub struct LiveSlideContent {
     pub sub_label: String,
     pub text: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub background_only: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub scene: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wayfinding_books: Option<Vec<WayfindingBook>>,
@@ -774,5 +786,20 @@ mod tests {
         assert_eq!(settings.slide_footer_font_size_px, 24);
         assert_eq!(settings.wayfinding_min_font_size_px, 56);
         assert_eq!(settings.wayfinding_max_font_size_px, 150);
+    }
+
+    #[test]
+    fn slide_library_item_defaults_tags_for_older_files() {
+        let json = r#"{
+            "id": "slides-1",
+            "label": "Announcements",
+            "documentVersion": 2,
+            "slides": [],
+            "usage": { "usesPastYear": 0 },
+            "updatedAt": "",
+            "updatedByDevice": ""
+        }"#;
+        let item: SlideLibraryItem = serde_json::from_str(json).unwrap();
+        assert!(item.tags.is_empty());
     }
 }

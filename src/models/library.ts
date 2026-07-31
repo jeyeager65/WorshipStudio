@@ -89,6 +89,7 @@ export interface LibrarySlide {
 export interface SlideLibraryItem {
   id: string
   label: string
+  tags: string[]
   documentVersion: 2
   slides: LibrarySlide[]
   backgroundId?: string

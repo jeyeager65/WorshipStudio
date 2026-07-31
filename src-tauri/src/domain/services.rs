@@ -288,6 +288,7 @@ mod tests {
         Service {
             id: id.to_string(),
             date: date.to_string(),
+            time: None,
             service_type: "Sunday Morning Worship".to_string(),
             items: vec![],
             presenter_notes: None,
