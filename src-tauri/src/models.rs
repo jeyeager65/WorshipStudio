@@ -8,6 +8,17 @@ pub struct SongBlock {
     pub text: String,
 }
 
+/// serde_json::Value intentionally makes Rust persistence lossless without duplicating the
+/// frontend renderer's discriminated element union in native code.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LibrarySlide {
+    pub id: String,
+    pub label: String,
+    pub scene: serde_json::Value,
+    pub source: serde_json::Value,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Arrangement {
@@ -395,8 +406,9 @@ pub struct LoopConfig {
 pub struct SlideLibraryItem {
     pub id: String,
     pub label: String,
+    pub document_version: u32,
     #[serde(default)]
-    pub slides: Vec<SongBlock>,
+    pub slides: Vec<LibrarySlide>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub background_id: Option<String>,
     #[serde(rename = "loop", skip_serializing_if = "Option::is_none")]
@@ -717,6 +729,8 @@ pub struct LiveSlideContent {
     pub item_label: String,
     pub sub_label: String,
     pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scene: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wayfinding_books: Option<Vec<WayfindingBook>>,
     #[serde(skip_serializing_if = "Option::is_none")]

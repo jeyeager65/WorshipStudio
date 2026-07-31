@@ -1,9 +1,10 @@
 import type { Service, ServiceItem } from '@/models/service'
 import type { Song } from '@/models/song'
-import type { SlideLibraryItem } from '@/models/library'
+import type { SlideLibraryItem, SlideScene } from '@/models/library'
 import type { ScripturePassage, ExternalAppProfile } from '@/adapters/types'
 import { getBibleProgress, getWayfindingBooks, parseReference, type WayfindingBook } from '@/utils/scriptureReference'
 import { paginateTextUnits, type FontSizeRange } from '@/utils/textAutoFit'
+import { scenePlainText } from '@/utils/slideScene'
 
 // Matches LibrarySettings' scriptureMin/MaxFontSizePx defaults (see models/settings.ts) — used
 // whenever a caller doesn't pass its own configured range (e.g. existing tests).
@@ -24,6 +25,8 @@ export interface FlatSlide {
   /** e.g. block label "Chorus"; empty for single-slide item types */
   subLabel: string
   text: string
+  /** Advanced slide-library pages only. */
+  scene?: SlideScene
   /** Reference-only scripture slides only — the surrounding-books wayfinding visual (spec section 1). */
   wayfindingBooks?: WayfindingBook[]
   /** Reference-only scripture slides only — 0-1 fraction of the way through the whole Bible
@@ -286,7 +289,8 @@ export function flattenService(
             itemId: item.id,
             itemLabel: slideItem.label,
             subLabel: slide.label,
-            text: slide.text,
+            text: scenePlainText(slide.scene),
+            scene: slide.scene,
           })
         })
       }

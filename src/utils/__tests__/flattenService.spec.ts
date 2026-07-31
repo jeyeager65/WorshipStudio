@@ -5,6 +5,7 @@ import type { Service } from '@/models/service'
 import type { Song } from '@/models/song'
 import type { SlideLibraryItem } from '@/models/library'
 import type { ScripturePassage } from '@/adapters/types'
+import { createBlankScene, createTextElement } from '@/utils/slideScene'
 
 function makeSong(overrides: Partial<Song> = {}): Song {
   return {
@@ -350,9 +351,10 @@ describe('flattenService — slide-ref', () => {
     return {
       id: 'slide-1',
       label: 'Announcements',
+      documentVersion: 2,
       slides: [
-        { id: 'a', label: 'Slide 1', text: 'Welcome!' },
-        { id: 'b', label: 'Slide 2', text: 'Potluck this Friday' },
+        { id: 'a', label: 'Slide 1', scene: { ...createBlankScene(), elements: [createTextElement('Welcome!')] }, source: { type: 'native' } },
+        { id: 'b', label: 'Slide 2', scene: { ...createBlankScene(), elements: [createTextElement('Potluck this Friday')] }, source: { type: 'native' } },
       ],
       usage: { usesPastYear: 0 },
       updatedAt: '',

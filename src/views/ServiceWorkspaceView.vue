@@ -24,8 +24,9 @@ import { applySermonEdit, defaultSermonRole, findSermonItem, sermonMainReference
 import { formatCountdown } from '@/utils/countdown'
 import type { Service, ServiceItem, SermonPassage } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
-import type { SlideLibraryItem, MediaItem } from '@/models/library'
+import type { SlideLibraryItem, MediaItem, LibrarySlide } from '@/models/library'
 import { personDisplayName, sortByPreferredRole } from '@/models/library'
+import { scenePlainText } from '@/utils/slideScene'
 import type { ScripturePassage, ScriptureTranslation, LiveSlideContent, RemoteCommand } from '@/adapters/types'
 
 const route = useRoute()
@@ -413,13 +414,16 @@ const selectedSong = computed<Song | undefined>(() => {
 // Covers both slide-ref (resolved via the library) and text-slide (service-owned data) —
 // both are just a named sequence of slides, played in order, no per-service arrangement
 // override (unlike songs) since spec section 1 has the whole group inserted as-is.
-const selectedSlideGroup = computed<SongBlock[] | undefined>(() => {
+const selectedSlideGroup = computed<Array<SongBlock | LibrarySlide> | undefined>(() => {
   const item = selectedItem.value
   if (!item) return undefined
   if (item.type === 'text-slide') return item.slides
   if (item.type === 'slide-ref') return slidesById.value.get(item.slideId)?.slides
   return undefined
 })
+function slideGroupText(slide: SongBlock | LibrarySlide): string {
+  return 'scene' in slide ? scenePlainText(slide.scene) : slide.text
+}
 function slideFlatIndex(itemId: string, subIndex: number): number {
   return flatSlides.value.findIndex((s) => s.key === `${itemId}:${subIndex}`)
 }
@@ -665,6 +669,7 @@ function buildLiveContent(slide: FlatSlide | undefined): LiveSlideContent | unde
     itemLabel: slide.itemLabel,
     subLabel: slide.subLabel,
     text: slide.text,
+    scene: slide.scene,
     wayfindingBooks: slide.wayfindingBooks,
     bibleProgress: slide.bibleProgress,
     media:
@@ -1466,7 +1471,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
               >
                 <div class="flex-grow-1" style="min-width: 0">
                   <div class="text-body-2 font-weight-bold">{{ slide.label }}</div>
-                  <div class="text-body-2" style="white-space: pre-line; opacity: 0.75">{{ slide.text }}</div>
+                  <div class="text-body-2" style="white-space: pre-line; opacity: 0.75">{{ slideGroupText(slide) }}</div>
                 </div>
               </div>
             </div>

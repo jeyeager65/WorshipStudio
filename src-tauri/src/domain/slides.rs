@@ -45,6 +45,7 @@ mod tests {
         SlideLibraryItem {
             id: id.to_string(),
             label: "Announcements".to_string(),
+            document_version: 2,
             slides: vec![],
             background_id: None,
             loop_config: None,

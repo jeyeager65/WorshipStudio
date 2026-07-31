@@ -80,6 +80,10 @@
   .wayfinding-content { display: flex; flex-direction: column; align-items: center; gap: 4px; }
   .wayfinding-book { font-weight: 600; letter-spacing: 0.03em; }
   .wayfinding-reference { font-size: clamp(20px, 6vw, 40px); font-weight: 700; margin: 6px 0; }
+  .mirror-scene { position: absolute; inset: 0; overflow: hidden; text-align: initial; }
+  .mirror-scene-element { position: absolute; transform-origin: center; overflow: hidden; }
+  .mirror-scene-text { display: flex; width: 100%; height: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .mirror-scene-element img { width: 100%; height: 100%; display: block; }
 
   /* Prev/Next (+ Start/Stop Presenting) overlaid on top of the mirror per the device's access
      level, matching feature-spec.md's "control-capable levels get the overlay too" — not a
@@ -196,6 +200,10 @@
         mirror.innerHTML = `<div class="mirror-empty">${isPresenting ? 'Live — nothing on screen yet' : 'Not presenting'}</div>`;
         return;
       }
+      if (content.scene) {
+        renderScene(mirror, content.scene);
+        return;
+      }
       if (content.wayfindingBooks) {
         const bookHtml = (b) => `<div class="wayfinding-book" style="${bookStyle(b.distance)}">${escapeHtml(b.name)}</div>`;
         const before = content.wayfindingBooks.filter((b) => b.distance < 0).map(bookHtml).join('');
@@ -221,6 +229,60 @@
       }
       const sub = content.subLabel ? ` — ${escapeHtml(content.subLabel)}` : '';
       mirror.innerHTML = `<div><div class="mirror-label">${escapeHtml(content.itemLabel)}${sub}</div><div class="mirror-text">${escapeHtml(content.text)}</div></div>`;
+    }
+
+    function renderScene(mirror, scene) {
+      const pct = (value, total) => `${(Number(value || 0) / Number(total || 1)) * 100}%`;
+      const background = scene.background || {};
+      const backgroundImage = background.mediaId
+        ? `background-image:url('/api/media/${encodeURIComponent(background.mediaId)}');`
+        : '';
+      const backgroundStyle = `background-color:${escapeHtml(background.color || '#000')};${backgroundImage}background-size:${background.fit === 'contain' ? 'contain' : 'cover'};background-repeat:no-repeat;background-position:${Number(background.focalPoint?.x ?? .5) * 100}% ${Number(background.focalPoint?.y ?? .5) * 100}%;`;
+      const elements = (scene.elements || []).filter((element) => !element.hidden).map((element) => {
+        const base = `left:${pct(element.x, scene.width)};top:${pct(element.y, scene.height)};width:${pct(element.width, scene.width)};height:${pct(element.height, scene.height)};transform:rotate(${Number(element.rotation || 0)}deg);opacity:${Number(element.opacity ?? 1)};`;
+        if (element.type === 'text') {
+          const style = element.style || {};
+          const align = ['left', 'center', 'right'].includes(style.textAlign) ? style.textAlign : 'center';
+          const vertical = style.verticalAlign === 'top' ? 'flex-start' : style.verticalAlign === 'bottom' ? 'flex-end' : 'center';
+          const effect = style.effect || {};
+          const effectSize = pct(effect.size || 4, scene.height).replace('%', 'cqh');
+          const effectColor = escapeHtml(effect.color || '#000');
+          const textShadow = effect.type === 'outline'
+            ? `0 0 ${effectSize} ${effectColor},0 0 ${effectSize} ${effectColor}`
+            : effect.type === 'glow'
+              ? `0 0 ${pct((effect.size || 4) * 2, scene.height).replace('%', 'cqh')} ${effectColor},0 0 ${pct((effect.size || 4) * 3, scene.height).replace('%', 'cqh')} ${effectColor}`
+              : effect.type === 'shadow'
+                ? `${pct(effect.offsetX ?? 6, scene.height).replace('%', 'cqh')} ${pct(effect.offsetY ?? 6, scene.height).replace('%', 'cqh')} ${effectSize} ${effectColor}`
+                : 'none';
+          return `<div class="mirror-scene-element" style="${base}"><div class="mirror-scene-text" style="font-family:${escapeHtml(style.fontFamily || 'sans-serif')};font-size:${pct(style.fontSize, scene.height).replace('%', 'cqh')};font-weight:${Number(style.fontWeight || 400)};font-style:${style.italic ? 'italic' : 'normal'};text-decoration:${style.underline ? 'underline' : 'none'};color:${escapeHtml(style.color || '#fff')};text-align:${align};line-height:${Number(style.lineHeight || 1.2)};letter-spacing:${Number(style.letterSpacing || 0)}px;align-items:${vertical};text-shadow:${textShadow};">${escapeHtml(element.text || '')}</div></div>`;
+        }
+        if (element.type === 'image') {
+          const fit = ['contain', 'cover', 'fill'].includes(element.fit) ? element.fit : 'cover';
+          return `<div class="mirror-scene-element" style="${base}"><img src="/api/media/${encodeURIComponent(element.mediaId)}" style="object-fit:${fit};object-position:${Number(element.focalPoint?.x ?? .5) * 100}% ${Number(element.focalPoint?.y ?? .5) * 100}%;" alt="" /></div>`;
+        }
+        if (element.type === 'shape') {
+          const radius = element.shape === 'ellipse'
+            ? '50%'
+            : element.shape === 'rectangle'
+              ? pct(element.cornerRadius ?? 0, scene.height).replace('%', 'cqh')
+              : '0';
+          const clip = element.shape === 'triangle'
+            ? 'polygon(50% 0,100% 100%,0 100%)'
+            : 'none';
+          const fill = element.shape === 'line' || element.fillMode === 'outline'
+            ? 'transparent'
+            : escapeHtml(element.fill || 'transparent');
+          const border = element.fillMode === 'outline'
+            ? `border:${pct(element.stroke?.width ?? 4, scene.height).replace('%', 'cqh')} solid ${escapeHtml(element.stroke?.color || element.fill || '#fff')};`
+            : '';
+          const line = element.shape === 'line'
+            ? `<span style="position:absolute;left:0;right:0;top:50%;height:${pct(element.stroke?.width ?? 4, scene.height).replace('%', 'cqh')};transform:translateY(-50%);background:${escapeHtml(element.stroke?.color || element.fill || '#fff')};"></span>`
+            : '';
+          return `<div class="mirror-scene-element" style="${base}background:${fill};border-radius:${radius};clip-path:${clip};${border}">${line}</div>`;
+        }
+        return '';
+      }).join('');
+      mirror.innerHTML = `<div class="mirror-scene" style="${backgroundStyle}">${elements}</div>`;
     }
 
     // Wayfinding (reference-only scripture, spec section 1): books further from the current

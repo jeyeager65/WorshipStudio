@@ -33,6 +33,7 @@ const slides: SlideLibraryItem[] = [
   {
     id: 'slide-1',
     label: 'Welcome and Announcements',
+    documentVersion: 2,
     slides: [],
     usage: { usesPastYear: 0 },
     updatedAt: '',

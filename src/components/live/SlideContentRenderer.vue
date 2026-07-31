@@ -4,6 +4,7 @@ import { formatCountdown } from '@/utils/countdown'
 import { wrapLineAtPunctuation } from '@/utils/textAutoFit'
 import { OLD_TESTAMENT_FRACTION } from '@/utils/scriptureReference'
 import type { LiveSlideContent } from '@/adapters/types'
+import SlideSceneRenderer from '@/components/slides/SlideSceneRenderer.vue'
 
 /**
  * Renders one slide's content — the audience-facing presentation window (full window, real
@@ -47,7 +48,7 @@ onUnmounted(() => clearInterval(nowTickInterval))
 // branch below, as opposed to wayfinding/media/countdown which have their own distinct designs
 // and don't get a header/footer. Matches that branch's v-else-if fallthrough condition exactly.
 const isTextSlide = computed(
-  () => !!props.content && !props.content.wayfindingBooks && !props.content.media && !props.content.countdown,
+  () => !!props.content && !props.content.scene && !props.content.wayfindingBooks && !props.content.media && !props.content.countdown,
 )
 
 // Auto-fit sizing (spec section 1): flattenService already decided *how much content* goes on
@@ -215,7 +216,8 @@ const progressSegments = computed(() => {
     class="slide-root"
     :style="fixedSize ? { width: `${fixedSize.width}px`, height: `${fixedSize.height}px` } : undefined"
   >
-    <div v-if="content?.wayfindingBooks" class="wayfinding-content">
+    <SlideSceneRenderer v-if="content?.scene" :scene="content.scene" />
+    <div v-else-if="content?.wayfindingBooks" class="wayfinding-content">
       <div
         v-for="book in content.wayfindingBooks.filter((b) => b.distance < 0)"
         :key="book.name"
@@ -289,7 +291,7 @@ const progressSegments = computed(() => {
       </div>
       <div class="countdown-clock">{{ formatCountdown(content.countdown.targetTime, nowTick) }}</div>
     </div>
-    <div v-else-if="content" class="slide-content">
+    <div v-else-if="content && !content.scene && !content.wayfindingBooks" class="slide-content">
       <div
         ref="textRef"
         class="slide-text"

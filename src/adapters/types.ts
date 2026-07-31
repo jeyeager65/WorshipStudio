@@ -1,6 +1,6 @@
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
-import type { SlideLibraryItem, MediaItem, Theme, Person } from '@/models/library'
+import type { SlideLibraryItem, MediaItem, Theme, Person, SlideScene } from '@/models/library'
 import type { LibrarySettings, MachineSettings } from '@/models/settings'
 
 /**
@@ -193,6 +193,8 @@ export interface LiveSlideContent {
   itemLabel: string
   subLabel: string
   text: string
+  /** Advanced library slides — rendered by the same scene component used in the editor. */
+  scene?: SlideScene
   /** Reference-only scripture slides only — the surrounding-books wayfinding visual (spec section 1). */
   wayfindingBooks?: { name: string; distance: number }[]
   /** Reference-only scripture slides only — 0-1 fraction of the way through the whole Bible
