@@ -14,7 +14,6 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { createBlankScene, createTextElement } from '@/utils/slideScene'
 import type {
   LibrarySlide,
-  SlideElement,
   SlideImageElement,
   SlideLibraryItem,
   SlideShapeElement,
