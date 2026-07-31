@@ -55,6 +55,7 @@ type Section =
   | 'sync'
   | 'external-apps'
   | 'remote-control'
+  | 'canva'
 const activeSection = ref<Section>('general')
 const sections: { key: Section; label: string; group: string }[] = [
   { key: 'general', label: 'General', group: 'App' },
@@ -76,6 +77,7 @@ const sections: { key: Section; label: string; group: string }[] = [
   // is structured or staffed (that's Services & Scheduling below).
   { key: 'collections', label: 'Song Collections', group: 'Content Library' },
   { key: 'bible-translations', label: 'Bible Translations', group: 'Content Library' },
+  ...(getAdapter().canva ? [{ key: 'canva' as const, label: 'Canva', group: 'Content Library' }] : []),
   // What a service looks like (its types, its shell/template) and who fills it (roles) — these
   // three were previously scattered across Content Library despite having nothing to do with
   // library content.
@@ -1055,6 +1057,41 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
             />
           </div>
         </v-radio-group>
+      </template>
+
+      <template v-else-if="activeSection === 'canva'">
+        <h2 class="text-h6 mb-4">Canva</h2>
+        <p class="text-medium-emphasis text-body-2 mb-4" style="max-width: 680px">
+          Optional local integration for creating and editing slide designs in Canva. These
+          credentials stay on this computer and never sync. Canva tools remain completely hidden
+          in the slide editor until both values are saved.
+        </p>
+        <v-alert type="info" variant="tonal" density="compact" class="mb-4" style="max-width: 680px">
+          In the Canva Developer Portal, authorize
+          <code>http://127.0.0.1:47823/canva/callback</code> and enable
+          <code>design:meta:read</code>, <code>design:content:read</code>, and
+          <code>design:content:write</code>.
+        </v-alert>
+        <v-text-field
+          v-model="machineSettings.canvaClientId"
+          label="Canva client ID"
+          variant="outlined"
+          density="compact"
+          autocomplete="off"
+          style="max-width: 520px"
+          class="mb-2"
+        />
+        <v-text-field
+          v-model="machineSettings.canvaClientSecret"
+          label="Canva client secret"
+          type="password"
+          variant="outlined"
+          density="compact"
+          autocomplete="off"
+          style="max-width: 520px"
+          hint="Stored only in this machine's app-data settings."
+          persistent-hint
+        />
       </template>
 
       <template v-else-if="activeSection === 'font-sizes'">

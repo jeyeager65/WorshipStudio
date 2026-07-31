@@ -35,6 +35,8 @@ fn default_machine_settings(app: &AppHandle) -> MachineSettings {
         display_roles: std::collections::HashMap::new(),
         esv_api_key: None,
         api_bible_key: None,
+        canva_client_id: None,
+        canva_client_secret: None,
     }
 }
 
@@ -95,4 +97,8 @@ pub fn external_apps_path(app: &AppHandle) -> PathBuf {
 /// paired phone only makes sense against the HTTP server running on this specific computer.
 pub fn remote_devices_path(app: &AppHandle) -> PathBuf {
     app_data_dir(app).join("remote-devices.json")
+}
+
+pub fn canva_auth_path(app: &AppHandle) -> PathBuf {
+    app_data_dir(app).join("canva-auth.json")
 }

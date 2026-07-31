@@ -95,4 +95,7 @@ export interface MachineSettings {
   esvApiKey?: string
   /** api.bible key (scripture.api.bible) — per-machine, never synced. Same reasoning as esvApiKey. */
   apiBibleKey?: string
+  /** Canva Connect API credentials — local to this machine and never synced. */
+  canvaClientId?: string
+  canvaClientSecret?: string
 }

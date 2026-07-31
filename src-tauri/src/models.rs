@@ -636,6 +636,12 @@ pub struct MachineSettings {
     /// esv_api_key above.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_bible_key: Option<String>,
+    /// Canva Connect API credentials. These are deliberately machine-local and are never
+    /// written into the synced library.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canva_client_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canva_client_secret: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

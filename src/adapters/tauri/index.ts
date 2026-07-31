@@ -20,6 +20,9 @@ import type {
   MediaImportCommit,
   ExternalAppProfile,
   WindowPosition,
+  CanvaStatus,
+  CanvaDesign,
+  CanvaImportResult,
 } from '@/adapters/types'
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
@@ -268,6 +271,15 @@ export function createTauriAdapter(): StudioAdapter {
           return undefined
         }
       },
+    },
+    canva: {
+      status: () => invoke<CanvaStatus>('get_canva_status'),
+      connect: () => invoke('connect_canva'),
+      disconnect: () => invoke('disconnect_canva'),
+      listDesigns: () => invoke<CanvaDesign[]>('list_canva_designs'),
+      createDesign: (title) => invoke<CanvaDesign>('create_canva_design', { title }),
+      openDesign: (designId) => invoke('open_canva_design', { designId }),
+      importDesign: (designId) => invoke<CanvaImportResult>('import_canva_design', { designId }),
     },
     themes: {
       list: () => invoke<Theme[]>('list_themes'),

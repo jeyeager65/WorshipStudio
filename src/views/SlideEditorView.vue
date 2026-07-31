@@ -20,6 +20,7 @@ import type {
   SlideShapeElement,
   SlideTextElement,
 } from '@/models/library'
+import type { CanvaDesign, CanvaStatus } from '@/adapters/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -39,7 +40,13 @@ const canvasHost = ref<HTMLElement>()
 const moveableTarget = ref<HTMLElement>()
 const moveableRef = ref<{ updateRect: () => void }>()
 const shiftPressed = ref(false)
+const canvaStatus = ref<CanvaStatus>()
+const canvaDialog = ref(false)
+const canvaDesigns = ref<CanvaDesign[]>([])
+const canvaBusy = ref(false)
+const canvaError = ref('')
 let stopItemWatch: (() => void) | undefined
+let canvaStatusTimer: ReturnType<typeof setInterval> | undefined
 
 function blankItem(): SlideLibraryItem {
   const slide = blankSlide(1)
@@ -170,6 +177,8 @@ onMounted(async () => {
     selectedSlideId.value = item.value.slides[0]?.id ?? ''
   }
   if (!mediaStore.loaded) await mediaStore.load()
+  const canva = getAdapter().canva
+  if (canva) canvaStatus.value = await canva.status()
   isDirty.value = isNew
   stopItemWatch = watch(item, () => (isDirty.value = true), { deep: true })
   saveHandler.value = saveItem
@@ -183,6 +192,7 @@ onUnmounted(() => {
   window.removeEventListener('keyup', onKeyup)
   isDirty.value = false
   saveHandler.value = undefined
+  if (canvaStatusTimer) clearInterval(canvaStatusTimer)
 })
 
 async function saveItem() {
@@ -204,6 +214,127 @@ function addSlide() {
   item.value.slides.push(slide)
   selectedSlideId.value = slide.id
   selectedElementId.value = ''
+}
+
+async function openCanvaDialog() {
+  clearSelectedElement()
+  canvaDialog.value = true
+  canvaError.value = ''
+  await refreshCanva()
+}
+
+async function refreshCanva() {
+  const canva = getAdapter().canva
+  if (!canva) return
+  canvaBusy.value = true
+  try {
+    canvaStatus.value = await canva.status()
+    canvaDesigns.value = canvaStatus.value.connected ? await canva.listDesigns() : []
+  } catch (error) {
+    canvaError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    canvaBusy.value = false
+  }
+}
+
+async function connectCanva() {
+  const canva = getAdapter().canva
+  if (!canva) return
+  canvaError.value = ''
+  try {
+    await canva.connect()
+  } catch (error) {
+    canvaError.value = error instanceof Error ? error.message : String(error)
+    return
+  }
+  if (canvaStatusTimer) clearInterval(canvaStatusTimer)
+  canvaStatusTimer = setInterval(async () => {
+    canvaStatus.value = await canva.status()
+    if (canvaStatus.value.connected || canvaStatus.value.error) {
+      if (canvaStatusTimer) clearInterval(canvaStatusTimer)
+      canvaStatusTimer = undefined
+      if (canvaStatus.value.connected) await refreshCanva()
+    }
+  }, 1000)
+}
+
+async function disconnectCanva() {
+  const canva = getAdapter().canva
+  if (!canva) return
+  await canva.disconnect()
+  canvaDesigns.value = []
+  canvaStatus.value = await canva.status()
+}
+
+async function createCanvaDesign() {
+  const canva = getAdapter().canva
+  if (!canva || !item.value) return
+  canvaBusy.value = true
+  canvaError.value = ''
+  try {
+    const design = await canva.createDesign(item.value.label || 'Worship Studio Slides')
+    canvaDesigns.value.unshift(design)
+    await canva.openDesign(design.id)
+  } catch (error) {
+    canvaError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    canvaBusy.value = false
+  }
+}
+
+async function importCanvaDesign(designId: string) {
+  const canva = getAdapter().canva
+  if (!canva || !item.value) return
+  canvaBusy.value = true
+  canvaError.value = ''
+  try {
+    const result = await canva.importDesign(designId)
+    const importedAt = new Date().toISOString()
+    const slides: LibrarySlide[] = result.pages.map(({ pageNumber, media }) => ({
+      id: `slide-part-${crypto.randomUUID()}`,
+      label: `${result.design.title} — ${pageNumber}`,
+      scene: {
+        ...createBlankScene(),
+        background: {
+          color: '#000000',
+          mediaId: media.id,
+          fit: 'cover',
+          focalPoint: { x: 0.5, y: 0.5 },
+        },
+      },
+      source: {
+        type: 'canva',
+        designId: result.design.id,
+        pageNumber,
+        renderedMediaId: media.id,
+        lastImportedAt: importedAt,
+      },
+    }))
+    const existingIndexes = item.value.slides
+      .map((slide, index) => slide.source.type === 'canva' && slide.source.designId === designId ? index : -1)
+      .filter((index) => index >= 0)
+    const insertAt = existingIndexes[0] ?? (item.value.slides.findIndex((slide) => slide.id === selectedSlideId.value) + 1)
+    item.value.slides = item.value.slides.filter(
+      (slide) => !(slide.source.type === 'canva' && slide.source.designId === designId),
+    )
+    item.value.slides.splice(Math.max(0, insertAt), 0, ...slides)
+    selectedSlideId.value = slides[0]?.id ?? selectedSlideId.value
+    await mediaStore.load()
+    canvaDialog.value = false
+  } catch (error) {
+    canvaError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    canvaBusy.value = false
+  }
+}
+
+async function openSelectedCanvaDesign() {
+  if (selectedSlide.value?.source.type !== 'canva') return
+  try {
+    await getAdapter().canva?.openDesign(selectedSlide.value.source.designId)
+  } catch (error) {
+    canvaError.value = error instanceof Error ? error.message : String(error)
+  }
 }
 
 function selectSlide(id: string) {
@@ -520,6 +651,22 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
           </v-list>
         </v-menu>
         <v-divider vertical />
+        <v-btn
+          v-if="canvaStatus?.configured"
+          prepend-icon="mdi-palette-outline"
+          @click="openCanvaDialog"
+        >
+          Canva
+        </v-btn>
+        <v-btn
+          v-if="canvaStatus?.configured && selectedSlide?.source.type === 'canva'"
+          prepend-icon="mdi-open-in-new"
+          variant="text"
+          @click="openSelectedCanvaDesign"
+        >
+          Edit in Canva
+        </v-btn>
+        <v-divider v-if="canvaStatus?.configured" vertical />
         <v-btn
           icon="mdi-arrange-bring-forward"
           title="Bring forward"
@@ -848,6 +995,63 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
     </aside>
 
     <MediaPickerDialog v-model="mediaDialog" @select="onMediaPicked" />
+    <v-dialog v-model="canvaDialog" max-width="900">
+      <v-card>
+        <v-card-title class="d-flex align-center">
+          Canva designs
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" @click="canvaDialog = false" />
+        </v-card-title>
+        <v-card-text>
+          <v-alert v-if="canvaError || canvaStatus?.error" type="error" variant="tonal" class="mb-4">
+            {{ canvaError || canvaStatus?.error }}
+          </v-alert>
+          <template v-if="!canvaStatus?.connected">
+            <p class="text-body-2 text-medium-emphasis mb-4">
+              Connect this machine to Canva. Authorization opens in your browser and returns
+              through Worship Studio's local server.
+            </p>
+            <v-btn
+              color="primary"
+              prepend-icon="mdi-link"
+              :loading="canvaStatus?.connecting"
+              @click="connectCanva"
+            >
+              Connect Canva
+            </v-btn>
+          </template>
+          <template v-else>
+            <div class="d-flex ga-2 mb-4">
+              <v-btn color="primary" prepend-icon="mdi-plus" :loading="canvaBusy" @click="createCanvaDesign">
+                New 16:9 design
+              </v-btn>
+              <v-btn prepend-icon="mdi-refresh" :loading="canvaBusy" @click="refreshCanva">Refresh list</v-btn>
+              <v-spacer />
+              <v-btn variant="text" color="error" @click="disconnectCanva">Disconnect</v-btn>
+            </div>
+            <v-progress-linear v-if="canvaBusy" indeterminate class="mb-3" />
+            <div class="canva-grid">
+              <v-card v-for="design in canvaDesigns" :key="design.id" variant="outlined">
+                <div class="canva-thumbnail">
+                  <img v-if="design.thumbnailUrl" :src="design.thumbnailUrl" alt="" />
+                  <v-icon v-else icon="mdi-palette-outline" size="36" />
+                </div>
+                <v-card-text>
+                  <div class="font-weight-bold text-truncate">{{ design.title }}</div>
+                  <div class="text-caption text-medium-emphasis">{{ design.pageCount }} page(s)</div>
+                </v-card-text>
+                <v-card-actions>
+                  <v-btn size="small" variant="text" @click="getAdapter().canva?.openDesign(design.id)">Edit</v-btn>
+                  <v-btn size="small" color="primary" variant="flat" @click="importCanvaDesign(design.id)">
+                    Import / update
+                  </v-btn>
+                </v-card-actions>
+              </v-card>
+            </div>
+          </template>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
   </div>
   <v-container v-else><p>Slide not found.</p></v-container>
 </template>
@@ -883,6 +1087,25 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
   align-items: center;
   padding: 6px 10px;
   background: rgb(var(--v-theme-surface));
+}
+.canva-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.canva-thumbnail {
+  aspect-ratio: 16 / 9;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+.canva-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .canvas-scroll {
   flex: 1;

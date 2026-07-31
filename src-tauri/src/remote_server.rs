@@ -37,19 +37,33 @@ struct SharedLiveState {
     is_presenting: bool,
 }
 
+#[derive(Clone)]
+pub struct CanvaOAuthPending {
+    pub state: String,
+    pub code_verifier: String,
+}
+
+#[derive(Default)]
+struct CanvaOAuthState {
+    pending: Option<CanvaOAuthPending>,
+    error: Option<String>,
+}
+
 /// Managed as Tauri app state (so `update_remote_live_state` can write to it) and also handed
 /// to the axum router as its extractor state (so request handlers can read it) — the same
 /// `Arc<RwLock<_>>` either way, just two different call sites needing a handle to it.
 #[derive(Clone)]
 pub struct RemoteServerHandle {
     live: Arc<RwLock<SharedLiveState>>,
-    app: AppHandle,
+    canva: Arc<RwLock<CanvaOAuthState>>,
+    pub(crate) app: AppHandle,
 }
 
 impl RemoteServerHandle {
     pub fn new(app: AppHandle) -> Self {
         Self {
             live: Arc::new(RwLock::new(SharedLiveState::default())),
+            canva: Arc::new(RwLock::new(CanvaOAuthState::default())),
             app,
         }
     }
@@ -58,6 +72,36 @@ impl RemoteServerHandle {
         let mut state = self.live.write().await;
         state.content = content;
         state.is_presenting = is_presenting;
+    }
+
+    pub async fn set_canva_oauth(&self, pending: CanvaOAuthPending) {
+        let mut canva = self.canva.write().await;
+        canva.pending = Some(pending);
+        canva.error = None;
+    }
+
+    pub async fn take_canva_oauth(&self, state: &str) -> Option<CanvaOAuthPending> {
+        let mut canva = self.canva.write().await;
+        if canva.pending.as_ref().is_some_and(|pending| pending.state == state) {
+            canva.pending.take()
+        } else {
+            None
+        }
+    }
+
+    pub async fn clear_canva_oauth(&self) {
+        let mut canva = self.canva.write().await;
+        canva.pending = None;
+        canva.error = None;
+    }
+
+    pub async fn set_canva_error(&self, error: Option<String>) {
+        self.canva.write().await.error = error;
+    }
+
+    pub async fn canva_status(&self) -> (bool, Option<String>) {
+        let canva = self.canva.read().await;
+        (canva.pending.is_some(), canva.error.clone())
     }
 }
 
@@ -135,6 +179,40 @@ async fn pair(
         response.headers_mut().insert(header::SET_COOKIE, cookie);
     }
     response
+}
+
+#[derive(Deserialize)]
+struct CanvaCallbackQuery {
+    code: Option<String>,
+    state: Option<String>,
+    error: Option<String>,
+    error_description: Option<String>,
+}
+
+async fn canva_callback(
+    State(handle): State<RemoteServerHandle>,
+    Query(query): Query<CanvaCallbackQuery>,
+) -> Response {
+    let result = if let Some(error) = query.error {
+        let message = query.error_description.unwrap_or(error);
+        handle.set_canva_error(Some(message.clone())).await;
+        Err(message)
+    } else {
+        match (query.code, query.state) {
+            (Some(code), Some(state)) => crate::commands::canva::complete_oauth(&handle, code, state).await,
+            _ => Err("Canva did not return the expected authorization details.".to_string()),
+        }
+    };
+    let (title, message) = match result {
+        Ok(()) => ("Canva connected", "You can close this window and return to Worship Studio."),
+        Err(_) => ("Could not connect Canva", "Return to Worship Studio for details and try again."),
+    };
+    Html(format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>{title}</title></head>\
+         <body style=\"font:16px system-ui;background:#111827;color:#fff;display:grid;place-items:center;height:100vh;margin:0\">\
+         <main style=\"text-align:center\"><h1>{title}</h1><p>{message}</p></main></body></html>"
+    ))
+    .into_response()
 }
 
 #[derive(Serialize)]
@@ -244,6 +322,7 @@ fn router(handle: RemoteServerHandle) -> Router {
     Router::new()
         .route("/", get(index_page))
         .route("/pair", get(pair))
+        .route("/canva/callback", get(canva_callback))
         .route("/api/state", get(get_state))
         .route("/api/action", post(post_action))
         .route("/api/media/{id}", get(get_media))

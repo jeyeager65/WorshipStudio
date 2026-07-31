@@ -103,6 +103,36 @@ export interface MediaPort {
   getPreviewUrl(id: string): Promise<string | undefined>
 }
 
+export interface CanvaStatus {
+  configured: boolean
+  connected: boolean
+  connecting: boolean
+  error?: string
+}
+
+export interface CanvaDesign {
+  id: string
+  title: string
+  editUrl: string
+  pageCount: number
+  thumbnailUrl?: string
+}
+
+export interface CanvaImportResult {
+  design: CanvaDesign
+  pages: Array<{ pageNumber: number; media: MediaItem }>
+}
+
+export interface CanvaPort {
+  status(): Promise<CanvaStatus>
+  connect(): Promise<void>
+  disconnect(): Promise<void>
+  listDesigns(): Promise<CanvaDesign[]>
+  createDesign(title: string): Promise<CanvaDesign>
+  openDesign(designId: string): Promise<void>
+  importDesign(designId: string): Promise<CanvaImportResult>
+}
+
 export interface ThemePort {
   list(): Promise<Theme[]>
   save(theme: Theme): Promise<void>
@@ -359,6 +389,8 @@ export interface StudioAdapter {
   services: ServicePort
   slides: SlideLibraryPort
   media: MediaPort
+  /** Tauri-only local Canva integration; absent from the static browser demo. */
+  canva?: CanvaPort
   themes: ThemePort
   people: PersonPort
   settings: SettingsPort

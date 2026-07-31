@@ -7,6 +7,7 @@ pub mod remote;
 pub mod scripture;
 pub mod services;
 pub mod settings;
+pub mod canva;
 pub mod slides;
 pub mod songs;
 pub mod sync;
