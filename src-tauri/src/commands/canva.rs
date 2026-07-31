@@ -9,12 +9,12 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, State};
 
-use crate::domain::{manifest, media};
 use crate::domain::media::MediaImportCommit;
+use crate::domain::{manifest, media};
 use crate::models::MediaItem;
 use crate::paths::{
-    app_data_dir, canva_auth_path, library_root, load_machine_settings, local_media_root,
-    now_iso, this_device_name,
+    app_data_dir, canva_auth_path, library_root, load_machine_settings, local_media_root, now_iso,
+    this_device_name,
 };
 use crate::remote_server::{CanvaOAuthPending, RemoteServerHandle, REMOTE_SERVER_PORT};
 
@@ -71,8 +71,16 @@ pub struct CanvaImportedPage {
 
 fn credentials(app: &AppHandle) -> Result<(String, String), String> {
     let settings = load_machine_settings(app);
-    let id = settings.canva_client_id.unwrap_or_default().trim().to_string();
-    let secret = settings.canva_client_secret.unwrap_or_default().trim().to_string();
+    let id = settings
+        .canva_client_id
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let secret = settings
+        .canva_client_secret
+        .unwrap_or_default()
+        .trim()
+        .to_string();
     if id.is_empty() || secret.is_empty() {
         Err("Canva credentials are not configured on this machine.".to_string())
     } else {
@@ -91,7 +99,9 @@ fn read_tokens(app: &AppHandle) -> Option<CanvaTokens> {
     let tokens: CanvaTokens = fs::read(canva_auth_path(app))
         .ok()
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())?;
-    let configured_client_id = load_machine_settings(app).canva_client_id.unwrap_or_default();
+    let configured_client_id = load_machine_settings(app)
+        .canva_client_id
+        .unwrap_or_default();
     (tokens.client_id == configured_client_id).then_some(tokens)
 }
 
@@ -131,7 +141,9 @@ fn open_browser(url: &str) -> Result<(), String> {
     let result = Command::new("open").arg(url).spawn();
     #[cfg(all(unix, not(target_os = "macos")))]
     let result = Command::new("xdg-open").arg(url).spawn();
-    result.map(|_| ()).map_err(|e| format!("Could not open Canva: {e}"))
+    result
+        .map(|_| ())
+        .map_err(|e| format!("Could not open Canva: {e}"))
 }
 
 async fn response_json(response: Response) -> Result<Value, String> {
@@ -176,7 +188,8 @@ async fn exchange_token(
 }
 
 async fn access_token(app: &AppHandle) -> Result<String, String> {
-    let tokens = read_tokens(app).ok_or_else(|| "Connect this machine to Canva first.".to_string())?;
+    let tokens =
+        read_tokens(app).ok_or_else(|| "Connect this machine to Canva first.".to_string())?;
     if tokens.expires_at > unix_now() + 60 {
         return Ok(tokens.access_token);
     }
@@ -220,8 +233,14 @@ fn parse_design(value: &Value) -> Result<CanvaDesign, String> {
             .as_str()
             .ok_or_else(|| "Canva design is missing an id.".to_string())?
             .to_string(),
-        title: value["title"].as_str().unwrap_or("Untitled Canva design").to_string(),
-        edit_url: value["urls"]["edit_url"].as_str().unwrap_or_default().to_string(),
+        title: value["title"]
+            .as_str()
+            .unwrap_or("Untitled Canva design")
+            .to_string(),
+        edit_url: value["urls"]["edit_url"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
         page_count: value["page_count"].as_u64().unwrap_or(1) as usize,
         thumbnail_url: value["thumbnail"]["url"].as_str().map(str::to_string),
     })
@@ -358,7 +377,10 @@ pub async fn open_canva_design(app: AppHandle, design_id: String) -> Result<(), 
 }
 
 #[tauri::command]
-pub async fn import_canva_design(app: AppHandle, design_id: String) -> Result<CanvaImportResult, String> {
+pub async fn import_canva_design(
+    app: AppHandle,
+    design_id: String,
+) -> Result<CanvaImportResult, String> {
     let design_value = api_get(&app, &format!("/designs/{design_id}")).await?;
     let design = parse_design(&design_value["design"])?;
     let created = api_post(
@@ -380,16 +402,22 @@ pub async fn import_canva_design(app: AppHandle, design_id: String) -> Result<Ca
         let job = api_get(&app, &format!("/exports/{job_id}")).await?;
         match job["job"]["status"].as_str() {
             Some("success") => {
-                urls = Some(job["job"]["urls"]
-                    .as_array()
-                    .ok_or_else(|| "Canva export completed without any page images.".to_string())?
-                    .iter()
-                    .filter_map(|url| url.as_str().map(str::to_string))
-                    .collect::<Vec<_>>());
+                urls = Some(
+                    job["job"]["urls"]
+                        .as_array()
+                        .ok_or_else(|| {
+                            "Canva export completed without any page images.".to_string()
+                        })?
+                        .iter()
+                        .filter_map(|url| url.as_str().map(str::to_string))
+                        .collect::<Vec<_>>(),
+                );
                 break;
             }
             Some("failed") => {
-                let code = job["job"]["error"]["code"].as_str().unwrap_or("unknown error");
+                let code = job["job"]["error"]["code"]
+                    .as_str()
+                    .unwrap_or("unknown error");
                 return Err(format!("Canva could not export this design: {code}"));
             }
             _ => tokio::time::sleep(Duration::from_millis(750)).await,

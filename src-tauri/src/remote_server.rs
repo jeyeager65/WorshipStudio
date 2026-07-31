@@ -82,7 +82,11 @@ impl RemoteServerHandle {
 
     pub async fn take_canva_oauth(&self, state: &str) -> Option<CanvaOAuthPending> {
         let mut canva = self.canva.write().await;
-        if canva.pending.as_ref().is_some_and(|pending| pending.state == state) {
+        if canva
+            .pending
+            .as_ref()
+            .is_some_and(|pending| pending.state == state)
+        {
             canva.pending.take()
         } else {
             None
@@ -199,13 +203,21 @@ async fn canva_callback(
         Err(message)
     } else {
         match (query.code, query.state) {
-            (Some(code), Some(state)) => crate::commands::canva::complete_oauth(&handle, code, state).await,
+            (Some(code), Some(state)) => {
+                crate::commands::canva::complete_oauth(&handle, code, state).await
+            }
             _ => Err("Canva did not return the expected authorization details.".to_string()),
         }
     };
     let (title, message) = match result {
-        Ok(()) => ("Canva connected", "You can close this window and return to Worship Studio."),
-        Err(_) => ("Could not connect Canva", "Return to Worship Studio for details and try again."),
+        Ok(()) => (
+            "Canva connected",
+            "You can close this window and return to Worship Studio.",
+        ),
+        Err(_) => (
+            "Could not connect Canva",
+            "Return to Worship Studio for details and try again.",
+        ),
     };
     Html(format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><title>{title}</title></head>\
