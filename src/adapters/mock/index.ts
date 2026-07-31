@@ -25,7 +25,12 @@ import {
 import { parseOpenSongXml } from './opensongParser'
 import { pickFilesInBrowser } from './pickFiles'
 import { availableTranslations, loadKjv } from './scriptureFixtures'
-import { formatReference, getBookNames, isValidReference, parseReference } from '@/utils/scriptureReference'
+import {
+  formatReference,
+  getBookNames,
+  isValidReference,
+  parseReference,
+} from '@/utils/scriptureReference'
 
 function newId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`
@@ -53,7 +58,8 @@ async function recomputeSongUsage(songs: MockCollection<Song>, services: MockCol
       if (item.type !== 'song') continue
       const current = lastUsedAt.get(item.songId)
       if (!current || service.date > current) lastUsedAt.set(item.songId, service.date)
-      if (service.date >= oneYearAgoStr) usesPastYear.set(item.songId, (usesPastYear.get(item.songId) ?? 0) + 1)
+      if (service.date >= oneYearAgoStr)
+        usesPastYear.set(item.songId, (usesPastYear.get(item.songId) ?? 0) + 1)
     }
   }
 
@@ -61,8 +67,13 @@ async function recomputeSongUsage(songs: MockCollection<Song>, services: MockCol
   for (const song of allSongs) {
     const newLastUsedAt = lastUsedAt.get(song.id)
     const newUsesPastYear = usesPastYear.get(song.id) ?? 0
-    if (song.usage.lastUsedAt === newLastUsedAt && song.usage.usesPastYear === newUsesPastYear) continue
-    await songs.save({ ...song, usage: { lastUsedAt: newLastUsedAt, usesPastYear: newUsesPastYear }, ...nowStamp() })
+    if (song.usage.lastUsedAt === newLastUsedAt && song.usage.usesPastYear === newUsesPastYear)
+      continue
+    await songs.save({
+      ...song,
+      usage: { lastUsedAt: newLastUsedAt, usesPastYear: newUsesPastYear },
+      ...nowStamp(),
+    })
   }
 }
 
@@ -82,7 +93,12 @@ export function createMockAdapter(): StudioAdapter {
   // stable either way, so persisting the whole record is equivalent and simpler.
   const displays = new MockCollection<DisplayInfo>('displays', [
     { id: 'display-1', name: 'Built-in Display', resolution: '1920x1080', role: 'operator' },
-    { id: 'display-2', name: 'Preview (simulated audience)', resolution: '1920x1080', role: 'audience' },
+    {
+      id: 'display-2',
+      name: 'Preview (simulated audience)',
+      resolution: '1920x1080',
+      role: 'audience',
+    },
   ])
   const mockRemoteDevices: RemoteDevice[] = []
   // Staged-but-not-yet-committed File objects from pickFilesToImport, keyed by the synthetic
@@ -251,7 +267,8 @@ export function createMockAdapter(): StudioAdapter {
     scripture: {
       resolve: async (reference, translation): Promise<ScripturePassage> => {
         const parsed = parseReference(reference)
-        if (!parsed || !isValidReference(parsed)) throw new Error(`"${reference}" isn't a valid scripture reference.`)
+        if (!parsed || !isValidReference(parsed))
+          throw new Error(`"${reference}" isn't a valid scripture reference.`)
 
         const kjv = await loadKjv()
         const bookData = kjv[parsed.book]
@@ -269,7 +286,9 @@ export function createMockAdapter(): StudioAdapter {
         if (verses.length === 0) {
           // Every reference is validated against the same chapter/verse-count table this
           // dataset was checked against when it was built, so this shouldn't happen.
-          throw new Error(`No KJV text found for ${formatReference(parsed)} — this shouldn't happen.`)
+          throw new Error(
+            `No KJV text found for ${formatReference(parsed)} — this shouldn't happen.`,
+          )
         }
         return { reference: formatReference(parsed), translation, verses }
       },
@@ -341,6 +360,22 @@ export function createMockAdapter(): StudioAdapter {
       },
       sendAssignments: async () => {
         // Same as sendOrderOfWorship — no real mail transport exists in this codebase yet.
+      },
+    },
+    exports: {
+      saveFile: async ({ suggestedName, mimeType, bytes }) => {
+        const blob = new Blob([bytes.slice().buffer as ArrayBuffer], {
+          type: mimeType,
+        })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = suggestedName
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        URL.revokeObjectURL(url)
+        return 'saved'
       },
     },
   }

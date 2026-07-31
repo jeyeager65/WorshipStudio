@@ -1324,7 +1324,11 @@ function updateRolePerson(role: string, personId: string | undefined) {
         <v-btn variant="tonal" prepend-icon="mdi-account-group-outline" :to="`/service/${service.id}/assignments`">
           Assignments
         </v-btn>
-        <v-btn variant="tonal" prepend-icon="mdi-file-document-outline" :to="`/service/${service.id}/order-of-worship`">
+        <v-btn
+          variant="tonal"
+          prepend-icon="mdi-file-document-outline"
+          :to="{ name: 'reports-home', query: { service: service.id } }"
+        >
           Bulletin
         </v-btn>
         <span class="action-divider" />

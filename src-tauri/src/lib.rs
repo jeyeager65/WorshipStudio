@@ -60,7 +60,7 @@ pub fn run() {
                 // Matches SplashScreen.vue's .splash-bg — without this, the OS paints the
                 // window's default (white) background for the moment between window creation
                 // and the webview's own content finishing its first paint.
-                .background_color(tauri::window::Color(0, 0, 0, 255))
+                .background_color(tauri::window::Color(21, 27, 35, 255))
                 .build()?;
             } else if let Some(main) = app.get_webview_window("main") {
                 let _ = main.show();
@@ -74,6 +74,7 @@ pub fn run() {
             commands::files::read_text_file,
             commands::files::write_text_file,
             commands::files::write_binary_file,
+            commands::files::open_file,
             commands::songs::list_songs,
             commands::songs::get_song,
             commands::songs::save_song,

@@ -3,7 +3,10 @@ import logoDark from '@/assets/logo-dark.png'
 
 defineProps<{
   statusText: string
+  step: number
 }>()
+
+const steps = ['Preferences', 'Library', 'Services']
 </script>
 
 <template>
@@ -11,27 +14,55 @@ defineProps<{
     <div class="splash">
       <img :src="logoDark" alt="Worship Studio" class="logo-image" />
 
-      <div class="progress-track">
-        <div class="progress-fill" />
+      <div class="startup-steps" aria-hidden="true">
+        <template v-for="(label, index) in steps" :key="label">
+          <div
+            class="step"
+            :class="{ 'step--active': step === index + 1, 'step--complete': step > index + 1 }"
+          >
+            <span class="step-dot">
+              <v-icon v-if="step > index + 1" icon="mdi-check" size="10" />
+            </span>
+            <span>{{ label }}</span>
+          </div>
+          <span
+            v-if="index < steps.length - 1"
+            class="step-line"
+            :class="{ 'step-line--complete': step > index + 1 }"
+          />
+        </template>
       </div>
-      <div class="status-text">{{ statusText }}</div>
+      <div class="status-row" role="status" aria-live="polite">
+        <span v-if="step < 4" class="status-pulse" />
+        <v-icon v-else icon="mdi-check-circle" size="16" class="ready-icon" />
+        <span class="status-text">{{ statusText }}</span>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* Solid black, matching logo-dark.png's own canvas, so the image reads as the whole screen
-   rather than a graphic sitting on a separate background. */
 .splash-bg {
   position: fixed;
   inset: 0;
-  background: #000;
+  /* Matches the dark surface behind the logo on Settings > About. The logo PNG is
+     transparent, so its artwork sits directly on this charcoal rather than on black. */
+  background: #151b23;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   z-index: 9999;
 }
+.splash-bg::before {
+  position: absolute;
+  inset: 1px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  content: '';
+  pointer-events: none;
+}
 .splash {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -40,40 +71,94 @@ defineProps<{
 }
 .logo-image {
   display: block;
-  width: min(85vw, 620px);
+  width: min(79vw, 550px);
   height: auto;
-  margin-bottom: 56px;
+  margin-bottom: 42px;
 }
-.progress-track {
-  width: 220px;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 999px;
-  overflow: hidden;
-  margin-bottom: 12px;
+.startup-steps {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 22px;
 }
-.progress-fill {
-  height: 100%;
-  width: 40%;
-  background: white;
+.step {
+  display: flex;
+  width: 72px;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  color: rgba(255, 255, 255, 0.38);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  transition: color 180ms ease;
+}
+.step-dot {
+  display: flex;
+  width: 17px;
+  height: 17px;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(255, 255, 255, 0.24);
   border-radius: 999px;
-  animation: splash-indeterminate 1.1s ease-in-out infinite;
+  transition: all 180ms ease;
+}
+.step--active {
+  color: rgba(255, 255, 255, 0.92);
+}
+.step--active .step-dot {
+  border-color: #76a0f4;
+  background: rgba(76, 127, 232, 0.25);
+  box-shadow: 0 0 0 4px rgba(76, 127, 232, 0.1);
+}
+.step--complete {
+  color: rgba(255, 255, 255, 0.66);
+}
+.step--complete .step-dot {
+  border-color: #4c7fe8;
+  background: #4c7fe8;
+  color: white;
+}
+.step-line {
+  width: 42px;
+  height: 1px;
+  margin: 8px -9px 0;
+  background: rgba(255, 255, 255, 0.16);
+  transition: background-color 180ms ease;
+}
+.step-line--complete {
+  background: rgba(76, 127, 232, 0.75);
+}
+.status-row {
+  display: flex;
+  min-height: 18px;
+  align-items: center;
+  gap: 9px;
+}
+.status-pulse {
+  width: 7px;
+  height: 7px;
+  background: #76a0f4;
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 rgba(118, 160, 244, 0.45);
+  animation: status-pulse 1.4s ease-out infinite;
+}
+.ready-icon {
+  color: #70bd91;
 }
 .status-text {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.75);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.015em;
 }
 
-/* Indeterminate rather than tied to a real percentage — statusText (App.vue) reflects real,
-   discrete loading steps (settings, then services) as they actually happen, but nothing
-   exposes fine-grained progress within a step (e.g. "service 45 of 230") to bind a real
-   percentage to. */
-@keyframes splash-indeterminate {
+@keyframes status-pulse {
   0% {
-    transform: translateX(-110%);
+    box-shadow: 0 0 0 0 rgba(118, 160, 244, 0.45);
   }
+  70%,
   100% {
-    transform: translateX(280%);
+    box-shadow: 0 0 0 6px rgba(118, 160, 244, 0);
   }
 }
 </style>

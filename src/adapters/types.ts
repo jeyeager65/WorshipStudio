@@ -38,7 +38,10 @@ export interface ServicePort {
    * undefined if the picker was cancelled — there's no equivalent in the browser demo build,
    * which always returns undefined.
    */
-  importOpenSongSets(year: number, defaultServiceType: string): Promise<ImportSetsSummary | undefined>
+  importOpenSongSets(
+    year: number,
+    defaultServiceType: string,
+  ): Promise<ImportSetsSummary | undefined>
   /**
    * One-time backfill (see App.vue's boot sequence) for services saved before the sermon item
    * became the sole source of truth for a service's sermon title/passage/preacher. A cheap
@@ -332,7 +335,10 @@ export interface RemoteCommand {
 /** Tauri-only — needs the bundled local HTTP server; not meaningful in the static demo. */
 export interface RemotePort {
   listDevices(): Promise<RemoteDevice[]>
-  provisionDevice(name: string, accessLevel: RemoteDevice['accessLevel']): Promise<{ qrDataUrl: string; pairingUrl: string }>
+  provisionDevice(
+    name: string,
+    accessLevel: RemoteDevice['accessLevel'],
+  ): Promise<{ qrDataUrl: string; pairingUrl: string }>
   revokeDevice(id: string): Promise<void>
   /** LAN IP/port the server is actually listening on — a manual-entry fallback next to the QR code. */
   getServerInfo(): Promise<{ lanIp?: string; port: number }>
@@ -385,6 +391,24 @@ export interface EmailPort {
   sendAssignments(serviceId: string, toAddresses: string[], body: string): Promise<void>
 }
 
+export interface GeneratedFile {
+  suggestedName: string
+  mimeType: string
+  extensions: string[]
+  bytes: Uint8Array
+}
+
+export type ExportResult = 'cancelled' | 'saved' | 'opened'
+
+/** Keeps report generation independent of its destination: the desktop adapter uses a native
+ * save dialog and Rust's binary writer, while the static demo uses a normal browser download. */
+export interface ExportPort {
+  saveFile(
+    file: GeneratedFile,
+    options?: { openAfterSave?: boolean },
+  ): Promise<ExportResult>
+}
+
 export interface StudioAdapter {
   readonly kind: 'tauri' | 'mock'
   songs: SongPort
@@ -403,4 +427,5 @@ export interface StudioAdapter {
   remote?: RemotePort
   sync: SyncPort
   email: EmailPort
+  exports: ExportPort
 }

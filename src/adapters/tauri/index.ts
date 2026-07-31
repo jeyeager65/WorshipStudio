@@ -1,6 +1,12 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
-import { open } from '@tauri-apps/plugin-dialog'
-import { getCurrentWindow, availableMonitors, primaryMonitor, LogicalPosition, LogicalSize } from '@tauri-apps/api/window'
+import { open, save } from '@tauri-apps/plugin-dialog'
+import {
+  getCurrentWindow,
+  availableMonitors,
+  primaryMonitor,
+  LogicalPosition,
+  LogicalSize,
+} from '@tauri-apps/api/window'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type {
@@ -51,7 +57,10 @@ export function createTauriAdapter(): StudioAdapter {
   // used as the key into MachineSettings.displayRoles. A monitor unplugged and replaced with
   // an identically-positioned one would be misidentified, but that's an acceptable edge case
   // for a role assignment the operator can just re-pick in Settings.
-  function monitorId(monitor: Awaited<ReturnType<typeof availableMonitors>>[number], index: number): string {
+  function monitorId(
+    monitor: Awaited<ReturnType<typeof availableMonitors>>[number],
+    index: number,
+  ): string {
     return monitor.name ?? `monitor-${index}`
   }
 
@@ -86,7 +95,12 @@ export function createTauriAdapter(): StudioAdapter {
         y: workAreaPosition.y,
         width: workAreaSize.width - halfWidth,
         height: workAreaSize.height,
-        operatorReposition: { x: workAreaPosition.x, y: workAreaPosition.y, width: halfWidth, height: workAreaSize.height },
+        operatorReposition: {
+          x: workAreaPosition.x,
+          y: workAreaPosition.y,
+          width: halfWidth,
+          height: workAreaSize.height,
+        },
       }
     }
 
@@ -95,16 +109,25 @@ export function createTauriAdapter(): StudioAdapter {
     // any. Falls back to "the first monitor that isn't the primary/operator one" when
     // nothing's been assigned yet, so this still works before a first-time setup.
     const machineSettings = await invoke<MachineSettings>('get_machine_settings')
-    const assignedAudience = monitors.find((m, i) => machineSettings.displayRoles[monitorId(m, i)] === 'audience')
+    const assignedAudience = monitors.find(
+      (m, i) => machineSettings.displayRoles[monitorId(m, i)] === 'audience',
+    )
     const primary = await primaryMonitor()
     const secondary =
       assignedAudience ??
-      monitors.find((m) => m.position.x !== primary?.position.x || m.position.y !== primary?.position.y) ??
+      monitors.find(
+        (m) => m.position.x !== primary?.position.x || m.position.y !== primary?.position.y,
+      ) ??
       monitors[1] ??
       monitors[0]
     const workAreaPosition = secondary.workArea.position.toLogical(secondary.scaleFactor)
     const workAreaSize = secondary.workArea.size.toLogical(secondary.scaleFactor)
-    return { x: workAreaPosition.x, y: workAreaPosition.y, width: workAreaSize.width, height: workAreaSize.height }
+    return {
+      x: workAreaPosition.x,
+      y: workAreaPosition.y,
+      width: workAreaSize.width,
+      height: workAreaSize.height,
+    }
   }
 
   async function openPresentationWindow() {
@@ -122,8 +145,12 @@ export function createTauriAdapter(): StudioAdapter {
     const bounds = await computePresentationBounds()
     if (!bounds) return
     if (bounds.operatorReposition) {
-      await operatorWindow.setPosition(new LogicalPosition(bounds.operatorReposition.x, bounds.operatorReposition.y))
-      await operatorWindow.setSize(new LogicalSize(bounds.operatorReposition.width, bounds.operatorReposition.height))
+      await operatorWindow.setPosition(
+        new LogicalPosition(bounds.operatorReposition.x, bounds.operatorReposition.y),
+      )
+      await operatorWindow.setSize(
+        new LogicalSize(bounds.operatorReposition.width, bounds.operatorReposition.height),
+      )
     }
 
     presentationWindow = new WebviewWindow('presentation', {
@@ -231,11 +258,16 @@ export function createTauriAdapter(): StudioAdapter {
       get: (id) => invoke<Service | undefined>('get_service', { id }),
       save: (service) => invoke('save_service', { service }),
       delete: (id) => invoke('delete_service', { id }),
-      listUpcoming: (fromDate, toDate) => invoke<Service[]>('list_upcoming_services', { fromDate, toDate }),
+      listUpcoming: (fromDate, toDate) =>
+        invoke<Service[]>('list_upcoming_services', { fromDate, toDate }),
       importOpenSongSets: async (year, defaultServiceType) => {
         const folder = await open({ directory: true, title: 'Select OpenSong Sets Folder' })
         if (!folder || Array.isArray(folder)) return undefined
-        return invoke<ImportSetsSummary>('import_opensong_sets', { setsFolder: folder, year, defaultServiceType })
+        return invoke<ImportSetsSummary>('import_opensong_sets', {
+          setsFolder: folder,
+          year,
+          defaultServiceType,
+        })
       },
       migrateLegacySermonFields: () => invoke('migrate_legacy_sermon_fields'),
     },
@@ -252,13 +284,19 @@ export function createTauriAdapter(): StudioAdapter {
         const selection = await open({
           multiple: true,
           title: 'Import Media',
-          filters: [{ name: 'Images & Videos', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'webm', 'm4v'] }],
+          filters: [
+            {
+              name: 'Images & Videos',
+              extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'webm', 'm4v'],
+            },
+          ],
         })
         if (!selection) return []
         const paths = Array.isArray(selection) ? selection : [selection]
         return invoke<StagedMediaFile[]>('stage_media_import', { paths })
       },
-      commitImport: (files: MediaImportCommit[]) => invoke<MediaItem[]>('commit_media_import', { files }),
+      commitImport: (files: MediaImportCommit[]) =>
+        invoke<MediaItem[]>('commit_media_import', { files }),
       detectDuplicates: (item) => invoke<MediaItem[]>('detect_media_duplicates', { item }),
       delete: (id) => invoke('delete_media', { id }),
       getFilePath: (id) => invoke<string>('get_media_file_path', { id }),
@@ -306,7 +344,8 @@ export function createTauriAdapter(): StudioAdapter {
         invoke<ScripturePassage>('resolve_scripture', { reference, translationCode }),
       getBookList: () => invoke<string[]>('get_scripture_book_list'),
       listTranslations: () => invoke<ScriptureTranslation[]>('list_scripture_translations'),
-      listApiBibleCatalog: (apiKey) => invoke<ApiBibleCatalogEntry[]>('list_api_bible_catalog', { apiKey }),
+      listApiBibleCatalog: (apiKey) =>
+        invoke<ApiBibleCatalogEntry[]>('list_api_bible_catalog', { apiKey }),
     },
     live: {
       startPresenting: () => openPresentationWindow(),
@@ -360,7 +399,10 @@ export function createTauriAdapter(): StudioAdapter {
       saveProfile: (profile) => invoke('save_external_app_profile', { profile }),
       deleteProfile: (id) => invoke('delete_external_app_profile', { id }),
       pickExecutable: async () => {
-        const selection = await open({ title: 'Select Executable', filters: [{ name: 'Executable', extensions: ['exe'] }] })
+        const selection = await open({
+          title: 'Select Executable',
+          filters: [{ name: 'Executable', extensions: ['exe'] }],
+        })
         return typeof selection === 'string' ? selection : undefined
       },
       pickFile: async () => {
@@ -372,17 +414,24 @@ export function createTauriAdapter(): StudioAdapter {
       testLaunch: (profileId) => invoke('test_launch_external_app', { profileId }),
       captureWindowPosition: () => invoke<WindowPosition>('capture_external_app_window_position'),
       verifyItem: (profileId, file) => invoke('verify_external_app_item', { profileId, file }),
-      sendKeystroke: (profileId, direction) => invoke('send_external_app_keystroke', { profileId, direction }),
+      sendKeystroke: (profileId, direction) =>
+        invoke('send_external_app_keystroke', { profileId, direction }),
     },
     remote: {
       listDevices: () => invoke<RemoteDevice[]>('list_remote_devices'),
       provisionDevice: (name, accessLevel) =>
-        invoke<{ qrDataUrl: string; pairingUrl: string }>('provision_remote_device', { name, accessLevel }),
+        invoke<{ qrDataUrl: string; pairingUrl: string }>('provision_remote_device', {
+          name,
+          accessLevel,
+        }),
       revokeDevice: (id) => invoke('revoke_remote_device', { id }),
       getServerInfo: () => invoke<{ lanIp?: string; port: number }>('get_remote_server_info'),
-      pushLiveState: (content, isPresenting) => invoke('update_remote_live_state', { content: content ?? null, isPresenting }),
+      pushLiveState: (content, isPresenting) =>
+        invoke('update_remote_live_state', { content: content ?? null, isPresenting }),
       onCommand: async (callback) => {
-        const unlisten = await listen<RemoteCommand>('remote:command', (event) => callback(event.payload))
+        const unlisten = await listen<RemoteCommand>('remote:command', (event) =>
+          callback(event.payload),
+        )
         return unlisten
       },
     },
@@ -400,6 +449,32 @@ export function createTauriAdapter(): StudioAdapter {
       // anything actually called this, which nothing did until now.)
       sendOrderOfWorship: async () => {},
       sendAssignments: async () => {},
+    },
+    exports: {
+      saveFile: async ({ suggestedName, extensions, bytes }, options) => {
+        const path = await save({
+          defaultPath: suggestedName,
+          filters: [
+            {
+              name: extensions.map((extension) => extension.toUpperCase()).join(' / '),
+              extensions,
+            },
+          ],
+        })
+        if (!path) return 'cancelled'
+        await invoke('write_binary_file', { path, contents: Array.from(bytes) })
+        if (options?.openAfterSave) {
+          try {
+            await invoke('open_file', { path })
+            return 'opened'
+          } catch (error) {
+            // The report still exists at the chosen location. Treat an association/launcher
+            // problem separately so the UI never claims that generation itself failed.
+            console.warn('Report saved, but its desktop application could not be opened', error)
+          }
+        }
+        return 'saved'
+      },
     },
   }
 }

@@ -14,30 +14,114 @@ declare module 'vue-router' {
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
-    { path: '/', name: 'landing', component: () => import('@/views/LandingView.vue'), meta: { title: 'Services' } },
-    { path: '/setup', name: 'setup-wizard', component: () => import('@/views/SetupWizardView.vue') },
-    { path: '/create-service', name: 'create-service', component: () => import('@/views/CreateServiceView.vue') },
-    { path: '/service/:id', name: 'service-workspace', component: () => import('@/views/ServiceWorkspaceView.vue') },
-    { path: '/service/:id/assignments', name: 'service-assignments', component: () => import('@/views/AssignmentsView.vue') },
+    {
+      path: '/',
+      name: 'landing',
+      component: () => import('@/views/LandingView.vue'),
+      meta: { title: 'Services' },
+    },
+    {
+      path: '/setup',
+      name: 'setup-wizard',
+      component: () => import('@/views/SetupWizardView.vue'),
+    },
+    {
+      path: '/create-service',
+      name: 'create-service',
+      component: () => import('@/views/CreateServiceView.vue'),
+    },
+    {
+      path: '/service/:id',
+      name: 'service-workspace',
+      component: () => import('@/views/ServiceWorkspaceView.vue'),
+    },
+    {
+      path: '/service/:id/assignments',
+      name: 'service-assignments',
+      component: () => import('@/views/AssignmentsView.vue'),
+    },
     {
       path: '/service/:id/order-of-worship',
       name: 'order-of-worship',
-      component: () => import('@/views/OrderOfWorshipView.vue'),
+      redirect: (to) => ({ name: 'reports-home', query: { service: to.params.id as string } }),
     },
-    { path: '/library/songs', name: 'song-library', component: () => import('@/views/SongLibraryView.vue'), meta: { title: 'Songs' } },
-    { path: '/library/songs/:id', name: 'song-editor', component: () => import('@/views/SongEditorView.vue') },
-    { path: '/library/slides', name: 'slide-library', component: () => import('@/views/SlideLibraryView.vue'), meta: { title: 'Slides' } },
-    { path: '/library/slides/:id', name: 'slide-editor', component: () => import('@/views/SlideEditorView.vue') },
-    { path: '/library/media', name: 'media-library', component: () => import('@/views/MediaLibraryView.vue'), meta: { title: 'Media' } },
-    { path: '/library/themes', name: 'theme-editor', component: () => import('@/views/ThemeEditorView.vue') },
-    { path: '/people', name: 'people', component: () => import('@/views/PeopleView.vue'), meta: { title: 'People' } },
-    { path: '/people/:id', name: 'person-editor', component: () => import('@/views/PersonEditorView.vue') },
-    { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue'), meta: { title: 'Settings' } },
-    { path: '/sync-conflicts', name: 'sync-conflicts', component: () => import('@/views/SyncConflictsView.vue') },
-    { path: '/reports', name: 'reports-home', component: () => import('@/views/ReportsHomeView.vue'), meta: { title: 'Reports' } },
-    { path: '/reports/ccli', name: 'ccli-report', component: () => import('@/views/CcliReportView.vue') },
-    { path: '/reports/planning', name: 'planning-report', component: () => import('@/views/PlanningReportView.vue') },
-    { path: '/planning-ahead', name: 'planning-ahead', component: () => import('@/views/PlanningAheadView.vue') },
+    {
+      path: '/library/songs',
+      name: 'song-library',
+      component: () => import('@/views/SongLibraryView.vue'),
+      meta: { title: 'Songs' },
+    },
+    {
+      path: '/library/songs/:id',
+      name: 'song-editor',
+      component: () => import('@/views/SongEditorView.vue'),
+    },
+    {
+      path: '/library/slides',
+      name: 'slide-library',
+      component: () => import('@/views/SlideLibraryView.vue'),
+      meta: { title: 'Slides' },
+    },
+    {
+      path: '/library/slides/:id',
+      name: 'slide-editor',
+      component: () => import('@/views/SlideEditorView.vue'),
+    },
+    {
+      path: '/library/media',
+      name: 'media-library',
+      component: () => import('@/views/MediaLibraryView.vue'),
+      meta: { title: 'Media' },
+    },
+    {
+      path: '/library/themes',
+      name: 'theme-editor',
+      component: () => import('@/views/ThemeEditorView.vue'),
+    },
+    {
+      path: '/people',
+      name: 'people',
+      component: () => import('@/views/PeopleView.vue'),
+      meta: { title: 'People' },
+    },
+    {
+      path: '/people/:id',
+      name: 'person-editor',
+      component: () => import('@/views/PersonEditorView.vue'),
+    },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: () => import('@/views/SettingsView.vue'),
+      meta: { title: 'Settings' },
+    },
+    {
+      path: '/sync-conflicts',
+      name: 'sync-conflicts',
+      component: () => import('@/views/SyncConflictsView.vue'),
+    },
+    {
+      path: '/reports',
+      name: 'reports-home',
+      component: () => import('@/views/ReportsHomeView.vue'),
+      meta: { title: 'Reports' },
+    },
+    {
+      path: '/reports/song-usage',
+      name: 'song-usage-report',
+      component: () => import('@/views/CcliReportView.vue'),
+    },
+    { path: '/reports/ccli', redirect: '/reports/song-usage' },
+    {
+      path: '/reports/planning',
+      name: 'planning-report',
+      component: () => import('@/views/PlanningReportView.vue'),
+    },
+    {
+      path: '/planning-ahead',
+      name: 'planning-ahead',
+      component: () => import('@/views/PlanningAheadView.vue'),
+    },
   ],
 })
 
@@ -47,7 +131,11 @@ const router = createRouter({
  * unexpectedly, so it's blocked — but only actually leaving the workspace (not moving
  * around within it) and only while presenting.
  */
-export function shouldBlockLeavingWorkspace(fromName: unknown, toName: unknown, isPresenting: boolean): boolean {
+export function shouldBlockLeavingWorkspace(
+  fromName: unknown,
+  toName: unknown,
+  isPresenting: boolean,
+): boolean {
   if (fromName !== 'service-workspace' || toName === 'service-workspace') return false
   return isPresenting
 }
@@ -69,7 +157,11 @@ router.beforeEach((to, from) => {
  * Pure decision logic for the unsaved-changes prompt, same testability reasoning as
  * shouldBlockLeavingWorkspace above.
  */
-export function shouldConfirmUnsavedChanges(fromPath: string, toPath: string, isDirty: boolean): boolean {
+export function shouldConfirmUnsavedChanges(
+  fromPath: string,
+  toPath: string,
+  isDirty: boolean,
+): boolean {
   return isDirty && fromPath !== toPath
 }
 

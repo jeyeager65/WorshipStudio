@@ -1,3 +1,5 @@
+use tauri_plugin_opener::OpenerExt;
+
 /// Generic file read, used by the OpenSong import flow (and reusable later for local Bible
 /// file import, spec section 1) — the dialog plugin only picks a path; reading its content
 /// stays server-side rather than adding the broader fs plugin just for this.
@@ -20,6 +22,15 @@ pub fn write_text_file(path: String, contents: String) -> Result<(), String> {
 #[tauri::command]
 pub fn write_binary_file(path: String, contents: Vec<u8>) -> Result<(), String> {
     std::fs::write(path, contents).map_err(|e| e.to_string())
+}
+
+/// Opens a file selected through the native save dialog in its OS-associated application.
+/// Keeping this beside the writer avoids granting the webview broad arbitrary-path opener scope.
+#[tauri::command]
+pub fn open_file(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    app.opener()
+        .open_path(path, None::<&str>)
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

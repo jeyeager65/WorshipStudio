@@ -47,6 +47,7 @@ describe('buildPlanningReport', () => {
         ],
         assignments: [
           { role: 'Piano', personId: 'person-1', tentative: false },
+          { role: 'Guitar', personId: 'person-2', tentative: false },
           { role: 'Preacher', personId: 'person-3', tentative: false },
         ],
       }),
@@ -62,12 +63,31 @@ describe('buildPlanningReport', () => {
     const rows = buildPlanningReport(services, songs, personNames, roleGroups, { fromDate: '2026-01-01', toDate: '2026-12-31' })
 
     expect(rows.map((r) => r.serviceId)).toEqual(['svc-1', 'svc-2'])
-    expect(rows[0]).toMatchObject({ songTitles: ['Great Are You Lord'], roster: ['Praise Team - Guitar — Jason?'] })
+    expect(rows[0]).toMatchObject({
+      songTitles: ['Great Are You Lord'],
+      rosterGroups: [
+        {
+          category: 'Praise Team',
+          assignments: [{ role: 'Guitar', person: 'Jason', tentative: true }],
+        },
+      ],
+    })
     expect(rows[1]).toMatchObject({
       sermonTitle: 'Grace Abounds',
       preacher: 'Pastor Dan',
       songTitles: ["Our Lord's Prayer"],
-      roster: ['Praise Team - Piano — Marlene', 'Preacher — Pastor Dan'],
+      rosterGroups: [
+        {
+          category: 'Praise Team',
+          assignments: [
+            { role: 'Piano', person: 'Marlene', tentative: false },
+            { role: 'Guitar', person: 'Jason', tentative: false },
+          ],
+        },
+        {
+          assignments: [{ role: 'Preacher', person: 'Pastor Dan', tentative: false }],
+        },
+      ],
     })
   })
 
@@ -97,6 +117,6 @@ describe('buildPlanningReport', () => {
   it('omits an unassigned or empty roster/song list rather than erroring', () => {
     const services = [service({ id: 'svc-1', date: '2026-01-05', type: 'Sunday Morning Worship' })]
     const rows = buildPlanningReport(services, songs, personNames, roleGroups, { fromDate: '2026-01-01', toDate: '2026-12-31' })
-    expect(rows[0]).toMatchObject({ songTitles: [], roster: [] })
+    expect(rows[0]).toMatchObject({ songTitles: [], rosterGroups: [] })
   })
 })

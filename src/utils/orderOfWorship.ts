@@ -1,7 +1,7 @@
-import { AlignmentType, Document, HeadingLevel, Packer, Paragraph, Table, TableBorders, TableCell, TableRow, TextRun, WidthType } from 'docx'
 import type { Service, ServiceItem, RoleAssignment } from '@/models/service'
 import type { Song } from '@/models/song'
 import type { SlideLibraryItem } from '@/models/library'
+import { buildBulletinDocument } from '@/reports/builders/bulletin'
 import { formatServiceTime } from '@/utils/serviceTime'
 
 export interface OrderOfWorshipLine {
@@ -274,49 +274,6 @@ export function toHtml(doc: OrderOfWorshipDoc): string {
   )
 }
 
-// One line's worth of paragraphs/table (the role/text (+ person, right-aligned via a borderless
-// table row) and an optional note) — returned as an array since a single line can expand into
-// up to two block-level children.
-function docxLineBlocks(line: OrderOfWorshipLine): (Paragraph | Table)[] {
-  const blocks: (Paragraph | Table)[] = []
-  // Extra space between items, skipped between consecutive songs — same rule as toHtml — so a
-  // multi-song worship set reads as one flowing block instead of being visually chopped up.
-  const spacingBefore = line.separatorBefore ? 120 : 0
-
-  const mainRuns = [
-    ...(line.role ? [new TextRun({ text: `${line.role} `, bold: true })] : []),
-    ...(line.text ? [new TextRun({ text: line.text })] : []),
-  ]
-  if (line.person) {
-    // A borderless table (rather than a tab stop) keeps the person's name reliably right-aligned
-    // regardless of how long the role/text on the left runs — same reasoning as toHtml's table.
-    blocks.push(
-      new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        borders: TableBorders.NONE,
-        rows: [
-          new TableRow({
-            children: [
-              new TableCell({ width: { size: 70, type: WidthType.PERCENTAGE }, children: [new Paragraph({ children: mainRuns, spacing: { before: spacingBefore } })] }),
-              new TableCell({
-                width: { size: 30, type: WidthType.PERCENTAGE },
-                children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: line.person, italics: true })] })],
-              }),
-            ],
-          }),
-        ],
-      }),
-    )
-  } else {
-    blocks.push(new Paragraph({ children: mainRuns, spacing: { before: spacingBefore, after: 40 } }))
-  }
-
-  if (line.note) {
-    blocks.push(new Paragraph({ children: [new TextRun({ text: line.note, italics: true, color: '888888', size: 18 })], spacing: { after: 40 } }))
-  }
-  return blocks
-}
-
 /**
  * A real .docx (OOXML) file — genuinely opens in Word, Google Docs, mobile Office apps, and
  * anything else that checks actual file contents, unlike the older "HTML saved with a .doc
@@ -324,23 +281,20 @@ function docxLineBlocks(line: OrderOfWorshipLine): (Paragraph | Table)[] {
  * structure toHtml/toPlainText use (including separatorBefore), rather than converting the HTML
  * output, so all three renderers stay in sync from one source of truth.
  */
-export function toDocxBlob(doc: OrderOfWorshipDoc): Promise<Blob> {
-  const document = new Document({
-    sections: [
-      {
-        children: [
-          new Paragraph({ heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER, children: [new TextRun({ text: doc.title })] }),
-          new Paragraph({
-            alignment: AlignmentType.CENTER,
-            spacing: { after: 200 },
-            children: [new TextRun({ text: doc.dateLine, color: '555555', size: 20 })],
-          }),
-          ...doc.lines.flatMap(docxLineBlocks),
-        ],
-      },
-    ],
+export async function toDocxBlob(doc: OrderOfWorshipDoc): Promise<Blob> {
+  // Compatibility wrapper retained for callers/tests while actual Word generation now lives
+  // in the shared report subsystem. The comparatively large renderer remains lazy-loaded.
+  const { renderDocx } = await import('@/reports/renderers/docx')
+  const bytes = await renderDocx(
+    buildBulletinDocument(doc, {
+      churchName: 'Worship Studio',
+      primaryColor: '#4C7FE8',
+      secondaryColor: '#B08D3F',
+    }),
+  )
+  return new Blob([bytes.slice().buffer as ArrayBuffer], {
+    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   })
-  return Packer.toBlob(document)
 }
 
 function escapeHtml(value: string): string {

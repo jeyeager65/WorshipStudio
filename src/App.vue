@@ -31,7 +31,9 @@ const servicesStore = useServicesStore()
 // label rather than the URL avoids any question of whether a query string/path survives
 // however Tauri serves the bundled frontend to a freshly created window.
 const isPresentationWindow =
-  typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__ && getCurrentWindow().label === 'presentation'
+  typeof window !== 'undefined' &&
+  !!window.__TAURI_INTERNALS__ &&
+  getCurrentWindow().label === 'presentation'
 
 // Same reasoning as the presentation window above — the Display Setup "Identify" button
 // (SettingsView) opens this same bundle in a short-lived window labeled "identify", also
@@ -39,8 +41,13 @@ const isPresentationWindow =
 // `#/...` hash — this app uses path-based createWebHistory routing, so a hash fragment would
 // be inert) since Tauri's WebviewWindowOptions has no field for arbitrary custom data.
 const isIdentifyWindow =
-  typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__ && getCurrentWindow().label === 'identify'
-const identifyLabel = typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('identify') ?? '') : ''
+  typeof window !== 'undefined' &&
+  !!window.__TAURI_INTERNALS__ &&
+  getCurrentWindow().label === 'identify'
+const identifyLabel =
+  typeof window !== 'undefined'
+    ? (new URLSearchParams(window.location.search).get('identify') ?? '')
+    : ''
 
 // The splash screen (feature-spec.md "Splash screen") is its own small, borderless native
 // window (see tauri.conf.json) rather than an overlay inside the main 1920x1080 window — at
@@ -49,7 +56,9 @@ const identifyLabel = typeof window !== 'undefined' ? (new URLSearchParams(windo
 // main window does the real loading, hidden, and closes this one once it's both done AND the
 // minimum on-screen duration has elapsed.
 const isSplashWindow =
-  typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__ && getCurrentWindow().label === 'splash'
+  typeof window !== 'undefined' &&
+  !!window.__TAURI_INTERNALS__ &&
+  getCurrentWindow().label === 'splash'
 
 // The router guard (router/index.ts) covers in-app navigation; this covers closing the
 // tab/window entirely, which a route guard can't intercept.
@@ -80,7 +89,12 @@ const navigationCollapsed = ref(false)
 // Splash screen (feature-spec.md section "Splash screen") — see the `isSplashWindow` comment
 // above for why this now lives in its own window instead of an overlay here. This ref only
 // matters for the splash window's own render below; the main window never shows it.
-const splashStatus = ref('Starting up…')
+interface SplashProgress {
+  step: number
+  message: string
+}
+
+const splashProgress = ref<SplashProgress>({ step: 0, message: 'Starting Worship Studio…' })
 
 // The splash window (see tauri.conf.json) stays on screen at least this long, so branding is
 // actually perceptible rather than a one-frame flash — splashStatus below is updated with each
@@ -95,8 +109,20 @@ const MIN_SPLASH_MS = import.meta.env.VITE_E2E_TEST_MODE === 'true' ? 0 : 2000
 // past the floor would replace "Loading services…" with "Loading complete" for zero perceptible
 // time before the window closes.
 const READY_DISPLAY_MS = import.meta.env.VITE_E2E_TEST_MODE === 'true' ? 0 : 500
+// Keep quick disk reads legible. This does not add to the two-second splash floor; it spreads
+// that existing floor across the real work instead of spending nearly all of it on the final
+// status. Longer operations still take exactly as long as they need.
+const MIN_STEP_MS = import.meta.env.VITE_E2E_TEST_MODE === 'true' ? 0 : 300
 const startedAt = Date.now()
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function reportSplashProgress(progress: SplashProgress, work?: () => Promise<unknown>) {
+  const stepStartedAt = Date.now()
+  await emit('splash:status', progress)
+  await work?.()
+  const elapsed = Date.now() - stepStartedAt
+  if (elapsed < MIN_STEP_MS) await sleep(MIN_STEP_MS - elapsed)
+}
 
 // Custom title bar (see tauri.conf.json's "decorations": false on the main window) — the
 // native OS one sat as a redundant second bar above our own app-bar. The maximize icon needs
@@ -119,9 +145,15 @@ onMounted(async () => {
   // so real progress has to cross via a Tauri event (same pattern as live:slide-changed for
   // the presentation window) rather than shared reactive state.
   if (isSplashWindow) {
-    await listen<string>('splash:status', (event) => {
-      splashStatus.value = event.payload
+    await listen<SplashProgress>('splash:status', (event) => {
+      splashProgress.value = event.payload
     })
+    // Whichever webview mounts first, this two-way handshake guarantees that the main window
+    // does not send its first (usually very fast) loading step before this listener exists.
+    await listen('splash:probe', () => {
+      void emit('splash:ready')
+    })
+    await emit('splash:ready')
     return
   }
   if (isPresentationWindow || isIdentifyWindow) return
@@ -132,8 +164,22 @@ onMounted(async () => {
     isMaximized.value = await thisWindow.isMaximized()
   })
 
-  await emit('splash:status', 'Loading settings…')
-  await settingsStore.load()
+  // In E2E builds lib.rs deliberately creates no splash window, so there is nothing to wait
+  // for. In normal builds, listening before probing covers both possible webview mount orders.
+  if (import.meta.env.VITE_E2E_TEST_MODE !== 'true') {
+    let markSplashReady: (() => void) | undefined
+    const ready = new Promise<void>((resolve) => {
+      markSplashReady = resolve
+    })
+    const unlistenReady = await listen('splash:ready', () => markSplashReady?.())
+    await emit('splash:probe')
+    await Promise.race([ready, sleep(1000)])
+    unlistenReady()
+  }
+
+  await reportSplashProgress({ step: 1, message: 'Loading preferences…' }, () =>
+    settingsStore.load(),
+  )
   const machineSettings = settingsStore.machineSettings!
   theme.change(machineSettings.darkMode ? 'worshipDark' : 'worshipLight')
 
@@ -148,16 +194,16 @@ onMounted(async () => {
   // and the app-bar badge below just stays hidden until it resolves.
   void syncStore.load()
 
-  await emit('splash:status', 'Preparing library…')
-  await getAdapter().services.migrateLegacySermonFields()
+  await reportSplashProgress({ step: 2, message: 'Checking your library…' }, () =>
+    getAdapter().services.migrateLegacySermonFields(),
+  )
 
-  await emit('splash:status', 'Loading services…')
-  await servicesStore.load()
+  await reportSplashProgress({ step: 3, message: 'Loading services…' }, () => servicesStore.load())
 
   const elapsed = Date.now() - startedAt
   if (elapsed < MIN_SPLASH_MS) await sleep(MIN_SPLASH_MS - elapsed)
 
-  await emit('splash:status', 'Loading complete')
+  await emit('splash:status', { step: 4, message: 'Ready' } satisfies SplashProgress)
   await sleep(READY_DISPLAY_MS)
 
   // E2E builds never create this window at all (see lib.rs's setup()) — the harness's
@@ -177,7 +223,7 @@ onMounted(async () => {
   <PresentationView v-if="isPresentationWindow" />
   <IdentifyView v-else-if="isIdentifyWindow" :label="identifyLabel" />
   <v-app v-else-if="isSplashWindow">
-    <SplashScreen :status-text="splashStatus" />
+    <SplashScreen :status-text="splashProgress.message" :step="splashProgress.step" />
   </v-app>
   <v-app v-else>
     <v-navigation-drawer
@@ -196,7 +242,12 @@ onMounted(async () => {
         <v-list-item to="/library/songs" title="Songs" rounded="lg" class="mx-2 mb-1 sidebar-item">
           <template #prepend><v-icon icon="mdi-bookshelf" color="teal" /></template>
         </v-list-item>
-        <v-list-item to="/library/slides" title="Slides" rounded="lg" class="mx-2 mb-1 sidebar-item">
+        <v-list-item
+          to="/library/slides"
+          title="Slides"
+          rounded="lg"
+          class="mx-2 mb-1 sidebar-item"
+        >
           <template #prepend><v-icon icon="mdi-image-multiple" color="violet" /></template>
         </v-list-item>
         <v-list-item to="/library/media" title="Media" rounded="lg" class="mx-2 mb-1 sidebar-item">
@@ -257,7 +308,10 @@ onMounted(async () => {
           Save
         </v-btn>
         <v-divider v-if="saveHandler" vertical inset class="mr-3" />
-        <v-tooltip v-if="syncStore.status && !syncStore.status.folderReadable" text="Library folder isn't readable — check the sync setup in Settings">
+        <v-tooltip
+          v-if="syncStore.status && !syncStore.status.folderReadable"
+          text="Library folder isn't readable — check the sync setup in Settings"
+        >
           <template #activator="{ props }">
             <v-icon v-bind="props" icon="mdi-folder-alert-outline" color="error" class="mr-3" />
           </template>
@@ -270,10 +324,18 @@ onMounted(async () => {
           class="mr-3"
           prepend-icon="mdi-alert"
         >
-          {{ syncStore.status.conflictCount }} conflict{{ syncStore.status.conflictCount === 1 ? '' : 's' }}
+          {{ syncStore.status.conflictCount }} conflict{{
+            syncStore.status.conflictCount === 1 ? '' : 's'
+          }}
         </v-btn>
       </template>
-      <v-btn icon="mdi-window-minimize" variant="text" size="small" class="title-bar-btn" @click="minimizeWindow" />
+      <v-btn
+        icon="mdi-window-minimize"
+        variant="text"
+        size="small"
+        class="title-bar-btn"
+        @click="minimizeWindow"
+      />
       <v-btn
         :icon="isMaximized ? 'mdi-window-restore' : 'mdi-window-maximize'"
         variant="text"
@@ -281,7 +343,13 @@ onMounted(async () => {
         class="title-bar-btn"
         @click="toggleMaximizeWindow"
       />
-      <v-btn icon="mdi-window-close" variant="text" size="small" class="title-bar-btn title-bar-close" @click="closeWindow" />
+      <v-btn
+        icon="mdi-window-close"
+        variant="text"
+        size="small"
+        class="title-bar-btn title-bar-close"
+        @click="closeWindow"
+      />
     </v-app-bar>
     <v-main>
       <router-view />

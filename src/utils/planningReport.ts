@@ -1,7 +1,6 @@
 import type { Service } from '@/models/service'
 import type { Song } from '@/models/song'
 import type { RoleGroup } from '@/models/settings'
-import { roleDisplayLabel } from '@/models/settings'
 import { findSermonItem, sermonPreacherId } from '@/utils/sermonInfo'
 import { formatServiceTime } from '@/utils/serviceTime'
 
@@ -13,8 +12,19 @@ export interface PlanningReportRow {
   preacher?: string
   sermonTitle?: string
   songTitles: string[]
-  /** "Piano — Marlene", tentative assignments marked with a trailing "?" — same convention as orderOfWorship.ts. */
-  roster: string[]
+  rosterGroups: PlanningRosterGroup[]
+}
+
+export interface PlanningRosterAssignment {
+  role: string
+  person: string
+  tentative: boolean
+}
+
+export interface PlanningRosterGroup {
+  /** Undefined for roles that do not belong to a configured category. */
+  category?: string
+  assignments: PlanningRosterAssignment[]
 }
 
 export interface PlanningReportFilter {
@@ -53,12 +63,21 @@ export function buildPlanningReport(
       .filter((item) => item.type === 'song')
       .map((item) => songsById.get(item.songId)?.title ?? 'Unknown song')
 
-    const roster = (service.assignments ?? [])
-      .filter((assignment) => assignment.personId)
-      .map((assignment) => {
-        const name = personNames.get(assignment.personId!) ?? 'Unassigned'
-        return `${roleDisplayLabel(assignment.role, roleGroups)} — ${name}${assignment.tentative ? '?' : ''}`
+    const rosterGroups: PlanningRosterGroup[] = []
+    for (const assignment of service.assignments ?? []) {
+      if (!assignment.personId) continue
+      const category = roleGroups.find((group) => group.roles.includes(assignment.role))?.name
+      let group = rosterGroups.find((candidate) => candidate.category === category)
+      if (!group) {
+        group = { category, assignments: [] }
+        rosterGroups.push(group)
+      }
+      group.assignments.push({
+        role: assignment.role,
+        person: personNames.get(assignment.personId) ?? 'Unassigned',
+        tentative: assignment.tentative,
       })
+    }
 
     const dateLabel = new Date(`${service.date}T00:00:00`).toLocaleDateString(undefined, {
       weekday: 'short',
@@ -79,7 +98,7 @@ export function buildPlanningReport(
       preacher: personNames.get(sermonPreacherId(service, sermonItem) ?? ''),
       sermonTitle: sermonItem?.title,
       songTitles,
-      roster,
+      rosterGroups,
     }
   })
 }
