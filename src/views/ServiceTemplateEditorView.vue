@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { getAdapter } from '@/adapters'
 import ServiceTemplateEditor from '@/components/settings/ServiceTemplateEditor.vue'
+import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import type { ServiceTemplate } from '@/models/service'
@@ -23,8 +24,12 @@ let stopTemplateWatch: (() => void) | undefined
 const selectedTemplate = computed(() => workingTemplates.value[selectedIndex.value])
 const heading = computed(() => selectedTemplate.value?.serviceType.trim() || 'New Service Template')
 
-onMounted(async () => {
-  await settingsStore.load()
+onMounted(initialize)
+
+async function initialize() {
+  stopTemplateWatch?.()
+  stopTemplateWatch = undefined
+  if (!(await settingsStore.load())) return
   const storedTemplates = settingsStore.librarySettings?.serviceTemplates ?? []
   workingTemplates.value = structuredClone(toRaw(storedTemplates))
 
@@ -59,7 +64,7 @@ onMounted(async () => {
 
   stopTemplateWatch = watch(workingTemplates, () => (isDirty.value = true), { deep: true })
   saveHandler.value = saveTemplate
-})
+}
 
 onUnmounted(() => {
   stopTemplateWatch?.()
@@ -96,7 +101,9 @@ async function saveTemplate() {
   try {
     const nextLibrarySettings = structuredClone(toRaw(settingsStore.librarySettings))
     nextLibrarySettings.serviceTemplates = structuredClone(toRaw(workingTemplates.value))
-    await getAdapter().settings.saveLibrarySettings(nextLibrarySettings)
+    await settingsStore.runMutation(() =>
+      getAdapter().settings.saveLibrarySettings(nextLibrarySettings),
+    )
     settingsStore.librarySettings = nextLibrarySettings
     isDirty.value = false
     saveMessage.value = 'Template saved.'
@@ -131,6 +138,15 @@ async function saveTemplate() {
     </header>
 
     <v-alert
+      v-if="settingsStore.mutationError"
+      type="error"
+      variant="tonal"
+      closable
+      class="mb-4"
+      @click:close="settingsStore.clearMutationError"
+      >Template changes were not saved: {{ settingsStore.mutationError }}</v-alert
+    >
+    <v-alert
       v-if="validationMessage"
       type="warning"
       variant="tonal"
@@ -149,7 +165,14 @@ async function saveTemplate() {
       @click:close="saveMessage = ''"
       >{{ saveMessage }}</v-alert
     >
-    <section v-if="missingTemplate" class="missing-state">
+    <AsyncLoadState
+      v-if="!settingsStore.loaded"
+      :loading="settingsStore.loading"
+      :error="settingsStore.loadError"
+      label="service template"
+      @retry="initialize"
+    />
+    <section v-else-if="missingTemplate" class="missing-state">
       <v-icon icon="mdi-file-question-outline" size="38" />
       <h2>Template Not Found</h2>
       <p>It may have been renamed or removed on another computer.</p>

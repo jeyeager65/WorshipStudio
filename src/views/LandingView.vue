@@ -6,6 +6,7 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { usePeopleStore } from '@/stores/people'
 import { useSongsStore } from '@/stores/songs'
 import ServiceCard from '@/components/ServiceCard.vue'
+import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import type { Service } from '@/models/service'
 import { personDisplayName } from '@/models/library'
 import { findSermonItem, sermonMainReference, sermonPreacherId } from '@/utils/sermonInfo'
@@ -165,7 +166,23 @@ const browseResults = computed(() => {
       </v-tabs>
 
       <div class="directory-content">
-        <div v-if="tab === 'home'">
+        <AsyncLoadState
+          v-if="!store.loaded"
+          :loading="store.loading"
+          :error="store.loadError"
+          label="services"
+          @retry="store.load"
+        />
+        <AsyncLoadState
+          v-if="store.loaded && store.loadError"
+          :loading="false"
+          :error="store.loadError"
+          label="updated services"
+          compact
+          class="mb-4"
+          @retry="store.load"
+        />
+        <div v-if="store.loaded && tab === 'home'">
           <section v-if="todayServices.length" class="service-group service-group--today">
             <div class="group-heading">
               <div>
@@ -211,7 +228,7 @@ const browseResults = computed(() => {
           </section>
         </div>
 
-        <div v-else class="browse-layout">
+        <div v-else-if="store.loaded" class="browse-layout">
           <aside class="browse-filters" aria-label="Filter services">
             <div class="filter-header">
               <div>

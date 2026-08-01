@@ -7,6 +7,8 @@ import { useSettingsStore } from '@/stores/settings'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { getAdapter } from '@/adapters'
+import AsyncLoadState from '@/components/AsyncLoadState.vue'
+import { errorMessage } from '@/composables/useAsyncStoreState'
 import type { RemoteDevice } from '@/adapters/types'
 import type { Person, UnavailableDateRange } from '@/models/library'
 
@@ -21,6 +23,8 @@ const person = ref<Person>()
 const newRangeStart = ref('')
 const newRangeEnd = ref('')
 const validationMessage = ref('')
+const editorLoading = ref(true)
+const editorLoadError = ref('')
 const remoteDevices = ref<RemoteDevice[]>([])
 const pairDialogOpen = ref(false)
 const pairing = ref(false)
@@ -82,16 +86,41 @@ async function loadRemoteDevices() {
   remoteDevices.value = (await getAdapter().remote?.listDevices()) ?? []
 }
 
-onMounted(async () => {
-  await Promise.all([peopleStore.load(), settingsStore.load()])
-  const isNew = route.params.id === 'new'
-  const existing = peopleStore.people.find((candidate) => candidate.id === route.params.id)
-  person.value = isNew ? blankPerson() : existing ? structuredClone(toRaw(existing)) : undefined
-  if (!isNew) await loadRemoteDevices()
-  isDirty.value = isNew
-  stopPersonWatch = watch(person, () => (isDirty.value = true), { deep: true })
-  saveHandler.value = savePerson
-})
+onMounted(loadEditor)
+
+async function loadEditor() {
+  stopPersonWatch?.()
+  stopPersonWatch = undefined
+  editorLoading.value = true
+  editorLoadError.value = ''
+  try {
+    const [peopleLoaded, settingsLoaded] = await Promise.all([
+      peopleStore.load(),
+      settingsStore.load(),
+    ])
+    if (!peopleLoaded || !settingsLoaded) {
+      editorLoadError.value = peopleStore.loadError || settingsStore.loadError
+      return
+    }
+    const isNew = route.params.id === 'new'
+    const existing = peopleStore.people.find((candidate) => candidate.id === route.params.id)
+    if (!isNew && !existing) {
+      person.value = undefined
+      editorLoadError.value = 'That person could not be found. They may have been moved or deleted.'
+      return
+    }
+    person.value = isNew ? blankPerson() : structuredClone(toRaw(existing!))
+    if (!isNew) await loadRemoteDevices()
+    isDirty.value = isNew
+    stopPersonWatch = watch(person, () => (isDirty.value = true), { deep: true })
+    saveHandler.value = savePerson
+  } catch (error) {
+    person.value = undefined
+    editorLoadError.value = errorMessage(error)
+  } finally {
+    editorLoading.value = false
+  }
+}
 
 onUnmounted(() => {
   stopPersonWatch?.()
@@ -207,7 +236,14 @@ function formatDateRange(range: UnavailableDateRange): string {
 </script>
 
 <template>
-  <main v-if="person" class="person-editor-page">
+  <AsyncLoadState
+    v-if="!person"
+    :loading="editorLoading"
+    :error="editorLoadError"
+    label="person"
+    @retry="loadEditor"
+  />
+  <main v-else class="person-editor-page">
     <header class="editor-header">
       <div class="header-content">
         <v-btn to="/people" variant="text" prepend-icon="mdi-arrow-left" class="back-button"
@@ -225,6 +261,15 @@ function formatDateRange(range: UnavailableDateRange): string {
     </header>
 
     <div class="editor-content">
+      <v-alert
+        v-if="peopleStore.mutationError"
+        type="error"
+        variant="tonal"
+        closable
+        @click:close="peopleStore.clearMutationError"
+      >
+        Person changes were not saved: {{ peopleStore.mutationError }}
+      </v-alert>
       <v-alert
         v-if="validationMessage"
         type="warning"
@@ -445,11 +490,6 @@ function formatDateRange(range: UnavailableDateRange): string {
       </section>
     </div>
   </main>
-  <v-container v-else class="py-8">
-    <v-btn to="/people" variant="text" prepend-icon="mdi-arrow-left">People</v-btn>
-    <p class="text-medium-emphasis mt-4">Person not found.</p>
-  </v-container>
-
   <v-dialog v-model="pairDialogOpen" max-width="480">
     <v-card>
       <v-card-title>{{

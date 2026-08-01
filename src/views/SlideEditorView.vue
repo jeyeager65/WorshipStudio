@@ -6,7 +6,9 @@ import { VueDraggable } from 'vue-draggable-plus'
 import Moveable from 'vue3-moveable'
 import SlideSceneRenderer from '@/components/slides/SlideSceneRenderer.vue'
 import MediaPickerDialog from '@/components/media/MediaPickerDialog.vue'
+import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import { getAdapter } from '@/adapters'
+import { errorMessage } from '@/composables/useAsyncStoreState'
 import { useSlidesStore } from '@/stores/slides'
 import { useMediaStore } from '@/stores/media'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
@@ -28,6 +30,8 @@ const mediaStore = useMediaStore()
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const confirmDialog = useConfirmDialogStore()
 const item = ref<SlideLibraryItem>()
+const editorLoading = ref(true)
+const editorLoadError = ref('')
 const selectedSlideId = ref('')
 const selectedElementId = ref('')
 const editingElementId = ref('')
@@ -195,10 +199,29 @@ watch(
   { flush: 'sync' },
 )
 
-onMounted(async () => {
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+  window.addEventListener('keyup', onKeyup)
+  void loadEditor()
+})
+
+async function loadEditor() {
+  stopItemWatch?.()
+  stopItemWatch = undefined
+  editorLoading.value = true
+  editorLoadError.value = ''
   const isNew = route.params.id === 'new'
-  item.value = isNew ? blankItem() : await getAdapter().slides.get(route.params.id as string)
-  if (item.value) {
+  try {
+    const loadedItem = isNew
+      ? blankItem()
+      : await getAdapter().slides.get(route.params.id as string)
+    if (!loadedItem) {
+      item.value = undefined
+      editorLoadError.value =
+        'That presentation could not be found. It may have been moved or deleted.'
+      return
+    }
+    item.value = loadedItem
     item.value.tags ??= []
     for (const slide of item.value.slides) {
       for (const element of slide.scene.elements) {
@@ -206,16 +229,23 @@ onMounted(async () => {
       }
     }
     selectedSlideId.value = item.value.slides[0]?.id ?? ''
+    if (!(await mediaStore.load())) {
+      editorLoadError.value = mediaStore.loadError
+      item.value = undefined
+      return
+    }
+    const canva = getAdapter().canva
+    if (canva) canvaStatus.value = await canva.status()
+    isDirty.value = isNew
+    stopItemWatch = watch(item, () => (isDirty.value = true), { deep: true })
+    saveHandler.value = saveItem
+  } catch (error) {
+    item.value = undefined
+    editorLoadError.value = errorMessage(error)
+  } finally {
+    editorLoading.value = false
   }
-  if (!mediaStore.loaded) await mediaStore.load()
-  const canva = getAdapter().canva
-  if (canva) canvaStatus.value = await canva.status()
-  isDirty.value = isNew
-  stopItemWatch = watch(item, () => (isDirty.value = true), { deep: true })
-  saveHandler.value = saveItem
-  window.addEventListener('keydown', onKeydown)
-  window.addEventListener('keyup', onKeyup)
-})
+}
 
 onUnmounted(() => {
   stopItemWatch?.()
@@ -686,7 +716,14 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
 </script>
 
 <template>
-  <div v-if="item && scene" class="editor">
+  <AsyncLoadState
+    v-if="!item || !scene"
+    :loading="editorLoading"
+    :error="editorLoadError"
+    label="presentation"
+    @retry="loadEditor"
+  />
+  <div v-else class="editor">
     <header class="editor-header">
       <div class="editor-heading">
         <v-btn to="/library/slides" variant="text" prepend-icon="mdi-arrow-left" class="back-button"
@@ -768,6 +805,17 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
     </aside>
 
     <main class="workspace">
+      <v-alert
+        v-if="store.mutationError"
+        type="error"
+        variant="tonal"
+        density="compact"
+        closable
+        class="editor-save-alert"
+        @click:close="store.clearMutationError"
+      >
+        Presentation changes were not saved: {{ store.mutationError }}
+      </v-alert>
       <div class="toolbar">
         <div class="toolbar-group">
           <span class="toolbar-label">Add</span>
@@ -1317,7 +1365,6 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
       </v-card>
     </v-dialog>
   </div>
-  <v-container v-else><p>Slide not found.</p></v-container>
 </template>
 
 <style scoped>
@@ -1606,6 +1653,10 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
   background:
     radial-gradient(circle at 50% 12%, rgba(var(--v-theme-secondary), 0.055), transparent 410px),
     #14171c;
+}
+.editor-save-alert {
+  flex: 0 0 auto;
+  margin: 8px 12px 0;
 }
 .toolbar {
   display: flex;

@@ -1,27 +1,29 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { getAdapter } from '@/adapters'
+import { useAsyncStoreState } from '@/composables/useAsyncStoreState'
 import type { LibrarySettings, MachineSettings } from '@/models/settings'
 
 export const useSettingsStore = defineStore('settings', () => {
   const librarySettings = ref<LibrarySettings>()
   const machineSettings = ref<MachineSettings>()
-  const loaded = ref(false)
+  const asyncState = useAsyncStoreState()
 
   async function load() {
-    const [library, machine] = await Promise.all([
-      getAdapter().settings.getLibrarySettings(),
-      getAdapter().settings.getMachineSettings(),
-    ])
-    librarySettings.value = {
-      ...library,
-      // Browser-demo localStorage and older library-settings.json files predate the shared
-      // Canva integration block. Normalize once at the store boundary so every view can rely
-      // on the current shape.
-      canvaIntegration: library.canvaIntegration ?? { clientId: '', clientSecret: '' },
-    }
-    machineSettings.value = machine
-    loaded.value = true
+    return asyncState.runLoad(async () => {
+      const [library, machine] = await Promise.all([
+        getAdapter().settings.getLibrarySettings(),
+        getAdapter().settings.getMachineSettings(),
+      ])
+      librarySettings.value = {
+        ...library,
+        // Browser-demo localStorage and older library-settings.json files predate the shared
+        // Canva integration block. Normalize once at the store boundary so every view can rely
+        // on the current shape.
+        canvaIntegration: library.canvaIntegration ?? { clientId: '', clientSecret: '' },
+      }
+      machineSettings.value = machine
+    })
   }
 
   async function save() {
@@ -29,9 +31,11 @@ export const useSettingsStore = defineStore('settings', () => {
     // LibrarySettings is written beneath MachineSettings.libraryPath in the desktop adapter.
     // Persist the machine choice first so changing the library folder and saving in one action
     // writes shared settings into the newly selected folder, not the previously active one.
-    await getAdapter().settings.saveMachineSettings(machineSettings.value)
-    await getAdapter().settings.saveLibrarySettings(librarySettings.value)
+    await asyncState.runMutation(async () => {
+      await getAdapter().settings.saveMachineSettings(machineSettings.value!)
+      await getAdapter().settings.saveLibrarySettings(librarySettings.value!)
+    })
   }
 
-  return { librarySettings, machineSettings, loaded, load, save }
+  return { librarySettings, machineSettings, ...asyncState, load, save }
 })

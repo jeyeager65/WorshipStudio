@@ -7,6 +7,7 @@ import { useThemesStore } from '@/stores/themes'
 import { useMediaStore } from '@/stores/media'
 import { useSettingsStore } from '@/stores/settings'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
+import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import type { PresentationThemeTarget, Theme } from '@/models/library'
 import {
   isPresentationThemeAvailableFor,
@@ -150,7 +151,24 @@ async function deleteTheme(theme: Theme) {
         </button>
       </div>
 
-      <div v-if="filteredThemes.length" class="theme-grid">
+      <AsyncLoadState
+        v-if="!store.loaded"
+        :loading="store.loading"
+        :error="store.loadError"
+        label="presentation themes"
+        @retry="store.load"
+      />
+      <AsyncLoadState
+        v-if="store.loaded && store.loadError"
+        :loading="false"
+        :error="store.loadError"
+        label="updated presentation themes"
+        compact
+        class="mb-3"
+        @retry="store.load"
+      />
+
+      <div v-if="store.loaded && filteredThemes.length" class="theme-grid">
         <article
           v-for="theme in filteredThemes"
           :key="theme.id"
@@ -210,7 +228,7 @@ async function deleteTheme(theme: Theme) {
         </article>
       </div>
 
-      <div v-else-if="!sortedThemes.length" class="empty-state">
+      <div v-else-if="store.loaded && !sortedThemes.length" class="empty-state">
         <span><v-icon icon="mdi-palette-outline" size="31" /></span>
         <h2>No Presentation Themes Yet</h2>
         <p>Create a reusable visual style for songs, scripture, sermons, and text slides.</p>
@@ -218,7 +236,7 @@ async function deleteTheme(theme: Theme) {
           New Theme
         </v-btn>
       </div>
-      <div v-else class="empty-state empty-state--filtered">
+      <div v-else-if="store.loaded" class="empty-state empty-state--filtered">
         <span><v-icon icon="mdi-filter-outline" size="31" /></span>
         <h2>No Matching Themes</h2>
         <p>No themes are associated with this content type yet.</p>

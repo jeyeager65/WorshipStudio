@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import { usePeopleStore } from '@/stores/people'
 import { useSettingsStore } from '@/stores/settings'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
+import AsyncLoadState from '@/components/AsyncLoadState.vue'
+import LibraryEmptyState from '@/components/LibraryEmptyState.vue'
 import type { Person } from '@/models/library'
 
 const router = useRouter()
@@ -317,10 +319,28 @@ async function remove(person: Person) {
         </aside>
 
         <div class="directory-results">
-          <div v-if="peopleStore.people.length === 0" class="people-empty-state">
-            <span><v-icon icon="mdi-account-multiple-plus-outline" size="30" /></span>
-            <h2>No People Yet</h2>
-            <p>Add the first person to begin building your service team.</p>
+          <AsyncLoadState
+            v-if="!peopleStore.loaded"
+            :loading="peopleStore.loading"
+            :error="peopleStore.loadError"
+            label="people"
+            @retry="peopleStore.load"
+          />
+          <AsyncLoadState
+            v-if="peopleStore.loaded && peopleStore.loadError"
+            :loading="false"
+            :error="peopleStore.loadError"
+            label="updated people"
+            compact
+            class="mb-3"
+            @retry="peopleStore.load"
+          />
+          <LibraryEmptyState
+            v-if="peopleStore.loaded && peopleStore.people.length === 0"
+            icon="mdi-account-multiple-plus-outline"
+            title="No People Yet"
+            message="Add the first person to begin building your service team."
+          >
             <v-btn
               variant="flat"
               color="primary"
@@ -328,17 +348,19 @@ async function remove(person: Person) {
               @click="openAdd"
               >Add Person</v-btn
             >
-          </div>
-          <div v-else-if="filteredPeople.length === 0" class="people-empty-state">
-            <span><v-icon icon="mdi-account-search-outline" size="30" /></span>
-            <h2>No Matches Found</h2>
-            <p>No people match the current category and search.</p>
+          </LibraryEmptyState>
+          <LibraryEmptyState
+            v-else-if="peopleStore.loaded && filteredPeople.length === 0"
+            icon="mdi-account-search-outline"
+            title="No Matches Found"
+            message="No people match the current category and search."
+          >
             <v-btn variant="text" color="primary" @click="clearDirectoryFilters"
               >Clear Filters</v-btn
             >
-          </div>
+          </LibraryEmptyState>
 
-          <div v-else class="people-grid">
+          <div v-else-if="peopleStore.loaded" class="people-grid">
             <article
               v-for="person in filteredPeople"
               :key="person.id"

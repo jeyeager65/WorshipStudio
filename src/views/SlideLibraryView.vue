@@ -5,6 +5,8 @@ import SlideSceneRenderer from '@/components/slides/SlideSceneRenderer.vue'
 import { useSlidesStore } from '@/stores/slides'
 import { useUndoStore } from '@/stores/undo'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
+import AsyncLoadState from '@/components/AsyncLoadState.vue'
+import LibraryEmptyState from '@/components/LibraryEmptyState.vue'
 import type { SlideLibraryItem } from '@/models/library'
 
 const router = useRouter()
@@ -179,22 +181,42 @@ function openSlide(item: SlideLibraryItem) {
         </aside>
 
         <div class="slide-results">
-          <div v-if="visibleItems.length === 0" class="slides-empty-state">
-            <span><v-icon icon="mdi-presentation-play" size="30" /></span>
-            <h2>No Presentations Yet</h2>
-            <p>Create a reusable presentation for announcements or service visuals.</p>
+          <AsyncLoadState
+            v-if="!store.loaded"
+            :loading="store.loading"
+            :error="store.loadError"
+            label="presentations"
+            @retry="store.load"
+          />
+          <AsyncLoadState
+            v-if="store.loaded && store.loadError"
+            :loading="false"
+            :error="store.loadError"
+            label="updated presentations"
+            compact
+            class="mb-3"
+            @retry="store.load"
+          />
+          <LibraryEmptyState
+            v-if="store.loaded && visibleItems.length === 0"
+            icon="mdi-presentation-play"
+            title="No Presentations Yet"
+            message="Create a reusable presentation for announcements or service visuals."
+          >
             <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSlide"
               >New Presentation</v-btn
             >
-          </div>
-          <div v-else-if="filteredSlides.length === 0" class="slides-empty-state">
-            <span><v-icon icon="mdi-presentation-play" size="30" /></span>
-            <h2>No Presentations Found</h2>
-            <p>No presentations match the selected tag and search.</p>
+          </LibraryEmptyState>
+          <LibraryEmptyState
+            v-else-if="store.loaded && filteredSlides.length === 0"
+            icon="mdi-presentation-play"
+            title="No Presentations Found"
+            message="No presentations match the selected tag and search."
+          >
             <v-btn variant="text" color="primary" @click="clearFilters">Clear Filters</v-btn>
-          </div>
+          </LibraryEmptyState>
 
-          <div v-else class="presentation-grid">
+          <div v-else-if="store.loaded" class="presentation-grid">
             <article
               v-for="presentation in filteredSlides"
               :key="presentation.id"

@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import SlideContentRenderer from '@/components/live/SlideContentRenderer.vue'
+import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import ScriptureReferencePicker, {
   type ScriptureReferenceValue,
 } from '@/components/ScriptureReferencePicker.vue'
@@ -32,6 +33,7 @@ import {
 } from '@/utils/sermonInfo'
 import { formatCountdown } from '@/utils/countdown'
 import { formatServiceTime } from '@/utils/serviceTime'
+import { errorMessage as asyncErrorMessage } from '@/composables/useAsyncStoreState'
 import type { Service, ServiceItem, SermonPassage } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
 import type {
@@ -74,6 +76,8 @@ const undoStore = useUndoStore()
 const confirmDialog = useConfirmDialogStore()
 
 const service = ref<Service>()
+const workspaceLoading = ref(true)
+const workspaceLoadError = ref('')
 const selectedItemIndex = ref(0)
 /** -1 = nothing live yet; equal to flatSlides.length = live but past the last slide (blank). */
 const flatIndex = ref(-1)
@@ -315,6 +319,20 @@ onMounted(async () => {
   if (!themesStore.loaded) await themesStore.load()
   if (!externalAppsStore.loaded) await externalAppsStore.load()
   if (!peopleStore.loaded) await peopleStore.load()
+  if (!settingsStore.loaded) await settingsStore.load()
+  const dependencyLoadError =
+    songsStore.loadError ||
+    slidesStore.loadError ||
+    mediaStore.loadError ||
+    themesStore.loadError ||
+    externalAppsStore.loadError ||
+    peopleStore.loadError ||
+    settingsStore.loadError
+  if (dependencyLoadError) {
+    workspaceLoadError.value = dependencyLoadError
+    workspaceLoading.value = false
+    return
+  }
   await loadPresentationSize()
   // A just-created service arrives via the store instead of disk — see CreateServiceView —
   // so it's never persisted until Save is actually pressed.
@@ -323,7 +341,19 @@ onMounted(async () => {
     service.value = servicesStore.draftService
     servicesStore.draftService = undefined
   } else {
-    service.value = await getAdapter().services.get(route.params.id as string)
+    try {
+      service.value = await getAdapter().services.get(route.params.id as string)
+    } catch (error) {
+      workspaceLoadError.value = asyncErrorMessage(error)
+      workspaceLoading.value = false
+      return
+    }
+  }
+  if (!service.value) {
+    workspaceLoadError.value =
+      'That service could not be found. It may have been moved or deleted.'
+    workspaceLoading.value = false
+    return
   }
   await nextTick()
   if (previewPanelRef.value) previewResizeObserver?.observe(previewPanelRef.value)
@@ -388,7 +418,12 @@ onMounted(async () => {
     .map((theme) => theme.backgroundId)
     .filter((id): id is string => !!id && id !== 'brand-primary' && id !== 'brand-secondary')
   await Promise.all([...new Set([...mediaIds, ...themeMediaIds])].map(resolveMediaItem))
+  workspaceLoading.value = false
 })
+
+function reloadWorkspace() {
+  window.location.reload()
+}
 onUnmounted(() => {
   clearInterval(nowTickInterval)
   window.removeEventListener('keydown', onKeydown)
@@ -1669,7 +1704,25 @@ function updateRolePerson(role: string, personId: string | undefined) {
 </script>
 
 <template>
-  <div v-if="service" class="workspace-root">
+  <AsyncLoadState
+    v-if="!service"
+    :loading="workspaceLoading"
+    :error="workspaceLoadError"
+    label="service workspace"
+    @retry="reloadWorkspace"
+  />
+  <div v-else class="workspace-root">
+    <v-alert
+      v-if="servicesStore.mutationError"
+      type="error"
+      variant="tonal"
+      density="compact"
+      closable
+      class="workspace-save-error"
+      @click:close="servicesStore.clearMutationError"
+    >
+      Service changes were not saved: {{ servicesStore.mutationError }}
+    </v-alert>
     <div class="workspace-toolbar">
       <div class="workspace-service-context">
         <v-btn
@@ -3171,9 +3224,6 @@ function updateRolePerson(role: string, personId: string | undefined) {
       </v-card>
     </v-dialog>
   </div>
-  <v-container v-else class="py-8">
-    <p class="text-medium-emphasis">Service not found.</p>
-  </v-container>
 </template>
 
 <style scoped>
@@ -3304,6 +3354,10 @@ function updateRolePerson(role: string, personId: string | undefined) {
   overflow: hidden;
   background: rgb(var(--v-theme-background));
   color: rgba(var(--v-theme-on-background), 0.92);
+}
+.workspace-save-error {
+  flex: 0 0 auto;
+  margin: 8px 14px 0;
 }
 .workspace-toolbar {
   display: flex;

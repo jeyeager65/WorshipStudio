@@ -10,6 +10,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import MediaPickerDialog from '@/components/media/MediaPickerDialog.vue'
+import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import type { PresentationThemeTarget, Theme } from '@/models/library'
 import {
   normalizePresentationThemeTarget,
@@ -32,6 +33,8 @@ const router = useRouter()
 const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsavedChangesStore())
 
 const draft = ref<Theme>()
+const editorLoading = ref(true)
+const editorLoadError = ref('')
 const previewDialogOpen = ref(false)
 const amazingGracePreview = [
   'Amazing grace! how sweet the sound',
@@ -77,20 +80,36 @@ const applicableDefaultOptions = computed(() => {
   return defaultForOptions.filter((option) => draft.value!.appliesTo!.includes(option.value))
 })
 
-onMounted(async () => {
+onMounted(loadEditor)
+
+async function loadEditor() {
   saveHandler.value = saveDraft
   pageTitleOverride.value = 'Presentation Theme'
-  await Promise.all([store.load(), mediaStore.load(), settingsStore.load()])
+  editorLoading.value = true
+  editorLoadError.value = ''
+  const [themesLoaded, mediaLoaded, settingsLoaded] = await Promise.all([
+    store.load(),
+    mediaStore.load(),
+    settingsStore.load(),
+  ])
+  if (!themesLoaded || !mediaLoaded || !settingsLoaded) {
+    editorLoadError.value = store.loadError || mediaStore.loadError || settingsStore.loadError
+    editorLoading.value = false
+    return
+  }
   const id = String(route.params.id)
   if (id === 'new') {
     draft.value = blankTheme()
     await nextTick()
     isDirty.value = true
+    editorLoading.value = false
     return
   }
   const theme = store.themes.find((candidate) => candidate.id === id)
   if (theme) await loadTheme(theme)
-})
+  else editorLoadError.value = 'That theme could not be found. It may have been moved or deleted.'
+  editorLoading.value = false
+}
 
 onUnmounted(() => {
   isDirty.value = false
@@ -315,6 +334,23 @@ function setTextEffectColor(event: Event) {
     </header>
 
     <section class="theme-workspace">
+      <AsyncLoadState
+        v-if="!draft"
+        :loading="editorLoading"
+        :error="editorLoadError"
+        label="presentation theme"
+        @retry="loadEditor"
+      />
+      <v-alert
+        v-else-if="store.mutationError"
+        type="error"
+        variant="tonal"
+        closable
+        class="mb-4"
+        @click:close="store.clearMutationError"
+      >
+        Theme changes were not saved: {{ store.mutationError }}
+      </v-alert>
       <section v-if="draft" class="theme-editor">
         <div class="editor-layout">
           <div class="editor-settings">

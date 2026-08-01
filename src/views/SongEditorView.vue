@@ -9,6 +9,8 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useUndoStore } from '@/stores/undo'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { colorForBlockLabel } from '@/utils/contentColors'
+import AsyncLoadState from '@/components/AsyncLoadState.vue'
+import { errorMessage } from '@/composables/useAsyncStoreState'
 import type { Song, SongBlock } from '@/models/song'
 import type { LibrarySettings } from '@/models/settings'
 
@@ -21,6 +23,8 @@ const confirmDialog = useConfirmDialogStore()
 
 const song = ref<Song>()
 const librarySettings = ref<LibrarySettings>()
+const editorLoading = ref(true)
+const editorLoadError = ref('')
 
 // "New Song" (SongLibraryView) navigates straight here with id "new" rather than saving a
 // blank file first — nothing is written to disk until Save is pressed, so backing out
@@ -44,14 +48,26 @@ function blankSong(): Song {
 // explicitly is what actually scopes it to this view's lifetime rather than leaking forever.
 let stopSongWatch: (() => void) | undefined
 
-onMounted(async () => {
+onMounted(loadEditor)
+
+async function loadEditor() {
+  stopSongWatch?.()
+  stopSongWatch = undefined
+  editorLoading.value = true
+  editorLoadError.value = ''
   const isNew = route.params.id === 'new'
-  const [loadedSong, settings] = await Promise.all([
-    isNew ? Promise.resolve(blankSong()) : getAdapter().songs.get(route.params.id as string),
-    getAdapter().settings.getLibrarySettings(),
-  ])
-  song.value = loadedSong
-  librarySettings.value = settings
+  try {
+    const [loadedSong, settings] = await Promise.all([
+      isNew ? Promise.resolve(blankSong()) : getAdapter().songs.get(route.params.id as string),
+      getAdapter().settings.getLibrarySettings(),
+    ])
+    if (!loadedSong) {
+      song.value = undefined
+      editorLoadError.value = 'That song could not be found. It may have been moved or deleted.'
+      return
+    }
+    song.value = loadedSong
+    librarySettings.value = settings
   // A freshly created song is inherently unsaved — starting dirty (rather than false, as
   // for an existing song) enables the Save button and the router guard's
   // leave-without-saving warning immediately, so it's never silently lost with no way to
@@ -60,11 +76,17 @@ onMounted(async () => {
   // Registered after the initial load so it only reacts to actual user edits, not the
   // assignment above — a single deep watch instead of wiring a dirty-flag handler onto
   // every field individually.
-  stopSongWatch = watch(song, () => (isDirty.value = true), { deep: true })
+    stopSongWatch = watch(song, () => (isDirty.value = true), { deep: true })
   // The Save button itself lives in the persistent app bar (App.vue), not a per-page
   // toolbar that would scroll out of view — this view just supplies the action.
-  saveHandler.value = saveSong
-})
+    saveHandler.value = saveSong
+  } catch (error) {
+    song.value = undefined
+    editorLoadError.value = errorMessage(error)
+  } finally {
+    editorLoading.value = false
+  }
+}
 
 onUnmounted(() => {
   stopSongWatch?.()
@@ -145,7 +167,14 @@ async function removeFromArrangement(index: number) {
 </script>
 
 <template>
-  <main v-if="song" class="song-editor-page">
+  <AsyncLoadState
+    v-if="!song"
+    :loading="editorLoading"
+    :error="editorLoadError"
+    label="song"
+    @retry="loadEditor"
+  />
+  <main v-else class="song-editor-page">
     <header class="editor-header">
       <div class="header-content">
         <v-btn to="/library/songs" variant="text" prepend-icon="mdi-arrow-left" class="back-button">Songs</v-btn>
@@ -164,6 +193,16 @@ async function removeFromArrangement(index: number) {
 
     <div class="editor-layout">
       <div class="editor-main">
+        <v-alert
+          v-if="store.mutationError"
+          type="error"
+          variant="tonal"
+          closable
+          class="mb-4"
+          @click:close="store.clearMutationError"
+        >
+          Song changes were not saved: {{ store.mutationError }}
+        </v-alert>
         <section class="editor-section">
           <div class="section-heading">
             <div>
@@ -361,9 +400,6 @@ async function removeFromArrangement(index: number) {
       </aside>
     </div>
   </main>
-  <v-container v-else class="py-8">
-    <p class="text-medium-emphasis">Song not found.</p>
-  </v-container>
 </template>
 
 <style scoped>

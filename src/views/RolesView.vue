@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '@/stores/settings'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import RoleGroupEditor from '@/components/settings/RoleGroupEditor.vue'
+import AsyncLoadState from '@/components/AsyncLoadState.vue'
 
 const settingsStore = useSettingsStore()
 const { librarySettings } = storeToRefs(settingsStore)
@@ -18,13 +19,15 @@ watch(
   { deep: true },
 )
 
-onMounted(async () => {
+onMounted(initialize)
+
+async function initialize() {
   saveHandler.value = saveRoles
-  await settingsStore.load()
+  if (!(await settingsStore.load())) return
   await nextTick()
   ready = true
   isDirty.value = false
-})
+}
 
 onUnmounted(() => {
   ready = false
@@ -56,7 +59,26 @@ async function saveRoles() {
       <span class="roles-hero-icon"><v-icon icon="mdi-account-badge-outline" size="28" /></span>
     </header>
 
-    <RoleGroupEditor v-if="librarySettings" v-model="librarySettings.roleGroups" />
+    <AsyncLoadState
+      v-if="!settingsStore.loaded"
+      :loading="settingsStore.loading"
+      :error="settingsStore.loadError"
+      label="roles"
+      @retry="initialize"
+    />
+    <template v-else>
+      <v-alert
+        v-if="settingsStore.mutationError"
+        type="error"
+        variant="tonal"
+        closable
+        class="mb-4"
+        @click:close="settingsStore.clearMutationError"
+      >
+        Role changes were not saved: {{ settingsStore.mutationError }}
+      </v-alert>
+      <RoleGroupEditor v-if="librarySettings" v-model="librarySettings.roleGroups" />
+    </template>
   </main>
 </template>
 

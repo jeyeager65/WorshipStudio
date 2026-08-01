@@ -31,7 +31,9 @@ Relevant implementation: `src-tauri/src/domain/mod.rs` and `src-tauri/src/paths.
 
 ### 2. Establish standard loading and error states
 
-Most Pinia stores expose whether they have loaded, but do not retain loading or error state. Adapter failures can therefore produce blank screens, temporary empty-state flashes, console-only failures, or an editor that remains dirty without explaining why its save failed.
+Status: completed August 1, 2026.
+
+The shared `useAsyncStoreState` convention now gives adapter-backed stores distinct initial-loading, background-refresh, retryable load-error, and retained mutation-error state. Core library pages use shared loading and empty-state components; Services, Songs, Presentations, Media, People, Themes, Templates, Roles, and Settings expose retry or save-failure feedback instead of failing blank or only logging to the console. Direct editors also distinguish loading from a missing item and preserve dirty content after a failed save.
 
 Recommended shared states:
 
@@ -224,6 +226,23 @@ Real email transport is not implemented. Decide between:
 
 The installed mail application is likely the simplest and least credential-heavy first step.
 
+### Replace undo toasts with real undo/redo history
+
+The current global undo stack is a short-lived collection of toast messages. It applies only to selected removal actions, expires after a few seconds, captures callbacks from individual views, and does not provide conventional redo behavior. Confirmation followed by a temporary undo toast also makes deletion feel unnecessarily repetitive.
+
+Replace it with a conventional editing model:
+
+- Show persistent **Undo** and **Redo** buttons beside the standard Save control whenever the active editor provides history.
+- Support `Ctrl+Z`, `Ctrl+Y`, and `Ctrl+Shift+Z`, with the corresponding macOS shortcuts where applicable.
+- Scope history to the active document or settings editor and clear it when switching records.
+- Group continuous typing into meaningful history entries while keeping add, remove, reorder, and property changes as distinct steps.
+- Integrate the current history position with dirty-state and saved-state tracking.
+- Disable the buttons when their action is unavailable and provide visible tooltips that include the shortcut and, where practical, the action label.
+- Stop using expiring undo toasts as the primary undo mechanism. Ordinary success notifications may remain ordinary snackbars.
+- Handle persisted library deletion through an explicit confirmation or a deliberate future Trash workflow rather than a delayed toast callback.
+
+This is a separate 0.5.x polish item and does not block the shared loading/error-state work.
+
 ### Automatic updates
 
 The release workflow creates versioned artifacts, but the application does not check for, download, or install updates. Add a Tauri updater before distributing broadly, or document a clear manual update process and expose the Releases page prominently.
@@ -357,16 +376,17 @@ This does not apply to user-facing imports such as OpenSong or to migrations del
 ## Recommended execution order
 
 1. Atomic saves, corruption detection, backups, and recovery — completed August 1, 2026
-2. Standard loading, error, and save-failure handling
-3. Pre-service readiness check
-4. Sync Conflicts redesign and shared state components
-5. Credential boundary and focused security review
-6. Honest email/copy/mail-client workflow
-7. Windows E2E smoke CI and real-hardware testing
-8. Automatic updates and user-accessible diagnostics
-9. Finalize the 1.0 persisted schemas and remove development-era compatibility code
-10. Documentation and licensing reconciliation
-11. Decide which incomplete content/import features belong before 1.0
+2. Standard loading, error, and save-failure handling — completed August 1, 2026
+3. Replace undo toasts with editor-scoped undo/redo history and visible controls
+4. Pre-service readiness check
+5. Sync Conflicts redesign and shared state components
+6. Credential boundary and focused security review
+7. Honest email/copy/mail-client workflow
+8. Windows E2E smoke CI and real-hardware testing
+9. Automatic updates and user-accessible diagnostics
+10. Finalize the 1.0 persisted schemas and remove development-era compatibility code
+11. Documentation and licensing reconciliation
+12. Decide which incomplete content/import features belong before 1.0
 
 ## Suggested milestone split
 
@@ -374,6 +394,8 @@ This does not apply to user-facing imports such as OpenSong or to migrations del
 
 - Sync Conflicts redesign
 - Shared loading/error/empty/not-found states
+- Editor-scoped undo/redo with app-bar buttons and keyboard shortcuts
+- Removal of expiring undo toasts as the primary undo mechanism
 - Honest email action wording
 - Pre-service readiness check
 - Documentation correction

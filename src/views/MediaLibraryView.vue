@@ -4,6 +4,8 @@ import { getAdapter } from '@/adapters'
 import { useMediaStore } from '@/stores/media'
 import { useUndoStore } from '@/stores/undo'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
+import AsyncLoadState from '@/components/AsyncLoadState.vue'
+import LibraryEmptyState from '@/components/LibraryEmptyState.vue'
 import ImportMediaDialog from '@/components/media/ImportMediaDialog.vue'
 import type { MediaItem } from '@/models/library'
 
@@ -303,10 +305,28 @@ async function saveEdits() {
         </aside>
 
         <div class="media-results">
-          <div v-if="visibleItems.length === 0" class="media-empty-state">
-            <span><v-icon icon="mdi-image-plus-outline" size="30" /></span>
-            <h2>No Media Yet</h2>
-            <p>Import images and videos to build your presentation library.</p>
+          <AsyncLoadState
+            v-if="!store.loaded"
+            :loading="store.loading"
+            :error="store.loadError"
+            label="media"
+            @retry="store.load"
+          />
+          <AsyncLoadState
+            v-if="store.loaded && store.loadError"
+            :loading="false"
+            :error="store.loadError"
+            label="updated media"
+            compact
+            class="mb-3"
+            @retry="store.load"
+          />
+          <LibraryEmptyState
+            v-if="store.loaded && visibleItems.length === 0"
+            icon="mdi-image-plus-outline"
+            title="No Media Yet"
+            message="Import images and videos to build your presentation library."
+          >
             <v-btn
               variant="flat"
               color="primary"
@@ -314,15 +334,17 @@ async function saveEdits() {
               @click="importDialogOpen = true"
               >Import Media</v-btn
             >
-          </div>
-          <div v-else-if="filteredItems.length === 0" class="media-empty-state">
-            <span><v-icon icon="mdi-image-off-outline" size="30" /></span>
-            <h2>No Media Found</h2>
-            <p>No media matches the selected type, tag, and search.</p>
+          </LibraryEmptyState>
+          <LibraryEmptyState
+            v-else-if="store.loaded && filteredItems.length === 0"
+            icon="mdi-image-off-outline"
+            title="No Media Found"
+            message="No media matches the selected type, tag, and search."
+          >
             <v-btn variant="text" color="primary" @click="clearFilters">Clear Filters</v-btn>
-          </div>
+          </LibraryEmptyState>
 
-          <div v-else class="media-grid">
+          <div v-else-if="store.loaded" class="media-grid">
             <article
               v-for="item in filteredItems"
               :key="item.id"

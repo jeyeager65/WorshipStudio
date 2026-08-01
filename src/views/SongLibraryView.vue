@@ -5,6 +5,8 @@ import { useSongsStore } from '@/stores/songs'
 import { useSettingsStore } from '@/stores/settings'
 import { useUndoStore } from '@/stores/undo'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
+import AsyncLoadState from '@/components/AsyncLoadState.vue'
+import LibraryEmptyState from '@/components/LibraryEmptyState.vue'
 import type { Song } from '@/models/song'
 
 const router = useRouter()
@@ -264,11 +266,28 @@ async function importFromOpenSong() {
         </aside>
 
         <div class="song-results">
-          <div v-if="visibleSongs.length === 0" class="songs-empty-state">
-            <span><v-icon icon="mdi-music-note-plus" size="30" /></span>
-            <h2>No Songs Yet</h2>
-            <p>Create a song or import an existing OpenSong library.</p>
-            <div class="empty-state-actions">
+          <AsyncLoadState
+            v-if="!store.loaded"
+            :loading="store.loading"
+            :error="store.loadError"
+            label="songs"
+            @retry="store.load"
+          />
+          <AsyncLoadState
+            v-if="store.loaded && store.loadError"
+            :loading="false"
+            :error="store.loadError"
+            label="updated songs"
+            compact
+            class="mb-3"
+            @retry="store.load"
+          />
+          <LibraryEmptyState
+            v-if="store.loaded && visibleSongs.length === 0"
+            icon="mdi-music-note-plus"
+            title="No Songs Yet"
+            message="Create a song or import an existing OpenSong library."
+          >
               <v-btn
                 variant="outlined"
                 color="secondary"
@@ -279,16 +298,17 @@ async function importFromOpenSong() {
               <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSong"
                 >New Song</v-btn
               >
-            </div>
-          </div>
-          <div v-else-if="filteredSongs.length === 0" class="songs-empty-state">
-            <span><v-icon icon="mdi-music-note-off" size="30" /></span>
-            <h2>No Songs Found</h2>
-            <p>No songs match the selected collection, tag, and search.</p>
+          </LibraryEmptyState>
+          <LibraryEmptyState
+            v-else-if="store.loaded && filteredSongs.length === 0"
+            icon="mdi-music-note-off"
+            title="No Songs Found"
+            message="No songs match the selected collection, tag, and search."
+          >
             <v-btn variant="text" color="primary" @click="clearFilters">Clear Filters</v-btn>
-          </div>
+          </LibraryEmptyState>
 
-          <div v-else class="song-list">
+          <div v-else-if="store.loaded" class="song-list">
             <article
               v-for="song in filteredSongs"
               :key="song.id"

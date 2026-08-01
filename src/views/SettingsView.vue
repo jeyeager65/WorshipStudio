@@ -32,6 +32,7 @@ import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 import MediaPickerDialog from '@/components/media/MediaPickerDialog.vue'
 import logoDark from '@/assets/logo-dark.png'
 import logoLight from '@/assets/logo-light.png'
+import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import type {
   ApiBibleCatalogEntry,
   CanvaStatus,
@@ -886,6 +887,14 @@ function translationSource(entry: AvailableTranslationEntry): string {
 </script>
 
 <template>
+  <AsyncLoadState
+    v-if="!store.loaded"
+    :loading="store.loading"
+    :error="store.loadError"
+    label="settings"
+    class="ma-6"
+    @retry="store.load"
+  />
   <div v-if="librarySettings && machineSettings" class="settings-layout">
     <nav class="settings-nav" aria-label="Settings sections">
       <header class="settings-nav-header">
@@ -916,6 +925,26 @@ function translationSource(entry: AvailableTranslationEntry): string {
     </nav>
 
     <div class="settings-content">
+      <AsyncLoadState
+        v-if="store.loadError"
+        :loading="false"
+        :error="store.loadError"
+        label="updated settings"
+        compact
+        class="mb-4"
+        @retry="store.load"
+      />
+      <v-alert
+        v-if="store.mutationError"
+        type="error"
+        variant="tonal"
+        density="compact"
+        closable
+        class="mb-4"
+        @click:close="store.clearMutationError"
+      >
+        Settings were not saved: {{ store.mutationError }}
+      </v-alert>
       <SettingsPageHeader
         :eyebrow="activeSectionInfo.group"
         :title="activeSectionInfo.label"

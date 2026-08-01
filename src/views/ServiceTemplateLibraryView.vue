@@ -3,6 +3,7 @@ import { computed, onMounted, ref, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
+import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import type { ServiceTemplate } from '@/models/service'
 
 const router = useRouter()
@@ -142,7 +143,32 @@ async function deleteTemplate(template: ServiceTemplate) {
         </div>
       </div>
 
-      <div v-if="templates.length === 0" class="empty-state">
+      <AsyncLoadState
+        v-if="!settingsStore.loaded"
+        :loading="settingsStore.loading"
+        :error="settingsStore.loadError"
+        label="service templates"
+        @retry="settingsStore.load"
+      />
+      <AsyncLoadState
+        v-if="settingsStore.loaded && settingsStore.loadError"
+        :loading="false"
+        :error="settingsStore.loadError"
+        label="updated service templates"
+        compact
+        class="mb-3"
+        @retry="settingsStore.load"
+      />
+      <v-alert
+        v-if="settingsStore.mutationError"
+        type="error"
+        variant="tonal"
+        density="compact"
+        class="mb-3"
+      >
+        Could not save template changes: {{ settingsStore.mutationError }}
+      </v-alert>
+      <div v-if="settingsStore.loaded && templates.length === 0" class="empty-state">
         <span><v-icon icon="mdi-file-tree-outline" size="30" /></span>
         <h2>No Service Templates Yet</h2>
         <p>Create a reusable order and staffing plan for your first service type.</p>
@@ -150,12 +176,12 @@ async function deleteTemplate(template: ServiceTemplate) {
           >New Template</v-btn
         >
       </div>
-      <div v-else-if="filteredTemplates.length === 0" class="empty-state">
+      <div v-else-if="settingsStore.loaded && filteredTemplates.length === 0" class="empty-state">
         <span><v-icon icon="mdi-file-search-outline" size="30" /></span>
         <h2>No Matching Templates</h2>
         <p>Try a different name, description, or service type.</p>
       </div>
-      <div v-else class="template-grid">
+      <div v-else-if="settingsStore.loaded" class="template-grid">
         <article
           v-for="template in filteredTemplates"
           :key="template.serviceType"
