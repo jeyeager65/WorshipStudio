@@ -6,6 +6,16 @@ use tauri::{AppHandle, Manager};
 use crate::models::MachineSettings;
 
 const MACHINE_SETTINGS_FILE: &str = "machine-settings.json";
+pub const INSTALLED_CANVA_CALLBACK_PORT: u16 = 47823;
+pub const PORTABLE_CANVA_CALLBACK_PORT: u16 = 47824;
+
+pub fn default_canva_callback_port(portable: bool) -> u16 {
+    if portable {
+        PORTABLE_CANVA_CALLBACK_PORT
+    } else {
+        INSTALLED_CANVA_CALLBACK_PORT
+    }
+}
 
 pub fn app_data_dir(app: &AppHandle) -> PathBuf {
     app.path()
@@ -90,6 +100,7 @@ fn default_machine_settings(app: &AppHandle) -> MachineSettings {
         remote_control_port: None,
         remote_control_hostname: None,
         last_remote_control_port: None,
+        canva_callback_port: Some(default_canva_callback_port(portable)),
     }
 }
 
@@ -98,7 +109,11 @@ fn default_machine_settings(app: &AppHandle) -> MachineSettings {
 pub fn load_machine_settings(app: &AppHandle) -> MachineSettings {
     let path = machine_settings_path(app);
     if let Ok(bytes) = fs::read(&path) {
-        if let Ok(settings) = serde_json::from_slice(&bytes) {
+        if let Ok(mut settings) = serde_json::from_slice::<MachineSettings>(&bytes) {
+            if settings.canva_callback_port.is_none() {
+                settings.canva_callback_port = Some(default_canva_callback_port(is_portable(app)));
+                let _ = save_machine_settings(app, &settings);
+            }
             return settings;
         }
     }
@@ -162,7 +177,7 @@ pub fn canva_auth_path(app: &AppHandle) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_configured_path;
+    use super::{default_canva_callback_port, resolve_configured_path};
     use std::path::Path;
 
     #[test]
@@ -178,5 +193,11 @@ mod tests {
             resolve_configured_path(Path::new("portable-app"), absolute.to_str().unwrap()),
             absolute
         );
+    }
+
+    #[test]
+    fn canva_callback_defaults_keep_installed_and_portable_instances_distinct() {
+        assert_eq!(default_canva_callback_port(false), 47823);
+        assert_eq!(default_canva_callback_port(true), 47824);
     }
 }

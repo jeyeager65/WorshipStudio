@@ -27,11 +27,14 @@ use tokio::sync::RwLock;
 use crate::domain::{media, people, remote};
 use crate::models::LiveSlideContent;
 use crate::paths::{
-    is_portable, library_root, load_machine_settings, local_media_root, remote_devices_path,
-    save_machine_settings,
+    default_canva_callback_port, is_portable, library_root, load_machine_settings,
+    local_media_root, remote_devices_path, save_machine_settings, INSTALLED_CANVA_CALLBACK_PORT,
+    PORTABLE_CANVA_CALLBACK_PORT,
 };
 
-pub const DEFAULT_REMOTE_SERVER_PORT: u16 = 47823;
+// 47823 and 47824 are reserved for the installed and portable Canva loopback callbacks. LAN
+// Remote Control begins after them so installed and portable copies can run together.
+pub const DEFAULT_REMOTE_SERVER_PORT: u16 = 47825;
 const AUTO_PORT_SCAN_COUNT: u16 = 20;
 
 #[derive(Default)]
@@ -60,6 +63,7 @@ pub struct RemoteServerHandle {
     live: Arc<RwLock<SharedLiveState>>,
     canva: Arc<RwLock<CanvaOAuthState>>,
     port: Arc<AtomicU16>,
+    canva_port: Arc<AtomicU16>,
     hostname: Arc<StdRwLock<Option<String>>>,
     mdns: Arc<Mutex<Option<ServiceDaemon>>>,
     pub(crate) app: AppHandle,
@@ -71,6 +75,7 @@ impl RemoteServerHandle {
             live: Arc::new(RwLock::new(SharedLiveState::default())),
             canva: Arc::new(RwLock::new(CanvaOAuthState::default())),
             port: Arc::new(AtomicU16::new(0)),
+            canva_port: Arc::new(AtomicU16::new(0)),
             hostname: Arc::new(StdRwLock::new(None)),
             mdns: Arc::new(Mutex::new(None)),
             app,
@@ -79,6 +84,13 @@ impl RemoteServerHandle {
 
     pub fn port(&self) -> Option<u16> {
         match self.port.load(Ordering::Relaxed) {
+            0 => None,
+            port => Some(port),
+        }
+    }
+
+    pub fn canva_port(&self) -> Option<u16> {
+        match self.canva_port.load(Ordering::Relaxed) {
             0 => None,
             port => Some(port),
         }
@@ -463,10 +475,15 @@ fn router(handle: RemoteServerHandle) -> Router {
     Router::new()
         .route("/", get(index_page))
         .route("/pair", get(pair))
-        .route("/canva/callback", get(canva_callback))
         .route("/api/state", get(get_state))
         .route("/api/action", post(post_action))
         .route("/api/media/{id}", get(get_media))
+        .with_state(handle)
+}
+
+fn canva_callback_router(handle: RemoteServerHandle) -> Router {
+    Router::new()
+        .route("/canva/callback", get(canva_callback))
         .with_state(handle)
 }
 
@@ -476,18 +493,50 @@ fn router(handle: RemoteServerHandle) -> Router {
 pub fn start(handle: RemoteServerHandle) {
     tauri::async_runtime::spawn(async move {
         let mut settings = load_machine_settings(&handle.app);
+        let canva_callback_port = settings
+            .canva_callback_port
+            .unwrap_or_else(|| default_canva_callback_port(is_portable(&handle.app)));
+        let canva_addr = SocketAddr::from(([127, 0, 0, 1], canva_callback_port));
+        match tokio::net::TcpListener::bind(canva_addr).await {
+            Ok(listener) => {
+                handle
+                    .canva_port
+                    .store(canva_callback_port, Ordering::Relaxed);
+                let canva_handle = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) =
+                        axum::serve(listener, canva_callback_router(canva_handle)).await
+                    {
+                        log::error!("Canva callback server stopped: {error}");
+                    }
+                });
+                log::info!("Canva callback listening on 127.0.0.1:{canva_callback_port}");
+            }
+            Err(error) => {
+                let message = format!(
+                    "Canva callback port {canva_callback_port} is unavailable. Choose another port in Settings and reload Worship Studio."
+                );
+                log::error!("{message}: {error}");
+                handle.set_canva_error(Some(message)).await;
+            }
+        }
         let configured_port = settings.remote_control_port;
         let mut candidates = Vec::new();
         if let Some(port) = configured_port {
             candidates.push(port);
         } else {
-            if let Some(port) = settings.last_remote_control_port {
+            if let Some(port) = settings.last_remote_control_port.filter(|port| {
+                *port != INSTALLED_CANVA_CALLBACK_PORT && *port != PORTABLE_CANVA_CALLBACK_PORT
+            }) {
                 candidates.push(port);
             }
             for port in DEFAULT_REMOTE_SERVER_PORT
                 ..DEFAULT_REMOTE_SERVER_PORT.saturating_add(AUTO_PORT_SCAN_COUNT)
             {
-                if !candidates.contains(&port) {
+                if port != INSTALLED_CANVA_CALLBACK_PORT
+                    && port != PORTABLE_CANVA_CALLBACK_PORT
+                    && !candidates.contains(&port)
+                {
                     candidates.push(port);
                 }
             }

@@ -29,6 +29,15 @@ export interface LibrarySettings {
     secondaryColor: string
   }
   /**
+   * One Canva Connect integration owned by the church. These credentials sync with the
+   * library so every Worship Studio computer uses the same integration. The OAuth access and
+   * refresh tokens produced when a Canva user connects remain machine-local.
+   */
+  canvaIntegration: {
+    clientId: string
+    clientSecret: string
+  }
+  /**
    * Church-chosen api.bible editions (e.g. NIV) — synced so every machine agrees on what
    * "NIV" refers to. The api.bible *key* needed to actually resolve these lives per-machine
    * in MachineSettings.apiBibleKey, since keys must never sync.
@@ -95,13 +104,15 @@ export interface MachineSettings {
   esvApiKey?: string
   /** api.bible key (scripture.api.bible) — per-machine, never synced. Same reasoning as esvApiKey. */
   apiBibleKey?: string
-  /** Canva Connect API credentials — local to this machine and never synced. */
-  canvaClientId?: string
-  canvaClientSecret?: string
-  /** Explicit Remote Control/Canva callback port. Undefined selects and remembers one automatically. */
+  /** Explicit Remote Control LAN port. Undefined selects and remembers one automatically. */
   remoteControlPort?: number
   /** Explicit mDNS hostname label. Undefined uses a computer-based installed name or the portable default. */
   remoteControlHostname?: string
   /** Internal last successful automatic port, persisted to keep paired-device URLs stable. */
   lastRemoteControlPort?: number
+  /**
+   * Exact loopback port registered as this installation's Canva OAuth redirect. Unlike Remote
+   * Control, this cannot change automatically because Canva requires an exact allow-listed URL.
+   */
+  canvaCallbackPort?: number
 }

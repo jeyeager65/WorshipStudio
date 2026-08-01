@@ -118,6 +118,8 @@ export interface CanvaStatus {
   connected: boolean
   connecting: boolean
   error?: string
+  /** Exact loopback URL this installation requires in the church's Canva integration. */
+  callbackUrl?: string
 }
 
 export interface CanvaDesign {

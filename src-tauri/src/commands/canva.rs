@@ -14,8 +14,7 @@ use crate::domain::media::MediaImportCommit;
 use crate::domain::{manifest, media};
 use crate::models::MediaItem;
 use crate::paths::{
-    app_data_dir, canva_auth_path, library_root, load_machine_settings, local_media_root, now_iso,
-    this_device_name,
+    app_data_dir, canva_auth_path, library_root, local_media_root, now_iso, this_device_name,
 };
 use crate::remote_server::{CanvaOAuthPending, RemoteServerHandle};
 
@@ -29,6 +28,7 @@ pub struct CanvaStatus {
     connected: bool,
     connecting: bool,
     error: Option<String>,
+    callback_url: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -78,19 +78,11 @@ pub struct CanvaExistingPage {
 }
 
 fn credentials(app: &AppHandle) -> Result<(String, String), String> {
-    let settings = load_machine_settings(app);
-    let id = settings
-        .canva_client_id
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    let secret = settings
-        .canva_client_secret
-        .unwrap_or_default()
-        .trim()
-        .to_string();
+    let settings = crate::commands::settings::load_library_settings(app)?;
+    let id = settings.canva_integration.client_id.trim().to_string();
+    let secret = settings.canva_integration.client_secret.trim().to_string();
     if id.is_empty() || secret.is_empty() {
-        Err("Canva credentials are not configured on this machine.".to_string())
+        Err("The church's Canva integration credentials are not configured.".to_string())
     } else {
         Ok((id, secret))
     }
@@ -107,9 +99,10 @@ fn read_tokens(app: &AppHandle) -> Option<CanvaTokens> {
     let tokens: CanvaTokens = fs::read(canva_auth_path(app))
         .ok()
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())?;
-    let configured_client_id = load_machine_settings(app)
-        .canva_client_id
-        .unwrap_or_default();
+    let configured_client_id = crate::commands::settings::load_library_settings(app)
+        .ok()?
+        .canva_integration
+        .client_id;
     (tokens.client_id == configured_client_id).then_some(tokens)
 }
 
@@ -267,7 +260,7 @@ pub async fn complete_oauth(
         .await
         .ok_or_else(|| "This Canva connection request is invalid or has expired.".to_string())?;
     let port = handle
-        .port()
+        .canva_port()
         .ok_or_else(|| "The local callback server is not available yet.".to_string())?;
     let redirect_uri = format!("http://127.0.0.1:{port}/canva/callback");
     let response = exchange_token(
@@ -305,6 +298,9 @@ pub async fn get_canva_status(
         connected: configured && read_tokens(&app).is_some(),
         connecting: server_status.0,
         error: server_status.1,
+        callback_url: server
+            .canva_port()
+            .map(|port| format!("http://127.0.0.1:{port}/canva/callback")),
     })
 }
 
@@ -314,6 +310,9 @@ pub async fn connect_canva(
     server: State<'_, RemoteServerHandle>,
 ) -> Result<(), String> {
     let (client_id, _) = credentials(&app)?;
+    let port = server
+        .canva_port()
+        .ok_or_else(|| "The local Canva callback server is not available yet.".to_string())?;
     let code_verifier = [
         uuid::Uuid::new_v4().to_string(),
         uuid::Uuid::new_v4().to_string(),
@@ -329,9 +328,6 @@ pub async fn connect_canva(
             code_verifier,
         })
         .await;
-    let port = server
-        .port()
-        .ok_or_else(|| "The local callback server is not available yet.".to_string())?;
     let redirect_uri = format!("http://127.0.0.1:{port}/canva/callback");
     let url = format!(
         "https://www.canva.com/api/oauth/authorize?code_challenge={challenge}&code_challenge_method=s256&scope={}&response_type=code&client_id={}&state={}&redirect_uri={}",

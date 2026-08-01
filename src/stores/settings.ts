@@ -13,7 +13,13 @@ export const useSettingsStore = defineStore('settings', () => {
       getAdapter().settings.getLibrarySettings(),
       getAdapter().settings.getMachineSettings(),
     ])
-    librarySettings.value = library
+    librarySettings.value = {
+      ...library,
+      // Browser-demo localStorage and older library-settings.json files predate the shared
+      // Canva integration block. Normalize once at the store boundary so every view can rely
+      // on the current shape.
+      canvaIntegration: library.canvaIntegration ?? { clientId: '', clientSecret: '' },
+    }
     machineSettings.value = machine
     loaded.value = true
   }

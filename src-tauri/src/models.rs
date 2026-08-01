@@ -524,6 +524,18 @@ pub struct Branding {
     pub secondary_color: String,
 }
 
+/// One Canva Connect integration shared by every computer using this church library. The
+/// integration identifies Worship Studio during OAuth token exchange; the access/refresh
+/// tokens authorizing an individual Canva account remain in per-machine canva-auth.json.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CanvaIntegration {
+    #[serde(default)]
+    pub client_id: String,
+    #[serde(default)]
+    pub client_secret: String,
+}
+
 /// A church-chosen api.bible edition (e.g. NIV) — synced via LibrarySettings so every machine
 /// agrees on what "NIV" refers to, even though the api.bible *key* needed to actually resolve
 /// it lives per-machine in MachineSettings (see MachineSettings::api_bible_key).
@@ -549,6 +561,8 @@ pub struct LibrarySettings {
     #[serde(default)]
     pub service_templates: Vec<ServiceTemplate>,
     pub branding: Branding,
+    #[serde(default)]
+    pub canva_integration: CanvaIntegration,
     #[serde(default)]
     pub api_bible_translations: Vec<ApiBibleTranslation>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -681,13 +695,13 @@ pub struct MachineSettings {
     /// esv_api_key above.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_bible_key: Option<String>,
-    /// Canva Connect API credentials. These are deliberately machine-local and are never
-    /// written into the synced library.
+    /// Legacy Canva Connect credentials retained only so Settings can migrate installations
+    /// created before the integration became church-wide. New saves always clear these.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub canva_client_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub canva_client_secret: Option<String>,
-    /// Explicit Remote Control/Canva callback port. Missing means automatic selection.
+    /// Explicit Remote Control LAN port. Missing means automatic selection.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub remote_control_port: Option<u16>,
     /// Explicit mDNS hostname label for Remote Control. Missing selects an installation-mode
@@ -698,6 +712,10 @@ pub struct MachineSettings {
     /// Last successful automatically selected port, kept stable across restarts when possible.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_remote_control_port: Option<u16>,
+    /// Exact loopback port registered as the Canva OAuth redirect for this installation.
+    /// Missing selects an installation-mode default (47823 installed, 47824 portable).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canva_callback_port: Option<u16>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -845,6 +863,8 @@ mod tests {
         assert_eq!(settings.slide_footer_font_size_px, 24);
         assert_eq!(settings.wayfinding_min_font_size_px, 56);
         assert_eq!(settings.wayfinding_max_font_size_px, 150);
+        assert!(settings.canva_integration.client_id.is_empty());
+        assert!(settings.canva_integration.client_secret.is_empty());
     }
 
     #[test]

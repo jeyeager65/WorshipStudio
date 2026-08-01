@@ -166,6 +166,7 @@ export const seedLibrarySettings: LibrarySettings = {
     primaryColor: '#1F3A5F',
     secondaryColor: '#C9A227',
   },
+  canvaIntegration: { clientId: '', clientSecret: '' },
   // The mock/demo adapter only ever resolves KJV (see scriptureFixtures.ts) — an ESV/api.bible
   // entry here would be exactly the disconnected-Settings-vs-real-picker bug this model shape
   // exists to prevent, so the demo's seed data doesn't pretend otherwise.
@@ -194,4 +195,5 @@ export const seedMachineSettings: MachineSettings = {
   remoteControlPort: undefined,
   remoteControlHostname: undefined,
   lastRemoteControlPort: undefined,
+  canvaCallbackPort: undefined,
 }
