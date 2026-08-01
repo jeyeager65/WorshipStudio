@@ -1,4 +1,5 @@
 pub mod canva;
+pub mod diagnostics;
 pub mod external_apps;
 pub mod files;
 pub mod media;

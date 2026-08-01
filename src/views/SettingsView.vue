@@ -42,6 +42,7 @@ import type {
   RemoteDevice,
 } from '@/adapters/types'
 import { personDisplayName } from '@/models/library'
+import { diagnosticBundleFilename, formatDiagnosticSummary } from '@/utils/diagnostics'
 
 const store = useSettingsStore()
 const router = useRouter()
@@ -338,6 +339,62 @@ const projectLinks = [
 async function openProjectLink(url: string) {
   if (getAdapter().kind === 'tauri') await openUrl(url)
   else window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+const diagnosticAction = ref<'logs' | 'copy' | 'export'>()
+const diagnosticStatus = ref('')
+const diagnosticError = ref('')
+
+async function openDiagnosticLogs() {
+  const openLogsFolder = getAdapter().diagnostics.openLogsFolder
+  if (!openLogsFolder) return
+  diagnosticAction.value = 'logs'
+  diagnosticStatus.value = ''
+  diagnosticError.value = ''
+  try {
+    await openLogsFolder()
+    diagnosticStatus.value = 'Opened the Worship Studio logs folder.'
+  } catch (error) {
+    diagnosticError.value = error instanceof Error ? error.message : 'The logs folder could not be opened.'
+  } finally {
+    diagnosticAction.value = undefined
+  }
+}
+
+async function copyDiagnosticSummary() {
+  diagnosticAction.value = 'copy'
+  diagnosticStatus.value = ''
+  diagnosticError.value = ''
+  try {
+    const summary = await getAdapter().diagnostics.getSummary()
+    await navigator.clipboard.writeText(formatDiagnosticSummary(summary))
+    diagnosticStatus.value = 'Diagnostic summary copied. Review it before sharing.'
+  } catch (error) {
+    diagnosticError.value = error instanceof Error ? error.message : 'The diagnostic summary could not be copied.'
+  } finally {
+    diagnosticAction.value = undefined
+  }
+}
+
+async function exportDiagnosticBundle() {
+  diagnosticAction.value = 'export'
+  diagnosticStatus.value = ''
+  diagnosticError.value = ''
+  try {
+    const bundle = await getAdapter().diagnostics.createBundle()
+    const result = await getAdapter().exports.saveFile({
+      suggestedName: diagnosticBundleFilename(),
+      mimeType: 'application/json',
+      extensions: ['json'],
+      bytes: new TextEncoder().encode(bundle),
+    })
+    if (result !== 'cancelled')
+      diagnosticStatus.value = 'Diagnostic bundle saved. Review it before sharing.'
+  } catch (error) {
+    diagnosticError.value = error instanceof Error ? error.message : 'The diagnostic bundle could not be exported.'
+  } finally {
+    diagnosticAction.value = undefined
+  }
 }
 
 const darkMode = computed({
@@ -1292,30 +1349,80 @@ function translationSource(entry: AvailableTranslationEntry): string {
       </template>
 
       <template v-else-if="activeSection === 'about'">
-        <div class="about-card">
-          <img :src="aboutLogo" alt="Worship Studio" class="about-logo" />
-          <div class="about-version">Version {{ appVersion || '…' }}</div>
-          <p class="about-description">
-            Worship planning and presentation software built for calm, confident operation during a
-            service.
-          </p>
+        <div class="about-stack">
+          <div class="about-card">
+            <img :src="aboutLogo" alt="Worship Studio" class="about-logo" />
+            <div class="about-version">Version {{ appVersion || '…' }}</div>
+            <p class="about-description">
+              Worship planning and presentation software built for calm, confident operation during a
+              service.
+            </p>
 
-          <div class="about-links">
-            <button
-              v-for="link in projectLinks"
-              :key="link.url"
-              type="button"
-              class="about-link"
-              @click="openProjectLink(link.url)"
-            >
-              <span class="about-link-icon"><v-icon :icon="link.icon" size="20" /></span>
-              <span class="about-link-copy">
-                <strong>{{ link.label }}</strong>
-                <small>{{ link.description }}</small>
-              </span>
-              <v-icon icon="mdi-open-in-new" size="16" class="about-link-arrow" />
-            </button>
+            <div class="about-links">
+              <button
+                v-for="link in projectLinks"
+                :key="link.url"
+                type="button"
+                class="about-link"
+                @click="openProjectLink(link.url)"
+              >
+                <span class="about-link-icon"><v-icon :icon="link.icon" size="20" /></span>
+                <span class="about-link-copy">
+                  <strong>{{ link.label }}</strong>
+                  <small>{{ link.description }}</small>
+                </span>
+                <v-icon icon="mdi-open-in-new" size="16" class="about-link-arrow" />
+              </button>
+            </div>
           </div>
+
+          <SettingsPanel
+            title="Support & diagnostics"
+            description="Collect technical details that can help investigate a problem."
+            icon="mdi-lifebuoy"
+          >
+            <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+              Diagnostics exclude settings files, church content, people, credentials, authorization
+              tokens, and device names. Log excerpts are size-limited and redacted.
+            </v-alert>
+            <div class="diagnostic-actions">
+              <v-btn
+                v-if="getAdapter().diagnostics.openLogsFolder"
+                variant="outlined"
+                prepend-icon="mdi-folder-text-outline"
+                :loading="diagnosticAction === 'logs'"
+                :disabled="!!diagnosticAction && diagnosticAction !== 'logs'"
+                @click="openDiagnosticLogs"
+              >
+                Open Logs Folder
+              </v-btn>
+              <v-btn
+                variant="tonal"
+                prepend-icon="mdi-content-copy"
+                :loading="diagnosticAction === 'copy'"
+                :disabled="!!diagnosticAction && diagnosticAction !== 'copy'"
+                @click="copyDiagnosticSummary"
+              >
+                Copy Diagnostic Summary
+              </v-btn>
+              <v-btn
+                color="primary"
+                variant="flat"
+                prepend-icon="mdi-package-down"
+                :loading="diagnosticAction === 'export'"
+                :disabled="!!diagnosticAction && diagnosticAction !== 'export'"
+                @click="exportDiagnosticBundle"
+              >
+                Export Diagnostic Bundle
+              </v-btn>
+            </div>
+            <v-alert v-if="diagnosticStatus" type="success" variant="tonal" density="compact" class="mt-4">
+              {{ diagnosticStatus }}
+            </v-alert>
+            <v-alert v-if="diagnosticError" type="error" variant="tonal" density="compact" class="mt-4">
+              {{ diagnosticError }}
+            </v-alert>
+          </SettingsPanel>
         </div>
       </template>
 
@@ -2840,6 +2947,19 @@ function translationSource(entry: AvailableTranslationEntry): string {
   border-radius: 12px;
   background: rgba(var(--v-theme-surface), 0.72);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.12);
+}
+.about-stack {
+  display: grid;
+  max-width: 760px;
+  gap: 18px;
+}
+.about-stack .about-card {
+  max-width: none;
+}
+.diagnostic-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 .about-logo {
   display: block;

@@ -51,6 +51,7 @@ interface StudioAdapter {
   externalApps: ExternalAppPort; // Windows-only — feature-detected, absent port on mac/demo
   remote: RemotePort;      // pairing, device list — Tauri-only (needs local HTTP server)
   sync: SyncPort;          // status heuristics, conflict list
+  diagnostics: DiagnosticsPort; // allowlisted support summary, redacted logs, bundle export
   exports: ExportPort;     // generated Word/PDF/Excel files and native save/open flow
 }
 ```

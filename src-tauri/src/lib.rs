@@ -19,13 +19,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            app.handle().plugin(
+                tauri_plugin_log::Builder::default()
+                    .level(log::LevelFilter::Info)
+                    .max_file_size(500_000)
+                    .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(4))
+                    .build(),
+            )?;
 
             // Remote Control's local HTTP server (design/feature-spec.md section 4) — started
             // once here rather than lazily on first use, so it's already reachable by the
@@ -75,6 +75,9 @@ pub fn run() {
             commands::files::write_text_file,
             commands::files::write_binary_file,
             commands::files::open_file,
+            commands::diagnostics::get_diagnostic_summary,
+            commands::diagnostics::create_diagnostic_bundle,
+            commands::diagnostics::open_logs_folder,
             commands::songs::list_songs,
             commands::songs::get_song,
             commands::songs::save_song,

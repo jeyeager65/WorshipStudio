@@ -308,18 +308,18 @@ Perform a focused pass for:
 
 ### Diagnostics
 
-Rust logging exists, but users need a supportable workflow.
+Status: completed August 1, 2026.
 
-Add to Settings > About or Support:
+Settings > About now provides:
 
 - Open Logs Folder
 - Copy Diagnostic Summary
 - Export Diagnostic Bundle
-- Application version and build identifier
-- Operating system and architecture
-- Configured library path, portable status, hostname, and port without exposing credentials
-- Connected display summary
-- Recent recoverable errors
+- Application version, build profile, operating system, and architecture
+- Installed/portable status, library readability and item counts, sync/recovery counts, display-assignment count, and port modes
+- Size-limited, redacted Rust log excerpts in the exported JSON bundle
+
+The diagnostic payload is allowlist-based. It deliberately excludes settings files, configured paths, church content, people records, computer/device names, network addresses, credentials, and authorization-token files. Release builds now retain up to four 500 KB local Rust logs so field reports have useful evidence without unbounded storage growth.
 
 ## Security review
 
@@ -384,7 +384,7 @@ This does not apply to user-facing imports such as OpenSong or to migrations del
 6. Credential boundary and focused security review — completed August 1, 2026
 7. Honest email/copy/mail-client workflow — completed August 1, 2026
 8. Windows E2E smoke CI and real-hardware testing
-9. Automatic updates and user-accessible diagnostics
+9. Automatic updates and user-accessible diagnostics — diagnostics completed August 1, 2026; updater pending
 10. Finalize the 1.0 persisted schemas and remove development-era compatibility code
 11. Documentation and licensing reconciliation
 12. Decide which incomplete content/import features belong before 1.0

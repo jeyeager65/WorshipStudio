@@ -416,6 +416,41 @@ export interface SyncPort {
   resolveConflict(conflictFilePath: string, keep: 'mine' | 'theirs'): Promise<void>
 }
 
+export interface DiagnosticSummary {
+  generatedAt: string
+  appVersion: string
+  buildProfile: string
+  platform: string
+  architecture: string
+  installationMode: 'installed' | 'portable' | 'browser-demo'
+  setupComplete: boolean
+  libraryReadable: boolean
+  libraryItems: {
+    songs: number
+    services: number
+    slides: number
+    media: number
+    themes: number
+    people: number
+  }
+  lastLibraryChangeAt?: string
+  syncConflictCount: number
+  recoveryIssueCount: number
+  displayAssignmentCount: number
+  remotePortMode: 'automatic' | 'configured' | 'unavailable'
+  lastRemotePort?: number
+  canvaCallbackPort?: number
+  logFileCount: number
+  logBytes: number
+}
+
+export interface DiagnosticsPort {
+  getSummary(): Promise<DiagnosticSummary>
+  createBundle(): Promise<string>
+  /** Native builds only; browser demos have no local log folder. */
+  openLogsFolder?(): Promise<void>
+}
+
 export interface GeneratedFile {
   suggestedName: string
   mimeType: string
@@ -448,5 +483,6 @@ export interface StudioAdapter {
   externalApps?: ExternalAppPort
   remote?: RemotePort
   sync: SyncPort
+  diagnostics: DiagnosticsPort
   exports: ExportPort
 }

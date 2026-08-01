@@ -7,6 +7,7 @@ import type {
   SyncStatus,
   StagedMediaFile,
   MediaImportCommit,
+  DiagnosticSummary,
 } from '@/adapters/types'
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
@@ -140,6 +141,43 @@ export function createMockAdapter(): StudioAdapter {
     }
     await songs.save(song)
     return song
+  }
+
+  async function mockDiagnosticSummary(): Promise<DiagnosticSummary> {
+    const [songItems, serviceItems, slideItems, mediaItems, themeItems, peopleItems] =
+      await Promise.all([
+        songs.list(),
+        services.list(),
+        slides.list(),
+        media.list(),
+        themes.list(),
+        people.list(),
+      ])
+    return {
+      generatedAt: new Date().toISOString(),
+      appVersion: 'Browser demo',
+      buildProfile: 'development',
+      platform: navigator.platform || 'browser',
+      architecture: 'browser',
+      installationMode: 'browser-demo',
+      setupComplete: true,
+      libraryReadable: true,
+      libraryItems: {
+        songs: songItems.length,
+        services: serviceItems.length,
+        slides: slideItems.length,
+        media: mediaItems.length,
+        themes: themeItems.length,
+        people: peopleItems.length,
+      },
+      lastLibraryChangeAt: new Date().toISOString(),
+      syncConflictCount: 0,
+      recoveryIssueCount: 0,
+      displayAssignmentCount: 2,
+      remotePortMode: 'unavailable',
+      logFileCount: 0,
+      logBytes: 0,
+    }
   }
 
   return {
@@ -363,6 +401,22 @@ export function createMockAdapter(): StudioAdapter {
       // No real Dropbox conflict artifacts to scan for in the browser demo.
       listConflicts: async () => [],
       resolveConflict: async () => {},
+    },
+    diagnostics: {
+      getSummary: mockDiagnosticSummary,
+      createBundle: async () => {
+        const summary = await mockDiagnosticSummary()
+        return JSON.stringify(
+          {
+            privacyNotice:
+              'Browser demo diagnostics contain operational summary data only. No local logs or settings files are available.',
+            summary,
+            logs: [],
+          },
+          null,
+          2,
+        )
+      },
     },
     exports: {
       saveFile: async ({ suggestedName, mimeType, bytes }) => {

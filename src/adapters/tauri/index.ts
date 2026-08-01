@@ -24,6 +24,7 @@ import type {
   CanvaStatus,
   CanvaDesign,
   CanvaImportResult,
+  DiagnosticSummary,
 } from '@/adapters/types'
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
@@ -405,6 +406,11 @@ export function createTauriAdapter(): StudioAdapter {
       listConflicts: () => invoke<ConflictedItem[]>('list_sync_conflicts'),
       resolveConflict: (conflictFilePath, keep) =>
         invoke('resolve_sync_conflict', { conflictFilePath, keep }),
+    },
+    diagnostics: {
+      getSummary: () => invoke<DiagnosticSummary>('get_diagnostic_summary'),
+      createBundle: () => invoke<string>('create_diagnostic_bundle'),
+      openLogsFolder: () => invoke('open_logs_folder'),
     },
     exports: {
       saveFile: async ({ suggestedName, extensions, bytes }, options) => {
