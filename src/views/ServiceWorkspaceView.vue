@@ -5,12 +5,15 @@ import { useRoute } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import SlideContentRenderer from '@/components/live/SlideContentRenderer.vue'
-import ScriptureReferencePicker, { type ScriptureReferenceValue } from '@/components/ScriptureReferencePicker.vue'
+import ScriptureReferencePicker, {
+  type ScriptureReferenceValue,
+} from '@/components/ScriptureReferencePicker.vue'
 import { getAdapter } from '@/adapters'
 import { useServicesStore } from '@/stores/services'
 import { useSongsStore } from '@/stores/songs'
 import { useSlidesStore } from '@/stores/slides'
 import { useMediaStore } from '@/stores/media'
+import { useThemesStore } from '@/stores/themes'
 import { useExternalAppsStore } from '@/stores/externalApps'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
@@ -20,21 +23,46 @@ import { useSettingsStore } from '@/stores/settings'
 import { usePeopleStore } from '@/stores/people'
 import { flattenService, type FlatSlide } from '@/utils/flattenService'
 import { colorForBlockLabel, colorForItemType } from '@/utils/contentColors'
-import { applySermonEdit, defaultSermonRole, findSermonItem, sermonMainReference, sermonPreacherId } from '@/utils/sermonInfo'
+import {
+  applySermonEdit,
+  defaultSermonRole,
+  findSermonItem,
+  sermonMainReference,
+  sermonPreacherId,
+} from '@/utils/sermonInfo'
 import { formatCountdown } from '@/utils/countdown'
 import { formatServiceTime } from '@/utils/serviceTime'
 import type { Service, ServiceItem, SermonPassage } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
-import type { SlideLibraryItem, MediaItem, LibrarySlide } from '@/models/library'
+import type {
+  SlideLibraryItem,
+  MediaItem,
+  LibrarySlide,
+  PresentationThemeTarget,
+} from '@/models/library'
 import { personDisplayName, sortByPreferredRole } from '@/models/library'
 import { scenePlainText } from '@/utils/slideScene'
-import type { ScripturePassage, ScriptureTranslation, LiveSlideContent, RemoteCommand } from '@/adapters/types'
+import { presentationTextEffect } from '@/utils/presentationTextEffect'
+import {
+  isPresentationThemeDefaultFor,
+  presentationThemeTargetForItem,
+  resolvePresentationTheme,
+} from '@/utils/presentationTheme'
+import { resolvePresentationFontFamily } from '@/utils/presentationFonts'
+import type {
+  ScripturePassage,
+  ScriptureTranslation,
+  LiveSlideContent,
+  LivePresentationTheme,
+  RemoteCommand,
+} from '@/adapters/types'
 
 const route = useRoute()
 const servicesStore = useServicesStore()
 const songsStore = useSongsStore()
 const slidesStore = useSlidesStore()
 const mediaStore = useMediaStore()
+const themesStore = useThemesStore()
 const externalAppsStore = useExternalAppsStore()
 const settingsStore = useSettingsStore()
 const peopleStore = usePeopleStore()
@@ -99,10 +127,19 @@ function saveServiceDetails() {
   service.value.type = editType.value
   // Only touch the sermon item if there's something to touch — editing just Date/Type on a
   // service with no sermon at all shouldn't spuriously create a blank one.
-  if (editSermonTitle.value || editKeyPassage.value || editPreacherId.value || findSermonItem(service.value)) {
+  if (
+    editSermonTitle.value ||
+    editKeyPassage.value ||
+    editPreacherId.value ||
+    findSermonItem(service.value)
+  ) {
     applySermonEdit(
       service.value,
-      { title: editSermonTitle.value, passageReference: editKeyPassage.value, preacherId: editPreacherId.value },
+      {
+        title: editSermonTitle.value,
+        passageReference: editKeyPassage.value,
+        preacherId: editPreacherId.value,
+      },
       defaultSermonRole(settingsStore.librarySettings?.serviceTemplates, service.value.type),
       settingsStore.librarySettings?.defaultTranslationCode ?? 'KJV',
     )
@@ -110,7 +147,10 @@ function saveServiceDetails() {
   serviceDetailsDialogOpen.value = false
 }
 const preacherOptions = computed(() =>
-  sortByPreferredRole(peopleStore.people, 'Preacher').map((p) => ({ title: personDisplayName(p), value: p.id })),
+  sortByPreferredRole(peopleStore.people, 'Preacher').map((p) => ({
+    title: personDisplayName(p),
+    value: p.id,
+  })),
 )
 const preacherName = computed(() => {
   const currentService = service.value
@@ -124,11 +164,11 @@ const preacherName = computed(() => {
 const serviceDateLabel = computed(() => {
   if (!service.value) return ''
   const date = new Date(`${service.value.date}T00:00:00`).toLocaleDateString(undefined, {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-      })
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  })
   const time = formatServiceTime(service.value.time)
   return time ? `${date} · ${time}` : date
 })
@@ -178,7 +218,9 @@ async function resolveScriptureItem(item: ServiceItem) {
     await Promise.all(
       item.passages
         .filter((passage) => passage.displayMode !== 'reference-only')
-        .map((passage) => resolvePassage(`${item.id}:${passage.id}`, passage.reference, passage.translation)),
+        .map((passage) =>
+          resolvePassage(`${item.id}:${passage.id}`, passage.reference, passage.translation),
+        ),
     )
   }
 }
@@ -192,13 +234,18 @@ async function updateScriptureTranslation(itemId: string, translation: string) {
   item.translation = translation
   await resolveScriptureItem(item)
 }
-async function updateSermonPassageTranslation(itemId: string, passageId: string, translation: string) {
+async function updateSermonPassageTranslation(
+  itemId: string,
+  passageId: string,
+  translation: string,
+) {
   const item = service.value?.items.find((i) => i.id === itemId)
   if (!item || item.type !== 'sermon') return
   const passage = item.passages.find((p) => p.id === passageId)
   if (!passage) return
   passage.translation = translation
-  if (passage.displayMode !== 'reference-only') await resolvePassage(`${itemId}:${passageId}`, passage.reference, translation)
+  if (passage.displayMode !== 'reference-only')
+    await resolvePassage(`${itemId}:${passageId}`, passage.reference, translation)
 }
 
 // Switching to/from reference-only after the item's already been added — same "re-resolve in
@@ -210,13 +257,18 @@ async function updateScriptureDisplayMode(itemId: string, displayMode: 'full' | 
   item.displayMode = displayMode
   if (displayMode === 'full') await resolveScriptureItem(item)
 }
-async function updateSermonPassageDisplayMode(itemId: string, passageId: string, displayMode: 'full' | 'reference-only') {
+async function updateSermonPassageDisplayMode(
+  itemId: string,
+  passageId: string,
+  displayMode: 'full' | 'reference-only',
+) {
   const item = service.value?.items.find((i) => i.id === itemId)
   if (!item || item.type !== 'sermon') return
   const passage = item.passages.find((p) => p.id === passageId)
   if (!passage) return
   passage.displayMode = displayMode
-  if (displayMode === 'full') await resolvePassage(`${itemId}:${passageId}`, passage.reference, passage.translation)
+  if (displayMode === 'full')
+    await resolvePassage(`${itemId}:${passageId}`, passage.reference, passage.translation)
 }
 
 // Resolved media file src, keyed by MediaItem id (not service item id — several service items
@@ -258,6 +310,7 @@ onMounted(async () => {
   if (!songsStore.loaded) await songsStore.load()
   if (!slidesStore.loaded) await slidesStore.load()
   if (!mediaStore.loaded) await mediaStore.load()
+  if (!themesStore.loaded) await themesStore.load()
   if (!externalAppsStore.loaded) await externalAppsStore.load()
   if (!peopleStore.loaded) await peopleStore.load()
   await loadPresentationSize()
@@ -318,14 +371,20 @@ onMounted(async () => {
     // back to the first available translation itself if this is left unset, but the church's
     // configured default (if any) should win over an arbitrary first-in-list one.
     if (defaultAvailable && defaultCode) scriptureDraft.value.translation = defaultCode
-    else if (scriptureTranslations.value.length > 0) scriptureDraft.value.translation = scriptureTranslations.value[0].code
+    else if (scriptureTranslations.value.length > 0)
+      scriptureDraft.value.translation = scriptureTranslations.value[0].code
     await Promise.all((service.value?.items ?? []).map(resolveScriptureItem))
   } catch (e) {
     console.error('Failed to load scripture translations/passages:', e)
   }
 
-  const mediaIds = (service.value?.items ?? []).filter((item) => item.type === 'media' || item.type === 'video').map((item) => item.mediaId)
-  await Promise.all(mediaIds.map(resolveMediaItem))
+  const mediaIds = (service.value?.items ?? [])
+    .filter((item) => item.type === 'media' || item.type === 'video')
+    .map((item) => item.mediaId)
+  const themeMediaIds = themesStore.themes
+    .map((theme) => theme.backgroundId)
+    .filter((id): id is string => !!id && id !== 'brand-primary' && id !== 'brand-secondary')
+  await Promise.all([...new Set([...mediaIds, ...themeMediaIds])].map(resolveMediaItem))
 })
 onUnmounted(() => {
   clearInterval(nowTickInterval)
@@ -363,7 +422,9 @@ async function saveService() {
 const songsById = computed(() => new Map(songsStore.songs.map((song) => [song.id, song])))
 const slidesById = computed(() => new Map(slidesStore.slides.map((item) => [item.id, item])))
 const mediaById = computed(() => new Map(mediaStore.items.map((item) => [item.id, item])))
-const externalAppProfilesById = computed(() => new Map(externalAppsStore.profiles.map((profile) => [profile.id, profile])))
+const externalAppProfilesById = computed(
+  () => new Map(externalAppsStore.profiles.map((profile) => [profile.id, profile])),
+)
 const scriptureFontRange = computed(() => ({
   minPx: settingsStore.librarySettings?.scriptureMinFontSizePx ?? 28,
   maxPx: settingsStore.librarySettings?.scriptureMaxFontSizePx ?? 72,
@@ -386,7 +447,32 @@ const flatSlides = computed<FlatSlide[]>(() =>
     : [],
 )
 
-const selectedItem = computed<ServiceItem | undefined>(() => service.value?.items[selectedItemIndex.value])
+const selectedItem = computed<ServiceItem | undefined>(
+  () => service.value?.items[selectedItemIndex.value],
+)
+
+const themeTargetLabels: Record<PresentationThemeTarget, string> = {
+  songs: 'Songs',
+  scripture: 'Scripture',
+  sermon: 'Sermons',
+  'text-slides': 'Text Slides',
+}
+
+function defaultThemeFor(target: PresentationThemeTarget) {
+  return themesStore.themes.find((theme) => isPresentationThemeDefaultFor(theme, target))
+}
+
+const selectedThemeTarget = computed(() => presentationThemeTargetForItem(selectedItem.value))
+const selectedDefaultTheme = computed(() =>
+  selectedThemeTarget.value ? defaultThemeFor(selectedThemeTarget.value) : undefined,
+)
+const themeOverrideOptions = computed(() => [
+  {
+    title: `Use default${selectedDefaultTheme.value ? ` — ${selectedDefaultTheme.value.name}` : ''}`,
+    value: '',
+  },
+  ...themesStore.themes.map((theme) => ({ title: theme.name, value: theme.id })),
+])
 
 // Changing a reference after the item's already been added — e.g. the operator picked the
 // wrong verse range. A local draft (rather than binding straight to the item, like bulletinLabel
@@ -399,7 +485,8 @@ watch(
   (item) => {
     if (item?.type === 'scripture') scriptureReferenceDraft.value = item.reference
     if (item?.type === 'sermon') {
-      for (const passage of item.passages) sermonPassageReferenceDrafts[passage.id] = passage.reference
+      for (const passage of item.passages)
+        sermonPassageReferenceDrafts[passage.id] = passage.reference
     }
   },
   { immediate: true },
@@ -419,7 +506,8 @@ async function commitSermonPassageReference(itemId: string, passageId: string) {
   const reference = sermonPassageReferenceDrafts[passageId]?.trim()
   if (!passage || !reference || reference === passage.reference) return
   passage.reference = reference
-  if (passage.displayMode !== 'reference-only') await resolvePassage(`${itemId}:${passageId}`, reference, passage.translation)
+  if (passage.displayMode !== 'reference-only')
+    await resolvePassage(`${itemId}:${passageId}`, reference, passage.translation)
 }
 
 const selectedSong = computed<Song | undefined>(() => {
@@ -450,7 +538,10 @@ function sermonPassageText(itemId: string, passageId: string): string {
 // varies with pagination), so their flat index can't be derived the same way slideFlatIndex
 // does for a fixed subIndex — instead, read it off this item's own already-flattened run
 // (flattenService pushes passages then outline in that exact order, see its own doc comment).
-function sermonOutlineFlatIndex(item: Extract<ServiceItem, { type: 'sermon' }>, outlineIndex: number): number {
+function sermonOutlineFlatIndex(
+  item: Extract<ServiceItem, { type: 'sermon' }>,
+  outlineIndex: number,
+): number {
   const itemSlides = flatSlides.value.filter((s) => s.itemId === item.id)
   const target = itemSlides[itemSlides.length - item.outline.length + outlineIndex]
   return target ? flatSlides.value.indexOf(target) : -1
@@ -470,7 +561,9 @@ const selectedScripturePassage = computed<ScripturePassage | undefined>(() => {
   return item?.type === 'scripture' ? scriptureById.get(item.id) : undefined
 })
 const selectedScriptureText = computed(() =>
-  selectedScripturePassage.value ? selectedScripturePassage.value.verses.map((v) => `${v.number} ${v.text}`).join(' ') : '',
+  selectedScripturePassage.value
+    ? selectedScripturePassage.value.verses.map((v) => `${v.number} ${v.text}`).join(' ')
+    : '',
 )
 const selectedScriptureError = computed<string | undefined>(() => {
   const item = selectedItem.value
@@ -548,11 +641,15 @@ function itemLabel(item: ServiceItem): string {
   if (item.type === 'slide-ref') return slidesById.value.get(item.slideId)?.label ?? 'Unknown Slide'
   if (item.type === 'media') return mediaById.value.get(item.mediaId)?.filename ?? 'Unknown Media'
   if (item.type === 'video') return mediaById.value.get(item.mediaId)?.filename ?? 'Unknown Video'
-  if (item.type === 'external-app') return externalAppProfilesById.value.get(item.profileId)?.name ?? 'Unknown App'
+  if (item.type === 'external-app')
+    return externalAppProfilesById.value.get(item.profileId)?.name ?? 'Unknown App'
   if (item.type === 'countdown') return item.text || 'Countdown'
   if (item.type === 'sermon') return item.bulletinLabel || item.title || 'Worship Through the Word'
   if (item.type === 'bulletin-note') return item.bulletinLabel || 'Bulletin Note'
-  if (item.type === 'placeholder') return item.bulletinLabel || item.label || `${placeholderTypeName(item.suggestedTab)} Placeholder`
+  if (item.type === 'placeholder')
+    return (
+      item.bulletinLabel || item.label || `${placeholderTypeName(item.suggestedTab)} Placeholder`
+    )
   return item.type
 }
 
@@ -571,7 +668,9 @@ async function removeServiceItem(index: number) {
   if (selectedItemIndex.value >= service.value.items.length) {
     selectedItemIndex.value = Math.max(0, service.value.items.length - 1)
   }
-  undoStore.push(`Removed "${label}" from the service`, () => service.value?.items.splice(index, 0, removed))
+  undoStore.push(`Removed "${label}" from the service`, () =>
+    service.value?.items.splice(index, 0, removed),
+  )
 }
 
 function blockLabelFor(blockId: string): string {
@@ -603,7 +702,9 @@ async function removeFromArrangement(index: number) {
   const label = blockLabelFor(blockId)
   if (!(await confirmDialog.confirm(`Remove "${label}" from the arrangement?`, 'Remove'))) return
   item.arrangement.sequence.splice(index, 1)
-  undoStore.push(`Removed "${label}" from arrangement`, () => item.arrangement.sequence.splice(index, 0, blockId))
+  undoStore.push(`Removed "${label}" from arrangement`, () =>
+    item.arrangement.sequence.splice(index, 0, blockId),
+  )
 }
 function addToArrangement(blockId: string) {
   const item = selectedItem.value
@@ -624,14 +725,24 @@ function describeSlide(index: number): string {
   return flatSlides.value.length === 0 ? 'Service is empty' : 'End of service'
 }
 const nextIndex = computed(() =>
-  flatIndex.value === -1 ? 0 : Math.min(flatIndex.value + 1, Math.max(flatSlides.value.length - 1, 0)),
+  flatIndex.value === -1
+    ? 0
+    : Math.min(flatIndex.value + 1, Math.max(flatSlides.value.length - 1, 0)),
 )
 const prevIndex = computed(() => Math.max(flatIndex.value - 1, 0))
 const previousDisabled = computed(() => flatSlides.value.length === 0 || flatIndex.value <= 0)
-const nextDisabled = computed(() => flatSlides.value.length === 0 || flatIndex.value >= flatSlides.value.length - 1)
-const isBlankScreen = computed(() => flatIndex.value >= 0 && flatIndex.value === flatSlides.value.length)
-const nextPreviewLabel = computed(() => (nextDisabled.value ? 'End of service' : describeSlide(nextIndex.value)))
-const prevPreviewLabel = computed(() => (previousDisabled.value ? 'Beginning of service' : describeSlide(prevIndex.value)))
+const nextDisabled = computed(
+  () => flatSlides.value.length === 0 || flatIndex.value >= flatSlides.value.length - 1,
+)
+const isBlankScreen = computed(
+  () => flatIndex.value >= 0 && flatIndex.value === flatSlides.value.length,
+)
+const nextPreviewLabel = computed(() =>
+  nextDisabled.value ? 'End of service' : describeSlide(nextIndex.value),
+)
+const prevPreviewLabel = computed(() =>
+  previousDisabled.value ? 'Beginning of service' : describeSlide(prevIndex.value),
+)
 
 function goLive(index: number) {
   flatIndex.value = index
@@ -689,12 +800,54 @@ function togglePresenting() {
   } else {
     getAdapter().live.stopPresenting()
   }
-  getAdapter().remote?.pushLiveState(isPresenting.value ? liveContentPayload.value : undefined, isPresenting.value)
+  getAdapter().remote?.pushLiveState(
+    isPresenting.value ? liveContentPayload.value : undefined,
+    isPresenting.value,
+  )
 }
 
 const liveSlide = computed(() =>
-  flatIndex.value >= 0 && flatIndex.value < flatSlides.value.length ? flatSlides.value[flatIndex.value] : undefined,
+  flatIndex.value >= 0 && flatIndex.value < flatSlides.value.length
+    ? flatSlides.value[flatIndex.value]
+    : undefined,
 )
+
+function buildPresentationTheme(slide: FlatSlide): LivePresentationTheme | undefined {
+  const theme = resolvePresentationTheme(
+    service.value?.items[slide.itemIndex],
+    slide.themeTarget,
+    themesStore.themes,
+  )
+  if (!theme) return undefined
+  const branding = settingsStore.librarySettings?.branding
+  let backgroundColor = theme.backgroundColor ?? '#000000'
+  if (theme.backgroundId === 'brand-primary') backgroundColor = branding?.primaryColor ?? '#3B5BDB'
+  else if (theme.backgroundId === 'brand-secondary')
+    backgroundColor = branding?.secondaryColor ?? '#8A5BD6'
+
+  const backgroundMediaItem = theme.backgroundId
+    ? mediaById.value.get(theme.backgroundId)
+    : undefined
+  const backgroundMediaUrl = backgroundMediaItem
+    ? mediaUrlById.get(backgroundMediaItem.id)
+    : undefined
+  return {
+    fontFamily: resolvePresentationFontFamily(theme.font),
+    textColor: theme.textColor,
+    textEffect: presentationTextEffect(theme),
+    backgroundColor,
+    backgroundMedia:
+      backgroundMediaItem && backgroundMediaUrl
+        ? {
+            url: backgroundMediaUrl,
+            mediaId: backgroundMediaItem.id,
+            kind: backgroundMediaItem.kind,
+            fit: 'cover',
+          }
+        : undefined,
+  }
+}
+
 // Shared by the live payload (sent to the presentation window/remote) and the Previous/Next
 // preview thumbnails below — same slide data, same settings, just a different destination.
 function buildLiveContent(slide: FlatSlide | undefined): LiveSlideContent | undefined {
@@ -704,6 +857,7 @@ function buildLiveContent(slide: FlatSlide | undefined): LiveSlideContent | unde
     itemLabel: slide.itemLabel,
     subLabel: slide.subLabel,
     text: slide.text,
+    presentationTheme: buildPresentationTheme(slide),
     scene: slide.scene,
     wayfindingBooks: slide.wayfindingBooks,
     bibleProgress: slide.bibleProgress,
@@ -752,7 +906,8 @@ const DEFAULT_PREVIEW_VIRTUAL_SIZE = { width: 1920, height: 1080 }
 const presentationSize = ref(DEFAULT_PREVIEW_VIRTUAL_SIZE)
 async function loadPresentationSize() {
   try {
-    presentationSize.value = (await getAdapter().live.getPresentationSize?.()) ?? DEFAULT_PREVIEW_VIRTUAL_SIZE
+    presentationSize.value =
+      (await getAdapter().live.getPresentationSize?.()) ?? DEFAULT_PREVIEW_VIRTUAL_SIZE
   } catch (e) {
     console.error('Failed to measure the presentation window size:', e)
     presentationSize.value = DEFAULT_PREVIEW_VIRTUAL_SIZE
@@ -763,7 +918,9 @@ const previewPanelRef = ref<HTMLElement>()
 const previewThumbWidth = ref(340)
 let previewResizeObserver: ResizeObserver | undefined
 const previewScale = computed(() => previewThumbWidth.value / PREVIEW_VIRTUAL_SIZE.value.width)
-const previewThumbHeight = computed(() => Math.round(PREVIEW_VIRTUAL_SIZE.value.height * previewScale.value))
+const previewThumbHeight = computed(() =>
+  Math.round(PREVIEW_VIRTUAL_SIZE.value.height * previewScale.value),
+)
 watch(liveContentPayload, (content) => {
   if (isPresenting.value) {
     // While an External App Hand-off item is live, Worship Studio's own presentation window
@@ -845,7 +1002,10 @@ function onKeydown(event: KeyboardEvent) {
       break
     case 'ArrowDown':
       event.preventDefault()
-      selectedItemIndex.value = Math.min(service.value.items.length - 1, selectedItemIndex.value + 1)
+      selectedItemIndex.value = Math.min(
+        service.value.items.length - 1,
+        selectedItemIndex.value + 1,
+      )
       break
     case 'ArrowLeft':
       event.preventDefault()
@@ -871,27 +1031,83 @@ function onKeydown(event: KeyboardEvent) {
 // The Add Item menu chooses the item type before opening its focused form. All forms still
 // share one dialog and reset path below, so selecting a type doesn't duplicate any of the
 // existing add behavior or draft state.
-type AddItemType = 'songs' | 'scripture' | 'slides' | 'media' | 'video' | 'external-app' | 'countdown' | 'sermon' | 'bulletin-note'
+type AddItemType =
+  | 'songs'
+  | 'scripture'
+  | 'slides'
+  | 'media'
+  | 'video'
+  | 'external-app'
+  | 'countdown'
+  | 'sermon'
+  | 'bulletin-note'
 const addTab = ref<AddItemType>('songs')
 const addTabOptions = computed(() => {
   const options: { title: string; description: string; icon: string; value: AddItemType }[] = [
-    { title: 'Song', description: 'Add lyrics from the song library', icon: 'mdi-music-note', value: 'songs' },
-    { title: 'Scripture', description: 'Build a passage or reference slide', icon: 'mdi-book-open-page-variant', value: 'scripture' },
-    { title: 'Slides', description: 'Use library or service-only slides', icon: 'mdi-presentation', value: 'slides' },
-    { title: 'Media', description: 'Add an image from the media library', icon: 'mdi-image-outline', value: 'media' },
-    { title: 'Video', description: 'Add a video from the media library', icon: 'mdi-movie-open-outline', value: 'video' },
+    {
+      title: 'Song',
+      description: 'Add lyrics from the song library',
+      icon: 'mdi-music-note',
+      value: 'songs',
+    },
+    {
+      title: 'Scripture',
+      description: 'Build a passage or reference slide',
+      icon: 'mdi-book-open-page-variant',
+      value: 'scripture',
+    },
+    {
+      title: 'Slides',
+      description: 'Use library or service-only slides',
+      icon: 'mdi-presentation',
+      value: 'slides',
+    },
+    {
+      title: 'Media',
+      description: 'Add an image from the media library',
+      icon: 'mdi-image-outline',
+      value: 'media',
+    },
+    {
+      title: 'Video',
+      description: 'Add a video from the media library',
+      icon: 'mdi-movie-open-outline',
+      value: 'video',
+    },
   ]
   if (getAdapter().externalApps) {
-    options.push({ title: 'External App', description: 'Hand off to a configured application', icon: 'mdi-application-outline', value: 'external-app' })
+    options.push({
+      title: 'External App',
+      description: 'Hand off to a configured application',
+      icon: 'mdi-application-outline',
+      value: 'external-app',
+    })
   }
   options.push(
-    { title: 'Countdown', description: 'Show a countdown to a target time', icon: 'mdi-timer-outline', value: 'countdown' },
-    { title: 'Sermon', description: 'Add passages and sermon outline slides', icon: 'mdi-podium', value: 'sermon' },
-    { title: 'Bulletin Note', description: 'Add a printed, non-presented item', icon: 'mdi-file-document-outline', value: 'bulletin-note' },
+    {
+      title: 'Countdown',
+      description: 'Show a countdown to a target time',
+      icon: 'mdi-timer-outline',
+      value: 'countdown',
+    },
+    {
+      title: 'Sermon',
+      description: 'Add passages and sermon outline slides',
+      icon: 'mdi-podium',
+      value: 'sermon',
+    },
+    {
+      title: 'Bulletin Note',
+      description: 'Add a printed, non-presented item',
+      icon: 'mdi-file-document-outline',
+      value: 'bulletin-note',
+    },
   )
   return options
 })
-const activeAddTypeTitle = computed(() => addTabOptions.value.find((option) => option.value === addTab.value)?.title ?? 'Item')
+const activeAddTypeTitle = computed(
+  () => addTabOptions.value.find((option) => option.value === addTab.value)?.title ?? 'Item',
+)
 
 function openAddDialog(type: AddItemType) {
   addTab.value = type
@@ -954,7 +1170,11 @@ async function addSongToService(song: Song) {
 // lives in ScriptureReferencePicker.vue (shared with the Sermon tab's passages list below,
 // which needs several independent instances of the same picker); this is just the draft value
 // plus the template ref used to read its exposed validity/resolved-passage on submit.
-const scriptureDraft = ref<ScriptureReferenceValue>({ reference: '', translation: '', displayMode: 'full' })
+const scriptureDraft = ref<ScriptureReferenceValue>({
+  reference: '',
+  translation: '',
+  displayMode: 'full',
+})
 const scripturePickerRef = ref<InstanceType<typeof ScriptureReferencePicker>>()
 const scripturePickerResetKey = ref(0)
 const scriptureTranslations = ref<ScriptureTranslation[]>([])
@@ -963,7 +1183,11 @@ const addingScripture = ref(false)
 async function addScriptureToService() {
   const picker = scripturePickerRef.value
   if (!service.value || !picker?.isValid || addingScripture.value) return
-  if (scriptureDraft.value.displayMode === 'full' && (!scriptureDraft.value.translation || picker.hasError)) return
+  if (
+    scriptureDraft.value.displayMode === 'full' &&
+    (!scriptureDraft.value.translation || picker.hasError)
+  )
+    return
   addingScripture.value = true
   try {
     const item: ServiceItem = {
@@ -974,7 +1198,8 @@ async function addScriptureToService() {
       displayMode: scriptureDraft.value.displayMode,
     }
     insertItem(item)
-    if (picker.resolvedPassage && scriptureDraft.value.displayMode === 'full') scriptureById.set(item.id, picker.resolvedPassage)
+    if (picker.resolvedPassage && scriptureDraft.value.displayMode === 'full')
+      scriptureById.set(item.id, picker.resolvedPassage)
     closeAddDialog()
   } finally {
     addingScripture.value = false
@@ -994,7 +1219,10 @@ const newTextSlideBlocks = ref<SongBlock[]>([])
 const filteredSlidesForAdd = computed(() => {
   const q = slideQuery.value.trim().toLowerCase()
   return slidesStore.slides.filter(
-    (item) => !q || item.label.toLowerCase().includes(q) || (item.tags ?? []).some((tag) => tag.toLowerCase().includes(q)),
+    (item) =>
+      !q ||
+      item.label.toLowerCase().includes(q) ||
+      (item.tags ?? []).some((tag) => tag.toLowerCase().includes(q)),
   )
 })
 
@@ -1002,7 +1230,11 @@ async function addSlideRefToService(slideItem: SlideLibraryItem) {
   if (!service.value || addingSlideRef.value) return
   addingSlideRef.value = true
   try {
-    const item: ServiceItem = { id: `item-${crypto.randomUUID()}`, type: 'slide-ref', slideId: slideItem.id }
+    const item: ServiceItem = {
+      id: `item-${crypto.randomUUID()}`,
+      type: 'slide-ref',
+      slideId: slideItem.id,
+    }
     insertItem(item)
     closeAddDialog()
   } finally {
@@ -1011,7 +1243,11 @@ async function addSlideRefToService(slideItem: SlideLibraryItem) {
 }
 
 function addNewTextSlideBlock() {
-  newTextSlideBlocks.value.push({ id: `slide-part-${crypto.randomUUID()}`, label: `Slide ${newTextSlideBlocks.value.length + 1}`, text: '' })
+  newTextSlideBlocks.value.push({
+    id: `slide-part-${crypto.randomUUID()}`,
+    label: `Slide ${newTextSlideBlocks.value.length + 1}`,
+    text: '',
+  })
 }
 async function removeNewTextSlideBlock(index: number) {
   const target = newTextSlideBlocks.value[index]
@@ -1040,18 +1276,27 @@ const addingMedia = ref(false)
 
 const filteredMediaForAdd = computed(() => {
   const q = mediaQuery.value.trim().toLowerCase()
-  return mediaStore.items.filter((item) => item.kind === 'image' && (!q || item.filename.toLowerCase().includes(q)))
+  return mediaStore.items.filter(
+    (item) => item.kind === 'image' && (!q || item.filename.toLowerCase().includes(q)),
+  )
 })
 const filteredVideoForAdd = computed(() => {
   const q = videoQuery.value.trim().toLowerCase()
-  return mediaStore.items.filter((item) => item.kind === 'video' && (!q || item.filename.toLowerCase().includes(q)))
+  return mediaStore.items.filter(
+    (item) => item.kind === 'video' && (!q || item.filename.toLowerCase().includes(q)),
+  )
 })
 
 async function addMediaToService(mediaItem: MediaItem) {
   if (!service.value || addingMedia.value) return
   addingMedia.value = true
   try {
-    const item: ServiceItem = { id: `item-${crypto.randomUUID()}`, type: 'media', mediaId: mediaItem.id, fit: mediaFit.value }
+    const item: ServiceItem = {
+      id: `item-${crypto.randomUUID()}`,
+      type: 'media',
+      mediaId: mediaItem.id,
+      fit: mediaFit.value,
+    }
     insertItem(item)
     closeAddDialog()
     await resolveMediaItem(mediaItem.id)
@@ -1063,7 +1308,11 @@ async function addVideoToService(mediaItem: MediaItem) {
   if (!service.value || addingMedia.value) return
   addingMedia.value = true
   try {
-    const item: ServiceItem = { id: `item-${crypto.randomUUID()}`, type: 'video', mediaId: mediaItem.id }
+    const item: ServiceItem = {
+      id: `item-${crypto.randomUUID()}`,
+      type: 'video',
+      mediaId: mediaItem.id,
+    }
     insertItem(item)
     closeAddDialog()
     await resolveMediaItem(mediaItem.id)
@@ -1080,8 +1329,12 @@ const externalAppProfileId = ref<string>()
 const externalAppFile = ref<string>()
 const addingExternalApp = ref(false)
 const externalAppAddError = ref<string>()
-const selectedExternalAppProfile = computed(() => externalAppProfilesById.value.get(externalAppProfileId.value ?? ''))
-const externalAppNeedsFile = computed(() => selectedExternalAppProfile.value?.parameterFormat?.includes('{file}') ?? false)
+const selectedExternalAppProfile = computed(() =>
+  externalAppProfilesById.value.get(externalAppProfileId.value ?? ''),
+)
+const externalAppNeedsFile = computed(
+  () => selectedExternalAppProfile.value?.parameterFormat?.includes('{file}') ?? false,
+)
 
 async function pickExternalAppFile() {
   const path = await getAdapter().externalApps?.pickFile()
@@ -1093,7 +1346,12 @@ async function addExternalAppToService() {
   externalAppAddError.value = undefined
   try {
     await getAdapter().externalApps?.verifyItem(externalAppProfileId.value, externalAppFile.value)
-    const item: ServiceItem = { id: `item-${crypto.randomUUID()}`, type: 'external-app', profileId: externalAppProfileId.value, file: externalAppFile.value }
+    const item: ServiceItem = {
+      id: `item-${crypto.randomUUID()}`,
+      type: 'external-app',
+      profileId: externalAppProfileId.value,
+      file: externalAppFile.value,
+    }
     insertItem(item)
     closeAddDialog()
   } catch (e) {
@@ -1114,7 +1372,12 @@ function addCountdownToService() {
   // <input type="datetime-local"> has no timezone of its own — treated as this computer's
   // local time, same as every other date the app already collects this way.
   const targetTime = new Date(countdownTargetTime.value).toISOString()
-  const item: ServiceItem = { id: `item-${crypto.randomUUID()}`, type: 'countdown', targetTime, text: countdownText.value.trim() || undefined }
+  const item: ServiceItem = {
+    id: `item-${crypto.randomUUID()}`,
+    type: 'countdown',
+    targetTime,
+    text: countdownText.value.trim() || undefined,
+  }
   insertItem(item)
   closeAddDialog()
 }
@@ -1131,7 +1394,9 @@ const sermonTitleDraft = ref('')
 const sermonPassages = ref<SermonPassageDraft[]>([])
 const sermonMainPassageId = ref<string>()
 const sermonOutlineBlocks = ref<SongBlock[]>([])
-const sermonPassagePickerRefs = ref<Record<string, InstanceType<typeof ScriptureReferencePicker> | null>>({})
+const sermonPassagePickerRefs = ref<
+  Record<string, InstanceType<typeof ScriptureReferencePicker> | null>
+>({})
 const addingSermon = ref(false)
 
 function setSermonPassageRef(id: string, el: unknown) {
@@ -1139,7 +1404,10 @@ function setSermonPassageRef(id: string, el: unknown) {
 }
 function addSermonPassage() {
   const id = `passage-${crypto.randomUUID()}`
-  sermonPassages.value.push({ id, value: { reference: '', translation: scriptureDraft.value.translation, displayMode: 'full' } })
+  sermonPassages.value.push({
+    id,
+    value: { reference: '', translation: scriptureDraft.value.translation, displayMode: 'full' },
+  })
   if (!sermonMainPassageId.value) sermonMainPassageId.value = id
 }
 async function removeSermonPassage(id: string) {
@@ -1151,7 +1419,11 @@ async function removeSermonPassage(id: string) {
   if (sermonMainPassageId.value === id) sermonMainPassageId.value = sermonPassages.value[0]?.id
 }
 function addSermonOutlineBlock() {
-  sermonOutlineBlocks.value.push({ id: `outline-${crypto.randomUUID()}`, label: `Point ${sermonOutlineBlocks.value.length + 1}`, text: '' })
+  sermonOutlineBlocks.value.push({
+    id: `outline-${crypto.randomUUID()}`,
+    label: `Point ${sermonOutlineBlocks.value.length + 1}`,
+    text: '',
+  })
 }
 async function removeSermonOutlineBlock(index: number) {
   const target = sermonOutlineBlocks.value[index]
@@ -1159,7 +1431,9 @@ async function removeSermonOutlineBlock(index: number) {
   if (!(await confirmDialog.confirm(`Remove "${target.label}"?`, 'Remove'))) return
   sermonOutlineBlocks.value.splice(index, 1)
 }
-const sermonPassagesValid = computed(() => sermonPassages.value.every((p) => sermonPassagePickerRefs.value[p.id]?.isValid))
+const sermonPassagesValid = computed(() =>
+  sermonPassages.value.every((p) => sermonPassagePickerRefs.value[p.id]?.isValid),
+)
 
 async function addSermonToService() {
   if (
@@ -1190,7 +1464,8 @@ async function addSermonToService() {
     insertItem(item)
     for (const passage of sermonPassages.value) {
       const resolved = sermonPassagePickerRefs.value[passage.id]?.resolvedPassage
-      if (resolved && passage.value.displayMode === 'full') scriptureById.set(`${item.id}:${passage.id}`, resolved)
+      if (resolved && passage.value.displayMode === 'full')
+        scriptureById.set(`${item.id}:${passage.id}`, resolved)
     }
     closeAddDialog()
   } finally {
@@ -1275,7 +1550,9 @@ function updateItemRole(itemId: string, role: string | undefined) {
   const item = service.value?.items.find((i) => i.id === itemId)
   if (item) item.role = role
 }
-const rolePersonOptions = computed(() => peopleStore.people.map((p) => ({ title: personDisplayName(p), value: p.id })))
+const rolePersonOptions = computed(() =>
+  peopleStore.people.map((p) => ({ title: personDisplayName(p), value: p.id })),
+)
 function assignedPersonId(role: string | undefined): string | undefined {
   return service.value?.assignments?.find((a) => a.role === role)?.personId
 }
@@ -1295,7 +1572,14 @@ function updateRolePerson(role: string, personId: string | undefined) {
   <div v-if="service" class="workspace-root">
     <div class="workspace-toolbar">
       <div class="workspace-service-context">
-        <v-btn icon="mdi-arrow-left" variant="text" size="small" to="/" class="service-back-button" aria-label="Back to services" />
+        <v-btn
+          icon="mdi-arrow-left"
+          variant="text"
+          size="small"
+          to="/"
+          class="service-back-button"
+          aria-label="Back to services"
+        />
         <span class="workspace-service-icon"><v-icon icon="mdi-church-outline" size="22" /></span>
         <div class="workspace-service-heading">
           <div class="workspace-title-line">
@@ -1303,7 +1587,9 @@ function updateRolePerson(role: string, personId: string | undefined) {
             <span v-if="isPresenting" class="presenting-badge"><i />Live</span>
           </div>
           <div class="workspace-service-metadata">
-            <span class="workspace-service-date"><v-icon icon="mdi-calendar-clock-outline" size="16" />{{ serviceDateLabel }}</span>
+            <span class="workspace-service-date"
+              ><v-icon icon="mdi-calendar-clock-outline" size="16" />{{ serviceDateLabel }}</span
+            >
             <span v-if="serviceSubtitle" class="workspace-service-sermon">
               <v-icon icon="mdi-book-open-page-variant-outline" size="16" />{{ serviceSubtitle }}
             </span>
@@ -1321,7 +1607,11 @@ function updateRolePerson(role: string, personId: string | undefined) {
         />
       </div>
       <div class="workspace-actions">
-        <v-btn variant="tonal" prepend-icon="mdi-account-group-outline" :to="`/service/${service.id}/assignments`">
+        <v-btn
+          variant="tonal"
+          prepend-icon="mdi-account-group-outline"
+          :to="`/service/${service.id}/assignments`"
+        >
           Assignments
         </v-btn>
         <v-btn
@@ -1332,7 +1622,12 @@ function updateRolePerson(role: string, personId: string | undefined) {
           Bulletin
         </v-btn>
         <span class="action-divider" />
-        <v-btn :color="isPresenting ? 'error' : 'primary'" variant="flat" class="present-button" @click="togglePresenting">
+        <v-btn
+          :color="isPresenting ? 'error' : 'primary'"
+          variant="flat"
+          class="present-button"
+          @click="togglePresenting"
+        >
           <v-icon :icon="isPresenting ? 'mdi-stop' : 'mdi-play'" start />
           {{ isPresenting ? 'Stop Presenting' : 'Start Presenting' }}
         </v-btn>
@@ -1344,7 +1639,9 @@ function updateRolePerson(role: string, personId: string | undefined) {
         <div class="service-panel-header">
           <div>
             <div class="panel-title">Order of Service</div>
-            <div class="panel-subtitle">{{ service.items.length }} item{{ service.items.length === 1 ? '' : 's' }}</div>
+            <div class="panel-subtitle">
+              {{ service.items.length }} item{{ service.items.length === 1 ? '' : 's' }}
+            </div>
           </div>
           <v-btn
             :icon="reorderMode ? 'mdi-check' : 'mdi-swap-vertical'"
@@ -1356,11 +1653,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
         </div>
         <v-menu location="bottom" :close-on-content-click="true">
           <template #activator="{ props }">
-            <button
-              v-bind="props"
-              type="button"
-              class="add-service-button"
-            >
+            <button v-bind="props" type="button" class="add-service-button">
               <span class="add-service-button-main">
                 <v-icon icon="mdi-plus" size="20" />
                 <span>Add Item</span>
@@ -1394,14 +1687,27 @@ function updateRolePerson(role: string, personId: string | undefined) {
               v-for="(item, index) in service.items"
               :key="item.id"
               class="service-item"
-              :class="{ 'service-item--selected': index === selectedItemIndex, 'service-item--live': itemHasLive(index) }"
+              :class="{
+                'service-item--selected': index === selectedItemIndex,
+                'service-item--live': itemHasLive(index),
+              }"
               @click="selectedItemIndex = index"
             >
               <span class="service-item-index">{{ index + 1 }}</span>
-              <v-icon icon="mdi-drag-vertical" class="service-item-drag-handle" size="small" style="cursor: grab" />
+              <v-icon
+                icon="mdi-drag-vertical"
+                class="service-item-drag-handle"
+                size="small"
+                style="cursor: grab"
+              />
               <div class="flex-grow-1" style="min-width: 0">
-                <div :class="{ 'font-italic': item.type === 'placeholder' }">{{ serviceOrderPrimaryLabel(item) }}</div>
-                <div v-if="serviceOrderSecondaryLabel(item)" class="text-caption text-medium-emphasis">
+                <div :class="{ 'font-italic': item.type === 'placeholder' }">
+                  {{ serviceOrderPrimaryLabel(item) }}
+                </div>
+                <div
+                  v-if="serviceOrderSecondaryLabel(item)"
+                  class="text-caption text-medium-emphasis"
+                >
                   {{ serviceOrderSecondaryLabel(item) }}
                 </div>
               </div>
@@ -1412,18 +1718,30 @@ function updateRolePerson(role: string, personId: string | undefined) {
               v-for="(item, index) in service.items"
               :key="item.id"
               class="service-item"
-              :class="{ 'service-item--selected': index === selectedItemIndex, 'service-item--live': itemHasLive(index) }"
+              :class="{
+                'service-item--selected': index === selectedItemIndex,
+                'service-item--live': itemHasLive(index),
+              }"
               @click="selectedItemIndex = index"
             >
               <span class="service-item-index">{{ index + 1 }}</span>
-              <span class="service-item-icon" :style="{ color: `rgb(var(--v-theme-${itemColor(item)}))` }">
+              <span
+                class="service-item-icon"
+                :style="{ color: `rgb(var(--v-theme-${itemColor(item)}))` }"
+              >
                 <v-icon :icon="itemIcon(item)" size="17" />
               </span>
               <div class="flex-grow-1" style="min-width: 0">
-                <div class="service-item-title" :class="{ 'font-italic': item.type === 'placeholder' }">
+                <div
+                  class="service-item-title"
+                  :class="{ 'font-italic': item.type === 'placeholder' }"
+                >
                   {{ serviceOrderPrimaryLabel(item) }}
                 </div>
-                <div v-if="serviceOrderSecondaryLabel(item)" class="text-caption text-medium-emphasis">
+                <div
+                  v-if="serviceOrderSecondaryLabel(item)"
+                  class="text-caption text-medium-emphasis"
+                >
                   {{ serviceOrderSecondaryLabel(item) }}
                 </div>
               </div>
@@ -1468,10 +1786,17 @@ function updateRolePerson(role: string, personId: string | undefined) {
                 :key="index"
                 class="slide-row"
                 :class="{ 'slide-row--live': flatIndex === slideFlatIndex(selectedItem.id, index) }"
-                :style="slideRowStyle(blockId, flatIndex === slideFlatIndex(selectedItem.id, index))"
+                :style="
+                  slideRowStyle(blockId, flatIndex === slideFlatIndex(selectedItem.id, index))
+                "
                 @click="goLive(slideFlatIndex(selectedItem.id, index))"
               >
-                <v-icon icon="mdi-drag-vertical" class="drag-handle" size="small" style="cursor: grab" />
+                <v-icon
+                  icon="mdi-drag-vertical"
+                  class="drag-handle"
+                  size="small"
+                  style="cursor: grab"
+                />
                 <div class="flex-grow-1" style="min-width: 0">
                   <div class="text-body-2 font-weight-bold">
                     {{ selectedSong.blocks.find((b) => b.id === blockId)?.label ?? blockId }}
@@ -1504,7 +1829,12 @@ function updateRolePerson(role: string, personId: string | undefined) {
               >
                 {{ block.label }}
               </v-chip>
-              <v-btn variant="flat" color="secondary" size="small" @click="resetArrangementToDefault">
+              <v-btn
+                variant="flat"
+                color="secondary"
+                size="small"
+                @click="resetArrangementToDefault"
+              >
                 Reset to song default
               </v-btn>
             </div>
@@ -1527,7 +1857,10 @@ function updateRolePerson(role: string, personId: string | undefined) {
               density="compact"
               divided
               class="mb-2"
-              @update:model-value="(value: 'full' | 'reference-only') => updateScriptureDisplayMode(selectedItem!.id, value)"
+              @update:model-value="
+                (value: 'full' | 'reference-only') =>
+                  updateScriptureDisplayMode(selectedItem!.id, value)
+              "
             >
               <v-btn value="full" size="small">Show Full Text</v-btn>
               <v-btn value="reference-only" size="small">Reference Only</v-btn>
@@ -1543,7 +1876,9 @@ function updateRolePerson(role: string, personId: string | undefined) {
               density="compact"
               style="max-width: 300px"
               class="mb-2"
-              @update:model-value="(value: string) => updateScriptureTranslation(selectedItem!.id, value)"
+              @update:model-value="
+                (value: string) => updateScriptureTranslation(selectedItem!.id, value)
+              "
             />
             <div
               class="slide-row"
@@ -1560,10 +1895,15 @@ function updateRolePerson(role: string, personId: string | undefined) {
               ]"
               @click="goLive(flatSlides.findIndex((s) => s.itemIndex === selectedItemIndex))"
             >
-              <div v-if="selectedItem.displayMode === 'reference-only'" class="text-body-2 text-medium-emphasis">
+              <div
+                v-if="selectedItem.displayMode === 'reference-only'"
+                class="text-body-2 text-medium-emphasis"
+              >
                 Reference only — no verse text shown.
               </div>
-              <div v-else-if="selectedScriptureError" class="text-body-2 text-error">{{ selectedScriptureError }}</div>
+              <div v-else-if="selectedScriptureError" class="text-body-2 text-error">
+                {{ selectedScriptureError }}
+              </div>
               <template v-else-if="selectedScripturePassage">
                 <div class="text-body-2">{{ selectedScriptureText }}</div>
               </template>
@@ -1571,9 +1911,18 @@ function updateRolePerson(role: string, personId: string | undefined) {
             </div>
           </template>
 
-          <template v-else-if="selectedItem.type === 'slide-ref' || selectedItem.type === 'text-slide'">
-            <p v-if="!selectedSlideGroup || selectedSlideGroup.length === 0" class="text-medium-emphasis">
-              {{ selectedItem.type === 'slide-ref' ? 'Slide not found in the library.' : 'No slides yet.' }}
+          <template
+            v-else-if="selectedItem.type === 'slide-ref' || selectedItem.type === 'text-slide'"
+          >
+            <p
+              v-if="!selectedSlideGroup || selectedSlideGroup.length === 0"
+              class="text-medium-emphasis"
+            >
+              {{
+                selectedItem.type === 'slide-ref'
+                  ? 'Slide not found in the library.'
+                  : 'No slides yet.'
+              }}
             </p>
             <div v-else class="d-flex flex-column ga-1" style="max-width: 460px">
               <div
@@ -1594,7 +1943,9 @@ function updateRolePerson(role: string, personId: string | undefined) {
               >
                 <div class="flex-grow-1" style="min-width: 0">
                   <div class="text-body-2 font-weight-bold">{{ slide.label }}</div>
-                  <div class="text-body-2" style="white-space: pre-line; opacity: 0.75">{{ slideGroupText(slide) }}</div>
+                  <div class="text-body-2" style="white-space: pre-line; opacity: 0.75">
+                    {{ slideGroupText(slide) }}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1616,9 +1967,22 @@ function updateRolePerson(role: string, personId: string | undefined) {
               ]"
               @click="goLive(flatSlides.findIndex((s) => s.itemIndex === selectedItemIndex))"
             >
-              <div v-if="selectedMediaError" class="text-body-2 text-error">{{ selectedMediaError }}</div>
-              <img v-else-if="selectedMediaUrl && selectedItem.type === 'media'" :src="selectedMediaUrl" class="media-preview" alt="" />
-              <video v-else-if="selectedMediaUrl" :src="selectedMediaUrl" class="media-preview" muted controls />
+              <div v-if="selectedMediaError" class="text-body-2 text-error">
+                {{ selectedMediaError }}
+              </div>
+              <img
+                v-else-if="selectedMediaUrl && selectedItem.type === 'media'"
+                :src="selectedMediaUrl"
+                class="media-preview"
+                alt=""
+              />
+              <video
+                v-else-if="selectedMediaUrl"
+                :src="selectedMediaUrl"
+                class="media-preview"
+                muted
+                controls
+              />
               <div v-else class="text-body-2 text-medium-emphasis">Loading…</div>
             </div>
           </template>
@@ -1640,14 +2004,19 @@ function updateRolePerson(role: string, personId: string | undefined) {
               @click="goLive(flatSlides.findIndex((s) => s.itemIndex === selectedItemIndex))"
             >
               <div v-if="selectedItem.text" class="text-body-2 mb-1">{{ selectedItem.text }}</div>
-              <div class="text-h5 font-weight-bold">{{ formatCountdown(selectedItem.targetTime, nowTick) }}</div>
+              <div class="text-h5 font-weight-bold">
+                {{ formatCountdown(selectedItem.targetTime, nowTick) }}
+              </div>
             </div>
           </template>
 
           <template v-else-if="selectedItem.type === 'sermon'">
             <div v-for="(passage, index) in selectedItem.passages" :key="passage.id" class="mb-3">
               <div class="text-caption font-weight-bold text-medium-emphasis mb-1">
-                Passage {{ index + 1 }}<span v-if="passage.id === selectedItem.mainPassageId"> · Main (printed in the bulletin)</span>
+                Passage {{ index + 1
+                }}<span v-if="passage.id === selectedItem.mainPassageId">
+                  · Main (printed in the bulletin)</span
+                >
               </div>
               <v-text-field
                 v-model="sermonPassageReferenceDrafts[passage.id]"
@@ -1665,7 +2034,10 @@ function updateRolePerson(role: string, personId: string | undefined) {
                 density="compact"
                 divided
                 class="mb-2"
-                @update:model-value="(value: 'full' | 'reference-only') => updateSermonPassageDisplayMode(selectedItem!.id, passage.id, value)"
+                @update:model-value="
+                  (value: 'full' | 'reference-only') =>
+                    updateSermonPassageDisplayMode(selectedItem!.id, passage.id, value)
+                "
               >
                 <v-btn value="full" size="small">Show Full Text</v-btn>
                 <v-btn value="reference-only" size="small">Reference Only</v-btn>
@@ -1681,7 +2053,10 @@ function updateRolePerson(role: string, personId: string | undefined) {
                 density="compact"
                 style="max-width: 300px"
                 class="mb-2"
-                @update:model-value="(value: string) => updateSermonPassageTranslation(selectedItem!.id, passage.id, value)"
+                @update:model-value="
+                  (value: string) =>
+                    updateSermonPassageTranslation(selectedItem!.id, passage.id, value)
+                "
               />
               <div
                 class="slide-row"
@@ -1691,27 +2066,39 @@ function updateRolePerson(role: string, personId: string | undefined) {
                   paddingLeft: '9px',
                 }"
               >
-                <div v-if="passage.displayMode === 'reference-only'" class="text-body-2 text-medium-emphasis">
+                <div
+                  v-if="passage.displayMode === 'reference-only'"
+                  class="text-body-2 text-medium-emphasis"
+                >
                   Reference only — no verse text shown.
                 </div>
-                <div v-else-if="scriptureErrors.get(`${selectedItem.id}:${passage.id}`)" class="text-body-2 text-error">
+                <div
+                  v-else-if="scriptureErrors.get(`${selectedItem.id}:${passage.id}`)"
+                  class="text-body-2 text-error"
+                >
                   {{ scriptureErrors.get(`${selectedItem.id}:${passage.id}`) }}
                 </div>
                 <template v-else-if="scriptureById.get(`${selectedItem.id}:${passage.id}`)">
-                  <div class="text-body-2">{{ sermonPassageText(selectedItem.id, passage.id) }}</div>
+                  <div class="text-body-2">
+                    {{ sermonPassageText(selectedItem.id, passage.id) }}
+                  </div>
                 </template>
                 <div v-else class="text-body-2 text-medium-emphasis">Loading…</div>
               </div>
             </div>
 
             <div class="text-overline text-medium-emphasis mt-4 mb-2">Outline</div>
-            <p v-if="selectedItem.outline.length === 0" class="text-medium-emphasis">No outline yet.</p>
+            <p v-if="selectedItem.outline.length === 0" class="text-medium-emphasis">
+              No outline yet.
+            </p>
             <div v-else class="d-flex flex-column ga-1" style="max-width: 460px">
               <div
                 v-for="(block, index) in selectedItem.outline"
                 :key="block.id"
                 class="slide-row"
-                :class="{ 'slide-row--live': flatIndex === sermonOutlineFlatIndex(selectedItem, index) }"
+                :class="{
+                  'slide-row--live': flatIndex === sermonOutlineFlatIndex(selectedItem, index),
+                }"
                 :style="
                   flatIndex === sermonOutlineFlatIndex(selectedItem, index)
                     ? undefined
@@ -1725,7 +2112,9 @@ function updateRolePerson(role: string, personId: string | undefined) {
               >
                 <div class="flex-grow-1" style="min-width: 0">
                   <div class="text-body-2 font-weight-bold">{{ block.label }}</div>
-                  <div class="text-caption text-medium-emphasis text-truncate">{{ block.text }}</div>
+                  <div class="text-caption text-medium-emphasis text-truncate">
+                    {{ block.text }}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1733,7 +2122,9 @@ function updateRolePerson(role: string, personId: string | undefined) {
 
           <template v-else-if="selectedItem.type === 'bulletin-note'">
             <div class="bulletin-only-callout">
-              <span class="bulletin-only-icon"><v-icon icon="mdi-file-document-outline" size="20" /></span>
+              <span class="bulletin-only-icon"
+                ><v-icon icon="mdi-file-document-outline" size="20"
+              /></span>
               <div>
                 <div class="font-weight-bold text-body-2">Printed service item</div>
                 <div class="text-caption text-medium-emphasis">
@@ -1746,11 +2137,18 @@ function updateRolePerson(role: string, personId: string | undefined) {
           <template v-else-if="selectedItem.type === 'placeholder'">
             <div
               class="slide-row"
-              style="max-width: 460px; background: rgba(var(--v-theme-amber), 0.08); border-left: 3px solid rgb(var(--v-theme-amber)); padding-left: 9px"
+              style="
+                max-width: 460px;
+                background: rgba(var(--v-theme-amber), 0.08);
+                border-left: 3px solid rgb(var(--v-theme-amber));
+                padding-left: 9px;
+              "
             >
               <div class="flex-grow-1" style="min-width: 0">
                 <div class="text-body-2 font-weight-bold">{{ selectedItem.label }}</div>
-                <div class="text-body-2 text-medium-emphasis">This slot hasn't been filled in yet.</div>
+                <div class="text-body-2 text-medium-emphasis">
+                  This slot hasn't been filled in yet.
+                </div>
               </div>
             </div>
             <v-btn
@@ -1785,6 +2183,26 @@ function updateRolePerson(role: string, personId: string | undefined) {
           </template>
 
           <div class="property-inspector">
+            <section v-if="selectedThemeTarget" class="property-section">
+              <div class="property-section-title">Presentation</div>
+              <label class="property-row property-row--top">
+                <span>
+                  Theme
+                  <small>{{ themeTargetLabels[selectedThemeTarget] }}</small>
+                </span>
+                <v-select
+                  :model-value="selectedItem.themeId ?? ''"
+                  :items="themeOverrideOptions"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  @update:model-value="
+                    (value: string) => (selectedItem!.themeId = value || undefined)
+                  "
+                />
+              </label>
+            </section>
+
             <section class="property-section">
               <div class="property-section-title">Order of Worship</div>
               <label class="property-row">
@@ -1795,8 +2213,15 @@ function updateRolePerson(role: string, personId: string | undefined) {
                   density="compact"
                   clearable
                   hide-details
-                  :placeholder="selectedItem.type === 'bulletin-note' ? 'Bulletin heading' : 'Use default heading'"
-                  @update:model-value="(value: string | undefined) => (selectedItem!.bulletinLabel = value || undefined)"
+                  :placeholder="
+                    selectedItem.type === 'bulletin-note'
+                      ? 'Bulletin heading'
+                      : 'Use default heading'
+                  "
+                  @update:model-value="
+                    (value: string | undefined) =>
+                      (selectedItem!.bulletinLabel = value || undefined)
+                  "
                 />
               </label>
               <label class="property-row property-row--top">
@@ -1808,7 +2233,9 @@ function updateRolePerson(role: string, personId: string | undefined) {
                   hide-details
                   rows="2"
                   placeholder="Optional printed note"
-                  @update:model-value="(value: string) => (selectedItem!.bulletinNote = value || undefined)"
+                  @update:model-value="
+                    (value: string) => (selectedItem!.bulletinNote = value || undefined)
+                  "
                 />
               </label>
             </section>
@@ -1825,7 +2252,9 @@ function updateRolePerson(role: string, personId: string | undefined) {
                   clearable
                   hide-details
                   placeholder="No role"
-                  @update:model-value="(value: string | undefined) => updateItemRole(selectedItem!.id, value)"
+                  @update:model-value="
+                    (value: string | undefined) => updateItemRole(selectedItem!.id, value)
+                  "
                 />
               </label>
               <label v-if="selectedItem.role" class="property-row">
@@ -1838,7 +2267,9 @@ function updateRolePerson(role: string, personId: string | undefined) {
                   clearable
                   hide-details
                   placeholder="Not assigned"
-                  @update:model-value="(value: string | undefined) => updateRolePerson(selectedItem!.role!, value)"
+                  @update:model-value="
+                    (value: string | undefined) => updateRolePerson(selectedItem!.role!, value)
+                  "
                 />
               </label>
             </section>
@@ -1854,7 +2285,9 @@ function updateRolePerson(role: string, personId: string | undefined) {
                   hide-details
                   rows="2"
                   placeholder="Only visible to the operator"
-                  @update:model-value="(value: string) => updatePresenterNote(selectedItem!.id, value)"
+                  @update:model-value="
+                    (value: string) => updatePresenterNote(selectedItem!.id, value)
+                  "
                 />
               </label>
             </section>
@@ -1894,7 +2327,13 @@ function updateRolePerson(role: string, personId: string | undefined) {
 
     <!-- External App Hand-off failure — operator-only, never shown to the congregation (spec
          section 12); the audience display stays on whatever was live before. -->
-    <v-alert v-if="externalAppError" type="warning" variant="elevated" density="compact" class="external-app-alert">
+    <v-alert
+      v-if="externalAppError"
+      type="warning"
+      variant="elevated"
+      density="compact"
+      class="external-app-alert"
+    >
       <div class="d-flex align-center ga-3">
         <span>⚠️ {{ externalAppError }}</span>
         <v-spacer />
@@ -1904,7 +2343,12 @@ function updateRolePerson(role: string, personId: string | undefined) {
     </v-alert>
 
     <div class="live-footer">
-      <button type="button" class="transport-destination transport-destination--previous" :disabled="previousDisabled" @click="previous">
+      <button
+        type="button"
+        class="transport-destination transport-destination--previous"
+        :disabled="previousDisabled"
+        @click="previous"
+      >
         <v-icon icon="mdi-chevron-left" size="25" />
         <span class="destination-copy">
           <small>Previous</small>
@@ -1950,7 +2394,12 @@ function updateRolePerson(role: string, personId: string | undefined) {
         </div>
       </div>
 
-      <button type="button" class="transport-destination transport-destination--next" :disabled="nextDisabled" @click="next">
+      <button
+        type="button"
+        class="transport-destination transport-destination--next"
+        :disabled="nextDisabled"
+        @click="next"
+      >
         <kbd>→</kbd>
         <span class="destination-copy">
           <small>Next</small>
@@ -1969,10 +2418,22 @@ function updateRolePerson(role: string, personId: string | undefined) {
               <v-text-field v-model="editDate" type="date" label="Date" variant="outlined" />
             </v-col>
             <v-col cols="6">
-              <v-text-field v-model="editTime" type="time" step="300" label="Start Time" variant="outlined" clearable />
+              <v-text-field
+                v-model="editTime"
+                type="time"
+                step="300"
+                label="Start Time"
+                variant="outlined"
+                clearable
+              />
             </v-col>
           </v-row>
-          <v-select v-model="editType" :items="settingsStore.librarySettings?.serviceTypes ?? []" label="Type" variant="outlined" />
+          <v-select
+            v-model="editType"
+            :items="settingsStore.librarySettings?.serviceTypes ?? []"
+            label="Type"
+            variant="outlined"
+          />
           <v-text-field
             v-model="editSermonTitle"
             label="Sermon Title (optional)"
@@ -2048,7 +2509,11 @@ function updateRolePerson(role: string, personId: string | undefined) {
                 variant="flat"
                 color="primary"
                 block
-                :disabled="!scripturePickerRef?.isValid || (scriptureDraft.displayMode === 'full' && (!scriptureDraft.translation || scripturePickerRef?.hasError))"
+                :disabled="
+                  !scripturePickerRef?.isValid ||
+                  (scriptureDraft.displayMode === 'full' &&
+                    (!scriptureDraft.translation || scripturePickerRef?.hasError))
+                "
                 :loading="addingScripture"
                 @click="addScriptureToService"
               >
@@ -2057,7 +2522,13 @@ function updateRolePerson(role: string, personId: string | undefined) {
             </v-window-item>
 
             <v-window-item value="slides">
-              <v-btn-toggle v-model="slidesSubMode" mandatory density="compact" divided class="mb-4">
+              <v-btn-toggle
+                v-model="slidesSubMode"
+                mandatory
+                density="compact"
+                divided
+                class="mb-4"
+              >
                 <v-btn value="pick" size="small">Pick from Library</v-btn>
                 <v-btn value="new" size="small">+ New Text Slides</v-btn>
               </v-btn-toggle>
@@ -2076,11 +2547,20 @@ function updateRolePerson(role: string, personId: string | undefined) {
                     v-for="slideItem in filteredSlidesForAdd"
                     :key="slideItem.id"
                     :title="slideItem.label"
-                    :subtitle="slideItem.slides.length === 1 ? '1 slide' : `${slideItem.slides.length} slides`"
+                    :subtitle="
+                      slideItem.slides.length === 1
+                        ? '1 slide'
+                        : `${slideItem.slides.length} slides`
+                    "
                     @click="addSlideRefToService(slideItem)"
                   />
                 </v-list>
-                <p v-if="filteredSlidesForAdd.length === 0" class="text-medium-emphasis text-body-2">No slides found.</p>
+                <p
+                  v-if="filteredSlidesForAdd.length === 0"
+                  class="text-medium-emphasis text-body-2"
+                >
+                  No slides found.
+                </p>
               </template>
 
               <template v-else>
@@ -2093,10 +2573,26 @@ function updateRolePerson(role: string, personId: string | undefined) {
                   :animation="150"
                   class="d-flex flex-column ga-2 mb-3"
                 >
-                  <v-card v-for="(block, index) in newTextSlideBlocks" :key="block.id" variant="outlined" rounded="lg">
+                  <v-card
+                    v-for="(block, index) in newTextSlideBlocks"
+                    :key="block.id"
+                    variant="outlined"
+                    rounded="lg"
+                  >
                     <div class="d-flex align-center ga-2 px-2 py-1 border-b">
-                      <v-icon icon="mdi-drag-vertical" class="drag-handle" size="small" style="cursor: grab" />
-                      <v-text-field v-model="block.label" variant="filled" density="compact" hide-details class="flex-grow-1" />
+                      <v-icon
+                        icon="mdi-drag-vertical"
+                        class="drag-handle"
+                        size="small"
+                        style="cursor: grab"
+                      />
+                      <v-text-field
+                        v-model="block.label"
+                        variant="filled"
+                        density="compact"
+                        hide-details
+                        class="flex-grow-1"
+                      />
                       <v-btn
                         icon="mdi-trash-can-outline"
                         variant="flat"
@@ -2105,10 +2601,24 @@ function updateRolePerson(role: string, personId: string | undefined) {
                         @click="removeNewTextSlideBlock(index)"
                       />
                     </div>
-                    <v-textarea v-model="block.text" variant="filled" density="compact" rows="2" auto-grow hide-details class="px-2 py-1" />
+                    <v-textarea
+                      v-model="block.text"
+                      variant="filled"
+                      density="compact"
+                      rows="2"
+                      auto-grow
+                      hide-details
+                      class="px-2 py-1"
+                    />
                   </v-card>
                 </VueDraggable>
-                <v-btn variant="flat" color="primary" class="mb-3" prepend-icon="mdi-plus" @click="addNewTextSlideBlock">
+                <v-btn
+                  variant="flat"
+                  color="primary"
+                  class="mb-3"
+                  prepend-icon="mdi-plus"
+                  @click="addNewTextSlideBlock"
+                >
                   Add Slide
                 </v-btn>
                 <v-btn
@@ -2145,7 +2655,9 @@ function updateRolePerson(role: string, personId: string | undefined) {
                   @click="addMediaToService(item)"
                 />
               </v-list>
-              <p v-if="filteredMediaForAdd.length === 0" class="text-medium-emphasis text-body-2">No images found in the Media Library.</p>
+              <p v-if="filteredMediaForAdd.length === 0" class="text-medium-emphasis text-body-2">
+                No images found in the Media Library.
+              </p>
             </v-window-item>
 
             <v-window-item value="video">
@@ -2166,11 +2678,16 @@ function updateRolePerson(role: string, personId: string | undefined) {
                   @click="addVideoToService(item)"
                 />
               </v-list>
-              <p v-if="filteredVideoForAdd.length === 0" class="text-medium-emphasis text-body-2">No videos found in the Media Library.</p>
+              <p v-if="filteredVideoForAdd.length === 0" class="text-medium-emphasis text-body-2">
+                No videos found in the Media Library.
+              </p>
             </v-window-item>
 
             <v-window-item value="external-app">
-              <p v-if="externalAppsStore.profiles.length === 0" class="text-medium-emphasis text-body-2">
+              <p
+                v-if="externalAppsStore.profiles.length === 0"
+                class="text-medium-emphasis text-body-2"
+              >
                 No profiles configured yet — add one in Settings &gt; External Apps.
               </p>
               <v-select
@@ -2198,7 +2715,13 @@ function updateRolePerson(role: string, personId: string | undefined) {
                     <v-btn variant="outlined" @click="pickExternalAppFile">Browse…</v-btn>
                   </template>
                 </v-text-field>
-                <v-alert v-if="externalAppAddError" type="error" variant="tonal" density="compact" class="mb-3">
+                <v-alert
+                  v-if="externalAppAddError"
+                  type="error"
+                  variant="tonal"
+                  density="compact"
+                  class="mb-3"
+                >
                   {{ externalAppAddError }}
                 </v-alert>
                 <v-btn
@@ -2231,7 +2754,13 @@ function updateRolePerson(role: string, personId: string | undefined) {
                 density="comfortable"
                 class="mb-3"
               />
-              <v-btn variant="flat" color="primary" block :disabled="!countdownTargetTime" @click="addCountdownToService">
+              <v-btn
+                variant="flat"
+                color="primary"
+                block
+                :disabled="!countdownTargetTime"
+                @click="addCountdownToService"
+              >
                 Add to Service
               </v-btn>
             </v-window-item>
@@ -2245,7 +2774,13 @@ function updateRolePerson(role: string, personId: string | undefined) {
                 class="mb-3"
               />
               <div class="text-overline text-medium-emphasis mb-2">Passages</div>
-              <v-card v-for="passage in sermonPassages" :key="passage.id" variant="outlined" rounded="lg" class="pa-3 mb-3">
+              <v-card
+                v-for="passage in sermonPassages"
+                :key="passage.id"
+                variant="outlined"
+                rounded="lg"
+                class="pa-3 mb-3"
+              >
                 <div class="d-flex align-center justify-space-between mb-2">
                   <v-btn
                     :variant="sermonMainPassageId === passage.id ? 'flat' : 'outlined'"
@@ -2256,7 +2791,12 @@ function updateRolePerson(role: string, personId: string | undefined) {
                   >
                     {{ sermonMainPassageId === passage.id ? 'Main Passage' : 'Set as Main' }}
                   </v-btn>
-                  <v-btn icon="mdi-delete-outline" variant="text" size="small" @click="removeSermonPassage(passage.id)" />
+                  <v-btn
+                    icon="mdi-delete-outline"
+                    variant="text"
+                    size="small"
+                    @click="removeSermonPassage(passage.id)"
+                  />
                 </div>
                 <ScriptureReferencePicker
                   :ref="(el) => setSermonPassageRef(passage.id, el)"
@@ -2264,17 +2804,44 @@ function updateRolePerson(role: string, personId: string | undefined) {
                   :translations="scriptureTranslations"
                 />
               </v-card>
-              <v-btn variant="outlined" class="mb-4" prepend-icon="mdi-plus" @click="addSermonPassage">Add Passage</v-btn>
+              <v-btn
+                variant="outlined"
+                class="mb-4"
+                prepend-icon="mdi-plus"
+                @click="addSermonPassage"
+                >Add Passage</v-btn
+              >
 
               <div class="text-overline text-medium-emphasis mb-2">Outline</div>
               <p class="text-caption text-medium-emphasis mb-3">
                 Presentable points for this sermon only — not added to the Slide Library.
               </p>
-              <VueDraggable v-model="sermonOutlineBlocks" handle=".drag-handle" :animation="150" class="d-flex flex-column ga-2 mb-3">
-                <v-card v-for="(block, index) in sermonOutlineBlocks" :key="block.id" variant="outlined" rounded="lg">
+              <VueDraggable
+                v-model="sermonOutlineBlocks"
+                handle=".drag-handle"
+                :animation="150"
+                class="d-flex flex-column ga-2 mb-3"
+              >
+                <v-card
+                  v-for="(block, index) in sermonOutlineBlocks"
+                  :key="block.id"
+                  variant="outlined"
+                  rounded="lg"
+                >
                   <div class="d-flex align-center ga-2 px-2 py-1 border-b">
-                    <v-icon icon="mdi-drag-vertical" class="drag-handle" size="small" style="cursor: grab" />
-                    <v-text-field v-model="block.label" variant="filled" density="compact" hide-details class="flex-grow-1" />
+                    <v-icon
+                      icon="mdi-drag-vertical"
+                      class="drag-handle"
+                      size="small"
+                      style="cursor: grab"
+                    />
+                    <v-text-field
+                      v-model="block.label"
+                      variant="filled"
+                      density="compact"
+                      hide-details
+                      class="flex-grow-1"
+                    />
                     <v-btn
                       icon="mdi-trash-can-outline"
                       variant="flat"
@@ -2283,10 +2850,24 @@ function updateRolePerson(role: string, personId: string | undefined) {
                       @click="removeSermonOutlineBlock(index)"
                     />
                   </div>
-                  <v-textarea v-model="block.text" variant="filled" density="compact" rows="2" auto-grow hide-details class="px-2 py-1" />
+                  <v-textarea
+                    v-model="block.text"
+                    variant="filled"
+                    density="compact"
+                    rows="2"
+                    auto-grow
+                    hide-details
+                    class="px-2 py-1"
+                  />
                 </v-card>
               </VueDraggable>
-              <v-btn variant="flat" color="primary" class="mb-3" prepend-icon="mdi-plus" @click="addSermonOutlineBlock">
+              <v-btn
+                variant="flat"
+                color="primary"
+                class="mb-3"
+                prepend-icon="mdi-plus"
+                @click="addSermonOutlineBlock"
+              >
                 Add Outline Point
               </v-btn>
 
@@ -2294,7 +2875,9 @@ function updateRolePerson(role: string, personId: string | undefined) {
                 variant="flat"
                 color="primary"
                 block
-                :disabled="sermonPassages.length === 0 || !sermonMainPassageId || !sermonPassagesValid"
+                :disabled="
+                  sermonPassages.length === 0 || !sermonMainPassageId || !sermonPassagesValid
+                "
                 :loading="addingSermon"
                 @click="addSermonToService"
               >
@@ -2324,7 +2907,13 @@ function updateRolePerson(role: string, personId: string | undefined) {
               <p class="text-caption text-medium-emphasis mb-3">
                 This item only appears in the printed Order of Worship — it never becomes a slide.
               </p>
-              <v-btn variant="flat" color="primary" block :disabled="!bulletinNoteLabel.trim()" @click="addBulletinNoteToService">
+              <v-btn
+                variant="flat"
+                color="primary"
+                block
+                :disabled="!bulletinNoteLabel.trim()"
+                @click="addBulletinNoteToService"
+              >
                 Add to Service
               </v-btn>
             </v-window-item>
@@ -2869,6 +3458,12 @@ function updateRolePerson(role: string, personId: string | undefined) {
   color: rgba(var(--v-theme-on-surface), 0.7);
   font-size: 0.76rem;
 }
+.property-row > span small {
+  display: block;
+  margin-top: 2px;
+  color: rgba(var(--v-theme-on-surface), 0.42);
+  font-size: 0.61rem;
+}
 .property-row--top {
   align-items: start;
 }
@@ -2898,8 +3493,11 @@ function updateRolePerson(role: string, personId: string | undefined) {
   min-height: 82px;
   padding: 9px 14px;
   border-top: 1px solid rgba(var(--v-theme-on-surface), 0.09);
-  background:
-    linear-gradient(180deg, rgba(var(--v-theme-surface), 0.98), rgba(var(--v-theme-surface-variant), 0.48));
+  background: linear-gradient(
+    180deg,
+    rgba(var(--v-theme-surface), 0.98),
+    rgba(var(--v-theme-surface-variant), 0.48)
+  );
   box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08);
 }
 .transport-destination {

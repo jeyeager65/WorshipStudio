@@ -4,7 +4,9 @@ import { getAdapter } from '@/adapters'
 import { useMediaStore } from '@/stores/media'
 import ImportMediaDialog from '@/components/media/ImportMediaDialog.vue'
 
-const props = withDefaults(defineProps<{ purpose?: 'slide' | 'logo' }>(), { purpose: 'slide' })
+const props = withDefaults(defineProps<{ purpose?: 'slide' | 'logo' | 'background' }>(), {
+  purpose: 'slide',
+})
 
 const open = defineModel<boolean>({ required: true })
 const emit = defineEmits<{
@@ -17,21 +19,23 @@ const activeTag = ref<string>()
 const importDialogOpen = ref(false)
 const previewUrlById = reactive(new Map<string, string>())
 
-const images = computed(() =>
+const mediaItems = computed(() =>
   store.items.filter(
-    (item) => item.kind === 'image' && (props.purpose !== 'logo' || item.location === 'synced'),
+    (item) =>
+      (props.purpose === 'background' ? true : item.kind === 'image') &&
+      (props.purpose === 'slide' || item.location === 'synced'),
   ),
 )
 const tagCounts = computed(() => {
   const counts = new Map<string, number>()
-  for (const item of images.value) {
+  for (const item of mediaItems.value) {
     for (const tag of item.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1)
   }
   return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]))
 })
 const filteredItems = computed(() => {
   const search = (query.value ?? '').trim().toLowerCase()
-  return images.value
+  return mediaItems.value
     .filter((item) => !activeTag.value || item.tags.includes(activeTag.value))
     .filter(
       (item) =>
@@ -50,7 +54,7 @@ async function resolvePreview(id: string) {
 }
 
 watch(
-  () => images.value.map((item) => item.id),
+  () => mediaItems.value.map((item) => item.id),
   (ids) => ids.forEach(resolvePreview),
   { immediate: true },
 )
@@ -63,6 +67,19 @@ function choose(mediaId: string, placement: 'element' | 'background') {
   emit('select', mediaId, placement)
   open.value = false
 }
+
+const pickerTitle = computed(() => {
+  if (props.purpose === 'logo') return 'Choose a Logo'
+  if (props.purpose === 'background') return 'Choose a Background'
+  return 'Choose an Image'
+})
+const pickerDescription = computed(() => {
+  if (props.purpose === 'logo') return 'Select a synced image or import a new logo.'
+  if (props.purpose === 'background')
+    return 'Select a synced image or video so the theme works on every library computer.'
+  return 'Select an image already in the library or import a new one.'
+})
+const itemNoun = computed(() => (props.purpose === 'background' ? 'media item' : 'image'))
 </script>
 
 <template>
@@ -71,14 +88,8 @@ function choose(mediaId: string, placement: 'element' | 'background') {
       <header class="picker-header">
         <div>
           <span>{{ purpose === 'logo' ? 'Branding' : 'Media Library' }}</span>
-          <h2>{{ purpose === 'logo' ? 'Choose a Logo' : 'Choose an Image' }}</h2>
-          <p>
-            {{
-              purpose === 'logo'
-                ? 'Select a synced image or import a new logo.'
-                : 'Select an image already in the library or import a new one.'
-            }}
-          </p>
+          <h2>{{ pickerTitle }}</h2>
+          <p>{{ pickerDescription }}</p>
         </div>
         <div class="picker-header-actions">
           <v-btn
@@ -100,14 +111,15 @@ function choose(mediaId: string, placement: 'element' | 'background') {
           <v-text-field
             v-model="query"
             prepend-inner-icon="mdi-magnify"
-            label="Search images"
+            :label="purpose === 'background' ? 'Search backgrounds' : 'Search images'"
             variant="outlined"
             density="compact"
             hide-details
             clearable
           />
           <span
-            >{{ filteredItems.length }} {{ filteredItems.length === 1 ? 'image' : 'images' }}</span
+            >{{ filteredItems.length }} {{ itemNoun
+            }}{{ filteredItems.length === 1 ? '' : 's' }}</span
           >
         </div>
 
@@ -116,9 +128,9 @@ function choose(mediaId: string, placement: 'element' | 'background') {
             <div class="tag-heading">Filter by tag</div>
             <v-list density="compact" nav class="pa-0">
               <v-list-item :active="!activeTag" rounded="lg" @click="activeTag = undefined">
-                All Images
+                {{ purpose === 'background' ? 'All Backgrounds' : 'All Images' }}
                 <template #append>
-                  <span class="text-caption text-medium-emphasis">{{ images.length }}</span>
+                  <span class="text-caption text-medium-emphasis">{{ mediaItems.length }}</span>
                 </template>
               </v-list-item>
               <v-list-item
@@ -139,8 +151,27 @@ function choose(mediaId: string, placement: 'element' | 'background') {
           <div class="media-grid">
             <article v-for="item in filteredItems" :key="item.id" class="media-card">
               <div class="media-thumb">
-                <img v-if="previewUrlById.has(item.id)" :src="previewUrlById.get(item.id)" alt="" />
+                <img
+                  v-if="previewUrlById.has(item.id) && item.kind === 'image'"
+                  :src="previewUrlById.get(item.id)"
+                  alt=""
+                />
+                <video
+                  v-else-if="previewUrlById.has(item.id)"
+                  :src="previewUrlById.get(item.id)"
+                  muted
+                  preload="metadata"
+                />
                 <v-icon v-else icon="mdi-image-outline" size="32" />
+                <v-chip
+                  v-if="item.kind === 'video'"
+                  size="x-small"
+                  class="kind-badge"
+                  variant="flat"
+                  prepend-icon="mdi-video-outline"
+                >
+                  VIDEO
+                </v-chip>
                 <v-chip
                   v-if="item.location === 'local'"
                   size="x-small"
@@ -163,9 +194,15 @@ function choose(mediaId: string, placement: 'element' | 'background') {
                   size="small"
                   color="primary"
                   variant="flat"
-                  @click="choose(item.id, 'element')"
+                  @click="choose(item.id, purpose === 'background' ? 'background' : 'element')"
                 >
-                  {{ purpose === 'logo' ? 'Use as Logo' : 'Add to Slide' }}
+                  {{
+                    purpose === 'logo'
+                      ? 'Use as Logo'
+                      : purpose === 'background'
+                        ? 'Use as Background'
+                        : 'Add to Slide'
+                  }}
                 </v-btn>
                 <v-btn
                   v-if="purpose === 'slide'"
@@ -178,15 +215,19 @@ function choose(mediaId: string, placement: 'element' | 'background') {
             </article>
             <div v-if="filteredItems.length === 0" class="picker-empty">
               <v-icon icon="mdi-image-search-outline" size="30" />
-              <strong>No images found</strong>
-              <span>Try another search or import a new image.</span>
+              <strong>No {{ purpose === 'background' ? 'backgrounds' : 'images' }} found</strong>
+              <span>Try another search or import new media.</span>
             </div>
           </div>
         </div>
       </v-card-text>
     </v-card>
 
-    <ImportMediaDialog v-model="importDialogOpen" @imported="store.load()" />
+    <ImportMediaDialog
+      v-model="importDialogOpen"
+      :synced-only="purpose !== 'slide'"
+      @imported="store.load()"
+    />
   </v-dialog>
 </template>
 
@@ -306,7 +347,8 @@ function choose(mediaId: string, placement: 'element' | 'background') {
     -8px 0;
   background-size: 16px 16px;
 }
-.media-thumb img {
+.media-thumb img,
+.media-thumb video {
   display: block;
   width: auto;
   max-width: calc(100% - 14px);
@@ -355,6 +397,13 @@ function choose(mediaId: string, placement: 'element' | 'background') {
   position: absolute;
   right: 6px;
   bottom: 6px;
+}
+.kind-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(10, 14, 20, 0.82) !important;
+  color: white !important;
 }
 .picker-empty {
   display: flex;

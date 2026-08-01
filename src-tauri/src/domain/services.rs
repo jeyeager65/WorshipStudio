@@ -177,6 +177,7 @@ fn apply_legacy_sermon_fields(
         Some(i) => i,
         None => {
             service.items.push(ServiceItem {
+                theme_id: None,
                 id: format!("sermon-migrated-{}", service.id),
                 content: blank_sermon(),
                 role: None,

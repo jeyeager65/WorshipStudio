@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { formatCountdown } from '@/utils/countdown'
 import { wrapLineAtPunctuation } from '@/utils/textAutoFit'
 import { OLD_TESTAMENT_FRACTION } from '@/utils/scriptureReference'
+import { presentationTextShadow } from '@/utils/presentationTextEffect'
 import type { LiveSlideContent } from '@/adapters/types'
 import SlideSceneRenderer from '@/components/slides/SlideSceneRenderer.vue'
 
@@ -64,6 +65,23 @@ const renderedScene = computed(() => {
   const scene = props.content?.scene
   if (!scene || !props.content?.backgroundOnly) return scene
   return { ...scene, elements: [] }
+})
+
+const rootStyle = computed(() => {
+  const theme = props.content?.presentationTheme
+  return {
+    ...(props.fixedSize
+      ? { width: `${props.fixedSize.width}px`, height: `${props.fixedSize.height}px` }
+      : {}),
+    ...(theme
+      ? {
+          backgroundColor: theme.backgroundColor,
+          color: theme.textColor,
+          fontFamily: theme.fontFamily,
+          textShadow: presentationTextShadow(theme.textEffect),
+        }
+      : {}),
+  }
 })
 
 // Auto-fit sizing (spec section 1): flattenService already decided *how much content* goes on
@@ -149,7 +167,9 @@ function fitAutoSizedText() {
       // never a plain word boundary, even if that leaves an unbreakable line overflowing).
       best = lo
       const font = fontAt(best)
-      const wrapped = rawLines.flatMap((line) => (line ? wrapLineAtPunctuation(line, maxWidthPx, (t) => measureTextWidthPx(t, font)) : ['']))
+      const wrapped = rawLines.flatMap((line) =>
+        line ? wrapLineAtPunctuation(line, maxWidthPx, (t) => measureTextWidthPx(t, font)) : [''],
+      )
       text.style.fontSize = `${best}px`
       displayText.value = wrapped.join('\n')
     }
@@ -179,7 +199,13 @@ function fitAutoSizedText() {
 }
 
 watch(
-  () => [props.content?.text, props.content?.fontRange, props.content?.lineWrap, props.content?.itemLabel] as const,
+  () =>
+    [
+      props.content?.text,
+      props.content?.fontRange,
+      props.content?.lineWrap,
+      props.content?.itemLabel,
+    ] as const,
   () => nextTick(fitAutoSizedText),
   { flush: 'post' },
 )
@@ -203,10 +229,16 @@ function bookStyle(distance: number) {
   const level = Math.abs(distance)
   const maxPx = props.content?.wayfindingMaxFontSizePx ?? 150
   const minPx = props.content?.wayfindingMinFontSizePx ?? 56
-  const radius = Math.max(1, ...(props.content?.wayfindingBooks ?? []).map((b) => Math.abs(b.distance)))
+  const radius = Math.max(
+    1,
+    ...(props.content?.wayfindingBooks ?? []).map((b) => Math.abs(b.distance)),
+  )
   const t = level / radius
   const opacities = [0.55, 0.3]
-  return { fontSize: `${maxPx + (minPx - maxPx) * t}px`, opacity: opacities[level - 1] ?? opacities[opacities.length - 1] }
+  return {
+    fontSize: `${maxPx + (minPx - maxPx) * t}px`,
+    opacity: opacities[level - 1] ?? opacities[opacities.length - 1],
+  }
 }
 
 // The wayfinding progress bar's four segment widths (as 0-1 fractions of the whole bar) — Old
@@ -227,11 +259,26 @@ const progressSegments = computed(() => {
 </script>
 
 <template>
-  <div
-    ref="rootRef"
-    class="slide-root"
-    :style="fixedSize ? { width: `${fixedSize.width}px`, height: `${fixedSize.height}px` } : undefined"
-  >
+  <div ref="rootRef" class="slide-root" :style="rootStyle">
+    <img
+      v-if="content?.presentationTheme?.backgroundMedia?.kind === 'image'"
+      :key="content.presentationTheme.backgroundMedia.url"
+      :src="content.presentationTheme.backgroundMedia.url"
+      class="theme-background"
+      :style="{ objectFit: content.presentationTheme.backgroundMedia.fit }"
+      alt=""
+    />
+    <video
+      v-else-if="content?.presentationTheme?.backgroundMedia?.kind === 'video'"
+      :key="content.presentationTheme.backgroundMedia.url"
+      :src="content.presentationTheme.backgroundMedia.url"
+      class="theme-background"
+      :style="{ objectFit: content.presentationTheme.backgroundMedia.fit }"
+      :autoplay="videoAutoplay"
+      loop
+      muted
+      playsinline
+    />
     <SlideSceneRenderer v-if="renderedScene" :scene="renderedScene" />
     <div v-else-if="content?.wayfindingBooks && !content.backgroundOnly" class="wayfinding-content">
       <div
@@ -242,7 +289,10 @@ const progressSegments = computed(() => {
       >
         {{ book.name }}
       </div>
-      <div class="wayfinding-reference" :style="{ fontSize: `${content.wayfindingMaxFontSizePx ?? 150}px` }">
+      <div
+        class="wayfinding-reference"
+        :style="{ fontSize: `${content.wayfindingMaxFontSizePx ?? 150}px` }"
+      >
         {{ content.itemLabel }}
       </div>
       <div
@@ -263,7 +313,10 @@ const progressSegments = computed(() => {
            can span from near the label text down through the bar — its left position is still
            a percentage of the same width as the bar below, since neither it nor the bar-wrapper
            add any side padding/margin. -->
-      <div class="wayfinding-progress-boundary" :style="{ left: `${OLD_TESTAMENT_FRACTION * 100}%` }" />
+      <div
+        class="wayfinding-progress-boundary"
+        :style="{ left: `${OLD_TESTAMENT_FRACTION * 100}%` }"
+      />
       <div class="wayfinding-progress-bar-wrapper">
         <div class="wayfinding-progress">
           <div
@@ -274,14 +327,21 @@ const progressSegments = computed(() => {
               { width: progressSegments.ntUnfilled, color: '#4fa8d8', opacity: 0.25 },
             ]"
             :key="index"
-            :style="{ flexBasis: `${segment.width * 100}%`, background: segment.color, opacity: segment.opacity }"
+            :style="{
+              flexBasis: `${segment.width * 100}%`,
+              background: segment.color,
+              opacity: segment.opacity,
+            }"
           />
         </div>
         <!-- A sibling of (not nested in) .wayfinding-progress — that bar clips to a rounded
              pill via overflow:hidden, which would cut off this extending past its height. Its
              own vertical centering is relative to this wrapper (the bar's own box), not the
              taller .wayfinding-progress-container above, so it centers on the bar itself. -->
-        <div class="wayfinding-progress-marker" :style="{ left: `${(content?.bibleProgress ?? 0) * 100}%` }" />
+        <div
+          class="wayfinding-progress-marker"
+          :style="{ left: `${(content?.bibleProgress ?? 0) * 100}%` }"
+        />
       </div>
     </div>
     <img
@@ -302,17 +362,28 @@ const progressSegments = computed(() => {
       :controls="videoControls"
     />
     <div v-else-if="content?.countdown && !content.backgroundOnly" class="slide-content">
-      <div v-if="content.countdown.text" class="slide-label" style="text-transform: none; letter-spacing: normal">
+      <div
+        v-if="content.countdown.text"
+        class="slide-label"
+        style="text-transform: none; letter-spacing: normal"
+      >
         {{ content.countdown.text }}
       </div>
-      <div class="countdown-clock">{{ formatCountdown(content.countdown.targetTime, nowTick) }}</div>
+      <div class="countdown-clock">
+        {{ formatCountdown(content.countdown.targetTime, nowTick) }}
+      </div>
     </div>
-    <div v-else-if="content && !content.backgroundOnly && !content.scene && !content.wayfindingBooks" class="slide-content">
+    <div
+      v-else-if="content && !content.backgroundOnly && !content.scene && !content.wayfindingBooks"
+      class="slide-content"
+    >
       <div
         ref="textRef"
         class="slide-text"
         :style="{
-          ...(content.fontRange ? { fontSize: `${fittedFontSizePx ?? content.fontRange.maxPx}px` } : {}),
+          ...(content.fontRange
+            ? { fontSize: `${fittedFontSizePx ?? content.fontRange.maxPx}px` }
+            : {}),
           // Song lines must never wrap except where we've explicitly inserted a break (see
           // wrapLineAtPunctuation) — `pre-line` still lets the browser wrap a preserved line
           // that doesn't fit, which silently undid the comma/semicolon-only rule for any line
@@ -364,6 +435,8 @@ const progressSegments = computed(() => {
   overflow: hidden;
 }
 .slide-content {
+  position: relative;
+  z-index: 1;
   max-width: 90cqw;
   text-align: center;
   /* A flex item's automatic min-width defaults to its content's natural size, which silently
@@ -373,6 +446,13 @@ const progressSegments = computed(() => {
      but visible) resets that automatic minimum to 0, so max-width is actually honored; any
      text still too wide to fit is clipped here instead of bleeding past the container. */
   overflow: hidden;
+}
+.theme-background {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 .slide-label {
   font-size: clamp(14px, 2cqw, 28px);
@@ -384,6 +464,7 @@ const progressSegments = computed(() => {
 .slide-header,
 .slide-footer {
   position: absolute;
+  z-index: 1;
   left: 0;
   right: 0;
   max-width: 90cqw;
@@ -416,6 +497,8 @@ const progressSegments = computed(() => {
 }
 
 .wayfinding-content {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -435,6 +518,7 @@ const progressSegments = computed(() => {
 .wayfinding-progress-container {
   isolation: isolate;
   position: absolute;
+  z-index: 1;
   left: 50%;
   bottom: clamp(24px, 5cqh, 56px);
   transform: translateX(-50%);

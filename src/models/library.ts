@@ -129,14 +129,31 @@ export interface MediaItem {
 export interface Theme {
   id: string
   name: string
+  /** Solid color shown directly or behind an image/video background. */
+  backgroundColor?: string
   backgroundId?: string
   font: string
   textColor: string
+  /** Configurable text treatment. Absent on older themes; `outline` is used to migrate them. */
+  textEffect?: TextEffect
+  /** Legacy text-outline flag retained for themes saved by older Worship Studio versions. */
   outline: boolean
-  useAsDefaultFor: Array<'songs' | 'scripture' | 'announcements' | 'welcome-closing'>
+  useAsDefaultFor: PresentationThemeTarget[]
   updatedAt: string
   updatedByDevice: string
 }
+
+export interface TextEffect {
+  type: 'none' | 'outline' | 'shadow' | 'glow'
+  color: string
+  size: number
+  offsetX?: number
+  offsetY?: number
+}
+
+/** Generated presentation content that can inherit a reusable visual theme. Advanced library
+ * slides and full-screen media already own their visuals and intentionally are not targets. */
+export type PresentationThemeTarget = 'songs' | 'scripture' | 'sermon' | 'text-slides'
 
 export interface UnavailableDateRange {
   start: string

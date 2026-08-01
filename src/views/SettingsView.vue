@@ -930,12 +930,12 @@ function translationSource(entry: AvailableTranslationEntry): string {
         </SettingsPanel>
 
         <SettingsPanel
-          title="Audience visuals"
-          description="Manage the backgrounds, typography, and colors used for projected content."
+          title="Presentation themes"
+          description="Set default backgrounds and text styling for generated audience content. Individual service items can override them."
           icon="mdi-palette-outline"
         >
           <v-btn variant="outlined" append-icon="mdi-arrow-right" to="/library/themes">
-            Open Theme Editor
+            Open Presentation Themes
           </v-btn>
         </SettingsPanel>
       </template>

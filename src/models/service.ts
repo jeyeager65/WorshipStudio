@@ -50,6 +50,9 @@ export type ServiceItemContent =
 
 export type ServiceItem = ServiceItemContent & {
   id: string
+  /** Optional per-service override for generated presentation slides. When absent, the default
+   * theme for this item's real content type is used. Ignored by self-styled library/media items. */
+  themeId?: string
   /** Who's doing this part (Elder leading prayer, scripture reader, etc.) — a role name from
    *  the same catalog Assignments uses (LibrarySettings.roleGroups), not a Person id directly:
    *  the actual person is whoever that service's Assignments has for this role, so assigning it

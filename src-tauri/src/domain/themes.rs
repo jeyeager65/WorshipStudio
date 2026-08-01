@@ -33,11 +33,13 @@ mod tests {
 
     fn sample(id: &str) -> Theme {
         Theme {
+            background_color: None,
             id: id.to_string(),
             name: "Brand Blue".to_string(),
             background_id: Some("brand-primary".to_string()),
             font: "Inter".to_string(),
             text_color: "#FFFFFF".to_string(),
+            text_effect: None,
             outline: true,
             use_as_default_for: vec!["songs".to_string()],
             updated_at: String::new(),

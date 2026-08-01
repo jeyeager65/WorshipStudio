@@ -5,7 +5,9 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import type { StagedMediaFile, MediaImportCommit } from '@/adapters/types'
 import type { MediaItem } from '@/models/library'
 
-const props = defineProps<{ modelValue: boolean }>()
+const props = withDefaults(defineProps<{ modelValue: boolean; syncedOnly?: boolean }>(), {
+  syncedOnly: false,
+})
 const emit = defineEmits<{ 'update:modelValue': [boolean]; imported: [MediaItem[]] }>()
 const confirmDialog = useConfirmDialogStore()
 
@@ -61,7 +63,7 @@ async function browseFiles() {
       descriptionInput: '',
       tagsInput: bulkTag.value,
       skip: !!file.duplicateOfId,
-      localOnly: file.sizeBytes > maxSyncedBytes.value,
+      localOnly: !props.syncedOnly && file.sizeBytes > maxSyncedBytes.value,
     })
   }
 }
@@ -75,7 +77,9 @@ async function removeRow(path: string) {
 
 const includedRows = computed(() => stagedRows.value.filter((row) => !row.skip))
 const duplicateCount = computed(() => stagedRows.value.filter((row) => row.duplicateOfId).length)
-const localOnlyCount = computed(() => stagedRows.value.filter((row) => row.localOnly && !row.skip).length)
+const localOnlyCount = computed(
+  () => stagedRows.value.filter((row) => row.localOnly && !row.skip).length,
+)
 const hasBlankTitle = computed(() => includedRows.value.some((row) => !row.titleInput.trim()))
 
 async function confirmImport() {
@@ -95,7 +99,7 @@ async function confirmImport() {
         .split(',')
         .map((t) => t.trim())
         .filter(Boolean),
-      location: row.localOnly ? 'local' : 'synced',
+      location: props.syncedOnly ? 'synced' : row.localOnly ? 'local' : 'synced',
       duplicateOfId: row.duplicateOfId,
     }))
     const created = await getAdapter().media.commitImport(files)
@@ -108,10 +112,17 @@ async function confirmImport() {
 </script>
 
 <template>
-  <v-dialog :model-value="modelValue" max-width="760" @update:model-value="(v) => emit('update:modelValue', v)">
+  <v-dialog
+    :model-value="modelValue"
+    max-width="760"
+    @update:model-value="(v) => emit('update:modelValue', v)"
+  >
     <v-card>
       <v-card-title>Import Media</v-card-title>
-      <v-card-subtitle>Duplicates and large files are flagged before importing — both are only nudges, never a hard block.</v-card-subtitle>
+      <v-card-subtitle
+        >Duplicates and large files are flagged before importing — both are only nudges, never a
+        hard block.</v-card-subtitle
+      >
 
       <v-card-text style="max-height: 55vh; overflow-y: auto">
         <div class="drop-zone mb-4" @click="browseFiles">
@@ -134,9 +145,15 @@ async function confirmImport() {
           v-for="row in stagedRows"
           :key="row.path"
           class="d-flex align-center ga-3 mb-2 pa-3 file-row"
-          :class="{ 'file-row--duplicate': row.duplicateOfId, 'file-row--large': row.localOnly && !row.duplicateOfId }"
+          :class="{
+            'file-row--duplicate': row.duplicateOfId,
+            'file-row--large': row.localOnly && !row.duplicateOfId,
+          }"
         >
-          <v-icon :icon="row.kind === 'video' ? 'mdi-movie-open-outline' : 'mdi-image-outline'" size="20" />
+          <v-icon
+            :icon="row.kind === 'video' ? 'mdi-movie-open-outline' : 'mdi-image-outline'"
+            size="20"
+          />
           <div class="flex-grow-1" style="min-width: 0">
             <div class="text-caption text-medium-emphasis text-truncate">
               {{ row.filename }} ({{ formatSize(row.sizeBytes) }})
@@ -168,14 +185,34 @@ async function confirmImport() {
             />
           </div>
           <template v-if="row.duplicateOfId">
-            <span class="text-caption text-warning flex-shrink-0">Matches {{ row.duplicateOfFilename }}</span>
-            <v-checkbox v-model="row.skip" label="Skip" density="compact" hide-details class="flex-shrink-0" />
+            <span class="text-caption text-warning flex-shrink-0"
+              >Matches {{ row.duplicateOfFilename }}</span
+            >
+            <v-checkbox
+              v-model="row.skip"
+              label="Skip"
+              density="compact"
+              hide-details
+              class="flex-shrink-0"
+            />
           </template>
           <template v-else-if="row.localOnly">
             <span class="text-caption text-primary flex-shrink-0">Large file</span>
-            <v-checkbox v-model="row.localOnly" label="Local Only" density="compact" hide-details class="flex-shrink-0" />
+            <v-checkbox
+              v-model="row.localOnly"
+              label="Local Only"
+              density="compact"
+              hide-details
+              class="flex-shrink-0"
+            />
           </template>
-          <v-btn icon="mdi-close" variant="text" size="small" class="flex-shrink-0" @click="removeRow(row.path)" />
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            size="small"
+            class="flex-shrink-0"
+            @click="removeRow(row.path)"
+          />
         </div>
       </v-card-text>
 
@@ -186,7 +223,9 @@ async function confirmImport() {
           <template v-if="localOnlyCount">· {{ localOnlyCount }} will be stored locally</template>
         </span>
         <v-spacer />
-        <v-btn variant="outlined" class="mr-2" @click="emit('update:modelValue', false)">Cancel</v-btn>
+        <v-btn variant="outlined" class="mr-2" @click="emit('update:modelValue', false)"
+          >Cancel</v-btn
+        >
         <v-btn
           variant="flat"
           color="primary"

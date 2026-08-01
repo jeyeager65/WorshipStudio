@@ -1,8 +1,13 @@
 import type { Service, ServiceItem } from '@/models/service'
 import type { Song } from '@/models/song'
-import type { SlideLibraryItem, SlideScene } from '@/models/library'
+import type { PresentationThemeTarget, SlideLibraryItem, SlideScene } from '@/models/library'
 import type { ScripturePassage, ExternalAppProfile } from '@/adapters/types'
-import { getBibleProgress, getWayfindingBooks, parseReference, type WayfindingBook } from '@/utils/scriptureReference'
+import {
+  getBibleProgress,
+  getWayfindingBooks,
+  parseReference,
+  type WayfindingBook,
+} from '@/utils/scriptureReference'
 import { paginateTextUnits, type FontSizeRange } from '@/utils/textAutoFit'
 import { scenePlainText } from '@/utils/slideScene'
 
@@ -25,6 +30,8 @@ export interface FlatSlide {
   /** e.g. block label "Chorus"; empty for single-slide item types */
   subLabel: string
   text: string
+  /** Generated content only. Used to resolve a service-item override or library default theme. */
+  themeTarget?: PresentationThemeTarget
   /** Advanced slide-library pages only. */
   scene?: SlideScene
   /** Reference-only scripture slides only — the surrounding-books wayfinding visual (spec section 1). */
@@ -86,6 +93,7 @@ function pushScriptureSlides(
   displayMode: 'full' | 'reference-only',
   passage: ScripturePassage | undefined,
   scriptureFontRange: FontSizeRange,
+  themeTarget: PresentationThemeTarget,
 ): number {
   if (displayMode === 'reference-only') {
     const parsed = parseReference(reference)
@@ -96,6 +104,7 @@ function pushScriptureSlides(
       itemLabel: reference,
       subLabel: 'Reference Only',
       text: '',
+      themeTarget,
       wayfindingBooks: parsed?.book ? getWayfindingBooks(parsed.book) : undefined,
       bibleProgress: parsed ? getBibleProgress(parsed) : undefined,
     })
@@ -109,6 +118,7 @@ function pushScriptureSlides(
       itemLabel: reference,
       subLabel: translation,
       text: '',
+      themeTarget,
     })
     return 1
   }
@@ -122,8 +132,12 @@ function pushScriptureSlides(
       itemIndex,
       itemId,
       itemLabel: passage.reference,
-      subLabel: pages.length > 1 ? `${passage.translation} (${i + 1}/${pages.length})` : passage.translation,
+      subLabel:
+        pages.length > 1
+          ? `${passage.translation} (${i + 1}/${pages.length})`
+          : passage.translation,
       text: pageUnits.join(' '),
+      themeTarget,
       fontRange: scriptureFontRange,
     })
   })
@@ -182,6 +196,7 @@ export function flattenService(
           itemLabel,
           subLabel: '(empty arrangement)',
           text: '',
+          themeTarget: 'songs',
           fontRange: songFontRange,
           lineWrap: true,
         })
@@ -195,6 +210,7 @@ export function flattenService(
             itemLabel,
             subLabel: block?.label ?? blockId,
             text: block?.text ?? '',
+            themeTarget: 'songs',
             fontRange: songFontRange,
             lineWrap: true,
           })
@@ -202,7 +218,15 @@ export function flattenService(
       }
     } else if (item.type === 'text-slide') {
       if (item.slides.length === 0) {
-        flat.push({ key: `${item.id}:0`, itemIndex, itemId: item.id, itemLabel: 'Text Slide', subLabel: '(empty)', text: '' })
+        flat.push({
+          key: `${item.id}:0`,
+          itemIndex,
+          itemId: item.id,
+          itemLabel: 'Text Slide',
+          subLabel: '(empty)',
+          text: '',
+          themeTarget: 'text-slides',
+        })
       } else {
         item.slides.forEach((slide, subIndex) => {
           flat.push({
@@ -212,6 +236,7 @@ export function flattenService(
             itemLabel: 'Text Slide',
             subLabel: slide.label,
             text: slide.text,
+            themeTarget: 'text-slides',
           })
         })
       }
@@ -228,6 +253,7 @@ export function flattenService(
         item.displayMode,
         passage,
         scriptureFontRange,
+        'scripture',
       )
     } else if (item.type === 'sermon') {
       // Every passage presents in list order (reusing the exact same reference-only/
@@ -238,7 +264,10 @@ export function flattenService(
       // pushScriptureSlides's own doc comment for why that matters).
       let subIndex = 0
       for (const passage of item.passages) {
-        const resolved = passage.displayMode === 'reference-only' ? undefined : scriptureById.get(`${item.id}:${passage.id}`)
+        const resolved =
+          passage.displayMode === 'reference-only'
+            ? undefined
+            : scriptureById.get(`${item.id}:${passage.id}`)
         subIndex += pushScriptureSlides(
           flat,
           itemIndex,
@@ -250,6 +279,7 @@ export function flattenService(
           passage.displayMode,
           resolved,
           scriptureFontRange,
+          'sermon',
         )
       }
       item.outline.forEach((block, i) => {
@@ -260,11 +290,20 @@ export function flattenService(
           itemLabel: 'Sermon Outline',
           subLabel: block.label,
           text: block.text,
+          themeTarget: 'sermon',
         })
       })
       subIndex += item.outline.length
       if (subIndex === 0) {
-        flat.push({ key: `${item.id}:0`, itemIndex, itemId: item.id, itemLabel: 'Sermon', subLabel: '(empty)', text: '' })
+        flat.push({
+          key: `${item.id}:0`,
+          itemIndex,
+          itemId: item.id,
+          itemLabel: 'Sermon',
+          subLabel: '(empty)',
+          text: '',
+          themeTarget: 'sermon',
+        })
       }
     } else if (item.type === 'bulletin-note') {
       // Deliberately produces no slides — unlike every other branch here, this item exists

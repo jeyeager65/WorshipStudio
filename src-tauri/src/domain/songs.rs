@@ -222,6 +222,7 @@ mod tests {
             time: None,
             service_type: "Sunday Morning Worship".to_string(),
             items: vec![crate::models::ServiceItem {
+                theme_id: None,
                 id: format!("item-{song_id}"),
                 content: ServiceItemContent::Song {
                     song_id: song_id.to_string(),

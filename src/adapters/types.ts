@@ -1,6 +1,13 @@
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
-import type { SlideLibraryItem, MediaItem, Theme, Person, SlideScene } from '@/models/library'
+import type {
+  SlideLibraryItem,
+  MediaItem,
+  Theme,
+  Person,
+  SlideScene,
+  TextEffect,
+} from '@/models/library'
 import type { LibrarySettings, MachineSettings } from '@/models/settings'
 
 /**
@@ -225,10 +232,20 @@ export interface LiveMediaRef {
   fit: 'cover' | 'contain'
 }
 
+export interface LivePresentationTheme {
+  fontFamily: string
+  textColor: string
+  textEffect: TextEffect
+  backgroundColor: string
+  backgroundMedia?: LiveMediaRef
+}
+
 export interface LiveSlideContent {
   itemLabel: string
   subLabel: string
   text: string
+  /** Resolved reusable style for generated song/scripture/sermon/text slides. */
+  presentationTheme?: LivePresentationTheme
   /** Presentation override — preserve the slide's visual background while hiding foreground content. */
   backgroundOnly?: boolean
   /** Advanced library slides — rendered by the same scene component used in the editor. */

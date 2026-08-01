@@ -172,6 +172,10 @@ pub struct ServiceItem {
     pub id: String,
     #[serde(flatten)]
     pub content: ServiceItemContent,
+    /// Optional per-service override for generated presentation slides. When absent, the
+    /// default for the item's content type is resolved by the frontend.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme_id: Option<String>,
     /// Who's doing this part (Elder leading prayer, scripture reader, etc.) — a role name from
     /// the same catalog Assignments uses (LibrarySettings::role_groups), not a Person id
     /// directly: the actual person is whoever that service's Assignments has for this role, so
@@ -466,6 +470,9 @@ pub struct MediaItem {
 pub struct Theme {
     pub id: String,
     pub name: String,
+    /// Solid color shown directly or behind an image/video background.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_color: Option<String>,
     /// Either a MediaItem id, or one of the sentinel values "brand-primary"/"brand-secondary"
     /// (resolved against LibrarySettings::branding rather than duplicating a color here) —
     /// absent means no background.
@@ -473,13 +480,29 @@ pub struct Theme {
     pub background_id: Option<String>,
     pub font: String,
     pub text_color: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_effect: Option<PresentationTextEffect>,
+    /// Legacy flag used when loading a theme saved before configurable text effects.
     #[serde(default)]
     pub outline: bool,
-    /// "songs" | "scripture" | "announcements" | "welcome-closing"
+    /// "songs" | "scripture" | "sermon" | "text-slides"
     #[serde(default)]
     pub use_as_default_for: Vec<String>,
     pub updated_at: String,
     pub updated_by_device: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PresentationTextEffect {
+    /// "none" | "outline" | "shadow" | "glow"
+    pub r#type: String,
+    pub color: String,
+    pub size: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset_x: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset_y: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -730,6 +753,17 @@ pub struct LiveMediaRef {
     pub fit: String,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct LivePresentationTheme {
+    pub font_family: String,
+    pub text_color: String,
+    pub text_effect: PresentationTextEffect,
+    pub background_color: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub background_media: Option<LiveMediaRef>,
+}
+
 /// Mirrors the frontend's LiveSlideContent (src/adapters/types.ts) — the operator window
 /// pushes this to Rust (see commands::remote::update_remote_live_state) whenever the live
 /// slide changes, so the remote HTTP server's /api/state has something to report without the
@@ -748,6 +782,8 @@ pub struct LiveSlideContent {
     pub item_label: String,
     pub sub_label: String,
     pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presentation_theme: Option<LivePresentationTheme>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub background_only: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]

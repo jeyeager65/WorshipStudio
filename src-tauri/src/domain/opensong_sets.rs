@@ -109,6 +109,7 @@ pub fn import_sets(
             match title_lookup.get(&title.to_lowercase()) {
                 Some(song) => {
                     items.push(ServiceItem {
+                        theme_id: None,
                         id: format!("item-{}", uuid::Uuid::new_v4()),
                         content: ServiceItemContent::Song {
                             song_id: song.id.clone(),
