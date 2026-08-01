@@ -276,9 +276,8 @@ export interface LiveSlideContent {
 
 export interface LivePresentationPort {
   /**
-   * Opens the audience-facing presentation window and positions it relative to the operator
-   * window: split left/right on a single monitor, or fullscreen on a second monitor when one
-   * is available. No-ops in the mock/browser adapter — there's no second window to open there.
+   * Opens the audience-facing presentation window on the distinct monitor configured with the
+   * Audience role. Rejects when that display is unavailable. No-ops in the mock/browser adapter.
    */
   startPresenting(): Promise<void>
   /** Closes the presentation window and restores the operator window to where it was. */
@@ -289,12 +288,10 @@ export interface LivePresentationPort {
   /** Broadcasts the current slide (or `undefined` for blank) to the presentation window. */
   setLiveContent(content: LiveSlideContent | undefined): Promise<void>
   /**
-   * The real logical pixel size the presentation window would open at right now — a genuine
-   * second/audience monitor's full work area, or half the single monitor's work area when
-   * there's nowhere else to put it (see startPresenting's own doc comment). Used to size the
+   * The real logical pixel size of the configured audience display's work area. Used to size the
    * operator's Previous/Current/Next preview thumbnails so the same auto-fit sizing/wrapping
-   * decisions get made there as on the real thing, rather than assuming a fixed 1920x1080.
-   * Undefined in the mock/browser adapter (no real monitors to measure).
+   * decisions get made there as on the real thing. Returns undefined when no distinct configured
+   * audience display is available; the editor then uses a stable 16:9 planning preview.
    */
   getPresentationSize?(): Promise<{ width: number; height: number } | undefined>
 }
@@ -343,6 +340,8 @@ export interface ExternalAppPort {
 
 export interface RemoteDevice {
   id: string
+  /** Owner in the people library. Missing only for legacy pairings created before ownership was required. */
+  personId?: string
   name: string
   accessLevel: 'view-only' | 'advance-only' | 'full-control'
 }
@@ -356,12 +355,14 @@ export interface RemoteCommand {
 export interface RemotePort {
   listDevices(): Promise<RemoteDevice[]>
   provisionDevice(
+    personId: string,
     name: string,
     accessLevel: RemoteDevice['accessLevel'],
   ): Promise<{ qrDataUrl: string; pairingUrl: string }>
+  repairDevice(id: string): Promise<{ qrDataUrl: string; pairingUrl: string }>
   revokeDevice(id: string): Promise<void>
-  /** LAN IP/port the server is actually listening on — a manual-entry fallback next to the QR code. */
-  getServerInfo(): Promise<{ lanIp?: string; port: number }>
+  /** Stable mDNS hostname plus the LAN IP/port fallback the server is actually using. */
+  getServerInfo(): Promise<{ hostname?: string; lanIp?: string; port: number }>
   /** Mirrors the live slide/presenting state into the Rust-side server so /api/state has something to report. */
   pushLiveState(content: LiveSlideContent | undefined, isPresenting: boolean): Promise<void>
   /** A paired phone's button press, relayed back from the server — see remote_server.rs. */

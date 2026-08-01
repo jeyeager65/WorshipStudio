@@ -27,7 +27,6 @@ import {
 } from '@/utils/sampleData'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import ManagedStringList from '@/components/settings/ManagedStringList.vue'
-import RoleGroupEditor from '@/components/settings/RoleGroupEditor.vue'
 import SettingsPageHeader from '@/components/settings/SettingsPageHeader.vue'
 import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 import MediaPickerDialog from '@/components/media/MediaPickerDialog.vue'
@@ -40,6 +39,7 @@ import type {
   ExternalAppProfile,
   RemoteDevice,
 } from '@/adapters/types'
+import { personDisplayName } from '@/models/library'
 
 const store = useSettingsStore()
 const router = useRouter()
@@ -52,6 +52,12 @@ const songsStore = useSongsStore()
 const servicesStore = useServicesStore()
 const peopleStore = usePeopleStore()
 const themesStore = useThemesStore()
+// The folder shown in the draft settings can change before Save. Keep the last persisted path
+// separately so saving unrelated settings does not produce a reload prompt, while a real
+// library switch does—even after the reactive settings object has already been edited.
+const savedLibraryPath = ref('')
+const savedRemoteControlPort = ref<number>()
+const savedRemoteControlHostname = ref<string>()
 const refreshingSync = ref(false)
 async function refreshSyncStatus() {
   refreshingSync.value = true
@@ -71,8 +77,6 @@ type Section =
   | 'service-types'
   | 'collections'
   | 'bible-translations'
-  | 'roles'
-  | 'service-templates'
   | 'sync'
   | 'external-apps'
   | 'remote-control'
@@ -83,9 +87,8 @@ const sections: { key: Section; label: string; group: string }[] = [
   { key: 'general', label: 'This Computer', group: 'Application' },
   { key: 'sync', label: 'Library & Sync', group: 'Application' },
   { key: 'about', label: 'About', group: 'Application' },
-  // Display groups everything about how content actually renders on screen — the physical
-  // setup (Display Setup), sizing (Font Sizes), visual styling (Themes), and hand-off to other
-  // on-screen apps (External Apps/Remote Control) — not just monitor configuration narrowly.
+  // Display groups the physical setup, sizing, and hand-off to other on-screen apps. Reusable
+  // presentation themes are library content and live in the primary navigation instead.
   { key: 'appearance', label: 'Appearance', group: 'Appearance & Displays' },
   { key: 'branding', label: 'Branding', group: 'Appearance & Displays' },
   { key: 'display', label: 'Display Setup', group: 'Appearance & Displays' },
@@ -108,12 +111,9 @@ const sections: { key: Section; label: string; group: string }[] = [
   ...(getAdapter().canva
     ? [{ key: 'canva' as const, label: 'Canva', group: 'Content Library' }]
     : []),
-  // What a service looks like (its types, its shell/template) and who fills it (roles) — these
-  // three were previously scattered across Content Library despite having nothing to do with
-  // library content.
+  // Service types are configuration used by the primary Service Templates feature. Roles have
+  // their own core management page because they are also used by people and assignments.
   { key: 'service-types', label: 'Service Types', group: 'Service Planning' },
-  { key: 'roles', label: 'Roles', group: 'Service Planning' },
-  { key: 'service-templates', label: 'Service Templates', group: 'Service Planning' },
 ]
 const sectionIcons: Record<Section, string> = {
   general: 'mdi-laptop',
@@ -129,15 +129,12 @@ const sectionIcons: Record<Section, string> = {
   'bible-translations': 'mdi-book-cross',
   canva: 'mdi-palette-swatch-outline',
   'service-types': 'mdi-calendar-multiple',
-  roles: 'mdi-account-group-outline',
-  'service-templates': 'mdi-file-tree-outline',
 }
 const sectionDescriptions: Record<Section, string> = {
   general: 'Identify this workstation and rerun the guided setup when its role changes.',
   sync: 'Choose where this computer keeps the shared library and monitor synchronization health.',
   about: 'Version details, project resources, releases, and support links.',
-  appearance:
-    'Control the operator interface and manage the visual themes used on audience slides.',
+  appearance: 'Control how the Worship Studio operator interface looks on this computer.',
   branding: 'Set the church identity used across reports, themes, and exported documents.',
   display: 'Assign connected monitors to operator and audience responsibilities.',
   'font-sizes': 'Set the typography ranges used when content is fitted to audience slides.',
@@ -147,8 +144,6 @@ const sectionDescriptions: Record<Section, string> = {
   'bible-translations': 'Choose scripture editions and configure the services that provide them.',
   canva: 'Connect this computer to Canva for creating and importing slide designs.',
   'service-types': 'Manage the service-type choices offered when a service is created.',
-  roles: 'Organize the responsibilities available for service assignments and planning.',
-  'service-templates': 'Define reusable service orders and additional staffing roles.',
 }
 const activeSectionInfo = computed(() => {
   const section =
@@ -173,10 +168,6 @@ const groupedSections = computed(() => {
 })
 
 function selectSettingsSection(section: Section) {
-  if (section === 'service-templates') {
-    void router.push({ name: 'service-template-library' })
-    return
-  }
   activeSection.value = section
 }
 
@@ -189,6 +180,9 @@ let stopSettingsWatch: (() => void) | undefined
 
 onMounted(async () => {
   await store.load()
+  savedLibraryPath.value = machineSettings.value?.libraryPath ?? ''
+  savedRemoteControlPort.value = machineSettings.value?.remoteControlPort
+  savedRemoteControlHostname.value = machineSettings.value?.remoteControlHostname
   isDirty.value = false
   // Registered after the initial load so it only reacts to actual user edits, not the
   // assignment above — same pattern as Song Editor/Service Workspace.
@@ -200,7 +194,7 @@ onMounted(async () => {
   saveHandler.value = saveSettings
   await loadDisplays()
   await loadExternalApps()
-  await loadRemoteDevices()
+  await Promise.all([peopleStore.load(), loadRemoteDevices()])
 
   // Whether the ESV copyright notice below needs to show is a question of whether ESV is
   // actually resolvable right now (an esvApiKey configured on this machine — see
@@ -221,10 +215,33 @@ onUnmounted(() => {
 
 async function saveSettings() {
   if (saving.value) return
+  const libraryPathChanged =
+    !!machineSettings.value && machineSettings.value.libraryPath !== savedLibraryPath.value
+  const remotePortChanged =
+    machineSettings.value?.remoteControlPort !== savedRemoteControlPort.value
+  const remoteHostnameChanged =
+    machineSettings.value?.remoteControlHostname !== savedRemoteControlHostname.value
+  const remoteConnectionChanged = remotePortChanged || remoteHostnameChanged
   saving.value = true
   try {
     await store.save()
+    savedLibraryPath.value = machineSettings.value?.libraryPath ?? savedLibraryPath.value
+    savedRemoteControlPort.value = machineSettings.value?.remoteControlPort
+    savedRemoteControlHostname.value = machineSettings.value?.remoteControlHostname
     isDirty.value = false
+    if (
+      (libraryPathChanged || remoteConnectionChanged) &&
+      (await confirmDialog.confirm(
+        libraryPathChanged && remoteConnectionChanged
+          ? 'The library folder and Remote Control connection settings have changed. Reload Worship Studio now to apply them?'
+          : libraryPathChanged
+            ? 'The library folder has changed. Reload Worship Studio now to load its services and other library content?'
+            : 'The Remote Control connection settings have changed. Reload Worship Studio now to apply them?',
+        'Reload Now',
+      ))
+    ) {
+      window.location.reload()
+    }
   } finally {
     saving.value = false
   }
@@ -316,6 +333,7 @@ const darkMode = computed({
 // Display Setup — Windows-only in practice (spec section 17); the port is entirely absent
 // on builds where it doesn't apply, feature-detected here rather than assumed present.
 const displays = ref<DisplayInfo[]>([])
+const loadingDisplays = ref(false)
 const roleOptions: { title: string; value: DisplayRole }[] = [
   { title: 'Operator (this window)', value: 'operator' },
   { title: 'Audience Display', value: 'audience' },
@@ -324,11 +342,14 @@ const roleOptions: { title: string; value: DisplayRole }[] = [
 async function loadDisplays() {
   // Not wired to a real command on the native Tauri backend yet (README's adapter-status
   // note) — falls back to "no displays detected" rather than leaving an unhandled rejection.
+  loadingDisplays.value = true
   try {
     displays.value = (await getAdapter().displays?.list()) ?? []
   } catch (e) {
     console.error('Failed to list displays:', e)
     displays.value = []
+  } finally {
+    loadingDisplays.value = false
   }
 }
 // Role assignment is an immediate hardware-config action, not a staged edit like the rest
@@ -455,12 +476,22 @@ async function recaptureWindowPosition() {
   }
 }
 
-// Remote Control (spec section 4) — provisioning generates a QR code scoped to one device
-// name + access level; the token itself never round-trips back to this screen once handed
-// out (see RemoteDeviceSummary on the Rust side), so there's nothing to "edit" afterward,
-// only revoke.
+// Remote Control devices are machine-local, but ownership points at the synced people library.
 const remoteDevices = ref<RemoteDevice[]>([])
-const remoteServerInfo = ref<{ lanIp?: string; port: number }>()
+const remoteServerInfo = ref<{ hostname?: string; lanIp?: string; port: number }>()
+const remoteHostnameOverride = computed<string>({
+  get: () => machineSettings.value?.remoteControlHostname ?? '',
+  set: (hostname) => {
+    if (machineSettings.value)
+      machineSettings.value.remoteControlHostname = hostname.trim() || undefined
+  },
+})
+const remotePortOverride = computed<number | null>({
+  get: () => machineSettings.value?.remoteControlPort ?? null,
+  set: (port) => {
+    if (machineSettings.value) machineSettings.value.remoteControlPort = port ?? undefined
+  },
+})
 async function loadRemoteDevices() {
   try {
     remoteDevices.value = (await getAdapter().remote?.listDevices()) ?? []
@@ -480,22 +511,36 @@ function accessLevelLabel(level: RemoteDevice['accessLevel']): string {
 }
 
 const provisionDialogOpen = ref(false)
+const newDevicePersonId = ref('')
 const newDeviceName = ref('')
 const newDeviceAccessLevel = ref<RemoteDevice['accessLevel']>('advance-only')
 const provisioning = ref(false)
 const provisionResult = ref<{ qrDataUrl: string; pairingUrl: string }>()
+const repairingDeviceId = ref<string>()
+const remotePersonOptions = computed(() =>
+  [...peopleStore.people]
+    .sort((a, b) => personDisplayName(a).localeCompare(personDisplayName(b)))
+    .map((person) => ({ title: personDisplayName(person), value: person.id })),
+)
 
-function openProvisionDialog() {
+function remoteDeviceOwner(device: RemoteDevice): string {
+  const owner = peopleStore.people.find((person) => person.id === device.personId)
+  return owner ? personDisplayName(owner) : 'Unassigned legacy device'
+}
+
+function openProvisionDialog(personId = '') {
+  newDevicePersonId.value = personId
   newDeviceName.value = ''
   newDeviceAccessLevel.value = 'advance-only'
   provisionResult.value = undefined
   provisionDialogOpen.value = true
 }
 async function provisionDevice() {
-  if (!newDeviceName.value.trim() || provisioning.value) return
+  if (!newDevicePersonId.value || !newDeviceName.value.trim() || provisioning.value) return
   provisioning.value = true
   try {
     provisionResult.value = await getAdapter().remote?.provisionDevice(
+      newDevicePersonId.value,
       newDeviceName.value.trim(),
       newDeviceAccessLevel.value,
     )
@@ -504,6 +549,19 @@ async function provisionDevice() {
     console.error('Failed to provision remote device:', e)
   } finally {
     provisioning.value = false
+  }
+}
+async function repairRemoteDevice(device: RemoteDevice) {
+  repairingDeviceId.value = device.id
+  try {
+    provisionResult.value = await getAdapter().remote?.repairDevice(device.id)
+    newDeviceName.value = device.name
+    newDevicePersonId.value = device.personId ?? ''
+    provisionDialogOpen.value = true
+  } catch (e) {
+    console.error('Failed to re-pair remote device:', e)
+  } finally {
+    repairingDeviceId.value = undefined
   }
 }
 async function revokeRemoteDevice(device: RemoteDevice) {
@@ -598,6 +656,15 @@ async function clearExistingData() {
 }
 
 const pickingLibraryFolder = ref(false)
+const libraryPathIsRelative = computed(() => {
+  const path = machineSettings.value?.libraryPath.trim() ?? ''
+  return !!path && !/^(?:[A-Za-z]:[\\/]|[\\/]{2}|\/)/.test(path)
+})
+
+function usePortableLibraryFolder() {
+  if (machineSettings.value) machineSettings.value.libraryPath = './Library'
+}
+
 async function pickLibraryFolder() {
   pickingLibraryFolder.value = true
   try {
@@ -759,13 +826,7 @@ function translationSource(entry: AvailableTranslationEntry): string {
       </section>
     </nav>
 
-    <div
-      class="settings-content"
-      :class="{
-        'settings-content--wide':
-          activeSection === 'roles' || activeSection === 'service-templates',
-      }"
-    >
+    <div class="settings-content">
       <SettingsPageHeader
         :eyebrow="activeSectionInfo.group"
         :title="activeSectionInfo.label"
@@ -811,10 +872,38 @@ function translationSource(entry: AvailableTranslationEntry): string {
           icon="mdi-folder-sync-outline"
         >
           <div class="path-setting">
-            <code>{{ machineSettings.libraryPath }}</code>
-            <v-btn variant="outlined" :loading="pickingLibraryFolder" @click="pickLibraryFolder">
-              Change Folder…
-            </v-btn>
+            <v-text-field
+              v-model="machineSettings.libraryPath"
+              label="Library path"
+              placeholder="C:\\WorshipStudio\\Library or ./Library"
+              variant="outlined"
+              density="comfortable"
+              :hint="
+                libraryPathIsRelative
+                  ? 'Relative to the folder containing the Worship Studio executable.'
+                  : 'Absolute path on this computer.'
+              "
+              persistent-hint
+              class="library-path-field"
+            />
+            <div class="path-setting-actions">
+              <v-btn
+                variant="outlined"
+                prepend-icon="mdi-folder-open-outline"
+                :loading="pickingLibraryFolder"
+                @click="pickLibraryFolder"
+              >
+                Browse…
+              </v-btn>
+              <v-btn
+                variant="tonal"
+                color="primary"
+                prepend-icon="mdi-usb-flash-drive-outline"
+                @click="usePortableLibraryFolder"
+              >
+                Use Portable Folder
+              </v-btn>
+            </div>
           </div>
         </SettingsPanel>
 
@@ -927,16 +1016,6 @@ function translationSource(entry: AvailableTranslationEntry): string {
             </div>
             <v-switch v-model="darkMode" color="primary" hide-details aria-label="Dark mode" />
           </div>
-        </SettingsPanel>
-
-        <SettingsPanel
-          title="Presentation themes"
-          description="Set default backgrounds and text styling for generated audience content. Individual service items can override them."
-          icon="mdi-palette-outline"
-        >
-          <v-btn variant="outlined" append-icon="mdi-arrow-right" to="/library/themes">
-            Open Presentation Themes
-          </v-btn>
         </SettingsPanel>
       </template>
 
@@ -1124,14 +1203,25 @@ function translationSource(entry: AvailableTranslationEntry): string {
           description="Assign what each monitor shows. Changes take effect immediately."
           icon="mdi-monitor-multiple"
         >
+          <template #action>
+            <v-btn
+              variant="text"
+              size="small"
+              prepend-icon="mdi-refresh"
+              :loading="loadingDisplays"
+              @click="loadDisplays"
+            >
+              Refresh
+            </v-btn>
+          </template>
           <v-alert
             v-if="needsSingleMonitorFallback(displays)"
             type="info"
             variant="tonal"
             class="mb-4"
           >
-            Only one display detected — the operator view and audience output can't be shown on
-            separate screens yet. Everything uses this display until a second monitor is connected.
+            Only one display detected. You can plan services and use 16:9 previews on this computer,
+            but presenting requires a separate audience display in extended-desktop mode.
           </v-alert>
           <div v-if="displays.length === 0" class="settings-empty">
             <v-icon icon="mdi-monitor-off" size="28" />
@@ -1404,6 +1494,82 @@ function translationSource(entry: AvailableTranslationEntry): string {
 
       <template v-else-if="activeSection === 'remote-control'">
         <SettingsPanel
+          title="Connection"
+          description="How phones and tablets find this Worship Studio installation on the local network."
+          icon="mdi-lan-connect"
+        >
+          <div class="remote-connection-summary">
+            <span class="remote-connection-summary-icon">
+              <v-icon icon="mdi-access-point-network" size="20" />
+            </span>
+            <div>
+              <span>Active address</span>
+              <strong>
+                {{ remoteServerInfo?.hostname ?? remoteServerInfo?.lanIp ?? 'Starting…' }}:{{
+                  remoteServerInfo?.port ?? '…'
+                }}
+              </strong>
+              <small v-if="remoteServerInfo?.lanIp">
+                Also available at {{ remoteServerInfo.lanIp }}:{{ remoteServerInfo.port }}
+              </small>
+            </div>
+            <v-chip
+              :color="remoteServerInfo ? 'success' : undefined"
+              variant="tonal"
+              size="small"
+              :prepend-icon="remoteServerInfo ? 'mdi-check-circle-outline' : 'mdi-timer-sand'"
+            >
+              {{ remoteServerInfo ? 'Available' : 'Starting' }}
+            </v-chip>
+          </div>
+
+          <div class="remote-connection-options">
+            <div class="remote-setting-row">
+              <div class="remote-setting-copy">
+                <strong>Local hostname</strong>
+                <span>
+                  Leave automatic for an installation-specific name. Use “worshipstudio” for the
+                  primary booth.
+                </span>
+              </div>
+              <v-text-field
+                v-model="remoteHostnameOverride"
+                label="Hostname"
+                placeholder="Automatic"
+                suffix=".local"
+                variant="outlined"
+                density="comfortable"
+                clearable
+                maxlength="63"
+                hide-details
+              />
+            </div>
+
+            <div class="remote-setting-row">
+              <div class="remote-setting-copy">
+                <strong>Port</strong>
+                <span>
+                  Automatic remembers an available port. Set a specific port only when required by
+                  the network.
+                </span>
+              </div>
+              <v-number-input
+                v-model="remotePortOverride"
+                label="Port"
+                placeholder="Automatic"
+                variant="outlined"
+                density="comfortable"
+                control-variant="stacked"
+                :min="1024"
+                :max="65535"
+                clearable
+                hide-details
+              />
+            </div>
+          </div>
+        </SettingsPanel>
+
+        <SettingsPanel
           title="Paired devices"
           description="Phones and tablets authorized to view or control the current presentation."
           icon="mdi-cellphone-link"
@@ -1413,6 +1579,7 @@ function translationSource(entry: AvailableTranslationEntry): string {
               variant="flat"
               color="primary"
               prepend-icon="mdi-plus"
+              :disabled="remotePersonOptions.length === 0"
               @click="openProvisionDialog"
             >
               Pair a Device
@@ -1427,6 +1594,15 @@ function translationSource(entry: AvailableTranslationEntry): string {
             Couldn't detect a network address for this computer — check that it's connected to the
             church's network, then reopen this screen.
           </v-alert>
+          <v-alert
+            v-if="remotePersonOptions.length === 0"
+            type="info"
+            variant="tonal"
+            density="compact"
+            class="mb-4"
+          >
+            Add a person before pairing a Remote Control device.
+          </v-alert>
           <v-list v-if="remoteDevices.length > 0" density="comfortable" class="settings-list">
             <v-list-item
               v-for="device in remoteDevices"
@@ -1437,10 +1613,19 @@ function translationSource(entry: AvailableTranslationEntry): string {
             >
               <template #prepend><v-icon icon="mdi-cellphone" class="mr-3" /></template>
               <v-list-item-title class="font-weight-bold">{{ device.name }}</v-list-item-title>
-              <v-list-item-subtitle>{{
-                accessLevelLabel(device.accessLevel)
-              }}</v-list-item-subtitle>
+              <v-list-item-subtitle>
+                {{ remoteDeviceOwner(device) }} · {{ accessLevelLabel(device.accessLevel) }}
+              </v-list-item-subtitle>
               <template #append>
+                <v-btn
+                  icon="mdi-qrcode-scan"
+                  variant="text"
+                  size="small"
+                  :loading="repairingDeviceId === device.id"
+                  :disabled="!device.personId"
+                  aria-label="Re-pair device"
+                  @click.stop="repairRemoteDevice(device)"
+                />
                 <v-btn
                   icon="mdi-trash-can-outline"
                   variant="text"
@@ -1462,10 +1647,19 @@ function translationSource(entry: AvailableTranslationEntry): string {
             <v-card-title>Pair a Device</v-card-title>
             <v-card-text>
               <template v-if="!provisionResult">
+                <v-select
+                  v-model="newDevicePersonId"
+                  :items="remotePersonOptions"
+                  label="Person"
+                  placeholder="Choose the device owner"
+                  variant="outlined"
+                  density="comfortable"
+                  class="mb-2"
+                />
                 <v-text-field
                   v-model="newDeviceName"
                   label="Device Name"
-                  placeholder="e.g. John's iPhone"
+                  placeholder="e.g. iPhone or Booth Tablet"
                   variant="outlined"
                   density="comfortable"
                   autofocus
@@ -1516,7 +1710,7 @@ function translationSource(entry: AvailableTranslationEntry): string {
                   variant="flat"
                   color="primary"
                   :loading="provisioning"
-                  :disabled="!newDeviceName.trim()"
+                  :disabled="!newDevicePersonId || !newDeviceName.trim()"
                   @click="provisionDevice"
                 >
                   Generate QR Code
@@ -1840,10 +2034,6 @@ function translationSource(entry: AvailableTranslationEntry): string {
           </div>
         </SettingsPanel>
       </template>
-
-      <template v-else-if="activeSection === 'roles'">
-        <RoleGroupEditor v-model="librarySettings.roleGroups" />
-      </template>
     </div>
     <MediaPickerDialog
       v-model="brandingLogoPickerOpen"
@@ -1970,21 +2160,85 @@ function translationSource(entry: AvailableTranslationEntry): string {
   line-height: 1.45;
 }
 .path-setting {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  display: grid;
+  max-width: 760px;
+  grid-template-columns: minmax(280px, 1fr) auto;
+  align-items: start;
+  gap: 12px;
 }
-.path-setting code {
-  min-width: 0;
-  overflow: hidden;
-  color: rgba(var(--v-theme-on-surface), 0.72);
-  font-size: 0.72rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.path-setting-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 2px;
 }
 .status-list {
   max-width: 620px;
+}
+.remote-connection-summary {
+  display: grid;
+  max-width: 700px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 1px solid rgba(var(--v-theme-primary), 0.16);
+  border-radius: 9px;
+  background: rgba(var(--v-theme-primary), 0.045);
+}
+.remote-connection-summary-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-primary), 0.1);
+  color: rgb(var(--v-theme-primary));
+}
+.remote-connection-summary > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.remote-connection-summary span,
+.remote-connection-summary small {
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.65rem;
+}
+.remote-connection-summary strong {
+  overflow: hidden;
+  margin: 1px 0;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.remote-connection-options {
+  max-width: 700px;
+  margin-top: 16px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+.remote-setting-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(230px, 280px);
+  align-items: center;
+  gap: 24px;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+.remote-setting-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.remote-setting-copy strong {
+  display: block;
+  font-size: 0.78rem;
+}
+.remote-setting-copy span {
+  display: block;
+  margin-top: 3px;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-size: 0.68rem;
+  line-height: 1.45;
 }
 .settings-list {
   max-width: 680px;
@@ -2410,10 +2664,20 @@ function translationSource(entry: AvailableTranslationEntry): string {
     grid-template-columns: 1fr;
   }
   .path-setting {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
-  .path-setting .v-btn {
-    align-self: flex-start;
+  .remote-setting-row {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+  .remote-connection-summary {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .remote-connection-summary > .v-chip {
+    display: none;
+  }
+  .path-setting-actions {
+    flex-wrap: wrap;
   }
   .display-setting-row {
     grid-template-columns: 1fr;

@@ -78,7 +78,7 @@ export interface LibrarySettings {
 export interface MachineSettings {
   thisComputerName: string
   darkMode: boolean
-  /** Local filesystem path to the synced library root on this machine. */
+  /** Local filesystem path to the synced library root. Relative paths resolve from the app executable folder. */
   libraryPath: string
   /** Whether the First-Time Setup Wizard has been completed or explicitly skipped. */
   hasCompletedSetup: boolean
@@ -98,4 +98,10 @@ export interface MachineSettings {
   /** Canva Connect API credentials — local to this machine and never synced. */
   canvaClientId?: string
   canvaClientSecret?: string
+  /** Explicit Remote Control/Canva callback port. Undefined selects and remembers one automatically. */
+  remoteControlPort?: number
+  /** Explicit mDNS hostname label. Undefined uses a computer-based installed name or the portable default. */
+  remoteControlHostname?: string
+  /** Internal last successful automatic port, persisted to keep paired-device URLs stable. */
+  lastRemoteControlPort?: number
 }

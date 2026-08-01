@@ -309,13 +309,26 @@ onUnmounted(() => {
       :class="{ 'app-nav--collapsed': navigationCollapsed }"
     >
       <v-list nav density="comfortable" class="pt-2">
-        <v-list-item to="/" title="Services" rounded="lg" class="mx-2 mb-1 sidebar-item">
+        <v-list-item
+          v-tooltip:end="navigationCollapsed ? 'Services' : false"
+          to="/"
+          title="Services"
+          rounded="lg"
+          class="mx-2 mb-1 sidebar-item"
+        >
           <template #prepend><v-icon icon="mdi-home" color="primary" /></template>
         </v-list-item>
-        <v-list-item to="/library/songs" title="Songs" rounded="lg" class="mx-2 mb-1 sidebar-item">
+        <v-list-item
+          v-tooltip:end="navigationCollapsed ? 'Songs' : false"
+          to="/library/songs"
+          title="Songs"
+          rounded="lg"
+          class="mx-2 mb-1 sidebar-item"
+        >
           <template #prepend><v-icon icon="mdi-bookshelf" color="teal" /></template>
         </v-list-item>
         <v-list-item
+          v-tooltip:end="navigationCollapsed ? 'Slides' : false"
           to="/library/slides"
           title="Slides"
           rounded="lg"
@@ -323,21 +336,77 @@ onUnmounted(() => {
         >
           <template #prepend><v-icon icon="mdi-image-multiple" color="violet" /></template>
         </v-list-item>
-        <v-list-item to="/library/media" title="Media" rounded="lg" class="mx-2 mb-1 sidebar-item">
+        <v-list-item
+          v-tooltip:end="navigationCollapsed ? 'Media' : false"
+          to="/library/media"
+          title="Media"
+          rounded="lg"
+          class="mx-2 mb-1 sidebar-item"
+        >
           <template #prepend><v-icon icon="mdi-file-image-outline" color="rose" /></template>
         </v-list-item>
-        <v-list-item to="/people" title="People" rounded="lg" class="mx-2 mb-1 sidebar-item">
+        <v-list-item
+          v-tooltip:end="navigationCollapsed ? 'People' : false"
+          to="/people"
+          title="People"
+          rounded="lg"
+          class="mx-2 mb-1 sidebar-item"
+        >
           <template #prepend><v-icon icon="mdi-account-multiple" color="amber" /></template>
         </v-list-item>
-        <v-divider class="mx-2 mt-2" />
+        <v-list-item
+          v-tooltip:end="navigationCollapsed ? 'Roles' : false"
+          to="/roles"
+          title="Roles"
+          rounded="lg"
+          class="mx-2 mb-1 sidebar-item"
+        >
+          <template #prepend
+            ><v-icon icon="mdi-account-badge-outline" color="terracotta"
+          /></template>
+        </v-list-item>
+        <v-divider class="mx-2 mt-2 mb-1" />
+        <v-list-subheader v-if="!navigationCollapsed" class="design-nav-heading">
+          Design
+        </v-list-subheader>
+        <v-list-item
+          v-tooltip:end="navigationCollapsed ? 'Templates' : false"
+          to="/library/service-templates"
+          title="Templates"
+          rounded="lg"
+          class="mx-2 mb-1 sidebar-item"
+        >
+          <template #prepend><v-icon icon="mdi-file-tree-outline" color="orange" /></template>
+        </v-list-item>
+        <v-list-item
+          v-tooltip:end="navigationCollapsed ? 'Themes' : false"
+          to="/library/themes"
+          title="Themes"
+          rounded="lg"
+          class="mx-2 mb-1 sidebar-item"
+        >
+          <template #prepend><v-icon icon="mdi-palette-outline" color="indigo" /></template>
+        </v-list-item>
       </v-list>
       <template #append>
         <v-divider class="mb-2" />
         <v-list nav density="comfortable" class="py-0">
-          <v-list-item to="/reports" title="Reports" rounded="lg" class="mx-2 mb-1 sidebar-item">
+          <v-list-item
+            v-tooltip:end="navigationCollapsed ? 'Reports' : false"
+            to="/reports"
+            title="Reports"
+            rounded="lg"
+            class="mx-2 mb-1 sidebar-item"
+          >
             <template #prepend><v-icon icon="mdi-file-chart-outline" color="secondary" /></template>
           </v-list-item>
-          <v-list-item to="/settings" title="Settings" rounded="lg" class="mx-2 mb-1 sidebar-item">
+          <v-list-item
+            v-tooltip:end="navigationCollapsed ? 'Settings' : false"
+            to="/settings"
+            title="Settings"
+            rounded="lg"
+            class="mx-2 mb-1 sidebar-item"
+          >
             <template #prepend><v-icon icon="mdi-cog" color="slate" /></template>
           </v-list-item>
         </v-list>
@@ -476,6 +545,14 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+:global(.v-tooltip > .v-overlay__content) {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.18);
+  background: rgb(var(--v-theme-surface-variant));
+  box-shadow: 0 7px 20px rgba(0, 0, 0, 0.32);
+  color: rgb(var(--v-theme-on-surface));
+  font-size: 0.78rem;
+  font-weight: 650;
+}
 .app-nav {
   background: rgb(var(--v-theme-surface));
   border-right-color: rgba(var(--v-theme-on-surface), 0.08);
@@ -483,6 +560,15 @@ onUnmounted(() => {
 .sidebar-item :deep(.v-list-item-title) {
   font-size: 0.875rem;
   line-height: 1.25rem;
+}
+.design-nav-heading {
+  min-height: 28px;
+  padding-inline: 18px !important;
+  color: rgba(var(--v-theme-on-surface), 0.42);
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .app-brand {
   flex-shrink: 0;

@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { VueDraggable } from 'vue-draggable-plus'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
-import ManagedStringList from './ManagedStringList.vue'
+import { useUndoStore } from '@/stores/undo'
 import type { RoleGroup } from '@/models/settings'
 
 const props = defineProps<{ modelValue: RoleGroup[] }>()
 const emit = defineEmits<{ 'update:modelValue': [RoleGroup[]] }>()
 const confirmDialog = useConfirmDialogStore()
+const undoStore = useUndoStore()
 
 const selectedIndex = ref(0)
 const newGroupName = ref('')
+const newRoleName = ref('')
 const selectedGroup = computed(() => props.modelValue[selectedIndex.value])
 const totalRoles = computed(() =>
   props.modelValue.reduce((total, group) => total + group.roles.length, 0),
@@ -48,6 +51,30 @@ function setRoles(roles: string[]) {
   emit('update:modelValue', groups)
 }
 
+function addRole() {
+  const name = newRoleName.value.trim()
+  const group = selectedGroup.value
+  if (!group || !name || group.roles.some((role) => role.toLowerCase() === name.toLowerCase()))
+    return
+  setRoles([...group.roles, name])
+  newRoleName.value = ''
+}
+
+async function removeRole(index: number) {
+  const group = selectedGroup.value
+  const role = group?.roles[index]
+  if (!group || role === undefined) return
+  if (!(await confirmDialog.confirm(`Remove the "${role}" role?`, 'Remove'))) return
+  setRoles(group.roles.filter((_, roleIndex) => roleIndex !== index))
+  undoStore.push(`Removed "${role}"`, () => {
+    const current = selectedGroup.value
+    if (!current) return
+    const restored = [...current.roles]
+    restored.splice(index, 0, role)
+    setRoles(restored)
+  })
+}
+
 async function removeSelectedGroup() {
   const group = selectedGroup.value
   if (!group) return
@@ -76,6 +103,26 @@ async function removeSelectedGroup() {
         </div>
       </header>
 
+      <div class="directory-add">
+        <v-text-field
+          v-model="newGroupName"
+          label="New category"
+          placeholder="e.g. Praise Team"
+          variant="outlined"
+          density="compact"
+          hide-details
+          @keydown.enter="addGroup"
+        />
+        <v-btn
+          color="primary"
+          variant="flat"
+          icon="mdi-plus"
+          aria-label="Add role category"
+          :disabled="!newGroupName.trim()"
+          @click="addGroup"
+        />
+      </div>
+
       <div class="category-list">
         <button
           v-for="(group, index) in modelValue"
@@ -95,26 +142,6 @@ async function removeSelectedGroup() {
           <v-icon icon="mdi-chevron-right" size="17" />
         </button>
         <div v-if="modelValue.length === 0" class="directory-empty">No role categories yet.</div>
-      </div>
-
-      <div class="directory-add">
-        <v-text-field
-          v-model="newGroupName"
-          label="New category"
-          placeholder="e.g. Praise Team"
-          variant="outlined"
-          density="compact"
-          hide-details
-          @keydown.enter="addGroup"
-        />
-        <v-btn
-          color="primary"
-          variant="flat"
-          icon="mdi-plus"
-          aria-label="Add role category"
-          :disabled="!newGroupName.trim()"
-          @click="addGroup"
-        />
       </div>
     </aside>
 
@@ -152,11 +179,57 @@ async function removeSelectedGroup() {
           <label>Roles</label>
           <span>{{ selectedGroup.roles.length }} configured</span>
         </div>
-        <ManagedStringList
+        <div class="role-add-row">
+          <v-text-field
+            v-model="newRoleName"
+            label="New role"
+            placeholder="e.g. Worship Leader"
+            variant="outlined"
+            density="compact"
+            hide-details
+            @keydown.enter="addRole"
+          />
+          <v-btn
+            color="primary"
+            variant="flat"
+            prepend-icon="mdi-plus"
+            :disabled="!newRoleName.trim()"
+            @click="addRole"
+          >
+            Add Role
+          </v-btn>
+        </div>
+        <VueDraggable
+          v-if="selectedGroup.roles.length"
           :model-value="selectedGroup.roles"
-          add-label="Add a role…"
+          handle=".role-drag-handle"
+          :animation="150"
+          class="role-list"
           @update:model-value="setRoles"
-        />
+        >
+          <div v-for="(role, index) in selectedGroup.roles" :key="role" class="role-row">
+            <button type="button" class="role-drag-handle" :aria-label="`Drag to reorder ${role}`">
+              <v-icon icon="mdi-drag-vertical" size="18" />
+            </button>
+            <span class="role-order">{{ index + 1 }}</span>
+            <span class="role-row-icon"><v-icon icon="mdi-account-outline" size="18" /></span>
+            <strong>{{ role }}</strong>
+            <div class="role-row-actions">
+              <v-btn
+                icon="mdi-delete-outline"
+                variant="text"
+                size="small"
+                color="error"
+                :aria-label="`Remove ${role}`"
+                @click="removeRole(index)"
+              />
+            </div>
+          </div>
+        </VueDraggable>
+        <div v-else class="roles-empty">
+          <v-icon icon="mdi-account-plus-outline" size="24" />
+          <span>No roles in this category yet.</span>
+        </div>
       </div>
     </section>
 
@@ -273,7 +346,7 @@ async function removeSelectedGroup() {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   padding: 12px;
-  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
 }
 .role-editor {
   min-width: 0;
@@ -321,6 +394,80 @@ async function removeSelectedGroup() {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+.role-add-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-bottom: 11px;
+}
+.role-list {
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.09);
+  border-radius: 9px;
+}
+.role-row {
+  display: grid;
+  grid-template-columns: 26px 20px 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 5px 7px 5px 11px;
+  background: rgba(var(--v-theme-background), 0.16);
+}
+.role-drag-handle {
+  display: grid;
+  width: 26px;
+  height: 32px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(var(--v-theme-on-surface), 0.4);
+  cursor: grab;
+}
+.role-drag-handle:hover,
+.role-drag-handle:focus-visible {
+  color: rgb(var(--v-theme-primary));
+}
+.role-drag-handle:active {
+  cursor: grabbing;
+}
+.role-row + .role-row {
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.075);
+}
+.role-order {
+  color: rgba(var(--v-theme-on-surface), 0.38);
+  font-size: 0.63rem;
+  font-variant-numeric: tabular-nums;
+}
+.role-row-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 7px;
+  background: rgba(var(--v-theme-primary), 0.08);
+  color: rgb(var(--v-theme-primary));
+}
+.role-row strong {
+  font-size: 0.72rem;
+}
+.role-row-actions {
+  display: flex;
+  align-items: center;
+}
+.roles-empty {
+  display: flex;
+  min-height: 110px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 7px;
+  border: 1px dashed rgba(var(--v-theme-on-surface), 0.12);
+  border-radius: 9px;
+  color: rgba(var(--v-theme-on-surface), 0.45);
+  font-size: 0.69rem;
 }
 .workspace-empty {
   display: flex;

@@ -1,8 +1,8 @@
 use tauri::AppHandle;
 
-use crate::domain::{manifest, people};
+use crate::domain::{manifest, people, remote};
 use crate::models::Person;
-use crate::paths::{library_root, now_iso, this_device_name};
+use crate::paths::{library_root, now_iso, remote_devices_path, this_device_name};
 
 #[tauri::command]
 pub fn list_people(app: AppHandle) -> Result<Vec<Person>, String> {
@@ -21,6 +21,7 @@ pub fn save_person(app: AppHandle, person: Person) -> Result<(), String> {
 pub fn delete_person(app: AppHandle, id: String) -> Result<(), String> {
     let root = library_root(&app);
     people::delete(&root, &id).map_err(|e| e.to_string())?;
+    remote::delete_by_person(&remote_devices_path(&app), &id).map_err(|e| e.to_string())?;
     manifest::rebuild(&root).map_err(|e| e.to_string())?;
     Ok(())
 }

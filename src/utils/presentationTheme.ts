@@ -37,6 +37,25 @@ export function presentationThemeDefaults(theme: Theme): PresentationThemeTarget
   ]
 }
 
+/** Empty applicability is intentionally the backwards-compatible "generic" value. */
+export function presentationThemeAppliesTo(theme: Theme): PresentationThemeTarget[] {
+  return [
+    ...new Set(
+      ((theme.appliesTo ?? []) as string[])
+        .map(normalizePresentationThemeTarget)
+        .filter((target): target is PresentationThemeTarget => !!target),
+    ),
+  ]
+}
+
+export function isPresentationThemeAvailableFor(
+  theme: Theme,
+  target: PresentationThemeTarget,
+): boolean {
+  const appliesTo = presentationThemeAppliesTo(theme)
+  return appliesTo.length === 0 || appliesTo.includes(target)
+}
+
 export function isPresentationThemeDefaultFor(
   theme: Theme,
   target: PresentationThemeTarget,
@@ -51,6 +70,17 @@ export function resolvePresentationTheme(
   themes: Theme[],
 ): Theme | undefined {
   if (!target) return undefined
-  const override = item?.themeId ? themes.find((theme) => theme.id === item.themeId) : undefined
-  return override ?? themes.find((theme) => isPresentationThemeDefaultFor(theme, target))
+  const override = item?.themeId
+    ? themes.find(
+        (theme) => theme.id === item.themeId && isPresentationThemeAvailableFor(theme, target),
+      )
+    : undefined
+  return (
+    override ??
+    themes.find(
+      (theme) =>
+        isPresentationThemeAvailableFor(theme, target) &&
+        isPresentationThemeDefaultFor(theme, target),
+    )
+  )
 }

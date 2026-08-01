@@ -138,6 +138,9 @@ export interface Theme {
   textEffect?: TextEffect
   /** Legacy text-outline flag retained for themes saved by older Worship Studio versions. */
   outline: boolean
+  /** Content types this theme is intended for. Empty/absent means it is a generic theme that
+   * can be used with every generated presentation type. */
+  appliesTo?: PresentationThemeTarget[]
   useAsDefaultFor: PresentationThemeTarget[]
   updatedAt: string
   updatedByDevice: string

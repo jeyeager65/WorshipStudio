@@ -22,7 +22,9 @@ onMounted(() => {
 })
 
 const visibleItems = computed(() => store.slides.filter((item) => !pendingDeleteIds.has(item.id)))
-const totalSlideCount = computed(() => visibleItems.value.reduce((sum, item) => sum + item.slides.length, 0))
+const totalSlideCount = computed(() =>
+  visibleItems.value.reduce((sum, item) => sum + item.slides.length, 0),
+)
 const tagCounts = computed(() => {
   const counts = new Map<string, number>()
   for (const item of visibleItems.value) {
@@ -91,7 +93,10 @@ function openSlide(item: SlideLibraryItem) {
       <div>
         <div class="slides-page-eyebrow">Content Library</div>
         <h1>Slides</h1>
-        <p>Create reusable presentations for announcements, welcome screens, and other visual moments.</p>
+        <p>
+          Create reusable presentations for announcements, welcome screens, and other visual
+          moments.
+        </p>
       </div>
       <div class="slides-summary" aria-label="Slide library summary">
         <div class="slides-summary-stat">
@@ -114,7 +119,8 @@ function openSlide(item: SlideLibraryItem) {
         <div>
           <h2>Slide Library</h2>
           <p>
-            {{ filteredSlides.length }} {{ filteredSlides.length === 1 ? 'presentation' : 'presentations' }}
+            {{ filteredSlides.length }}
+            {{ filteredSlides.length === 1 ? 'presentation' : 'presentations' }}
             <template v-if="activeTag"> with 1 active filter</template>
             <template v-if="query"> matching your search</template>
           </p>
@@ -132,11 +138,16 @@ function openSlide(item: SlideLibraryItem) {
             clearable
             class="slide-search"
           />
-          <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSlide">New Presentation</v-btn>
+          <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSlide"
+            >New Presentation</v-btn
+          >
         </div>
       </div>
 
-      <div class="slides-directory-body">
+      <div
+        class="slides-directory-body"
+        :class="{ 'slides-directory-body--empty': visibleItems.length === 0 }"
+      >
         <aside v-if="visibleItems.length" class="slide-filters" aria-label="Filter slides">
           <button
             type="button"
@@ -172,7 +183,9 @@ function openSlide(item: SlideLibraryItem) {
             <span><v-icon icon="mdi-presentation-play" size="30" /></span>
             <h2>No Presentations Yet</h2>
             <p>Create a reusable presentation for announcements or service visuals.</p>
-            <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSlide">New Presentation</v-btn>
+            <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSlide"
+              >New Presentation</v-btn
+            >
           </div>
           <div v-else-if="filteredSlides.length === 0" class="slides-empty-state">
             <span><v-icon icon="mdi-presentation-play" size="30" /></span>
@@ -192,11 +205,17 @@ function openSlide(item: SlideLibraryItem) {
               @keydown.space.prevent="openSlide(presentation)"
             >
               <div class="presentation-preview">
-                <SlideSceneRenderer v-if="presentation.slides[0]" :scene="presentation.slides[0].scene" />
-                <span v-else class="preview-empty"><v-icon icon="mdi-presentation" size="34" /></span>
+                <SlideSceneRenderer
+                  v-if="presentation.slides[0]"
+                  :scene="presentation.slides[0].scene"
+                />
+                <span v-else class="preview-empty"
+                  ><v-icon icon="mdi-presentation" size="34"
+                /></span>
                 <span class="slide-count-badge">
                   <v-icon icon="mdi-view-carousel-outline" size="14" />
-                  {{ presentation.slides.length }} {{ presentation.slides.length === 1 ? 'Slide' : 'Slides' }}
+                  {{ presentation.slides.length }}
+                  {{ presentation.slides.length === 1 ? 'Slide' : 'Slides' }}
                 </span>
               </div>
 
@@ -208,10 +227,21 @@ function openSlide(item: SlideLibraryItem) {
                   </div>
                   <v-menu>
                     <template #activator="{ props }">
-                      <v-btn v-bind="props" icon="mdi-dots-horizontal" variant="text" size="small" aria-label="Presentation actions" @click.stop />
+                      <v-btn
+                        v-bind="props"
+                        icon="mdi-dots-horizontal"
+                        variant="text"
+                        size="small"
+                        aria-label="Presentation actions"
+                        @click.stop
+                      />
                     </template>
                     <v-list density="compact">
-                      <v-list-item prepend-icon="mdi-pencil-outline" title="Edit Presentation" @click="openSlide(presentation)" />
+                      <v-list-item
+                        prepend-icon="mdi-pencil-outline"
+                        title="Edit Presentation"
+                        @click="openSlide(presentation)"
+                      />
                       <v-list-item
                         prepend-icon="mdi-trash-can-outline"
                         title="Delete Presentation"
@@ -224,11 +254,18 @@ function openSlide(item: SlideLibraryItem) {
 
                 <div class="presentation-tags">
                   <span v-for="tag in presentation.tags ?? []" :key="tag">{{ tag }}</span>
-                  <span v-if="!(presentation.tags ?? []).length" class="presentation-no-tags">Untagged</span>
+                  <span v-if="!(presentation.tags ?? []).length" class="presentation-no-tags"
+                    >Untagged</span
+                  >
                 </div>
 
                 <div class="presentation-footer">
-                  <span><v-icon icon="mdi-layers-triple-outline" size="16" />{{ presentation.slides.length }} Total</span>
+                  <span
+                    ><v-icon icon="mdi-layers-triple-outline" size="16" />{{
+                      presentation.slides.length
+                    }}
+                    Total</span
+                  >
                   <span class="presentation-usage-label">
                     <strong>{{ lastUsedLabel(presentation) }}</strong>
                     <small>{{ presentation.usage.usesPastYear }}x This Year</small>
@@ -365,6 +402,9 @@ function openSlide(item: SlideLibraryItem) {
   display: grid;
   min-height: 470px;
   grid-template-columns: 230px minmax(0, 1fr);
+}
+.slides-directory-body--empty {
+  grid-template-columns: minmax(0, 1fr);
 }
 .slide-filters {
   padding: 14px 11px 18px;

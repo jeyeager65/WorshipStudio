@@ -41,6 +41,7 @@ mod tests {
             text_color: "#FFFFFF".to_string(),
             text_effect: None,
             outline: true,
+            applies_to: Vec::new(),
             use_as_default_for: vec!["songs".to_string()],
             updated_at: String::new(),
             updated_by_device: String::new(),

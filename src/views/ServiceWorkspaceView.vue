@@ -44,6 +44,7 @@ import { personDisplayName, sortByPreferredRole } from '@/models/library'
 import { scenePlainText } from '@/utils/slideScene'
 import { presentationTextEffect } from '@/utils/presentationTextEffect'
 import {
+  isPresentationThemeAvailableFor,
   isPresentationThemeDefaultFor,
   presentationThemeTargetForItem,
   resolvePresentationTheme,
@@ -55,6 +56,7 @@ import type {
   LiveSlideContent,
   LivePresentationTheme,
   RemoteCommand,
+  DisplayInfo,
 } from '@/adapters/types'
 
 const route = useRoute()
@@ -326,6 +328,7 @@ onMounted(async () => {
   await nextTick()
   if (previewPanelRef.value) previewResizeObserver?.observe(previewPanelRef.value)
   window.addEventListener('keydown', onKeydown)
+  window.addEventListener('focus', loadPresentationSize)
   // A freshly created service is inherently unsaved — starting dirty (rather than false, as
   // for an existing service) enables the Save button and the router guard's
   // leave-without-saving warning immediately, so it's never silently lost with no way to
@@ -389,6 +392,7 @@ onMounted(async () => {
 onUnmounted(() => {
   clearInterval(nowTickInterval)
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('focus', loadPresentationSize)
   // Safety net: the router guard (router/index.ts) is what normally prevents leaving while
   // presenting, but if this view ever unmounts some other way, don't leave the app
   // permanently believing a torn-down workspace is still live — or a presentation window
@@ -459,7 +463,11 @@ const themeTargetLabels: Record<PresentationThemeTarget, string> = {
 }
 
 function defaultThemeFor(target: PresentationThemeTarget) {
-  return themesStore.themes.find((theme) => isPresentationThemeDefaultFor(theme, target))
+  return themesStore.themes.find(
+    (theme) =>
+      isPresentationThemeAvailableFor(theme, target) &&
+      isPresentationThemeDefaultFor(theme, target),
+  )
 }
 
 const selectedThemeTarget = computed(() => presentationThemeTargetForItem(selectedItem.value))
@@ -471,7 +479,13 @@ const themeOverrideOptions = computed(() => [
     title: `Use default${selectedDefaultTheme.value ? ` — ${selectedDefaultTheme.value.name}` : ''}`,
     value: '',
   },
-  ...themesStore.themes.map((theme) => ({ title: theme.name, value: theme.id })),
+  ...themesStore.themes
+    .filter(
+      (theme) =>
+        !selectedThemeTarget.value ||
+        isPresentationThemeAvailableFor(theme, selectedThemeTarget.value),
+    )
+    .map((theme) => ({ title: theme.name, value: theme.id })),
 ])
 
 // Changing a reference after the item's already been added — e.g. the operator picked the
@@ -788,22 +802,40 @@ function toggleBackgroundOnly() {
   if (!liveSlide.value) return
   backgroundOnly.value = !backgroundOnly.value
 }
-function togglePresenting() {
-  isPresenting.value = !isPresenting.value
-  if (isPresenting.value) {
+async function togglePresenting() {
+  if (!isPresenting.value) {
+    await loadPresentationSize()
+    if (!audienceDisplayAvailable.value) {
+      await openPresentationDisplayDialog()
+      return
+    }
+    await startPresentation()
+  } else {
+    await getAdapter().live.stopPresenting()
+    isPresenting.value = false
+    getAdapter().remote?.pushLiveState(undefined, false)
+  }
+}
+
+async function startPresentation() {
+  try {
     if (flatIndex.value === -1 && flatSlides.value.length > 0) flatIndex.value = 0
-    getAdapter().live.startPresenting()
+    await getAdapter().live.startPresenting()
+    isPresenting.value = true
     // Explicit send in addition to the watch below — if flatIndex was already at this value
     // (e.g. the operator had already clicked this slide before pressing Start Presenting),
     // the watch alone wouldn't fire since liveContentPayload wouldn't actually change.
-    getAdapter().live.setLiveContent(liveContentPayload.value)
-  } else {
-    getAdapter().live.stopPresenting()
+    await getAdapter().live.setLiveContent(liveContentPayload.value)
+    getAdapter().remote?.pushLiveState(liveContentPayload.value, true)
+  } catch (e) {
+    console.error('Failed to start presentation:', e)
+    audienceDisplayAvailable.value = false
+    presentationDisplayError.value = errorMessage(
+      e,
+      'The audience display could not be opened. Check the connection and try again.',
+    )
+    await openPresentationDisplayDialog(false)
   }
-  getAdapter().remote?.pushLiveState(
-    isPresenting.value ? liveContentPayload.value : undefined,
-    isPresenting.value,
-  )
 }
 
 const liveSlide = computed(() =>
@@ -894,23 +926,91 @@ const previewSlots = computed(() => [
 // shrink the whole thing down via CSS transform, so the exact same auto-fit math that runs on
 // the real presentation window decides font sizes/wrapping here too — an absolute px font
 // range (e.g. scripture's 28-72px) would mean almost nothing if computed directly against a
-// box this small. That only actually matches the real thing if the virtual size is the *real*
-// presentation window's own logical size, not a guess — a 1920x1080 assumption looks fine for
-// a real second monitor but is nowhere close to correct when there's only one monitor (the
-// presentation window is just half its work area, a much less widescreen shape — see
-// adapters/tauri's computePresentationBounds), which visibly picked a different size/wrap
-// point than the real thing (a real, reported mismatch). getPresentationSize mirrors whatever
-// startPresenting would actually do right now; falls back to 1920x1080 in the mock/browser
-// adapter, which has no real monitors to measure.
+// box this small. On the booth computer the virtual size is the configured audience display's
+// exact logical size, matching live wrapping. A planning computer without an audience display
+// deliberately falls back to a stable 16:9 approximation; it cannot start presenting locally.
 const DEFAULT_PREVIEW_VIRTUAL_SIZE = { width: 1920, height: 1080 }
 const presentationSize = ref(DEFAULT_PREVIEW_VIRTUAL_SIZE)
+const audienceDisplayAvailable = ref(getAdapter().kind !== 'tauri')
+const presentationDisplayDialogOpen = ref(false)
+const presentationDisplays = ref<DisplayInfo[]>([])
+const presentationDisplaysLoading = ref(false)
+const selectedAudienceDisplayId = ref('')
+const presentationDisplayError = ref('')
 async function loadPresentationSize() {
   try {
-    presentationSize.value =
-      (await getAdapter().live.getPresentationSize?.()) ?? DEFAULT_PREVIEW_VIRTUAL_SIZE
+    const measured = await getAdapter().live.getPresentationSize?.()
+    presentationSize.value = measured ?? DEFAULT_PREVIEW_VIRTUAL_SIZE
+    audienceDisplayAvailable.value = !!measured || getAdapter().kind !== 'tauri'
   } catch (e) {
     console.error('Failed to measure the presentation window size:', e)
     presentationSize.value = DEFAULT_PREVIEW_VIRTUAL_SIZE
+    audienceDisplayAvailable.value = getAdapter().kind !== 'tauri'
+  }
+}
+
+async function refreshPresentationDisplays(clearError = true) {
+  presentationDisplaysLoading.value = true
+  if (clearError) presentationDisplayError.value = ''
+  try {
+    presentationDisplays.value = (await getAdapter().displays?.list()) ?? []
+    const selectable = presentationDisplays.value.filter((display) => display.role !== 'operator')
+    const configured = selectable.find((display) => display.role === 'audience')
+    if (configured) selectedAudienceDisplayId.value = configured.id
+    else if (selectable.length === 1) selectedAudienceDisplayId.value = selectable[0]!.id
+    else if (!selectable.some((display) => display.id === selectedAudienceDisplayId.value))
+      selectedAudienceDisplayId.value = ''
+  } catch (e) {
+    presentationDisplays.value = []
+    presentationDisplayError.value = errorMessage(e, 'Connected displays could not be detected.')
+  } finally {
+    presentationDisplaysLoading.value = false
+  }
+}
+
+async function openPresentationDisplayDialog(clearError = true) {
+  if (clearError) presentationDisplayError.value = ''
+  presentationDisplayDialogOpen.value = true
+  await refreshPresentationDisplays(clearError)
+}
+
+async function identifyPresentationDisplay(displayId: string) {
+  try {
+    await getAdapter().displays?.identify(displayId)
+  } catch (e) {
+    presentationDisplayError.value = errorMessage(e, 'The display could not be identified.')
+  }
+}
+
+async function useAudienceDisplayAndStart() {
+  const selected = presentationDisplays.value.find(
+    (display) => display.id === selectedAudienceDisplayId.value,
+  )
+  if (!selected || selected.role === 'operator' || presentationDisplaysLoading.value) return
+  presentationDisplaysLoading.value = true
+  presentationDisplayError.value = ''
+  try {
+    const roleMap = settingsStore.machineSettings?.displayRoles ?? {}
+    for (const [displayId, role] of Object.entries(roleMap)) {
+      if (role === 'audience' && displayId !== selected.id) {
+        await getAdapter().displays?.assignRole(displayId, 'not-used')
+        roleMap[displayId] = 'not-used'
+      }
+    }
+    await getAdapter().displays?.assignRole(selected.id, 'audience')
+    roleMap[selected.id] = 'audience'
+    await loadPresentationSize()
+    if (!audienceDisplayAvailable.value)
+      throw new Error('The selected display is no longer available.')
+    presentationDisplayDialogOpen.value = false
+    await startPresentation()
+  } catch (e) {
+    presentationDisplayError.value = errorMessage(
+      e,
+      'The audience display could not be configured.',
+    )
+  } finally {
+    presentationDisplaysLoading.value = false
   }
 }
 const PREVIEW_VIRTUAL_SIZE = computed(() => presentationSize.value)
@@ -1622,15 +1722,30 @@ function updateRolePerson(role: string, personId: string | undefined) {
           Bulletin
         </v-btn>
         <span class="action-divider" />
-        <v-btn
-          :color="isPresenting ? 'error' : 'primary'"
-          variant="flat"
-          class="present-button"
-          @click="togglePresenting"
+        <v-tooltip
+          :disabled="isPresenting || audienceDisplayAvailable"
+          location="bottom"
+          text="Choose or connect an audience display before presenting."
+          :open-delay="350"
         >
-          <v-icon :icon="isPresenting ? 'mdi-stop' : 'mdi-play'" start />
-          {{ isPresenting ? 'Stop Presenting' : 'Start Presenting' }}
-        </v-btn>
+          <template #activator="{ props: tooltipProps }">
+            <span
+              v-bind="tooltipProps"
+              class="present-button-wrap"
+              @pointerenter="loadPresentationSize"
+            >
+              <v-btn
+                :color="isPresenting ? 'error' : 'primary'"
+                variant="flat"
+                class="present-button"
+                @click="togglePresenting"
+              >
+                <v-icon :icon="isPresenting ? 'mdi-stop' : 'mdi-play'" start />
+                {{ isPresenting ? 'Stop Presenting' : 'Start Presenting' }}
+              </v-btn>
+            </span>
+          </template>
+        </v-tooltip>
       </div>
     </div>
 
@@ -2409,6 +2524,136 @@ function updateRolePerson(role: string, personId: string | undefined) {
       </button>
     </div>
 
+    <v-dialog v-model="presentationDisplayDialogOpen" max-width="650">
+      <v-card class="presentation-display-dialog">
+        <v-card-title class="presentation-display-title">
+          <div>
+            <span><v-icon icon="mdi-monitor-arrow-down" size="21" /></span>
+            <div>
+              <strong>Choose Audience Display</strong>
+              <small>Select where the congregation should see the presentation.</small>
+            </div>
+          </div>
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            aria-label="Close display setup"
+            @click="presentationDisplayDialogOpen = false"
+          />
+        </v-card-title>
+        <v-card-text class="presentation-display-content">
+          <v-alert
+            v-if="presentationDisplays.length <= 1 && !presentationDisplaysLoading"
+            type="info"
+            variant="tonal"
+            density="compact"
+            class="mb-3"
+          >
+            Connect the projector and set Windows to <strong>Extend</strong>, then detect displays
+            again. Mirrored displays cannot keep the operator view private.
+          </v-alert>
+          <v-alert
+            v-if="presentationDisplayError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mb-3"
+          >
+            {{ presentationDisplayError }}
+          </v-alert>
+          <div v-if="presentationDisplaysLoading" class="presentation-display-loading">
+            <v-progress-circular indeterminate color="primary" size="28" />
+            <span>Detecting connected displays…</span>
+          </div>
+          <div v-else class="presentation-display-list" role="radiogroup">
+            <article
+              v-for="display in presentationDisplays"
+              :key="display.id"
+              class="presentation-display-option"
+              :class="{
+                selected: selectedAudienceDisplayId === display.id,
+                disabled: display.role === 'operator',
+              }"
+              :tabindex="display.role === 'operator' ? -1 : 0"
+              role="radio"
+              :aria-checked="selectedAudienceDisplayId === display.id"
+              :aria-disabled="display.role === 'operator'"
+              @click="display.role !== 'operator' && (selectedAudienceDisplayId = display.id)"
+              @keydown.enter="
+                display.role !== 'operator' && (selectedAudienceDisplayId = display.id)
+              "
+              @keydown.space.prevent="
+                display.role !== 'operator' && (selectedAudienceDisplayId = display.id)
+              "
+            >
+              <span class="presentation-display-icon">
+                <v-icon
+                  :icon="display.role === 'operator' ? 'mdi-monitor-dashboard' : 'mdi-projector'"
+                  size="22"
+                />
+              </span>
+              <div class="presentation-display-copy">
+                <strong>{{ display.name }}</strong>
+                <span>{{ display.resolution }}</span>
+              </div>
+              <span class="presentation-display-role">
+                {{
+                  display.role === 'operator'
+                    ? 'Operator'
+                    : display.role === 'audience'
+                      ? 'Audience'
+                      : 'Available'
+                }}
+              </span>
+              <v-btn
+                variant="text"
+                size="small"
+                prepend-icon="mdi-numeric"
+                @click.stop="identifyPresentationDisplay(display.id)"
+              >
+                Identify
+              </v-btn>
+              <v-icon
+                :icon="
+                  selectedAudienceDisplayId === display.id
+                    ? 'mdi-radiobox-marked'
+                    : 'mdi-radiobox-blank'
+                "
+                :color="selectedAudienceDisplayId === display.id ? 'primary' : undefined"
+                size="20"
+              />
+            </article>
+            <div v-if="!presentationDisplays.length" class="presentation-displays-empty">
+              <v-icon icon="mdi-monitor-off" size="27" />
+              <span>No displays were detected.</span>
+            </div>
+          </div>
+        </v-card-text>
+        <v-card-actions class="presentation-display-actions">
+          <v-btn
+            variant="text"
+            prepend-icon="mdi-refresh"
+            :loading="presentationDisplaysLoading"
+            @click="refreshPresentationDisplays()"
+          >
+            Detect Again
+          </v-btn>
+          <v-spacer />
+          <v-btn variant="text" @click="presentationDisplayDialogOpen = false">Cancel</v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            prepend-icon="mdi-play"
+            :loading="presentationDisplaysLoading"
+            :disabled="!selectedAudienceDisplayId"
+            @click="useAudienceDisplayAndStart"
+          >
+            Use Display & Start
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="serviceDetailsDialogOpen" max-width="560">
       <v-card>
         <v-card-title>Edit Service Details</v-card-title>
@@ -2932,6 +3177,122 @@ function updateRolePerson(role: string, personId: string | undefined) {
 </template>
 
 <style scoped>
+.presentation-display-dialog {
+  overflow: hidden;
+}
+.presentation-display-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 17px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+}
+.presentation-display-title > div,
+.presentation-display-title > div > span {
+  display: flex;
+  align-items: center;
+}
+.presentation-display-title > div {
+  gap: 10px;
+}
+.presentation-display-title > div > span {
+  width: 38px;
+  height: 38px;
+  justify-content: center;
+  border-radius: 9px;
+  background: rgba(var(--v-theme-primary), 0.1);
+  color: rgb(var(--v-theme-primary));
+}
+.presentation-display-title > div > div {
+  display: flex;
+  flex-direction: column;
+}
+.presentation-display-title strong {
+  font-size: 0.86rem;
+}
+.presentation-display-title small {
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.67rem;
+}
+.presentation-display-content {
+  padding: 17px !important;
+}
+.presentation-display-loading,
+.presentation-displays-empty {
+  display: flex;
+  min-height: 150px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.72rem;
+}
+.presentation-display-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.presentation-display-option {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto auto 24px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 11px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+  border-radius: 9px;
+  background: rgba(var(--v-theme-background), 0.2);
+  cursor: pointer;
+  outline: none;
+}
+.presentation-display-option:hover:not(.disabled),
+.presentation-display-option:focus-visible:not(.disabled) {
+  border-color: rgba(var(--v-theme-primary), 0.3);
+  background: rgba(var(--v-theme-primary), 0.045);
+}
+.presentation-display-option.selected {
+  border-color: rgba(var(--v-theme-primary), 0.45);
+  background: rgba(var(--v-theme-primary), 0.075);
+}
+.presentation-display-option.disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+.presentation-display-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 9px;
+  background: rgba(var(--v-theme-on-surface), 0.06);
+  color: rgb(var(--v-theme-primary));
+}
+.presentation-display-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.presentation-display-copy strong {
+  overflow: hidden;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.presentation-display-copy span,
+.presentation-display-role {
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.64rem;
+}
+.presentation-display-role {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(var(--v-theme-on-surface), 0.06);
+  font-weight: 650;
+}
+.presentation-display-actions {
+  padding: 11px 15px 14px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+}
 /* Fills the space below the persistent app bar (49px, see App.vue) exactly, so the
    sticky-feeling live-footer and the Add-to-Service button never depend on the page
    itself scrolling — only the panels that actually need it (service list, center
@@ -3076,6 +3437,9 @@ function updateRolePerson(role: string, personId: string | undefined) {
 }
 .present-button {
   min-width: 158px;
+}
+.present-button-wrap {
+  display: inline-flex;
 }
 @media (max-width: 1060px) {
   .workspace-service-sermon {

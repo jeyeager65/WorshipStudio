@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, toRaw, watch } from 'vue'
 import { storeToRefs } from 'pinia'
+import { useRoute, useRouter } from 'vue-router'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { getAdapter } from '@/adapters'
 import { useThemesStore } from '@/stores/themes'
@@ -12,6 +13,7 @@ import MediaPickerDialog from '@/components/media/MediaPickerDialog.vue'
 import type { PresentationThemeTarget, Theme } from '@/models/library'
 import {
   normalizePresentationThemeTarget,
+  presentationThemeAppliesTo,
   presentationThemeDefaults,
 } from '@/utils/presentationTheme'
 import { bundledPresentationFonts, resolvePresentationFontFamily } from '@/utils/presentationFonts'
@@ -25,13 +27,18 @@ const store = useThemesStore()
 const mediaStore = useMediaStore()
 const settingsStore = useSettingsStore()
 const confirmDialog = useConfirmDialogStore()
+const route = useRoute()
+const router = useRouter()
 const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsavedChangesStore())
 
-// Themes are edited in place on this one screen (no per-theme route like Songs/Slides have)
-// — switching the selected theme, rather than navigating away, is what risks silently
-// discarding an edit, so that's what needs its own confirm rather than the router guard.
-const selectedId = ref<string>()
 const draft = ref<Theme>()
+const previewDialogOpen = ref(false)
+const amazingGracePreview = [
+  'Amazing grace! how sweet the sound',
+  'That saved a wretch like me!',
+  'I once was lost, but now am found,',
+  'Was blind, but now I see.',
+]
 
 const fontOptions = bundledPresentationFonts
 const defaultForOptions: {
@@ -65,24 +72,24 @@ const defaultForOptions: {
     icon: 'mdi-text-box-outline',
   },
 ]
-
-function themeDefaultLabels(theme: Theme): string[] {
-  return presentationThemeDefaults(theme).map(
-    (target) => defaultForOptions.find((option) => option.value === target)?.label ?? target,
-  )
-}
+const applicableDefaultOptions = computed(() => {
+  if (!draft.value?.appliesTo?.length) return defaultForOptions
+  return defaultForOptions.filter((option) => draft.value!.appliesTo!.includes(option.value))
+})
 
 onMounted(async () => {
   saveHandler.value = saveDraft
-  pageTitleOverride.value = 'Presentation Themes'
+  pageTitleOverride.value = 'Presentation Theme'
   await Promise.all([store.load(), mediaStore.load(), settingsStore.load()])
-  // Guarded on `draft` still being unset: without this, clicking "New Theme" while this load
-  // is still in flight (a slow disk/sync folder, or just unlucky timing) gets silently
-  // clobbered the instant it resolves, replacing the fresh draft with whatever theme happens
-  // to load first.
-  if (draft.value) return
-  const first = store.themes[0]
-  if (first) selectTheme(first.id)
+  const id = String(route.params.id)
+  if (id === 'new') {
+    draft.value = blankTheme()
+    await nextTick()
+    isDirty.value = true
+    return
+  }
+  const theme = store.themes.find((candidate) => candidate.id === id)
+  if (theme) await loadTheme(theme)
 })
 
 onUnmounted(() => {
@@ -101,50 +108,33 @@ function blankTheme(): Theme {
     textColor: '#FFFFFF',
     textEffect: { ...DEFAULT_PRESENTATION_TEXT_EFFECT },
     outline: true,
+    appliesTo: [],
     useAsDefaultFor: [],
     updatedAt: '',
     updatedByDevice: '',
   }
 }
 
-async function confirmDiscardIfDirty(): Promise<boolean> {
-  if (!isDirty.value) return true
-  return confirmDialog.confirm('Discard unsaved theme changes?', 'Leave Without Saving')
-}
-
-async function selectTheme(id: string) {
-  if (!(await confirmDiscardIfDirty())) return
-  const theme = store.themes.find((t) => t.id === id)
-  selectedId.value = id
-  if (theme) {
-    const next = structuredClone(toRaw(theme))
-    next.font = resolvePresentationFontFamily(next.font)
-    next.textEffect = presentationTextEffect(next)
-    next.backgroundColor =
-      next.backgroundColor ??
-      (next.backgroundId === 'brand-primary'
-        ? brandPrimary.value
-        : next.backgroundId === 'brand-secondary'
-          ? brandSecondary.value
-          : '#000000')
-    if (next.backgroundId === 'brand-primary' || next.backgroundId === 'brand-secondary')
-      next.backgroundId = undefined
-    draft.value = { ...next, useAsDefaultFor: presentationThemeDefaults(theme) }
-  } else draft.value = undefined
-  // Reassigning `draft` itself (not a nested edit) still triggers the deep watch below, on
-  // the next reactivity flush — awaiting that flush first, then clearing dirty, is what makes
-  // this the one that actually sticks; otherwise selecting an untouched existing theme left it
-  // spuriously marked dirty moments later.
+async function loadTheme(theme: Theme) {
+  const next = structuredClone(toRaw(theme))
+  next.font = resolvePresentationFontFamily(next.font)
+  next.textEffect = presentationTextEffect(next)
+  next.backgroundColor =
+    next.backgroundColor ??
+    (next.backgroundId === 'brand-primary'
+      ? brandPrimary.value
+      : next.backgroundId === 'brand-secondary'
+        ? brandSecondary.value
+        : '#000000')
+  if (next.backgroundId === 'brand-primary' || next.backgroundId === 'brand-secondary')
+    next.backgroundId = undefined
+  draft.value = {
+    ...next,
+    appliesTo: presentationThemeAppliesTo(theme),
+    useAsDefaultFor: presentationThemeDefaults(theme),
+  }
   await nextTick()
   isDirty.value = false
-}
-
-async function createTheme() {
-  if (!(await confirmDiscardIfDirty())) return
-  const theme = blankTheme()
-  selectedId.value = theme.id
-  draft.value = theme
-  isDirty.value = true
 }
 
 // Registered once (not inside an async onMounted) so it's tied to this component's whole
@@ -159,6 +149,12 @@ async function saveDraft() {
   draft.value.textEffect = presentationTextEffect(draft.value)
   // Keep older Worship Studio versions' switch meaningful when they read the same theme.
   draft.value.outline = draft.value.textEffect.type === 'outline'
+  const normalizedApplicability = new Set<PresentationThemeTarget>()
+  for (const target of (draft.value.appliesTo ?? []) as string[]) {
+    const normalized = normalizePresentationThemeTarget(target)
+    if (normalized) normalizedApplicability.add(normalized)
+  }
+  draft.value.appliesTo = [...normalizedApplicability]
   // Only one default may own a content type. This makes resolution deterministic and turns
   // selecting a default here into the expected reassignment rather than an ambiguous tie.
   const normalizedTargets = new Set<PresentationThemeTarget>()
@@ -167,6 +163,10 @@ async function saveDraft() {
     if (normalized) normalizedTargets.add(normalized)
   }
   draft.value.useAsDefaultFor = [...normalizedTargets]
+  if (draft.value.appliesTo.length)
+    draft.value.useAsDefaultFor = draft.value.useAsDefaultFor.filter((target) =>
+      draft.value!.appliesTo!.includes(target),
+    )
   saving.value = true
   try {
     for (const theme of store.themes) {
@@ -179,24 +179,21 @@ async function saveDraft() {
         await store.save({ ...theme, useAsDefaultFor: remaining })
     }
     await store.save(structuredClone(toRaw(draft.value)))
-    selectedId.value = draft.value.id
     isDirty.value = false
+    if (route.params.id === 'new')
+      await router.replace({ name: 'theme-editor', params: { id: draft.value.id } })
   } finally {
     saving.value = false
   }
 }
 
-async function deleteTheme(id: string) {
-  const name = store.themes.find((t) => t.id === id)?.name ?? 'this theme'
+async function deleteTheme() {
+  if (!draft.value) return
+  const name = draft.value.name || 'this theme'
   if (!(await confirmDialog.confirm(`Delete "${name}"? This can't be undone.`, 'Delete'))) return
-  if (selectedId.value === id) {
-    draft.value = undefined
-    selectedId.value = undefined
-    isDirty.value = false
-  }
-  await store.remove(id)
-  const next = store.themes[0]
-  if (next) await selectTheme(next.id)
+  await store.remove(draft.value.id)
+  isDirty.value = false
+  await router.push({ name: 'theme-library' })
 }
 
 function toggleDefaultFor(value: PresentationThemeTarget) {
@@ -205,6 +202,26 @@ function toggleDefaultFor(value: PresentationThemeTarget) {
   const index = list.indexOf(value)
   if (index === -1) list.push(value)
   else list.splice(index, 1)
+}
+
+function toggleAppliesTo(value: PresentationThemeTarget) {
+  if (!draft.value) return
+  const list = draft.value.appliesTo ?? (draft.value.appliesTo = [])
+  const index = list.indexOf(value)
+  if (index === -1) list.push(value)
+  else {
+    if (list.length === 1) return
+    list.splice(index, 1)
+    const defaultIndex = draft.value.useAsDefaultFor.indexOf(value)
+    if (defaultIndex !== -1) draft.value.useAsDefaultFor.splice(defaultIndex, 1)
+  }
+}
+
+function setThemeScope(scope: 'generic' | 'specific') {
+  if (!draft.value) return
+  if (scope === 'generic') draft.value.appliesTo = []
+  else if (!draft.value.appliesTo?.length)
+    draft.value.appliesTo = defaultForOptions.map((option) => option.value)
 }
 
 const brandPrimary = computed(
@@ -274,93 +291,136 @@ function setTextEffectColor(event: Event) {
   <main class="themes-page">
     <header class="themes-hero">
       <div>
-        <span>Audience Presentation</span>
-        <h1>Presentation Themes</h1>
-        <p>
-          Reusable backgrounds and text styling for generated songs, scripture, sermons, and text
-          slides.
-        </p>
+        <v-btn
+          :to="{ name: 'theme-library' }"
+          variant="text"
+          prepend-icon="mdi-arrow-left"
+          class="back-button"
+        >
+          Presentation Themes
+        </v-btn>
+        <span>Theme Editor</span>
+        <h1>{{ draft?.name.trim() || 'New Presentation Theme' }}</h1>
+        <p>Configure the background and text styling used for generated audience slides.</p>
       </div>
-      <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="createTheme">
-        New Theme
+      <v-btn
+        v-if="route.params.id !== 'new'"
+        variant="text"
+        color="error"
+        prepend-icon="mdi-delete-outline"
+        @click="deleteTheme"
+      >
+        Delete Theme
       </v-btn>
     </header>
 
     <section class="theme-workspace">
-      <aside class="theme-directory">
-        <header>
-          <div>
-            <strong>Theme Library</strong>
-            <span
-              >{{ store.themes.length }} reusable
-              {{ store.themes.length === 1 ? 'theme' : 'themes' }}</span
-            >
-          </div>
-        </header>
-        <div class="theme-list">
-          <button
-            v-for="theme in store.themes"
-            :key="theme.id"
-            type="button"
-            class="theme-card"
-            :class="{ 'theme-card--active': selectedId === theme.id }"
-            @click="selectTheme(theme.id)"
-          >
-            <span
-              class="theme-swatch"
-              :style="{
-                background:
-                  theme.backgroundId === 'brand-primary'
-                    ? brandPrimary
-                    : theme.backgroundId === 'brand-secondary'
-                      ? brandSecondary
-                      : isMediaBackground(theme.backgroundId)
-                        ? 'linear-gradient(135deg, #22262b, #3b5bdb)'
-                        : (theme.backgroundColor ?? '#000000'),
-              }"
-            />
-            <span class="theme-card-copy">
-              <strong>{{ theme.name }}</strong>
-              <small v-if="themeDefaultLabels(theme).length">
-                Default for {{ themeDefaultLabels(theme).join(', ') }}
-              </small>
-              <small v-else>Available as an override</small>
-            </span>
-            <v-icon icon="mdi-chevron-right" size="17" />
-          </button>
-          <div v-if="!store.themes.length" class="directory-empty">
-            <v-icon icon="mdi-palette-outline" size="28" />
-            <strong>No presentation themes</strong>
-            <span>Create one to establish your audience-screen style.</span>
-          </div>
-        </div>
-      </aside>
-
       <section v-if="draft" class="theme-editor">
-        <header class="editor-heading">
-          <div>
-            <span>Theme details</span>
-            <v-text-field
-              v-model="draft.name"
-              placeholder="Theme name"
-              variant="plain"
-              density="compact"
-              hide-details
-              class="theme-name-field"
-            />
-          </div>
-          <v-btn
-            icon="mdi-delete-outline"
-            variant="text"
-            color="error"
-            size="small"
-            aria-label="Delete theme"
-            @click="deleteTheme(draft.id)"
-          />
-        </header>
-
         <div class="editor-layout">
           <div class="editor-settings">
+            <section class="editor-section">
+              <header>
+                <span class="section-icon"><v-icon icon="mdi-palette-outline" size="20" /></span>
+                <div>
+                  <h2>Theme Details</h2>
+                  <p>Name this theme so it is easy to recognize when choosing an override.</p>
+                </div>
+              </header>
+              <v-text-field
+                v-model="draft.name"
+                label="Theme name"
+                placeholder="e.g. Sunday Worship"
+                variant="outlined"
+                density="comfortable"
+                hide-details
+                class="theme-name-field"
+              />
+            </section>
+
+            <section class="editor-section">
+              <header>
+                <span class="section-icon"><v-icon icon="mdi-shape-outline" size="20" /></span>
+                <div>
+                  <h2>Theme Uses</h2>
+                  <p>Control where this theme appears and optionally make it a default.</p>
+                </div>
+              </header>
+              <div class="theme-scope-options">
+                <button
+                  type="button"
+                  :class="{ selected: !draft.appliesTo?.length }"
+                  @click="setThemeScope('generic')"
+                >
+                  <span><v-icon icon="mdi-view-grid-outline" size="19" /></span>
+                  <span>
+                    <strong>Generic</strong>
+                    <small>Available for every generated content type</small>
+                  </span>
+                  <v-icon
+                    :icon="!draft.appliesTo?.length ? 'mdi-radiobox-marked' : 'mdi-radiobox-blank'"
+                    size="19"
+                  />
+                </button>
+                <button
+                  type="button"
+                  :class="{ selected: !!draft.appliesTo?.length }"
+                  @click="setThemeScope('specific')"
+                >
+                  <span><v-icon icon="mdi-filter-variant" size="19" /></span>
+                  <span>
+                    <strong>Specific content types</strong>
+                    <small>Only show this theme where you choose</small>
+                  </span>
+                  <v-icon
+                    :icon="draft.appliesTo?.length ? 'mdi-radiobox-marked' : 'mdi-radiobox-blank'"
+                    size="19"
+                  />
+                </button>
+              </div>
+              <div v-if="draft.appliesTo?.length" class="theme-use-group">
+                <div class="theme-use-group-heading">
+                  <strong>Available for</strong>
+                  <span>Select at least one content type.</span>
+                </div>
+                <div class="theme-use-choices">
+                  <label
+                    v-for="option in defaultForOptions"
+                    :key="option.value"
+                    :class="{ selected: draft.appliesTo.includes(option.value) }"
+                  >
+                    <v-checkbox-btn
+                      :model-value="draft.appliesTo.includes(option.value)"
+                      color="primary"
+                      :aria-label="`Make theme available for ${option.label}`"
+                      @update:model-value="toggleAppliesTo(option.value)"
+                    />
+                    <span><v-icon :icon="option.icon" size="17" />{{ option.label }}</span>
+                  </label>
+                </div>
+              </div>
+              <div class="theme-use-group default-use-group">
+                <div class="theme-use-group-heading">
+                  <strong>Use as default <em>Optional</em></strong>
+                  <span>A content type can only have one default theme.</span>
+                </div>
+                <div class="theme-use-choices">
+                  <label
+                    v-for="option in applicableDefaultOptions"
+                    :key="option.value"
+                    :class="{ selected: draft.useAsDefaultFor.includes(option.value) }"
+                  >
+                    <v-checkbox-btn
+                      :model-value="draft.useAsDefaultFor.includes(option.value)"
+                      color="primary"
+                      :aria-label="`Use theme as default for ${option.label}`"
+                      @update:model-value="toggleDefaultFor(option.value)"
+                    />
+                    <span><v-icon :icon="option.icon" size="17" />{{ option.label }}</span>
+                  </label>
+                </div>
+              </div>
+            </section>
+
             <section class="editor-section">
               <header>
                 <span class="section-icon"><v-icon icon="mdi-image-outline" size="20" /></span>
@@ -542,41 +602,6 @@ function setTextEffectColor(event: Event) {
                 </p>
               </div>
             </section>
-
-            <section class="editor-section">
-              <header>
-                <span class="section-icon"><v-icon icon="mdi-star-outline" size="20" /></span>
-                <div>
-                  <h2>Default Uses</h2>
-                  <p>
-                    Each content type has one default. Individual service items can override it.
-                  </p>
-                </div>
-              </header>
-              <div class="default-grid">
-                <button
-                  v-for="option in defaultForOptions"
-                  :key="option.value"
-                  type="button"
-                  :class="{ selected: draft.useAsDefaultFor.includes(option.value) }"
-                  @click="toggleDefaultFor(option.value)"
-                >
-                  <span><v-icon :icon="option.icon" size="19" /></span>
-                  <span>
-                    <strong>{{ option.label }}</strong>
-                    <small>{{ option.description }}</small>
-                  </span>
-                  <v-icon
-                    :icon="
-                      draft.useAsDefaultFor.includes(option.value)
-                        ? 'mdi-check-circle'
-                        : 'mdi-circle-outline'
-                    "
-                    size="18"
-                  />
-                </button>
-              </div>
-            </section>
           </div>
 
           <aside class="preview-panel">
@@ -584,7 +609,13 @@ function setTextEffectColor(event: Event) {
               <strong>Audience Preview</strong>
               <span>16:9 presentation</span>
             </header>
-            <div class="preview-stage" :style="previewBackgroundStyle">
+            <button
+              type="button"
+              class="preview-stage"
+              :style="previewBackgroundStyle"
+              aria-label="Open larger theme preview"
+              @click="previewDialogOpen = true"
+            >
               <img
                 v-if="previewMediaUrl && previewMediaItem?.kind === 'image'"
                 :src="previewMediaUrl"
@@ -608,9 +639,10 @@ function setTextEffectColor(event: Event) {
                   textShadow: presentationTextShadow(draft.textEffect),
                 }"
               >
-                Great are You, Lord<br />Great are You, Lord
+                <span v-for="line in amazingGracePreview" :key="line">{{ line }}</span>
               </div>
-            </div>
+              <span class="preview-expand"><v-icon icon="mdi-arrow-expand" size="17" /></span>
+            </button>
             <p>
               Defaults apply automatically. Choose a different theme from a service item’s
               Presentation settings when needed.
@@ -621,10 +653,15 @@ function setTextEffectColor(event: Event) {
 
       <section v-else class="editor-empty">
         <span><v-icon icon="mdi-palette-outline" size="32" /></span>
-        <h2>Select or create a theme</h2>
-        <p>Presentation themes give generated slides a consistent visual identity.</p>
-        <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="createTheme">
-          New Theme
+        <h2>Theme Not Found</h2>
+        <p>This presentation theme may have been deleted or moved.</p>
+        <v-btn
+          color="primary"
+          variant="flat"
+          prepend-icon="mdi-arrow-left"
+          :to="{ name: 'theme-library' }"
+        >
+          Back to Themes
         </v-btn>
       </section>
     </section>
@@ -633,6 +670,52 @@ function setTextEffectColor(event: Event) {
       purpose="background"
       @select="chooseMediaBackground"
     />
+
+    <v-dialog v-model="previewDialogOpen" max-width="1180">
+      <v-card class="preview-dialog-card">
+        <v-card-title class="preview-dialog-title">
+          <div>
+            <strong>{{ draft?.name || 'Theme Preview' }}</strong>
+            <span>Audience preview · 16:9</span>
+          </div>
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            aria-label="Close preview"
+            @click="previewDialogOpen = false"
+          />
+        </v-card-title>
+        <v-card-text v-if="draft" class="preview-dialog-content">
+          <div class="preview-stage preview-stage--large" :style="previewBackgroundStyle">
+            <img
+              v-if="previewMediaUrl && previewMediaItem?.kind === 'image'"
+              :src="previewMediaUrl"
+              class="preview-background"
+              alt=""
+            />
+            <video
+              v-else-if="previewMediaUrl && previewMediaItem?.kind === 'video'"
+              :src="previewMediaUrl"
+              class="preview-background"
+              autoplay
+              loop
+              muted
+              playsinline
+            />
+            <div
+              class="preview-text"
+              :style="{
+                color: draft.textColor,
+                fontFamily: draft.font,
+                textShadow: presentationTextShadow(draft.textEffect),
+              }"
+            >
+              <span v-for="line in amazingGracePreview" :key="line">{{ line }}</span>
+            </div>
+          </div>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
   </main>
 </template>
 
@@ -667,83 +750,22 @@ function setTextEffectColor(event: Event) {
   color: rgba(var(--v-theme-on-surface), 0.56);
   font-size: 0.82rem;
 }
+.back-button {
+  display: flex;
+  width: fit-content;
+  margin: 0 0 8px -12px;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.78rem;
+  text-transform: none;
+}
 .theme-workspace {
-  display: grid;
   min-height: 680px;
-  grid-template-columns: 280px minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.09);
   border-radius: 13px;
   background: rgba(var(--v-theme-surface), 0.7);
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.07);
 }
-.theme-directory {
-  border-right: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  background: rgba(var(--v-theme-background), 0.24);
-}
-.theme-directory > header {
-  padding: 18px;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-}
-.theme-directory > header div {
-  display: flex;
-  flex-direction: column;
-}
-.theme-directory > header strong {
-  font-size: 0.82rem;
-}
-.theme-directory > header span,
-.theme-card small {
-  color: rgba(var(--v-theme-on-surface), 0.46);
-  font-size: 0.66rem;
-}
-.theme-list {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding: 11px;
-}
-.theme-card {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-}
-.theme-card:hover {
-  background: rgba(var(--v-theme-on-surface), 0.045);
-}
-.theme-card--active {
-  border-color: rgba(var(--v-theme-primary), 0.26);
-  background: rgba(var(--v-theme-primary), 0.09);
-}
-.theme-swatch {
-  width: 42px;
-  height: 28px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
-  border-radius: 7px;
-}
-.theme-card-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-}
-.theme-card-copy strong {
-  overflow: hidden;
-  font-size: 0.76rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.directory-empty,
 .editor-empty {
   display: flex;
   align-items: center;
@@ -751,48 +773,11 @@ function setTextEffectColor(event: Event) {
   flex-direction: column;
   text-align: center;
 }
-.directory-empty {
-  min-height: 260px;
-  padding: 20px;
-  color: rgba(var(--v-theme-on-surface), 0.45);
-}
-.directory-empty strong {
-  margin: 10px 0 4px;
-  color: rgba(var(--v-theme-on-surface), 0.78);
-  font-size: 0.76rem;
-}
-.directory-empty span {
-  font-size: 0.68rem;
-}
 .theme-editor {
   min-width: 0;
 }
-.editor-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 17px 20px;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-}
-.editor-heading > div {
-  min-width: 0;
-}
-.editor-heading > div > span {
-  color: rgba(var(--v-theme-on-surface), 0.45);
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.075em;
-  text-transform: uppercase;
-}
 .theme-name-field {
   max-width: 520px;
-  margin-top: -2px;
-}
-.theme-name-field :deep(input) {
-  padding: 0;
-  font-size: 1.25rem;
-  font-weight: 720;
 }
 .editor-layout {
   display: grid;
@@ -962,17 +947,17 @@ function setTextEffectColor(event: Event) {
 .text-effect-settings .theme-color-field {
   min-width: 0;
 }
-.default-grid {
+.theme-scope-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
-.default-grid button {
+.theme-scope-options button {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) auto;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
   align-items: center;
   gap: 9px;
-  padding: 10px;
+  padding: 11px 12px;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.09);
   border-radius: 8px;
   background: rgba(var(--v-theme-background), 0.2);
@@ -981,31 +966,91 @@ function setTextEffectColor(event: Event) {
   font: inherit;
   text-align: left;
 }
-.default-grid button.selected {
-  border-color: rgba(var(--v-theme-primary), 0.35);
-  background: rgba(var(--v-theme-primary), 0.075);
-  color: rgb(var(--v-theme-primary));
+.theme-scope-options button:hover {
+  border-color: rgba(var(--v-theme-primary), 0.24);
 }
-.default-grid button > span:first-child {
+.theme-scope-options button.selected {
+  border-color: rgba(var(--v-theme-primary), 0.38);
+  background: rgba(var(--v-theme-primary), 0.075);
+}
+.theme-scope-options button > span:first-child {
   display: grid;
   width: 30px;
   height: 30px;
   place-items: center;
   border-radius: 7px;
-  background: rgba(var(--v-theme-on-surface), 0.055);
+  background: rgba(var(--v-theme-primary), 0.09);
+  color: rgb(var(--v-theme-primary));
 }
-.default-grid button > span:nth-child(2) {
+.theme-scope-options button > span:nth-child(2) {
   display: flex;
   min-width: 0;
   flex-direction: column;
 }
-.default-grid strong {
+.theme-scope-options strong {
   font-size: 0.72rem;
 }
-.default-grid small {
+.theme-scope-options small,
+.theme-use-group-heading span {
   color: rgba(var(--v-theme-on-surface), 0.44);
   font-size: 0.61rem;
   line-height: 1.35;
+}
+.theme-use-group {
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.075);
+}
+.theme-use-group-heading {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 8px;
+}
+.theme-use-group-heading strong {
+  font-size: 0.7rem;
+}
+.theme-use-group-heading em {
+  margin-left: 5px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: rgba(var(--v-theme-on-surface), 0.07);
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.54rem;
+  font-style: normal;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.theme-use-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+.theme-use-choices label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 38px;
+  padding: 5px 9px 5px 3px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.09);
+  border-radius: 7px;
+  background: rgba(var(--v-theme-background), 0.16);
+  cursor: pointer;
+  text-align: left;
+}
+.theme-use-choices :deep(.v-selection-control) {
+  flex: 0 0 auto;
+}
+.theme-use-choices label.selected {
+  border-color: rgba(var(--v-theme-primary), 0.3);
+  background: rgba(var(--v-theme-primary), 0.055);
+}
+.theme-use-choices label > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.68rem;
+  font-weight: 650;
+  text-align: left;
 }
 .preview-panel {
   position: sticky;
@@ -1027,14 +1072,28 @@ function setTextEffectColor(event: Event) {
 .preview-stage {
   position: relative;
   display: flex;
+  container-type: inline-size;
   aspect-ratio: 16 / 9;
   align-items: center;
   justify-content: center;
+  width: 100%;
   overflow: hidden;
   padding: 20px;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.11);
   border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
   text-align: center;
+}
+.preview-stage:hover {
+  border-color: rgba(var(--v-theme-primary), 0.42);
+  box-shadow: 0 0 0 2px rgba(var(--v-theme-primary), 0.08);
+}
+.preview-stage:focus-visible {
+  border-color: rgb(var(--v-theme-primary));
+  outline: 2px solid rgba(var(--v-theme-primary), 0.4);
+  outline-offset: 2px;
 }
 .preview-background {
   position: absolute;
@@ -1046,9 +1105,71 @@ function setTextEffectColor(event: Event) {
 .preview-text {
   position: relative;
   z-index: 1;
-  font-size: clamp(16px, 1.8vw, 26px);
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+  font-size: clamp(12px, 4.5cqw, 26px);
   font-weight: 700;
   line-height: 1.4;
+}
+.preview-text span {
+  white-space: nowrap;
+}
+.preview-expand {
+  position: absolute;
+  z-index: 2;
+  top: 9px;
+  right: 9px;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.46);
+  color: #fff;
+  opacity: 0.78;
+}
+.preview-stage:hover .preview-expand,
+.preview-stage:focus-visible .preview-expand {
+  opacity: 1;
+}
+.preview-dialog-card {
+  overflow: hidden;
+  border-radius: 12px;
+}
+.preview-dialog-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 17px;
+}
+.preview-dialog-title > div {
+  display: flex;
+  flex-direction: column;
+}
+.preview-dialog-title strong {
+  font-size: 0.86rem;
+}
+.preview-dialog-title span {
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.66rem;
+}
+.preview-dialog-content {
+  padding: 0 !important;
+}
+.preview-stage--large {
+  aspect-ratio: 16 / 9;
+  border: 0;
+  border-radius: 0;
+  cursor: default;
+}
+.preview-stage--large:hover {
+  border-color: transparent;
+  box-shadow: none;
+}
+.preview-stage--large .preview-text {
+  font-size: clamp(24px, 4cqw, 52px);
+  line-height: 1.35;
 }
 .preview-panel > p {
   margin: 11px 0 0;
@@ -1096,17 +1217,13 @@ function setTextEffectColor(event: Event) {
   .themes-hero .v-btn {
     align-self: flex-start;
   }
-  .theme-workspace {
-    grid-template-columns: 1fr;
-  }
-  .theme-directory {
-    border-right: 0;
-    border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  }
   .editor-layout,
   .text-fields,
-  .text-effect-settings,
-  .default-grid {
+  .text-effect-settings {
+    grid-template-columns: 1fr;
+  }
+  .theme-scope-options,
+  .theme-use-choices {
     grid-template-columns: 1fr;
   }
 }

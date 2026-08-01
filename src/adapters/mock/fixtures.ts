@@ -191,4 +191,7 @@ export const seedMachineSettings: MachineSettings = {
   hasCompletedSetup: true,
   localMediaPath: '',
   displayRoles: { 'display-1': 'operator', 'display-2': 'audience' },
+  remoteControlPort: undefined,
+  remoteControlHostname: undefined,
+  lastRemoteControlPort: undefined,
 }

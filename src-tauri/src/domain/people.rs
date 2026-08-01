@@ -12,6 +12,10 @@ fn person_path(root: &Path, id: &str) -> PathBuf {
     people_dir(root).join(format!("{id}.json"))
 }
 
+pub fn exists(root: &Path, id: &str) -> bool {
+    person_path(root, id).is_file()
+}
+
 pub fn list(root: &Path) -> std::io::Result<Vec<Person>> {
     read_json_dir(&people_dir(root))
 }

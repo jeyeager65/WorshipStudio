@@ -31,6 +31,12 @@ pub fn delete(remote_devices_path: &Path, id: &str) -> std::io::Result<()> {
     write_json_file(remote_devices_path, &all)
 }
 
+pub fn delete_by_person(remote_devices_path: &Path, person_id: &str) -> std::io::Result<()> {
+    let mut all = list(remote_devices_path);
+    all.retain(|device| device.person_id.as_deref() != Some(person_id));
+    write_json_file(remote_devices_path, &all)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -38,6 +44,7 @@ mod tests {
     fn sample(id: &str, name: &str, token: &str) -> RemoteDevice {
         RemoteDevice {
             id: id.to_string(),
+            person_id: Some("person-1".to_string()),
             name: name.to_string(),
             access_level: "advance-only".to_string(),
             token: token.to_string(),
@@ -80,6 +87,23 @@ mod tests {
         let all = list(&path);
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].id, "device-2");
+    }
+
+    #[test]
+    fn delete_by_person_revokes_all_of_that_persons_devices() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("remote-devices.json");
+        save(&path, sample("device-1", "Phone", "tok-1")).unwrap();
+        save(&path, sample("device-2", "Tablet", "tok-2")).unwrap();
+        let mut other = sample("device-3", "Other phone", "tok-3");
+        other.person_id = Some("person-2".to_string());
+        save(&path, other).unwrap();
+
+        delete_by_person(&path, "person-1").unwrap();
+
+        let remaining = list(&path);
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].person_id.as_deref(), Some("person-2"));
     }
 
     #[test]

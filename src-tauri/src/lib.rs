@@ -133,6 +133,7 @@ pub fn run() {
             commands::external_apps::send_external_app_keystroke,
             commands::remote::list_remote_devices,
             commands::remote::provision_remote_device,
+            commands::remote::repair_remote_device,
             commands::remote::revoke_remote_device,
             commands::remote::get_remote_server_info,
             commands::remote::update_remote_live_state,

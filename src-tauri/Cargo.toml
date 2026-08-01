@@ -38,6 +38,7 @@ qrcode = "0.14.1"
 image = { version = "0.25.9", default-features = false, features = ["png"] }
 sha2 = "0.10"
 tauri-plugin-opener = "2"
+mdns-sd = "0.20.2"
 
 # External App Hand-off (design/feature-spec.md section 12) is explicitly Windows-only —
 # foreground-window switching, positioning, and keystroke injection have no macOS/Linux

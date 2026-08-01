@@ -254,7 +254,12 @@ export function createMockAdapter(): StudioAdapter {
     people: {
       list: () => people.list(),
       save: (person) => people.save({ ...person, ...nowStamp() }),
-      delete: (id) => people.delete(id),
+      delete: async (id) => {
+        await people.delete(id)
+        for (let index = mockRemoteDevices.length - 1; index >= 0; index -= 1) {
+          if (mockRemoteDevices[index]?.personId === id) mockRemoteDevices.splice(index, 1)
+        }
+      },
     },
     settings: {
       getLibrarySettings: () => librarySettingsStore.get(),
@@ -329,17 +334,18 @@ export function createMockAdapter(): StudioAdapter {
     // externalApps intentionally omitted in the mock adapter — Windows-only, feature-detected off.
     remote: {
       listDevices: async () => structuredClone(mockRemoteDevices),
-      provisionDevice: async (name, accessLevel) => {
-        mockRemoteDevices.push({ id: newId('device'), name, accessLevel })
+      provisionDevice: async (personId, name, accessLevel) => {
+        mockRemoteDevices.push({ id: newId('device'), personId, name, accessLevel })
         return { qrDataUrl: '', pairingUrl: '' }
       },
+      repairDevice: async () => ({ qrDataUrl: '', pairingUrl: '' }),
       revokeDevice: async (id) => {
         const index = mockRemoteDevices.findIndex((d) => d.id === id)
         if (index !== -1) mockRemoteDevices.splice(index, 1)
       },
       // No real HTTP server in the browser demo — nothing to report state to or receive
       // commands from.
-      getServerInfo: async () => ({ lanIp: undefined, port: 0 }),
+      getServerInfo: async () => ({ hostname: undefined, lanIp: undefined, port: 0 }),
       pushLiveState: async () => {},
       onCommand: async () => () => {},
     },

@@ -11,25 +11,28 @@
 
 use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::{Arc, Mutex, RwLock as StdRwLock};
 
 use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use mdns_sd::{DaemonEvent, ServiceDaemon, ServiceInfo};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::RwLock;
 
-use crate::domain::{media, remote};
+use crate::domain::{media, people, remote};
 use crate::models::LiveSlideContent;
-use crate::paths::{library_root, local_media_root, remote_devices_path};
+use crate::paths::{
+    is_portable, library_root, load_machine_settings, local_media_root, remote_devices_path,
+    save_machine_settings,
+};
 
-/// Fixed rather than configurable — simpler to reason about and to put in front of the
-/// operator ("point your phone at http://<ip>:47823"), and nothing else on a home/church
-/// network is likely to already be using it.
-pub const REMOTE_SERVER_PORT: u16 = 47823;
+pub const DEFAULT_REMOTE_SERVER_PORT: u16 = 47823;
+const AUTO_PORT_SCAN_COUNT: u16 = 20;
 
 #[derive(Default)]
 struct SharedLiveState {
@@ -56,6 +59,9 @@ struct CanvaOAuthState {
 pub struct RemoteServerHandle {
     live: Arc<RwLock<SharedLiveState>>,
     canva: Arc<RwLock<CanvaOAuthState>>,
+    port: Arc<AtomicU16>,
+    hostname: Arc<StdRwLock<Option<String>>>,
+    mdns: Arc<Mutex<Option<ServiceDaemon>>>,
     pub(crate) app: AppHandle,
 }
 
@@ -64,7 +70,33 @@ impl RemoteServerHandle {
         Self {
             live: Arc::new(RwLock::new(SharedLiveState::default())),
             canva: Arc::new(RwLock::new(CanvaOAuthState::default())),
+            port: Arc::new(AtomicU16::new(0)),
+            hostname: Arc::new(StdRwLock::new(None)),
+            mdns: Arc::new(Mutex::new(None)),
             app,
+        }
+    }
+
+    pub fn port(&self) -> Option<u16> {
+        match self.port.load(Ordering::Relaxed) {
+            0 => None,
+            port => Some(port),
+        }
+    }
+
+    pub fn hostname(&self) -> Option<String> {
+        self.hostname.read().ok()?.clone()
+    }
+
+    fn set_hostname(&self, hostname: String) {
+        if let Ok(mut current) = self.hostname.write() {
+            *current = Some(hostname);
+        }
+    }
+
+    fn retain_mdns_daemon(&self, daemon: ServiceDaemon) {
+        if let Ok(mut current) = self.mdns.lock() {
+            *current = Some(daemon);
         }
     }
 
@@ -136,6 +168,97 @@ pub fn qr_data_url(url: &str) -> Result<String, String> {
     ))
 }
 
+fn sanitize_hostname_label(raw: &str) -> String {
+    let lowercase = raw.to_ascii_lowercase();
+    let without_suffix = lowercase
+        .strip_suffix(".local.")
+        .or_else(|| lowercase.strip_suffix(".local"))
+        .unwrap_or(&lowercase);
+    let mut normalized = String::with_capacity(without_suffix.len());
+    for character in without_suffix.chars() {
+        if character.is_ascii_alphanumeric() {
+            normalized.push(character);
+        } else if !normalized.ends_with('-') {
+            normalized.push('-');
+        }
+        if normalized.len() == 63 {
+            break;
+        }
+    }
+    let normalized = normalized.trim_matches('-');
+    if normalized.is_empty() {
+        "worshipstudio".to_string()
+    } else {
+        normalized.to_string()
+    }
+}
+
+fn normalized_hostname_label(
+    configured: Option<&str>,
+    computer_name: &str,
+    portable: bool,
+) -> String {
+    if let Some(configured) = configured.map(str::trim).filter(|value| !value.is_empty()) {
+        return sanitize_hostname_label(configured);
+    }
+    if portable {
+        return "worshipstudio-portable".to_string();
+    }
+    let computer_label = sanitize_hostname_label(computer_name);
+    let computer_label = computer_label
+        .strip_prefix("worshipstudio-")
+        .unwrap_or(&computer_label);
+    let default = if computer_label == "worshipstudio" {
+        "worshipstudio".to_string()
+    } else {
+        format!("worshipstudio-{computer_label}")
+    };
+    sanitize_hostname_label(&default)
+}
+
+fn advertise_mdns(handle: &RemoteServerHandle, hostname: &str, port: u16) -> Result<(), String> {
+    let daemon = ServiceDaemon::new().map_err(|error| error.to_string())?;
+    let monitor = daemon.monitor().map_err(|error| error.to_string())?;
+    let fqdn = format!("{hostname}.");
+    let service = ServiceInfo::new(
+        "_http._tcp.local.",
+        "Worship Studio Remote Control",
+        &fqdn,
+        "",
+        port,
+        &[("path", "/")][..],
+    )
+    .map_err(|error| error.to_string())?
+    .enable_addr_auto();
+    handle.set_hostname(hostname.to_string());
+    let current_hostname = Arc::clone(&handle.hostname);
+    let registered_fqdn = fqdn.clone();
+    std::thread::spawn(move || {
+        while let Ok(event) = monitor.recv() {
+            match event {
+                DaemonEvent::NameChange(change)
+                    if change.original.eq_ignore_ascii_case(&registered_fqdn) =>
+                {
+                    let resolved = change.new_name.trim_end_matches('.').to_string();
+                    log::warn!(
+                        "Remote Control mDNS hostname was already in use; advertising as {resolved}"
+                    );
+                    if let Ok(mut current) = current_hostname.write() {
+                        *current = Some(resolved);
+                    }
+                }
+                DaemonEvent::Error(error) => log::warn!("Remote Control mDNS error: {error}"),
+                _ => {}
+            }
+        }
+    });
+    daemon
+        .register(service)
+        .map_err(|error| error.to_string())?;
+    handle.retain_mdns_daemon(daemon);
+    Ok(())
+}
+
 /// Pulled out from device_from_headers below purely so the parsing itself (not the
 /// AppHandle-dependent device lookup that follows it) is unit-testable.
 fn parse_remote_token_cookie(cookie_header: &str) -> Option<String> {
@@ -151,7 +274,13 @@ fn device_from_headers(
 ) -> Option<crate::models::RemoteDevice> {
     let cookie_header = headers.get(header::COOKIE)?.to_str().ok()?;
     let token = parse_remote_token_cookie(cookie_header)?;
-    remote::find_by_token(&remote_devices_path(app), &token)
+    authorized_device_by_token(app, &token)
+}
+
+fn authorized_device_by_token(app: &AppHandle, token: &str) -> Option<crate::models::RemoteDevice> {
+    let device = remote::find_by_token(&remote_devices_path(app), token)?;
+    let person_id = device.person_id.as_deref()?;
+    people::exists(&library_root(app), person_id).then_some(device)
 }
 
 async fn index_page() -> Html<&'static str> {
@@ -167,7 +296,7 @@ async fn pair(
     State(handle): State<RemoteServerHandle>,
     Query(query): Query<PairQuery>,
 ) -> Response {
-    if remote::find_by_token(&remote_devices_path(&handle.app), &query.token).is_none() {
+    if authorized_device_by_token(&handle.app, &query.token).is_none() {
         return (StatusCode::NOT_FOUND, "Invalid or revoked pairing link.").into_response();
     }
     let mut response = Redirect::to("/").into_response();
@@ -346,14 +475,71 @@ fn router(handle: RemoteServerHandle) -> Router {
 /// Remote Control not being reachable shouldn't take down live presentation with it.
 pub fn start(handle: RemoteServerHandle) {
     tauri::async_runtime::spawn(async move {
-        let addr = SocketAddr::from(([0, 0, 0, 0], REMOTE_SERVER_PORT));
-        match tokio::net::TcpListener::bind(addr).await {
-            Ok(listener) => {
-                if let Err(e) = axum::serve(listener, router(handle)).await {
-                    log::error!("Remote control server stopped: {e}");
+        let mut settings = load_machine_settings(&handle.app);
+        let configured_port = settings.remote_control_port;
+        let mut candidates = Vec::new();
+        if let Some(port) = configured_port {
+            candidates.push(port);
+        } else {
+            if let Some(port) = settings.last_remote_control_port {
+                candidates.push(port);
+            }
+            for port in DEFAULT_REMOTE_SERVER_PORT
+                ..DEFAULT_REMOTE_SERVER_PORT.saturating_add(AUTO_PORT_SCAN_COUNT)
+            {
+                if !candidates.contains(&port) {
+                    candidates.push(port);
                 }
             }
-            Err(e) => log::error!("Failed to start the Remote Control server on {addr}: {e}"),
+            // Port zero asks the OS for any available port if the preferred range is occupied.
+            candidates.push(0);
+        }
+
+        let mut last_error = None;
+        let mut listener = None;
+        for port in candidates {
+            let addr = SocketAddr::from(([0, 0, 0, 0], port));
+            match tokio::net::TcpListener::bind(addr).await {
+                Ok(bound) => {
+                    listener = Some(bound);
+                    break;
+                }
+                Err(error) => last_error = Some((addr, error)),
+            }
+        }
+
+        let Some(listener) = listener else {
+            if let Some((addr, error)) = last_error {
+                log::error!("Failed to start the Remote Control server on {addr}: {error}");
+            }
+            return;
+        };
+        let actual_port = match listener.local_addr() {
+            Ok(address) => address.port(),
+            Err(error) => {
+                log::error!("Could not determine the Remote Control server port: {error}");
+                return;
+            }
+        };
+        handle.port.store(actual_port, Ordering::Relaxed);
+        if configured_port.is_none() && settings.last_remote_control_port != Some(actual_port) {
+            settings.last_remote_control_port = Some(actual_port);
+            if let Err(error) = save_machine_settings(&handle.app, &settings) {
+                log::warn!("Could not remember the automatic Remote Control port: {error}");
+            }
+        }
+        let hostname_label = normalized_hostname_label(
+            settings.remote_control_hostname.as_deref(),
+            &settings.this_computer_name,
+            is_portable(&handle.app),
+        );
+        let hostname = format!("{hostname_label}.local");
+        if let Err(error) = advertise_mdns(&handle, &hostname, actual_port) {
+            log::warn!("Could not advertise Remote Control as {hostname}: {error}");
+        }
+        log::info!("Remote Control server listening on port {actual_port}");
+        if let Err(error) = axum::serve(listener, router(handle)).await {
+            log::error!("Remote control server stopped: {error}");
         }
     });
 }
@@ -361,6 +547,40 @@ pub fn start(handle: RemoteServerHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn installed_hostname_uses_the_computer_name() {
+        assert_eq!(
+            normalized_hostname_label(None, "Sound Booth", false),
+            "worshipstudio-sound-booth"
+        );
+    }
+
+    #[test]
+    fn portable_hostname_does_not_depend_on_the_current_computer() {
+        assert_eq!(
+            normalized_hostname_label(None, "Sound Booth", true),
+            "worshipstudio-portable"
+        );
+        assert_eq!(
+            normalized_hostname_label(None, "Pastor Laptop", true),
+            "worshipstudio-portable"
+        );
+    }
+
+    #[test]
+    fn hostname_accepts_a_local_name_and_normalizes_it_to_a_dns_label() {
+        assert_eq!(
+            normalized_hostname_label(Some(" Sanctuary Remote.LOCAL "), "Sound Booth", false),
+            "sanctuary-remote"
+        );
+    }
+
+    #[test]
+    fn hostname_is_limited_to_one_dns_label() {
+        let hostname = normalized_hostname_label(Some(&"a".repeat(80)), "Sound Booth", false);
+        assert_eq!(hostname.len(), 63);
+    }
 
     #[test]
     fn parse_remote_token_cookie_finds_the_token_among_other_cookies() {

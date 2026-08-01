@@ -35,17 +35,29 @@ function sortKey(person: Person): string {
 
 // Match Assignments: category identity stays separate from warning/error colors. The common
 // groups receive blue, teal, violet, and terracotta before any warning-adjacent hues.
-const CATEGORY_COLORS = ['primary', 'teal', 'violet', 'terracotta', 'rose', 'slate', 'secondary', 'amber']
+const CATEGORY_COLORS = [
+  'primary',
+  'teal',
+  'violet',
+  'terracotta',
+  'rose',
+  'slate',
+  'secondary',
+  'amber',
+]
 
 const searchQuery = ref('')
 const activeFilter = ref('all')
 const availabilityDate = ref('')
 function isUnavailableOnDate(person: Person, date: string): boolean {
-  return !!date && person.unavailableDateRanges.some((range) => range.start <= date && date <= range.end)
+  return (
+    !!date && person.unavailableDateRanges.some((range) => range.start <= date && date <= range.end)
+  )
 }
 const unavailableOnSelectedDateCount = computed(() =>
   availabilityDate.value
-    ? peopleStore.people.filter((person) => isUnavailableOnDate(person, availabilityDate.value)).length
+    ? peopleStore.people.filter((person) => isUnavailableOnDate(person, availabilityDate.value))
+        .length
     : 0,
 )
 const availabilityDateLabel = computed(() =>
@@ -62,14 +74,18 @@ const categoryFilters = computed(() =>
     value: `category:${group.name}`,
     label: group.name,
     color: CATEGORY_COLORS[index % CATEGORY_COLORS.length],
-    count: peopleStore.people.filter((person) => person.preferredRoles.some((role) => group.roles.includes(role))).length,
+    count: peopleStore.people.filter((person) =>
+      person.preferredRoles.some((role) => group.roles.includes(role)),
+    ).length,
   })),
 )
 const activeFilterLabel = computed(() => {
   if (activeFilter.value === 'all') return 'All People'
   if (activeFilter.value === 'unassigned') return 'Unassigned'
   if (activeFilter.value === 'unavailable') return `Unavailable on ${availabilityDateLabel.value}`
-  return categoryFilters.value.find((filter) => filter.value === activeFilter.value)?.label ?? 'People'
+  return (
+    categoryFilters.value.find((filter) => filter.value === activeFilter.value)?.label ?? 'People'
+  )
 })
 const filteredPeople = computed(() => {
   // Vuetify's clearable button sets the model to null, not '' — clearing without this guard
@@ -77,10 +93,16 @@ const filteredPeople = computed(() => {
   const q = (searchQuery.value ?? '').trim().toLowerCase()
   const matches = peopleStore.people.filter((person) => {
     if (activeFilter.value === 'unassigned' && person.preferredRoles.length > 0) return false
-    if (activeFilter.value === 'unavailable' && !isUnavailableOnDate(person, availabilityDate.value)) return false
+    if (
+      activeFilter.value === 'unavailable' &&
+      !isUnavailableOnDate(person, availabilityDate.value)
+    )
+      return false
     if (activeFilter.value.startsWith('category:')) {
       const groupName = activeFilter.value.slice('category:'.length)
-      const group = settingsStore.librarySettings?.roleGroups.find((candidate) => candidate.name === groupName)
+      const group = settingsStore.librarySettings?.roleGroups.find(
+        (candidate) => candidate.name === groupName,
+      )
       if (!group || !person.preferredRoles.some((role) => group.roles.includes(role))) return false
     }
     if (!q) return true
@@ -139,8 +161,12 @@ function initials(person: Person): string {
   return `${person.firstName[0] ?? ''}${person.lastName[0] ?? ''}`.toUpperCase()
 }
 
-const peopleWithRolesCount = computed(() => peopleStore.people.filter((person) => person.preferredRoles.length > 0).length)
-const peopleWithAvailabilityCount = computed(() => peopleStore.people.filter((person) => person.unavailableDateRanges.length > 0).length)
+const peopleWithRolesCount = computed(
+  () => peopleStore.people.filter((person) => person.preferredRoles.length > 0).length,
+)
+const peopleWithAvailabilityCount = computed(
+  () => peopleStore.people.filter((person) => person.unavailableDateRanges.length > 0).length,
+)
 
 function openAdd() {
   router.push('/people/new')
@@ -160,7 +186,9 @@ async function remove(person: Person) {
       <div>
         <div class="page-eyebrow">Team Directory</div>
         <h1>People</h1>
-        <p>Add and organize everyone who serves in worship, ministry, hospitality, or production.</p>
+        <p>
+          Add and organize everyone who serves in worship, ministry, hospitality, or production.
+        </p>
       </div>
       <div class="people-summary" aria-label="People directory summary">
         <div class="summary-stat">
@@ -201,12 +229,25 @@ async function remove(person: Person) {
             clearable
             class="people-search"
           />
-          <v-btn variant="flat" color="primary" prepend-icon="mdi-account-plus-outline" @click="openAdd">Add Person</v-btn>
+          <v-btn
+            variant="flat"
+            color="primary"
+            prepend-icon="mdi-account-plus-outline"
+            @click="openAdd"
+            >Add Person</v-btn
+          >
         </div>
       </div>
 
-      <div class="directory-body">
-        <aside v-if="peopleStore.people.length" class="people-filters" aria-label="Filter people by category">
+      <div
+        class="directory-body"
+        :class="{ 'directory-body--empty': peopleStore.people.length === 0 }"
+      >
+        <aside
+          v-if="peopleStore.people.length"
+          class="people-filters"
+          aria-label="Filter people by category"
+        >
           <div class="filter-heading">Categories</div>
           <button
             type="button"
@@ -214,7 +255,9 @@ async function remove(person: Person) {
             :class="{ 'filter-option--active': activeFilter === 'all' }"
             @click="activeFilter = 'all'"
           >
-            <span class="filter-icon"><v-icon icon="mdi-account-multiple-outline" size="18" /></span>
+            <span class="filter-icon"
+              ><v-icon icon="mdi-account-multiple-outline" size="18"
+            /></span>
             <span>All People</span>
             <strong>{{ peopleStore.people.length }}</strong>
           </button>
@@ -238,7 +281,9 @@ async function remove(person: Person) {
             :class="{ 'filter-option--active': activeFilter === 'unassigned' }"
             @click="activeFilter = 'unassigned'"
           >
-            <span class="filter-icon"><v-icon icon="mdi-account-question-outline" size="18" /></span>
+            <span class="filter-icon"
+              ><v-icon icon="mdi-account-question-outline" size="18"
+            /></span>
             <span>Unassigned</span>
             <strong>{{ peopleStore.people.length - peopleWithRolesCount }}</strong>
           </button>
@@ -262,7 +307,9 @@ async function remove(person: Person) {
               :class="{ 'filter-option--active': activeFilter === 'unavailable' }"
               @click="activeFilter = 'unavailable'"
             >
-              <span class="filter-icon"><v-icon icon="mdi-calendar-remove-outline" size="18" /></span>
+              <span class="filter-icon"
+                ><v-icon icon="mdi-calendar-remove-outline" size="18"
+              /></span>
               <span>Unavailable</span>
               <strong>{{ unavailableOnSelectedDateCount }}</strong>
             </button>
@@ -274,13 +321,21 @@ async function remove(person: Person) {
             <span><v-icon icon="mdi-account-multiple-plus-outline" size="30" /></span>
             <h2>No People Yet</h2>
             <p>Add the first person to begin building your service team.</p>
-            <v-btn variant="flat" color="primary" prepend-icon="mdi-account-plus-outline" @click="openAdd">Add Person</v-btn>
+            <v-btn
+              variant="flat"
+              color="primary"
+              prepend-icon="mdi-account-plus-outline"
+              @click="openAdd"
+              >Add Person</v-btn
+            >
           </div>
           <div v-else-if="filteredPeople.length === 0" class="people-empty-state">
             <span><v-icon icon="mdi-account-search-outline" size="30" /></span>
             <h2>No Matches Found</h2>
             <p>No people match the current category and search.</p>
-            <v-btn variant="text" color="primary" @click="clearDirectoryFilters">Clear Filters</v-btn>
+            <v-btn variant="text" color="primary" @click="clearDirectoryFilters"
+              >Clear Filters</v-btn
+            >
           </div>
 
           <div v-else class="people-grid">
@@ -293,68 +348,84 @@ async function remove(person: Person) {
               @keydown.enter="openEdit(person)"
               @keydown.space.prevent="openEdit(person)"
             >
-          <header class="person-card-header">
-            <span class="person-avatar">{{ initials(person) }}</span>
-            <div class="person-identity">
-              <h3>{{ personLabel(person) }}</h3>
-              <p>{{ person.email || 'No email on file' }}</p>
-            </div>
-            <span v-if="availabilityDate && isUnavailableOnDate(person, availabilityDate)" class="availability-state availability-state--unavailable">
-              <v-icon icon="mdi-calendar-remove-outline" size="17" />
-              Unavailable {{ availabilityDateLabel }}
-            </span>
-            <span v-else-if="availabilityDate" class="availability-state availability-state--available">
-              <v-icon icon="mdi-calendar-check-outline" size="17" />
-              Available {{ availabilityDateLabel }}
-            </span>
-            <span v-else-if="person.unavailableDateRanges.length" class="availability-state">
-              <v-icon icon="mdi-calendar-alert-outline" size="17" />
-              {{ person.unavailableDateRanges.length }} availability
-              {{ person.unavailableDateRanges.length === 1 ? 'note' : 'notes' }}
-            </span>
-            <span v-else class="availability-state availability-state--clear">
-              <v-icon icon="mdi-calendar-check-outline" size="17" />
-              Available
-            </span>
-            <v-menu>
-              <template #activator="{ props }">
-                <v-btn
-                  v-bind="props"
-                  icon="mdi-dots-horizontal"
-                  variant="text"
-                  size="small"
-                  aria-label="Person actions"
-                  @click.stop
-                />
-              </template>
-              <v-list density="compact">
-                <v-list-item prepend-icon="mdi-pencil-outline" title="Edit Person" @click="openEdit(person)" />
-                <v-list-item prepend-icon="mdi-delete-outline" title="Delete Person" class="text-error" @click="remove(person)" />
-              </v-list>
-            </v-menu>
-          </header>
+              <header class="person-card-header">
+                <span class="person-avatar">{{ initials(person) }}</span>
+                <div class="person-identity">
+                  <h3>{{ personLabel(person) }}</h3>
+                  <p>{{ person.email || 'No email on file' }}</p>
+                </div>
+                <span
+                  v-if="availabilityDate && isUnavailableOnDate(person, availabilityDate)"
+                  class="availability-state availability-state--unavailable"
+                >
+                  <v-icon icon="mdi-calendar-remove-outline" size="17" />
+                  Unavailable {{ availabilityDateLabel }}
+                </span>
+                <span
+                  v-else-if="availabilityDate"
+                  class="availability-state availability-state--available"
+                >
+                  <v-icon icon="mdi-calendar-check-outline" size="17" />
+                  Available {{ availabilityDateLabel }}
+                </span>
+                <span v-else-if="person.unavailableDateRanges.length" class="availability-state">
+                  <v-icon icon="mdi-calendar-alert-outline" size="17" />
+                  {{ person.unavailableDateRanges.length }} availability
+                  {{ person.unavailableDateRanges.length === 1 ? 'note' : 'notes' }}
+                </span>
+                <span v-else class="availability-state availability-state--clear">
+                  <v-icon icon="mdi-calendar-check-outline" size="17" />
+                  Available
+                </span>
+                <v-menu>
+                  <template #activator="{ props }">
+                    <v-btn
+                      v-bind="props"
+                      icon="mdi-dots-horizontal"
+                      variant="text"
+                      size="small"
+                      aria-label="Person actions"
+                      @click.stop
+                    />
+                  </template>
+                  <v-list density="compact">
+                    <v-list-item
+                      prepend-icon="mdi-pencil-outline"
+                      title="Edit Person"
+                      @click="openEdit(person)"
+                    />
+                    <v-list-item
+                      prepend-icon="mdi-delete-outline"
+                      title="Delete Person"
+                      class="text-error"
+                      @click="remove(person)"
+                    />
+                  </v-list>
+                </v-menu>
+              </header>
 
-          <div v-if="person.preferredRoles.length" class="person-roles">
-            <div
-              v-for="group in roleGroupsFor(person)"
-              :key="group.name"
-              class="person-role-group"
-              :style="{ '--category-color': `rgb(var(--v-theme-${categoryColor(group.roles[0] ?? '')}))` }"
-            >
-              <div class="person-role-category">
-                <span><v-icon icon="mdi-shape-outline" size="14" /></span>
-                {{ group.name }}
+              <div v-if="person.preferredRoles.length" class="person-roles">
+                <div
+                  v-for="group in roleGroupsFor(person)"
+                  :key="group.name"
+                  class="person-role-group"
+                  :style="{
+                    '--category-color': `rgb(var(--v-theme-${categoryColor(group.roles[0] ?? '')}))`,
+                  }"
+                >
+                  <div class="person-role-category">
+                    <span><v-icon icon="mdi-shape-outline" size="14" /></span>
+                    {{ group.name }}
+                  </div>
+                  <div class="person-role-chips">
+                    <span v-for="role in group.roles" :key="role">{{ role }}</span>
+                  </div>
+                </div>
               </div>
-              <div class="person-role-chips">
-                <span v-for="role in group.roles" :key="role">{{ role }}</span>
+              <div v-else class="person-no-roles">
+                <v-icon icon="mdi-account-question-outline" size="18" />
+                No preferred roles configured
               </div>
-            </div>
-          </div>
-          <div v-else class="person-no-roles">
-            <v-icon icon="mdi-account-question-outline" size="18" />
-            No preferred roles configured
-          </div>
-
             </article>
           </div>
         </div>
@@ -485,6 +556,9 @@ async function remove(person: Person) {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
   min-height: 420px;
+}
+.directory-body--empty {
+  grid-template-columns: minmax(0, 1fr);
 }
 .people-filters {
   padding: 15px 11px;

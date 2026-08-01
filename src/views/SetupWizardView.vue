@@ -194,6 +194,10 @@ async function pickLibraryFolder() {
   }
 }
 
+function usePortableLibraryFolder() {
+  if (store.machineSettings) store.machineSettings.libraryPath = './Library'
+}
+
 // Planning and operator defaults.
 const availableTranslations = ref<ScriptureTranslation[]>([])
 async function loadTranslations() {
@@ -482,9 +486,24 @@ async function skipSetup() {
               type="info"
               variant="tonal"
               class="mb-4"
-              >Only one display is connected. Worship Studio will use a preview window until an
-              audience display is available.</v-alert
             >
+              <div class="d-flex align-center ga-3">
+                <span>
+                  Only one display is connected. You can finish setup and plan with 16:9 previews,
+                  but Start Presenting will remain unavailable until a separate audience display is
+                  connected.
+                </span>
+                <v-btn
+                  variant="text"
+                  size="small"
+                  prepend-icon="mdi-refresh"
+                  :loading="loadingDisplays"
+                  @click="loadDisplays"
+                >
+                  Detect Again
+                </v-btn>
+              </div>
+            </v-alert>
             <div v-if="loadingDisplays" class="inline-loading">
               <v-progress-circular indeterminate color="primary" size="26" /><span
                 >Detecting displays…</span
@@ -620,16 +639,26 @@ async function skipSetup() {
                     }}
                   </p>
                 </div>
-                <v-btn
-                  variant="outlined"
-                  prepend-icon="mdi-folder-cog-outline"
-                  :loading="pickingLibraryFolder"
-                  :disabled="!isDesktop"
-                  @click="pickLibraryFolder"
-                  >{{
-                    store.machineSettings.libraryPath ? 'Change Folder' : 'Choose Folder'
-                  }}</v-btn
-                >
+                <div class="import-actions">
+                  <v-btn
+                    variant="outlined"
+                    prepend-icon="mdi-folder-cog-outline"
+                    :loading="pickingLibraryFolder"
+                    :disabled="!isDesktop"
+                    @click="pickLibraryFolder"
+                    >{{
+                      store.machineSettings.libraryPath ? 'Change Folder' : 'Choose Folder'
+                    }}</v-btn
+                  >
+                  <v-btn
+                    variant="tonal"
+                    color="primary"
+                    prepend-icon="mdi-usb-flash-drive-outline"
+                    :disabled="!isDesktop"
+                    @click="usePortableLibraryFolder"
+                    >Portable</v-btn
+                  >
+                </div>
               </article>
             </div>
             <v-alert
@@ -749,7 +778,7 @@ async function skipSetup() {
                   differently.</span
                 >
               </div>
-              <button type="button" @click="completeSetup('/settings/service-templates')">
+              <button type="button" @click="completeSetup('/library/service-templates')">
                 <span><v-icon icon="mdi-file-tree-outline" size="21" /></span>
                 <div>
                   <strong>Build a service template</strong
@@ -1274,6 +1303,14 @@ async function skipSetup() {
   grid-column: 3;
   white-space: nowrap;
 }
+.import-actions {
+  display: flex;
+  grid-row: 1 / span 2;
+  grid-column: 3;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 7px;
+}
 .import-copy strong {
   font-size: 0.78rem;
 }
@@ -1479,6 +1516,7 @@ async function skipSetup() {
   .display-card > .v-btn,
   .import-card > .v-select,
   .import-card > .v-btn,
+  .import-actions,
   .import-selects,
   .preference-card > .v-select,
   .preference-card > .v-combobox,
@@ -1489,6 +1527,10 @@ async function skipSetup() {
   .import-card > .import-icon,
   .import-card > .v-btn {
     grid-row: auto;
+  }
+  .import-actions {
+    grid-row: auto;
+    justify-self: start;
   }
   .import-card > .v-btn {
     justify-self: start;

@@ -77,13 +77,17 @@ const filteredItems = computed(() => {
     .filter(
       (item) =>
         !q ||
-        [item.title, item.filename, item.description].some((field) => field?.toLowerCase().includes(q)) ||
+        [item.title, item.filename, item.description].some((field) =>
+          field?.toLowerCase().includes(q),
+        ) ||
         item.tags.some((tag) => tag.toLowerCase().includes(q)),
     )
     .sort((a, b) => a.title.localeCompare(b.title))
 })
 
-const activeFilterCount = computed(() => Number(typeFilter.value !== 'all') + Number(!!activeTag.value))
+const activeFilterCount = computed(
+  () => Number(typeFilter.value !== 'all') + Number(!!activeTag.value),
+)
 
 function clearFilters() {
   query.value = ''
@@ -123,7 +127,9 @@ async function deleteItem(item: MediaItem): Promise<boolean> {
   return true
 }
 
-const editorPreviewUrl = computed(() => (editingItem.value ? previewUrlById.get(editingItem.value.id) : undefined))
+const editorPreviewUrl = computed(() =>
+  editingItem.value ? previewUrlById.get(editingItem.value.id) : undefined,
+)
 
 async function openEditor(item: MediaItem) {
   editingItem.value = item
@@ -206,7 +212,10 @@ async function saveEdits() {
           <h2>Media Library</h2>
           <p>
             {{ filteredItems.length }} {{ filteredItems.length === 1 ? 'item' : 'items' }}
-            <template v-if="activeFilterCount"> with {{ activeFilterCount }} active {{ activeFilterCount === 1 ? 'filter' : 'filters' }}</template>
+            <template v-if="activeFilterCount">
+              with {{ activeFilterCount }} active
+              {{ activeFilterCount === 1 ? 'filter' : 'filters' }}</template
+            >
             <template v-if="query"> matching your search</template>
           </p>
         </div>
@@ -223,17 +232,26 @@ async function saveEdits() {
             clearable
             class="media-search"
           />
-          <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="importDialogOpen = true">Import Media</v-btn>
+          <v-btn
+            variant="flat"
+            color="primary"
+            prepend-icon="mdi-plus"
+            @click="importDialogOpen = true"
+            >Import Media</v-btn
+          >
         </div>
       </div>
 
-      <div class="media-directory-body">
+      <div
+        class="media-directory-body"
+        :class="{ 'media-directory-body--empty': visibleItems.length === 0 }"
+      >
         <aside v-if="visibleItems.length" class="media-filters" aria-label="Filter media">
           <button
             type="button"
             class="media-filter media-filter--all"
             :class="{ 'media-filter--active': typeFilter === 'all' && !activeTag }"
-            @click="typeFilter = 'all'; activeTag = undefined"
+            @click="clearFilters"
           >
             <span class="media-filter-icon"><v-icon icon="mdi-view-grid-outline" size="18" /></span>
             <span>All Media</span>
@@ -258,7 +276,9 @@ async function saveEdits() {
               :class="{ 'media-filter--active': typeFilter === 'video' }"
               @click="typeFilter = typeFilter === 'video' ? 'all' : 'video'"
             >
-              <span class="media-filter-icon"><v-icon icon="mdi-movie-open-outline" size="17" /></span>
+              <span class="media-filter-icon"
+                ><v-icon icon="mdi-movie-open-outline" size="17"
+              /></span>
               <span>Videos</span>
               <strong>{{ videoCount }}</strong>
             </button>
@@ -287,7 +307,13 @@ async function saveEdits() {
             <span><v-icon icon="mdi-image-plus-outline" size="30" /></span>
             <h2>No Media Yet</h2>
             <p>Import images and videos to build your presentation library.</p>
-            <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="importDialogOpen = true">Import Media</v-btn>
+            <v-btn
+              variant="flat"
+              color="primary"
+              prepend-icon="mdi-plus"
+              @click="importDialogOpen = true"
+              >Import Media</v-btn
+            >
           </div>
           <div v-else-if="filteredItems.length === 0" class="media-empty-state">
             <span><v-icon icon="mdi-image-off-outline" size="30" /></span>
@@ -322,13 +348,21 @@ async function saveEdits() {
                   preload="metadata"
                 />
                 <span v-else class="media-placeholder">
-                  <v-icon :icon="item.kind === 'video' ? 'mdi-movie-open-outline' : 'mdi-image-outline'" size="34" />
+                  <v-icon
+                    :icon="item.kind === 'video' ? 'mdi-movie-open-outline' : 'mdi-image-outline'"
+                    size="34"
+                  />
                 </span>
                 <span class="type-badge">
-                  <v-icon :icon="item.kind === 'video' ? 'mdi-movie-open-outline' : 'mdi-image-outline'" size="14" />
+                  <v-icon
+                    :icon="item.kind === 'video' ? 'mdi-movie-open-outline' : 'mdi-image-outline'"
+                    size="14"
+                  />
                   {{ item.kind === 'video' ? 'Video' : 'Image' }}
                 </span>
-                <span v-if="item.duplicateOfId" class="duplicate-badge"><v-icon icon="mdi-content-duplicate" size="14" />Possible Duplicate</span>
+                <span v-if="item.duplicateOfId" class="duplicate-badge"
+                  ><v-icon icon="mdi-content-duplicate" size="14" />Possible Duplicate</span
+                >
               </div>
 
               <div class="media-card-body">
@@ -339,11 +373,27 @@ async function saveEdits() {
                   </div>
                   <v-menu>
                     <template #activator="{ props }">
-                      <v-btn v-bind="props" icon="mdi-dots-horizontal" variant="text" size="small" aria-label="Media actions" @click.stop />
+                      <v-btn
+                        v-bind="props"
+                        icon="mdi-dots-horizontal"
+                        variant="text"
+                        size="small"
+                        aria-label="Media actions"
+                        @click.stop
+                      />
                     </template>
                     <v-list density="compact">
-                      <v-list-item prepend-icon="mdi-pencil-outline" title="Edit Media" @click="openEditor(item)" />
-                      <v-list-item prepend-icon="mdi-trash-can-outline" title="Delete Media" class="text-error" @click="deleteItem(item)" />
+                      <v-list-item
+                        prepend-icon="mdi-pencil-outline"
+                        title="Edit Media"
+                        @click="openEditor(item)"
+                      />
+                      <v-list-item
+                        prepend-icon="mdi-trash-can-outline"
+                        title="Delete Media"
+                        class="text-error"
+                        @click="deleteItem(item)"
+                      />
                     </v-list>
                   </v-menu>
                 </div>
@@ -357,8 +407,14 @@ async function saveEdits() {
                 </div>
 
                 <div class="media-card-footer">
-                  <span class="storage-label" :class="{ 'storage-label--local': item.location === 'local' }">
-                    <v-icon :icon="item.location === 'local' ? 'mdi-harddisk' : 'mdi-cloud-check-outline'" size="15" />
+                  <span
+                    class="storage-label"
+                    :class="{ 'storage-label--local': item.location === 'local' }"
+                  >
+                    <v-icon
+                      :icon="item.location === 'local' ? 'mdi-harddisk' : 'mdi-cloud-check-outline'"
+                      size="15"
+                    />
                     {{ item.location === 'local' ? 'Local Only' : 'Synced' }}
                   </span>
                   <span class="usage-label">
@@ -375,15 +431,29 @@ async function saveEdits() {
 
     <ImportMediaDialog v-model="importDialogOpen" @imported="store.load()" />
 
-    <v-dialog :model-value="!!editingItem" max-width="620" @update:model-value="(value) => !value && (editingItem = undefined)">
+    <v-dialog
+      :model-value="!!editingItem"
+      max-width="620"
+      @update:model-value="(value) => !value && (editingItem = undefined)"
+    >
       <v-card v-if="editingItem" class="media-editor-card">
         <div class="media-editor-header">
-          <span><v-icon :icon="editingItem.kind === 'video' ? 'mdi-movie-open-outline' : 'mdi-image-outline'" size="22" /></span>
+          <span
+            ><v-icon
+              :icon="editingItem.kind === 'video' ? 'mdi-movie-open-outline' : 'mdi-image-outline'"
+              size="22"
+          /></span>
           <div>
             <h2>Media Details</h2>
             <p>{{ editingItem.filename }}</p>
           </div>
-          <v-btn icon="mdi-close" variant="text" size="small" aria-label="Close Media Details" @click="editingItem = undefined" />
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            size="small"
+            aria-label="Close Media Details"
+            @click="editingItem = undefined"
+          />
         </div>
 
         <div class="media-editor-preview" :class="`media-thumb--${editingItem.kind}`">
@@ -392,14 +462,18 @@ async function saveEdits() {
             <span>Loading Preview</span>
           </div>
           <img
-            v-else-if="editingItem.kind === 'image' && editorPreviewUrl && !editorPreviewUnavailable"
+            v-else-if="
+              editingItem.kind === 'image' && editorPreviewUrl && !editorPreviewUnavailable
+            "
             :key="editorPreviewUrl"
             :src="editorPreviewUrl"
             alt=""
             @error="markEditorPreviewUnavailable"
           />
           <video
-            v-else-if="editingItem.kind === 'video' && editorPreviewUrl && !editorPreviewUnavailable"
+            v-else-if="
+              editingItem.kind === 'video' && editorPreviewUrl && !editorPreviewUnavailable
+            "
             :key="editorPreviewUrl"
             :src="editorPreviewUrl"
             muted
@@ -409,7 +483,10 @@ async function saveEdits() {
             @error="markEditorPreviewUnavailable"
           />
           <div v-else class="editor-preview-status editor-preview-status--unavailable">
-            <v-icon :icon="editingItem.kind === 'video' ? 'mdi-movie-open-outline' : 'mdi-image-outline'" size="34" />
+            <v-icon
+              :icon="editingItem.kind === 'video' ? 'mdi-movie-open-outline' : 'mdi-image-outline'"
+              size="34"
+            />
             <span>Preview Unavailable</span>
             <small>The original file could not be opened.</small>
           </div>
@@ -430,7 +507,15 @@ async function saveEdits() {
           </div>
           <div class="editor-field-row editor-field-row--top">
             <label for="media-description">Description</label>
-            <v-textarea id="media-description" v-model="editDescriptionInput" variant="outlined" density="compact" rows="2" auto-grow hide-details />
+            <v-textarea
+              id="media-description"
+              v-model="editDescriptionInput"
+              variant="outlined"
+              density="compact"
+              rows="2"
+              auto-grow
+              hide-details
+            />
           </div>
           <div class="editor-field-row">
             <label for="media-tags">Tags</label>
@@ -460,10 +545,18 @@ async function saveEdits() {
         </v-card-text>
 
         <v-card-actions class="media-editor-actions">
-          <v-btn variant="text" color="error" prepend-icon="mdi-trash-can-outline" @click="deleteEditingItem">Delete Media</v-btn>
+          <v-btn
+            variant="text"
+            color="error"
+            prepend-icon="mdi-trash-can-outline"
+            @click="deleteEditingItem"
+            >Delete Media</v-btn
+          >
           <v-spacer />
           <v-btn variant="outlined" @click="editingItem = undefined">Cancel</v-btn>
-          <v-btn variant="flat" color="primary" :disabled="editTitleInvalid" @click="saveEdits">Save Changes</v-btn>
+          <v-btn variant="flat" color="primary" :disabled="editTitleInvalid" @click="saveEdits"
+            >Save Changes</v-btn
+          >
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -592,6 +685,9 @@ async function saveEdits() {
   display: grid;
   min-height: 470px;
   grid-template-columns: 230px minmax(0, 1fr);
+}
+.media-directory-body--empty {
+  grid-template-columns: minmax(0, 1fr);
 }
 .media-filters {
   padding: 14px 11px 18px;
@@ -745,7 +841,11 @@ async function saveEdits() {
   color: rgba(255, 255, 255, 0.68);
 }
 .media-thumb--image {
-  background: linear-gradient(135deg, rgba(var(--v-theme-teal), 0.48), rgba(var(--v-theme-violet), 0.42));
+  background: linear-gradient(
+    135deg,
+    rgba(var(--v-theme-teal), 0.48),
+    rgba(var(--v-theme-violet), 0.42)
+  );
 }
 .media-thumb--video {
   background: linear-gradient(135deg, #171a20, rgba(var(--v-theme-secondary), 0.52));

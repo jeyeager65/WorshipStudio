@@ -1,12 +1,6 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
-import {
-  getCurrentWindow,
-  availableMonitors,
-  primaryMonitor,
-  LogicalPosition,
-  LogicalSize,
-} from '@tauri-apps/api/window'
+import { availableMonitors, currentMonitor } from '@tauri-apps/api/window'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type {
@@ -48,7 +42,6 @@ export function createTauriAdapter(): StudioAdapter {
   // module scope since each Tauri window runs its own copy of the frontend (its own call to
   // createTauriAdapter()), so this is naturally scoped to whichever window is the operator.
   let presentationWindow: WebviewWindow | undefined
-  let restoreOperatorBounds: { position: LogicalPosition; size: LogicalSize } | undefined
   let lastLiveContent: LiveSlideContent | null = null
   let unlistenPresentationReady: UnlistenFn | undefined
   let identifyWindow: WebviewWindow | undefined
@@ -65,13 +58,20 @@ export function createTauriAdapter(): StudioAdapter {
     return monitor.name ?? `monitor-${index}`
   }
 
+  function isSameMonitor(
+    left: Awaited<ReturnType<typeof availableMonitors>>[number],
+    right: Awaited<ReturnType<typeof availableMonitors>>[number] | null,
+  ): boolean {
+    if (!right) return false
+    if (left.name && right.name) return left.name === right.name
+    return left.position.x === right.position.x && left.position.y === right.position.y
+  }
+
   interface PresentationBounds {
     x: number
     y: number
     width: number
     height: number
-    /** Single-monitor case only — the operator window has to shrink to make room. */
-    operatorReposition?: { x: number; y: number; width: number; height: number }
   }
 
   // Shared by openPresentationWindow (the real thing) and getPresentationSize (the operator's
@@ -81,48 +81,25 @@ export function createTauriAdapter(): StudioAdapter {
   async function computePresentationBounds(): Promise<PresentationBounds | undefined> {
     const monitors = await availableMonitors()
 
-    if (monitors.length <= 1) {
-      // Single monitor (or none reported): split its work area — excluding the
-      // taskbar/dock, not the full physical resolution, or windows would get clipped by it —
-      // left (operator) / right (presentation) rather than overlapping windows, since
-      // there's nowhere else to put the second one.
-      const monitor = monitors[0]
-      if (!monitor) return undefined
-      const workAreaPosition = monitor.workArea.position.toLogical(monitor.scaleFactor)
-      const workAreaSize = monitor.workArea.size.toLogical(monitor.scaleFactor)
-      const halfWidth = Math.floor(workAreaSize.width / 2)
-      return {
-        x: workAreaPosition.x + halfWidth,
-        y: workAreaPosition.y,
-        width: workAreaSize.width - halfWidth,
-        height: workAreaSize.height,
-        operatorReposition: {
-          x: workAreaPosition.x,
-          y: workAreaPosition.y,
-          width: halfWidth,
-          height: workAreaSize.height,
-        },
-      }
-    }
+    if (monitors.length <= 1) return undefined
 
-    // 2+ monitors: presentation goes fullscreen (within its work area — see above) on
-    // whichever monitor Display Setup (Settings) has assigned the "audience" role to, if
-    // any. Falls back to "the first monitor that isn't the primary/operator one" when
-    // nothing's been assigned yet, so this still works before a first-time setup.
-    const machineSettings = await invoke<MachineSettings>('get_machine_settings')
+    // Presentation only runs on a distinct monitor explicitly assigned as Audience. Guessing
+    // from monitor order risks putting private operator content on the projector after Windows
+    // renumbers displays, and the old single-monitor split was not useful to a congregation.
+    const [machineSettings, operatorMonitor] = await Promise.all([
+      invoke<MachineSettings>('get_machine_settings'),
+      currentMonitor(),
+    ])
     const assignedAudience = monitors.find(
-      (m, i) => machineSettings.displayRoles[monitorId(m, i)] === 'audience',
+      (m, i) =>
+        !isSameMonitor(m, operatorMonitor) &&
+        machineSettings.displayRoles[monitorId(m, i)] === 'audience',
     )
-    const primary = await primaryMonitor()
-    const secondary =
-      assignedAudience ??
-      monitors.find(
-        (m) => m.position.x !== primary?.position.x || m.position.y !== primary?.position.y,
-      ) ??
-      monitors[1] ??
-      monitors[0]
-    const workAreaPosition = secondary.workArea.position.toLogical(secondary.scaleFactor)
-    const workAreaSize = secondary.workArea.size.toLogical(secondary.scaleFactor)
+    if (!assignedAudience) return undefined
+    const workAreaPosition = assignedAudience.workArea.position.toLogical(
+      assignedAudience.scaleFactor,
+    )
+    const workAreaSize = assignedAudience.workArea.size.toLogical(assignedAudience.scaleFactor)
     return {
       x: workAreaPosition.x,
       y: workAreaPosition.y,
@@ -132,27 +109,8 @@ export function createTauriAdapter(): StudioAdapter {
   }
 
   async function openPresentationWindow() {
-    const operatorWindow = getCurrentWindow()
-    const [outerPosition, innerSize, scaleFactor] = await Promise.all([
-      operatorWindow.outerPosition(),
-      operatorWindow.innerSize(),
-      operatorWindow.scaleFactor(),
-    ])
-    restoreOperatorBounds = {
-      position: outerPosition.toLogical(scaleFactor),
-      size: innerSize.toLogical(scaleFactor),
-    }
-
     const bounds = await computePresentationBounds()
-    if (!bounds) return
-    if (bounds.operatorReposition) {
-      await operatorWindow.setPosition(
-        new LogicalPosition(bounds.operatorReposition.x, bounds.operatorReposition.y),
-      )
-      await operatorWindow.setSize(
-        new LogicalSize(bounds.operatorReposition.width, bounds.operatorReposition.height),
-      )
-    }
+    if (!bounds) throw new Error('No configured audience display is available.')
 
     presentationWindow = new WebviewWindow('presentation', {
       url: 'index.html',
@@ -180,12 +138,6 @@ export function createTauriAdapter(): StudioAdapter {
     if (presentationWindow) {
       await presentationWindow.close()
       presentationWindow = undefined
-    }
-    if (restoreOperatorBounds) {
-      const operatorWindow = getCurrentWindow()
-      await operatorWindow.setPosition(restoreOperatorBounds.position)
-      await operatorWindow.setSize(restoreOperatorBounds.size)
-      restoreOperatorBounds = undefined
     }
   }
 
@@ -373,14 +325,17 @@ export function createTauriAdapter(): StudioAdapter {
       // exposes this) combined with the persisted role map in MachineSettings, which is the
       // one piece that actually needs to survive restarts.
       list: async () => {
-        const [monitors, machineSettings] = await Promise.all([
+        const [monitors, machineSettings, operatorMonitor] = await Promise.all([
           availableMonitors(),
           invoke<MachineSettings>('get_machine_settings'),
+          currentMonitor(),
         ])
         return monitors.map((monitor, index): DisplayInfo => {
           const id = monitorId(monitor, index)
           const size = monitor.size.toLogical(monitor.scaleFactor)
-          const role = (machineSettings.displayRoles[id] as DisplayRole | undefined) ?? 'not-used'
+          const role = isSameMonitor(monitor, operatorMonitor)
+            ? 'operator'
+            : ((machineSettings.displayRoles[id] as DisplayRole | undefined) ?? 'not-used')
           return {
             id,
             name: friendlyDisplayName(monitor.name, index),
@@ -421,13 +376,17 @@ export function createTauriAdapter(): StudioAdapter {
     },
     remote: {
       listDevices: () => invoke<RemoteDevice[]>('list_remote_devices'),
-      provisionDevice: (name, accessLevel) =>
+      provisionDevice: (personId, name, accessLevel) =>
         invoke<{ qrDataUrl: string; pairingUrl: string }>('provision_remote_device', {
+          personId,
           name,
           accessLevel,
         }),
+      repairDevice: (id) =>
+        invoke<{ qrDataUrl: string; pairingUrl: string }>('repair_remote_device', { id }),
       revokeDevice: (id) => invoke('revoke_remote_device', { id }),
-      getServerInfo: () => invoke<{ lanIp?: string; port: number }>('get_remote_server_info'),
+      getServerInfo: () =>
+        invoke<{ hostname?: string; lanIp?: string; port: number }>('get_remote_server_info'),
       pushLiveState: (content, isPresenting) =>
         invoke('update_remote_live_state', { content: content ?? null, isPresenting }),
       onCommand: async (callback) => {

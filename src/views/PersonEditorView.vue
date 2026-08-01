@@ -6,6 +6,8 @@ import { usePeopleStore } from '@/stores/people'
 import { useSettingsStore } from '@/stores/settings'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
+import { getAdapter } from '@/adapters'
+import type { RemoteDevice } from '@/adapters/types'
 import type { Person, UnavailableDateRange } from '@/models/library'
 
 const route = useRoute()
@@ -19,7 +21,23 @@ const person = ref<Person>()
 const newRangeStart = ref('')
 const newRangeEnd = ref('')
 const validationMessage = ref('')
-const categoryColors = ['primary', 'teal', 'violet', 'terracotta', 'rose', 'slate', 'secondary', 'amber']
+const remoteDevices = ref<RemoteDevice[]>([])
+const pairDialogOpen = ref(false)
+const pairing = ref(false)
+const pairingDeviceId = ref<string>()
+const newDeviceName = ref('')
+const newDeviceAccessLevel = ref<RemoteDevice['accessLevel']>('advance-only')
+const pairingResult = ref<{ qrDataUrl: string; pairingUrl: string }>()
+const categoryColors = [
+  'primary',
+  'teal',
+  'violet',
+  'terracotta',
+  'rose',
+  'slate',
+  'secondary',
+  'amber',
+]
 let stopPersonWatch: (() => void) | undefined
 
 function blankPerson(): Person {
@@ -36,19 +54,40 @@ function blankPerson(): Person {
 
 const headingName = computed(() => {
   if (!person.value) return ''
-  return person.value.displayName || `${person.value.firstName} ${person.value.lastName}`.trim() || 'New Person'
+  return (
+    person.value.displayName ||
+    `${person.value.firstName} ${person.value.lastName}`.trim() ||
+    'New Person'
+  )
 })
 
 const initials = computed(() => {
   if (!person.value) return ''
   return `${person.value.firstName[0] ?? ''}${person.value.lastName[0] ?? ''}`.toUpperCase() || '?'
 })
+const personRemoteDevices = computed(() =>
+  remoteDevices.value.filter((device) => device.personId === person.value?.id),
+)
+const accessLevelOptions: { title: string; value: RemoteDevice['accessLevel'] }[] = [
+  { title: 'View Only', value: 'view-only' },
+  { title: 'Advance Only', value: 'advance-only' },
+  { title: 'Full Control', value: 'full-control' },
+]
+
+function accessLevelLabel(level: RemoteDevice['accessLevel']): string {
+  return accessLevelOptions.find((option) => option.value === level)?.title ?? level
+}
+
+async function loadRemoteDevices() {
+  remoteDevices.value = (await getAdapter().remote?.listDevices()) ?? []
+}
 
 onMounted(async () => {
   await Promise.all([peopleStore.load(), settingsStore.load()])
   const isNew = route.params.id === 'new'
   const existing = peopleStore.people.find((candidate) => candidate.id === route.params.id)
   person.value = isNew ? blankPerson() : existing ? structuredClone(toRaw(existing)) : undefined
+  if (!isNew) await loadRemoteDevices()
   isDirty.value = isNew
   stopPersonWatch = watch(person, () => (isDirty.value = true), { deep: true })
   saveHandler.value = savePerson
@@ -77,6 +116,46 @@ async function savePerson() {
   }
 }
 
+function openPairDialog() {
+  newDeviceName.value = ''
+  newDeviceAccessLevel.value = 'advance-only'
+  pairingResult.value = undefined
+  pairDialogOpen.value = true
+}
+
+async function pairDevice() {
+  if (!person.value || !newDeviceName.value.trim() || pairing.value) return
+  pairing.value = true
+  try {
+    pairingResult.value = await getAdapter().remote?.provisionDevice(
+      person.value.id,
+      newDeviceName.value.trim(),
+      newDeviceAccessLevel.value,
+    )
+    await loadRemoteDevices()
+  } finally {
+    pairing.value = false
+  }
+}
+
+async function repairDevice(device: RemoteDevice) {
+  pairingDeviceId.value = device.id
+  try {
+    pairingResult.value = await getAdapter().remote?.repairDevice(device.id)
+    newDeviceName.value = device.name
+    pairDialogOpen.value = true
+  } finally {
+    pairingDeviceId.value = undefined
+  }
+}
+
+async function revokeDevice(device: RemoteDevice) {
+  if (!(await confirmDialog.confirm(`Revoke ${device.name}'s Remote Control access?`, 'Revoke')))
+    return
+  await getAdapter().remote?.revokeDevice(device.id)
+  await loadRemoteDevices()
+}
+
 function toggleRole(role: string) {
   if (!person.value) return
   const index = person.value.preferredRoles.indexOf(role)
@@ -102,14 +181,28 @@ function addUnavailableRange() {
 
 async function removeUnavailableRange(range: UnavailableDateRange) {
   if (!person.value) return
-  if (!(await confirmDialog.confirm(`Remove the unavailable range ${range.start} – ${range.end}?`, 'Remove'))) return
-  person.value.unavailableDateRanges = person.value.unavailableDateRanges.filter((candidate) => candidate !== range)
+  if (
+    !(await confirmDialog.confirm(
+      `Remove the unavailable range ${range.start} – ${range.end}?`,
+      'Remove',
+    ))
+  )
+    return
+  person.value.unavailableDateRanges = person.value.unavailableDateRanges.filter(
+    (candidate) => candidate !== range,
+  )
 }
 
 function formatDateRange(range: UnavailableDateRange): string {
   const format = (date: string) =>
-    new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-  return range.start === range.end ? format(range.start) : `${format(range.start)} – ${format(range.end)}`
+    new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+  return range.start === range.end
+    ? format(range.start)
+    : `${format(range.start)} – ${format(range.end)}`
 }
 </script>
 
@@ -117,7 +210,9 @@ function formatDateRange(range: UnavailableDateRange): string {
   <main v-if="person" class="person-editor-page">
     <header class="editor-header">
       <div class="header-content">
-        <v-btn to="/people" variant="text" prepend-icon="mdi-arrow-left" class="back-button">People</v-btn>
+        <v-btn to="/people" variant="text" prepend-icon="mdi-arrow-left" class="back-button"
+          >People</v-btn
+        >
         <div class="identity-row">
           <div class="person-avatar">{{ initials }}</div>
           <div class="identity-copy">
@@ -130,7 +225,13 @@ function formatDateRange(range: UnavailableDateRange): string {
     </header>
 
     <div class="editor-content">
-      <v-alert v-if="validationMessage" type="warning" variant="tonal" closable @click:close="validationMessage = ''">
+      <v-alert
+        v-if="validationMessage"
+        type="warning"
+        variant="tonal"
+        closable
+        @click:close="validationMessage = ''"
+      >
         {{ validationMessage }}
       </v-alert>
 
@@ -143,8 +244,18 @@ function formatDateRange(range: UnavailableDateRange): string {
           </div>
         </div>
         <div class="details-grid">
-          <v-text-field v-model="person.firstName" label="First Name" variant="outlined" hide-details />
-          <v-text-field v-model="person.lastName" label="Last Name" variant="outlined" hide-details />
+          <v-text-field
+            v-model="person.firstName"
+            label="First Name"
+            variant="outlined"
+            hide-details
+          />
+          <v-text-field
+            v-model="person.lastName"
+            label="Last Name"
+            variant="outlined"
+            hide-details
+          />
           <v-text-field
             v-model="person.displayName"
             label="Display Name"
@@ -165,10 +276,15 @@ function formatDateRange(range: UnavailableDateRange): string {
 
       <section class="editor-section">
         <div class="section-heading">
-          <span class="section-icon section-icon--roles"><v-icon icon="mdi-shape-outline" size="21" /></span>
+          <span class="section-icon section-icon--roles"
+            ><v-icon icon="mdi-shape-outline" size="21"
+          /></span>
           <div>
             <h2>Preferred Roles</h2>
-            <p>These roles appear first when assigning this person, but do not limit where they can serve.</p>
+            <p>
+              These roles appear first when assigning this person, but do not limit where they can
+              serve.
+            </p>
           </div>
         </div>
         <div v-if="settingsStore.librarySettings?.roleGroups.length" class="role-groups">
@@ -176,7 +292,9 @@ function formatDateRange(range: UnavailableDateRange): string {
             v-for="(group, groupIndex) in settingsStore.librarySettings.roleGroups"
             :key="group.name"
             class="role-group"
-            :style="{ '--category-color': `rgb(var(--v-theme-${categoryColors[groupIndex % categoryColors.length]}))` }"
+            :style="{
+              '--category-color': `rgb(var(--v-theme-${categoryColors[groupIndex % categoryColors.length]}))`,
+            }"
           >
             <div class="role-group-heading">
               <span><v-icon icon="mdi-shape-outline" size="17" /></span>
@@ -194,7 +312,10 @@ function formatDateRange(range: UnavailableDateRange): string {
                 :class="{ 'role-option--selected': person.preferredRoles.includes(role) }"
                 @click="toggleRole(role)"
               >
-                <v-icon :icon="person.preferredRoles.includes(role) ? 'mdi-check' : 'mdi-plus'" size="17" />
+                <v-icon
+                  :icon="person.preferredRoles.includes(role) ? 'mdi-check' : 'mdi-plus'"
+                  size="17"
+                />
                 {{ role }}
               </button>
             </div>
@@ -210,20 +331,46 @@ function formatDateRange(range: UnavailableDateRange): string {
 
       <section class="editor-section">
         <div class="section-heading">
-          <span class="section-icon section-icon--availability"><v-icon icon="mdi-calendar-outline" size="21" /></span>
+          <span class="section-icon section-icon--availability"
+            ><v-icon icon="mdi-calendar-outline" size="21"
+          /></span>
           <div>
             <h2>Availability</h2>
             <p>Assignments that fall within these dates will be clearly flagged for planners.</p>
           </div>
         </div>
         <div class="availability-entry">
-          <v-text-field v-model="newRangeStart" label="Start Date" type="date" variant="outlined" hide-details />
-          <v-text-field v-model="newRangeEnd" label="End Date" type="date" variant="outlined" hide-details />
-          <v-btn variant="tonal" color="primary" prepend-icon="mdi-plus" @click="addUnavailableRange">Add Dates</v-btn>
+          <v-text-field
+            v-model="newRangeStart"
+            label="Start Date"
+            type="date"
+            variant="outlined"
+            hide-details
+          />
+          <v-text-field
+            v-model="newRangeEnd"
+            label="End Date"
+            type="date"
+            variant="outlined"
+            hide-details
+          />
+          <v-btn
+            variant="tonal"
+            color="primary"
+            prepend-icon="mdi-plus"
+            @click="addUnavailableRange"
+            >Add Dates</v-btn
+          >
         </div>
         <div v-if="person.unavailableDateRanges.length" class="availability-list">
-          <div v-for="range in person.unavailableDateRanges" :key="`${range.start}-${range.end}`" class="availability-item">
-            <span class="availability-item-icon"><v-icon icon="mdi-calendar-remove-outline" size="20" /></span>
+          <div
+            v-for="range in person.unavailableDateRanges"
+            :key="`${range.start}-${range.end}`"
+            class="availability-item"
+          >
+            <span class="availability-item-icon"
+              ><v-icon icon="mdi-calendar-remove-outline" size="20"
+            /></span>
             <div>
               <strong>{{ formatDateRange(range) }}</strong>
               <span>Unavailable</span>
@@ -239,7 +386,61 @@ function formatDateRange(range: UnavailableDateRange): string {
         </div>
         <div v-else class="availability-empty">
           <v-icon icon="mdi-calendar-check-outline" size="25" />
-          <div><strong>No Unavailable Dates</strong><span>This person is currently available for all dates.</span></div>
+          <div>
+            <strong>No Unavailable Dates</strong
+            ><span>This person is currently available for all dates.</span>
+          </div>
+        </div>
+      </section>
+
+      <section v-if="route.params.id !== 'new'" class="editor-section">
+        <div class="section-heading section-heading--action">
+          <span class="section-icon section-icon--devices">
+            <v-icon icon="mdi-cellphone-link" size="21" />
+          </span>
+          <div>
+            <h2>Remote Control Devices</h2>
+            <p>Phones and tablets authorized to control presentations as this person.</p>
+          </div>
+          <v-btn variant="tonal" color="primary" prepend-icon="mdi-plus" @click="openPairDialog">
+            Pair Device
+          </v-btn>
+        </div>
+
+        <div v-if="personRemoteDevices.length" class="device-list">
+          <div v-for="device in personRemoteDevices" :key="device.id" class="device-item">
+            <span class="device-item-icon"><v-icon icon="mdi-cellphone" size="21" /></span>
+            <div>
+              <strong>{{ device.name }}</strong>
+              <span>{{ accessLevelLabel(device.accessLevel) }}</span>
+            </div>
+            <div class="device-item-actions">
+              <v-btn
+                variant="text"
+                size="small"
+                prepend-icon="mdi-qrcode-scan"
+                :loading="pairingDeviceId === device.id"
+                @click="repairDevice(device)"
+              >
+                Re-pair
+              </v-btn>
+              <v-btn
+                icon="mdi-trash-can-outline"
+                variant="text"
+                size="small"
+                color="error"
+                aria-label="Revoke device"
+                @click="revokeDevice(device)"
+              />
+            </div>
+          </div>
+        </div>
+        <div v-else class="devices-empty">
+          <v-icon icon="mdi-cellphone-off" size="25" />
+          <div>
+            <strong>No Paired Devices</strong>
+            <span>Pair a phone or tablet to give this person Remote Control access.</span>
+          </div>
         </div>
       </section>
     </div>
@@ -248,6 +449,59 @@ function formatDateRange(range: UnavailableDateRange): string {
     <v-btn to="/people" variant="text" prepend-icon="mdi-arrow-left">People</v-btn>
     <p class="text-medium-emphasis mt-4">Person not found.</p>
   </v-container>
+
+  <v-dialog v-model="pairDialogOpen" max-width="480">
+    <v-card>
+      <v-card-title>{{
+        pairingResult ? 'Pair Device' : 'Pair a Device for ' + headingName
+      }}</v-card-title>
+      <v-card-text>
+        <template v-if="!pairingResult">
+          <v-text-field
+            v-model="newDeviceName"
+            label="Device Name"
+            placeholder="e.g. iPhone or Tablet"
+            variant="outlined"
+            density="comfortable"
+            autofocus
+            class="mb-2"
+          />
+          <v-select
+            v-model="newDeviceAccessLevel"
+            :items="accessLevelOptions"
+            label="Access Level"
+            variant="outlined"
+            density="comfortable"
+          />
+        </template>
+        <template v-else>
+          <div class="pairing-qr">
+            <img :src="pairingResult.qrDataUrl" alt="Pairing QR code" />
+          </div>
+          <p class="text-body-2 text-center mb-2">
+            Scan this code with {{ newDeviceName }}, or open the link directly on the device.
+          </p>
+          <p class="pairing-link">{{ pairingResult.pairingUrl }}</p>
+        </template>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <template v-if="!pairingResult">
+          <v-btn variant="text" @click="pairDialogOpen = false">Cancel</v-btn>
+          <v-btn
+            variant="flat"
+            color="primary"
+            :loading="pairing"
+            :disabled="!newDeviceName.trim()"
+            @click="pairDevice"
+          >
+            Generate QR Code
+          </v-btn>
+        </template>
+        <v-btn v-else variant="flat" color="primary" @click="pairDialogOpen = false">Done</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <style scoped>
@@ -353,6 +607,11 @@ function formatDateRange(range: UnavailableDateRange): string {
   margin-bottom: 20px;
 }
 
+.section-heading--action {
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+}
+
 .section-icon {
   display: grid;
   width: 40px;
@@ -371,6 +630,11 @@ function formatDateRange(range: UnavailableDateRange): string {
 .section-icon--availability {
   background: rgba(var(--v-theme-teal), 0.12);
   color: rgb(var(--v-theme-teal));
+}
+
+.section-icon--devices {
+  background: rgba(var(--v-theme-primary), 0.12);
+  color: rgb(var(--v-theme-primary));
 }
 
 .section-heading h2 {
@@ -548,6 +812,94 @@ function formatDateRange(range: UnavailableDateRange): string {
   background: rgba(var(--v-theme-background), 0.28);
 }
 
+.device-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.device-item {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  min-height: 62px;
+  padding: 8px 9px 8px 12px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.09);
+  border-radius: 9px;
+  background: rgba(var(--v-theme-background), 0.28);
+}
+
+.device-item-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-primary), 0.1);
+  color: rgb(var(--v-theme-primary));
+}
+
+.device-item > div:nth-child(2) {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.device-item strong,
+.devices-empty strong {
+  color: rgba(var(--v-theme-on-surface), 0.88);
+  font-size: 0.8rem;
+}
+
+.device-item span,
+.devices-empty span {
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-size: 0.71rem;
+}
+
+.device-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.devices-empty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px;
+  border: 1px dashed rgba(var(--v-theme-on-surface), 0.14);
+  border-radius: 8px;
+  background: rgba(var(--v-theme-background), 0.28);
+  color: rgb(var(--v-theme-primary));
+}
+
+.devices-empty > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pairing-qr {
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.pairing-qr img {
+  width: 220px;
+  height: 220px;
+}
+
+.pairing-link {
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.52);
+  font-size: 0.7rem;
+  text-align: center;
+  word-break: break-all;
+}
+
 .availability-empty > div,
 .empty-state {
   flex-direction: column;
@@ -606,6 +958,24 @@ function formatDateRange(range: UnavailableDateRange): string {
 
   .availability-entry > :last-child {
     grid-column: auto;
+  }
+
+  .section-heading--action {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .section-heading--action > .v-btn {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .device-item {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .device-item-actions {
+    grid-column: 1 / -1;
+    justify-self: end;
   }
 }
 </style>

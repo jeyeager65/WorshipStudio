@@ -75,6 +75,12 @@ const router = createRouter({
     },
     {
       path: '/library/themes',
+      name: 'theme-library',
+      component: () => import('@/views/ThemeLibraryView.vue'),
+      meta: { title: 'Presentation Themes' },
+    },
+    {
+      path: '/library/themes/:id',
       name: 'theme-editor',
       component: () => import('@/views/ThemeEditorView.vue'),
     },
@@ -90,24 +96,30 @@ const router = createRouter({
       component: () => import('@/views/PersonEditorView.vue'),
     },
     {
+      path: '/roles',
+      name: 'roles',
+      component: () => import('@/views/RolesView.vue'),
+      meta: { title: 'Roles' },
+    },
+    {
       path: '/settings',
       name: 'settings',
       component: () => import('@/views/SettingsView.vue'),
       meta: { title: 'Settings' },
     },
     {
-      path: '/settings/service-templates',
+      path: '/library/service-templates',
       name: 'service-template-library',
       component: () => import('@/views/ServiceTemplateLibraryView.vue'),
       meta: { title: 'Service Templates' },
     },
     {
-      path: '/settings/service-templates/new',
+      path: '/library/service-templates/new',
       name: 'service-template-new',
       component: () => import('@/views/ServiceTemplateEditorView.vue'),
     },
     {
-      path: '/settings/service-templates/edit/:templateName',
+      path: '/library/service-templates/edit/:templateName',
       name: 'service-template-editor',
       component: () => import('@/views/ServiceTemplateEditorView.vue'),
     },

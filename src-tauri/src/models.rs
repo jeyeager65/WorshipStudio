@@ -350,6 +350,10 @@ pub struct ExternalAppProfile {
 #[serde(rename_all = "camelCase")]
 pub struct RemoteDevice {
     pub id: String,
+    /// Owner in the synced people library. Older device records deserialize without one and
+    /// are deliberately no longer authorized until paired again under a person.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub person_id: Option<String>,
     pub name: String,
     /// "view-only" | "advance-only" | "full-control"
     pub access_level: String,
@@ -360,13 +364,13 @@ pub struct RemoteDevice {
     pub updated_by_device: String,
 }
 
-/// What the Settings > Remote Control management screen actually lists — the token is
-/// deliberately omitted; the screen only ever needs to list devices and revoke them, never
-/// re-display a secret already handed out via the original QR code.
+/// What management screens list. The token stays backend-only even when re-pairing; the command
+/// generates the new QR code without exposing the stored secret as device data.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteDeviceSummary {
     pub id: String,
+    pub person_id: Option<String>,
     pub name: String,
     pub access_level: String,
 }
@@ -375,6 +379,7 @@ impl From<&RemoteDevice> for RemoteDeviceSummary {
     fn from(device: &RemoteDevice) -> Self {
         Self {
             id: device.id.clone(),
+            person_id: device.person_id.clone(),
             name: device.name.clone(),
             access_level: device.access_level.clone(),
         }
@@ -485,6 +490,10 @@ pub struct Theme {
     /// Legacy flag used when loading a theme saved before configurable text effects.
     #[serde(default)]
     pub outline: bool,
+    /// Content types this theme is intended for. Empty means generic/all generated content.
+    /// "songs" | "scripture" | "sermon" | "text-slides"
+    #[serde(default)]
+    pub applies_to: Vec<String>,
     /// "songs" | "scripture" | "sermon" | "text-slides"
     #[serde(default)]
     pub use_as_default_for: Vec<String>,
@@ -678,6 +687,17 @@ pub struct MachineSettings {
     pub canva_client_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub canva_client_secret: Option<String>,
+    /// Explicit Remote Control/Canva callback port. Missing means automatic selection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_control_port: Option<u16>,
+    /// Explicit mDNS hostname label for Remote Control. Missing selects an installation-mode
+    /// default (computer-based when installed, `worshipstudio-portable` when portable). The
+    /// `.local` suffix is added by the server rather than stored here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_control_hostname: Option<String>,
+    /// Last successful automatically selected port, kept stable across restarts when possible.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_remote_control_port: Option<u16>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

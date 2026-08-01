@@ -30,11 +30,17 @@ onMounted(async () => {
 const visibleSongs = computed(() => store.songs.filter((song) => !pendingDeleteIds.has(song.id)))
 const collectionFilters = computed(() => {
   const names = new Set(settingsStore.librarySettings?.collections ?? [])
-  for (const song of visibleSongs.value) for (const collection of song.collections) names.add(collection.collectionId)
+  for (const song of visibleSongs.value)
+    for (const collection of song.collections) names.add(collection.collectionId)
   return [...names]
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b))
-    .map((name) => ({ name, count: visibleSongs.value.filter((song) => song.collections.some((entry) => entry.collectionId === name)).length }))
+    .map((name) => ({
+      name,
+      count: visibleSongs.value.filter((song) =>
+        song.collections.some((entry) => entry.collectionId === name),
+      ).length,
+    }))
 })
 const tagFilters = computed(() => {
   const counts = new Map<string, number>()
@@ -52,7 +58,11 @@ const filteredSongs = computed(() => {
   const q = (query.value ?? '').trim().toLowerCase()
   const sorted = [...visibleSongs.value].sort((a, b) => a.title.localeCompare(b.title))
   return sorted.filter((song) => {
-    if (activeCollection.value && !song.collections.some((entry) => entry.collectionId === activeCollection.value)) return false
+    if (
+      activeCollection.value &&
+      !song.collections.some((entry) => entry.collectionId === activeCollection.value)
+    )
+      return false
     if (activeTag.value && !song.tags.includes(activeTag.value)) return false
     if (!q) return true
     if ([song.title, song.author].some((field) => field?.toLowerCase().includes(q))) return true
@@ -60,7 +70,9 @@ const filteredSongs = computed(() => {
     return song.collections.some((c) => c.collectionId.toLowerCase().includes(q))
   })
 })
-const activeFilterCount = computed(() => Number(!!activeCollection.value) + Number(!!activeTag.value))
+const activeFilterCount = computed(
+  () => Number(!!activeCollection.value) + Number(!!activeTag.value),
+)
 
 function clearFilters() {
   activeCollection.value = undefined
@@ -71,7 +83,9 @@ function clearFilters() {
 // A song's collections/hymnal number, e.g. "Hymns of Grace #184, Worship Hymnal #92" — omits
 // the number for a collection that doesn't have one set yet.
 function collectionsLabel(song: Song): string {
-  return song.collections.map((c) => (c.number ? `${c.collectionId} #${c.number}` : c.collectionId)).join(', ')
+  return song.collections
+    .map((c) => (c.number ? `${c.collectionId} #${c.number}` : c.collectionId))
+    .join(', ')
 }
 
 // The same usage data as the Song Editor, split into two aligned lines in this directory — see
@@ -83,7 +97,11 @@ function lastUsedLabel(song: Song): string {
   // last 365 days (recompute_usage tracks these independently; a song doesn't need any use in
   // the past year to have ever been used at all).
   if (!lastUsedAt) return 'Not yet used'
-  const last = new Date(`${lastUsedAt}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+  const last = new Date(`${lastUsedAt}T00:00:00`).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
   return `Last used ${last}`
 }
 
@@ -131,7 +149,9 @@ async function importFromOpenSong() {
       <div>
         <div class="page-eyebrow">Content Library</div>
         <h1>Songs</h1>
-        <p>Organize lyrics, arrangements, collections, and service usage in one searchable library.</p>
+        <p>
+          Organize lyrics, arrangements, collections, and service usage in one searchable library.
+        </p>
       </div>
       <div class="songs-summary" aria-label="Song library summary">
         <div class="summary-stat">
@@ -155,7 +175,10 @@ async function importFromOpenSong() {
           <h2>Song Library</h2>
           <p>
             {{ filteredSongs.length }} {{ filteredSongs.length === 1 ? 'song' : 'songs' }}
-            <template v-if="activeFilterCount"> with {{ activeFilterCount }} active {{ activeFilterCount === 1 ? 'filter' : 'filters' }}</template>
+            <template v-if="activeFilterCount">
+              with {{ activeFilterCount }} active
+              {{ activeFilterCount === 1 ? 'filter' : 'filters' }}</template
+            >
             <template v-if="query"> matching your search</template>
           </p>
         </div>
@@ -172,20 +195,31 @@ async function importFromOpenSong() {
             clearable
             class="song-search"
           />
-          <v-btn variant="outlined" color="secondary" prepend-icon="mdi-file-import" :loading="importing" @click="importFromOpenSong">
+          <v-btn
+            variant="outlined"
+            color="secondary"
+            prepend-icon="mdi-file-import"
+            :loading="importing"
+            @click="importFromOpenSong"
+          >
             Import OpenSong
           </v-btn>
-          <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSong">New Song</v-btn>
+          <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSong"
+            >New Song</v-btn
+          >
         </div>
       </div>
 
-      <div class="songs-directory-body">
+      <div
+        class="songs-directory-body"
+        :class="{ 'songs-directory-body--empty': visibleSongs.length === 0 }"
+      >
         <aside v-if="visibleSongs.length" class="song-filters" aria-label="Filter songs">
           <button
             type="button"
             class="song-filter song-filter--all"
             :class="{ 'song-filter--active': !activeCollection && !activeTag }"
-            @click="activeCollection = undefined; activeTag = undefined"
+            @click="clearFilters"
           >
             <span class="song-filter-icon"><v-icon icon="mdi-music-note" size="18" /></span>
             <span>All Songs</span>
@@ -206,7 +240,9 @@ async function importFromOpenSong() {
               <span>{{ filter.name }}</span>
               <strong>{{ filter.count }}</strong>
             </button>
-            <p v-if="collectionFilters.length === 0" class="filter-empty">No collections configured</p>
+            <p v-if="collectionFilters.length === 0" class="filter-empty">
+              No collections configured
+            </p>
           </div>
 
           <div class="filter-section">
@@ -232,9 +268,17 @@ async function importFromOpenSong() {
             <span><v-icon icon="mdi-music-note-plus" size="30" /></span>
             <h2>No Songs Yet</h2>
             <p>Create a song or import an existing OpenSong library.</p>
-            <div class="d-flex ga-2">
-              <v-btn variant="outlined" color="secondary" prepend-icon="mdi-file-import" @click="importFromOpenSong">Import OpenSong</v-btn>
-              <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSong">New Song</v-btn>
+            <div class="empty-state-actions">
+              <v-btn
+                variant="outlined"
+                color="secondary"
+                prepend-icon="mdi-file-import"
+                @click="importFromOpenSong"
+                >Import OpenSong</v-btn
+              >
+              <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSong"
+                >New Song</v-btn
+              >
             </div>
           </div>
           <div v-else-if="filteredSongs.length === 0" class="songs-empty-state">
@@ -261,13 +305,17 @@ async function importFromOpenSong() {
               </div>
               <div class="song-metadata">
                 <div v-if="song.collections.length" class="song-collections">
-                  <span class="metadata-label"><v-icon icon="mdi-bookshelf" size="15" />Collections</span>
+                  <span class="metadata-label"
+                    ><v-icon icon="mdi-bookshelf" size="15" />Collections</span
+                  >
                   <strong>{{ collectionsLabel(song) }}</strong>
                 </div>
                 <div v-if="song.tags.length" class="song-tags">
                   <span v-for="tag in song.tags" :key="tag">{{ tag }}</span>
                 </div>
-                <span v-if="!song.collections.length && !song.tags.length" class="song-no-metadata">No collections or tags</span>
+                <span v-if="!song.collections.length && !song.tags.length" class="song-no-metadata"
+                  >No collections or tags</span
+                >
               </div>
               <span class="song-usage">
                 <v-icon icon="mdi-history" size="17" />
@@ -278,11 +326,27 @@ async function importFromOpenSong() {
               </span>
               <v-menu>
                 <template #activator="{ props }">
-                  <v-btn v-bind="props" icon="mdi-dots-horizontal" variant="text" size="small" aria-label="Song actions" @click.stop />
+                  <v-btn
+                    v-bind="props"
+                    icon="mdi-dots-horizontal"
+                    variant="text"
+                    size="small"
+                    aria-label="Song actions"
+                    @click.stop
+                  />
                 </template>
                 <v-list density="compact">
-                  <v-list-item prepend-icon="mdi-pencil-outline" title="Edit Song" @click="openSong(song)" />
-                  <v-list-item prepend-icon="mdi-trash-can-outline" title="Delete Song" class="text-error" @click="deleteSong(song)" />
+                  <v-list-item
+                    prepend-icon="mdi-pencil-outline"
+                    title="Edit Song"
+                    @click="openSong(song)"
+                  />
+                  <v-list-item
+                    prepend-icon="mdi-trash-can-outline"
+                    title="Delete Song"
+                    class="text-error"
+                    @click="deleteSong(song)"
+                  />
                 </v-list>
               </v-menu>
             </article>
@@ -415,6 +479,9 @@ async function importFromOpenSong() {
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr);
   min-height: 440px;
+}
+.songs-directory-body--empty {
+  grid-template-columns: minmax(0, 1fr);
 }
 .song-filters {
   padding: 14px 11px 18px;
@@ -692,6 +759,12 @@ async function importFromOpenSong() {
 .songs-empty-state p {
   margin: 0 0 15px;
   font-size: 0.82rem;
+}
+.empty-state-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 @media (max-width: 1120px) {
   .songs-toolbar,

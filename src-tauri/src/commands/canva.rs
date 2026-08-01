@@ -17,7 +17,7 @@ use crate::paths::{
     app_data_dir, canva_auth_path, library_root, load_machine_settings, local_media_root, now_iso,
     this_device_name,
 };
-use crate::remote_server::{CanvaOAuthPending, RemoteServerHandle, REMOTE_SERVER_PORT};
+use crate::remote_server::{CanvaOAuthPending, RemoteServerHandle};
 
 const API_ROOT: &str = "https://api.canva.com/rest/v1";
 const SCOPES: &str = "design:meta:read design:content:read design:content:write";
@@ -114,7 +114,10 @@ fn read_tokens(app: &AppHandle) -> Option<CanvaTokens> {
 }
 
 fn save_tokens(app: &AppHandle, response: TokenResponse) -> Result<(), String> {
-    fs::create_dir_all(app_data_dir(app)).map_err(|e| e.to_string())?;
+    let auth_path = canva_auth_path(app);
+    if let Some(parent) = auth_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
     let tokens = CanvaTokens {
         client_id: credentials(app)?.0,
         access_token: response.access_token,
@@ -122,7 +125,7 @@ fn save_tokens(app: &AppHandle, response: TokenResponse) -> Result<(), String> {
         expires_at: unix_now() + response.expires_in,
     };
     fs::write(
-        canva_auth_path(app),
+        auth_path,
         serde_json::to_vec_pretty(&tokens).map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())
@@ -263,7 +266,10 @@ pub async fn complete_oauth(
         .take_canva_oauth(&state)
         .await
         .ok_or_else(|| "This Canva connection request is invalid or has expired.".to_string())?;
-    let redirect_uri = format!("http://127.0.0.1:{REMOTE_SERVER_PORT}/canva/callback");
+    let port = handle
+        .port()
+        .ok_or_else(|| "The local callback server is not available yet.".to_string())?;
+    let redirect_uri = format!("http://127.0.0.1:{port}/canva/callback");
     let response = exchange_token(
         &handle.app,
         &[
@@ -323,7 +329,10 @@ pub async fn connect_canva(
             code_verifier,
         })
         .await;
-    let redirect_uri = format!("http://127.0.0.1:{REMOTE_SERVER_PORT}/canva/callback");
+    let port = server
+        .port()
+        .ok_or_else(|| "The local callback server is not available yet.".to_string())?;
+    let redirect_uri = format!("http://127.0.0.1:{port}/canva/callback");
     let url = format!(
         "https://www.canva.com/api/oauth/authorize?code_challenge={challenge}&code_challenge_method=s256&scope={}&response_type=code&client_id={}&state={}&redirect_uri={}",
         percent_encode(SCOPES),
