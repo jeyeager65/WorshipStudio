@@ -44,6 +44,7 @@ function context(overrides: Partial<ServiceReadinessContext> = {}): ServiceReadi
     verifiedExternalAppItemIds: new Set(),
     externalAppErrors: new Map(),
     externalAppVerificationAvailable: false,
+    libraryConflictLabels: new Map(),
     audienceDisplayAvailable: true,
     now: new Date('2026-08-01T12:00:00'),
     ...overrides,
@@ -212,5 +213,24 @@ describe('evaluateServiceReadiness', () => {
       }),
     )
     expect(verified.ready).toBe(true)
+  })
+
+  it('reports only synced conflicts that affect the current service', () => {
+    const result = evaluateServiceReadiness(
+      service(),
+      context({
+        libraryConflictLabels: new Map([
+          ['song:song-1', 'Amazing Grace'],
+          ['song:unrelated', 'Another Song'],
+        ]),
+      }),
+    )
+
+    expect(result.ready).toBe(true)
+    expect(result.warnings).toHaveLength(1)
+    expect(result.warnings[0]).toMatchObject({
+      title: 'Amazing Grace has another synced version',
+      action: 'library-health',
+    })
   })
 })

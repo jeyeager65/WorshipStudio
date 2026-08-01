@@ -21,6 +21,7 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useSettingsStore } from '@/stores/settings'
 import { usePeopleStore } from '@/stores/people'
+import { useSyncStore } from '@/stores/sync'
 import { flattenService, type FlatSlide } from '@/utils/flattenService'
 import { colorForBlockLabel, colorForItemType } from '@/utils/contentColors'
 import {
@@ -75,6 +76,7 @@ const themesStore = useThemesStore()
 const externalAppsStore = useExternalAppsStore()
 const settingsStore = useSettingsStore()
 const peopleStore = usePeopleStore()
+const syncStore = useSyncStore()
 const { isPresenting } = storeToRefs(useLiveSessionStore())
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const confirmDialog = useConfirmDialogStore()
@@ -512,6 +514,12 @@ const readiness = computed(() =>
         verifiedExternalAppItemIds: new Set(verifiedExternalAppItemIds),
         externalAppErrors: new Map(externalAppReadinessErrors),
         externalAppVerificationAvailable: !!getAdapter().externalApps?.verifyItem,
+        libraryConflictLabels: new Map(
+          syncStore.conflicts.map((conflict) => [
+            `${conflict.kind}:${conflict.id}`,
+            conflict.label,
+          ]),
+        ),
         audienceDisplayAvailable: audienceDisplayAvailable.value,
       })
     : { issues: [], blockers: [], warnings: [], ready: false },
@@ -595,6 +603,11 @@ async function openReadinessIssue(issue: ReadinessIssue) {
   if (issue.action === 'assignments') {
     readinessDialogOpen.value = false
     await router.push(`/service/${service.value?.id}/assignments`)
+    return
+  }
+  if (issue.action === 'library-health') {
+    readinessDialogOpen.value = false
+    await router.push('/sync-conflicts')
     return
   }
   const index = service.value?.items.findIndex((item) => item.id === issue.itemId) ?? -1
@@ -2799,7 +2812,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
                   <small>{{ issue.detail }}</small>
                 </span>
                 <span class="readiness-issue-action">
-                  {{ issue.action === 'assignments' ? 'Assignments' : 'Open item' }}
+                  {{ issue.action === 'assignments' ? 'Assignments' : issue.action === 'library-health' ? 'Library Health' : 'Open item' }}
                   <v-icon icon="mdi-chevron-right" size="18" />
                 </span>
               </button>

@@ -127,7 +127,7 @@ const router = createRouter({
       path: '/sync-conflicts',
       name: 'sync-conflicts',
       component: () => import('@/views/SyncConflictsView.vue'),
-      meta: { title: 'Library Recovery' },
+      meta: { title: 'Library Health' },
     },
     {
       path: '/reports',

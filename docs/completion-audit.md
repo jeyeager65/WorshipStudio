@@ -19,7 +19,7 @@ Status: completed August 1, 2026.
 - JSON is serialized before any existing file is touched, written to a unique temporary file in the destination directory, flushed to disk, and atomically moved into place.
 - Every replacement preserves the previous valid version as an adjacent `.backup` file. A corrupt current file never replaces a known-good backup.
 - Domain reads now distinguish missing files from malformed or unreadable files and return a path-specific error instead of silently omitting the record.
-- **Library Recovery** scans the active library against the expected model for each file type, identifies whether a verified backup exists, and offers **Restore Backup**.
+- **Library Health** scans the active library against the expected model for each file type, identifies whether a verified backup exists, and offers **Restore Backup**.
 - When no valid backup exists, **Move Aside** preserves the damaged bytes beside the original while removing them from the active `.json` set.
 - Recovery commands are restricted to JSON files inside the active library.
 - Machine settings automatically restore a valid local backup when possible and never overwrite unrecoverable damaged settings with defaults.
@@ -111,21 +111,13 @@ Suggested interaction:
 
 ## Design-standard audit
 
-### Clear visual holdout: Sync Conflicts
+### Library Health and Sync Conflicts
 
-`src/views/SyncConflictsView.vue` still uses the older plain Vuetify container/card presentation.
+Status: completed August 1, 2026.
 
-Bring it up to the current standards with:
+The former Sync Conflicts screen is now a Library Health workflow with separate damaged-file recovery and synced-version review sections. It uses the established page hierarchy and shared loading/error/empty states, provides responsive field comparisons with clear device identity and discard explanations, shows resolution progress, and offers a return action when review is complete.
 
-- The established page background, width, header, and hierarchy
-- A designed no-conflicts state
-- Loading, resolution-in-progress, and error states
-- Stronger device/version identity
-- A responsive comparison layout rather than two fixed columns
-- More readable field names and formatted structured values
-- A clear explanation of what will be discarded
-- Resolution progress when several conflicts exist
-- A return action after the final conflict is resolved
+Resolving or recovering an item now refreshes the corresponding in-memory library store so editors, reports, and presentation do not retain the discarded version. The service-readiness check also surfaces warnings for conflicts involving the current service or its referenced songs, slides, media, themes, or people, while unrelated conflicts remain global Library Health concerns.
 
 ### Editor not-found states
 
@@ -387,7 +379,7 @@ This does not apply to user-facing imports such as OpenSong or to migrations del
 2. Standard loading, error, and save-failure handling — completed August 1, 2026
 3. Replace undo toasts with editor-scoped undo/redo history and visible controls — completed August 1, 2026
 4. Pre-service readiness check — completed August 1, 2026
-5. Sync Conflicts redesign and shared state components
+5. Library Health and Sync Conflicts redesign — completed August 1, 2026
 6. Credential boundary and focused security review
 7. Honest email/copy/mail-client workflow
 8. Windows E2E smoke CI and real-hardware testing

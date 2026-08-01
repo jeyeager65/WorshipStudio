@@ -10,7 +10,7 @@ import {
 } from '@/utils/presentationTheme'
 
 export type ReadinessSeverity = 'blocker' | 'warning'
-export type ReadinessAction = 'service-item' | 'assignments' | 'display'
+export type ReadinessAction = 'service-item' | 'assignments' | 'display' | 'library-health'
 
 export interface ReadinessIssue {
   id: string
@@ -36,6 +36,7 @@ export interface ServiceReadinessContext {
   verifiedExternalAppItemIds: Set<string>
   externalAppErrors: Map<string, string>
   externalAppVerificationAvailable: boolean
+  libraryConflictLabels: Map<string, string>
   audienceDisplayAvailable: boolean
   now?: Date
 }
@@ -80,6 +81,7 @@ export function evaluateServiceReadiness(
 ): ServiceReadinessResult {
   const issues: ReadinessIssue[] = []
   const now = context.now ?? new Date()
+  const reportedConflicts = new Set<string>()
 
   function add(
     severity: ReadinessSeverity,
@@ -100,6 +102,7 @@ export function evaluateServiceReadiness(
   }
 
   function checkMedia(mediaId: string, label: string, itemId: string) {
+    checkLibraryConflict('media', mediaId, itemId)
     const media = context.media.get(mediaId)
     if (!media) {
       add('blocker', 'missing-media', `${label} is missing`, 'Choose an available media item.', 'service-item', itemId)
@@ -129,6 +132,22 @@ export function evaluateServiceReadiness(
     }
   }
 
+  function checkLibraryConflict(kind: string, id: string, itemId?: string) {
+    const key = `${kind}:${id}`
+    if (reportedConflicts.has(key)) return
+    const label = context.libraryConflictLabels.get(key)
+    if (!label) return
+    reportedConflicts.add(key)
+    add(
+      'warning',
+      'library-conflict',
+      `${label} has another synced version`,
+      'Review the two versions in Library Health before the service.',
+      'library-health',
+      itemId,
+    )
+  }
+
   if (!context.audienceDisplayAvailable) {
     add(
       'blocker',
@@ -138,6 +157,8 @@ export function evaluateServiceReadiness(
       'display',
     )
   }
+
+  checkLibraryConflict('service', service.id)
 
   for (const item of service.items) {
     const label = serviceItemLabel(item, context)
@@ -166,6 +187,7 @@ export function evaluateServiceReadiness(
     }
     const target = presentationThemeTargetForItem(item)
     const theme = resolvePresentationTheme(item, target, context.themes)
+    if (theme) checkLibraryConflict('theme', theme.id, item.id)
     if (
       theme?.backgroundId &&
       theme.backgroundId !== 'brand-primary' &&
@@ -174,6 +196,7 @@ export function evaluateServiceReadiness(
       checkMedia(theme.backgroundId, `${theme.name} background`, item.id)
 
     if (item.type === 'song') {
+      checkLibraryConflict('song', item.songId, item.id)
       const song = context.songs.get(item.songId)
       if (!song) {
         add('blocker', 'missing-song', 'A referenced song is missing', 'Choose another song for this service item.', 'service-item', item.id)
@@ -193,6 +216,7 @@ export function evaluateServiceReadiness(
         add('blocker', 'missing-song-block', `${song.title} has missing song sections`, `${missingBlocks.length} arrangement ${missingBlocks.length === 1 ? 'entry no longer matches' : 'entries no longer match'} the song.`, 'service-item', item.id)
       }
     } else if (item.type === 'slide-ref') {
+      checkLibraryConflict('slide', item.slideId, item.id)
       const presentation = context.slides.get(item.slideId)
       if (!presentation) {
         add('blocker', 'missing-slides', 'A referenced presentation is missing', 'Choose another presentation.', 'service-item', item.id)
@@ -281,6 +305,7 @@ export function evaluateServiceReadiness(
       continue
     }
     const person = context.people.get(assignment.personId)
+    checkLibraryConflict('person', assignment.personId)
     if (!person) {
       add('blocker', 'missing-person', `${assignment.role} references a missing person`, 'Choose another person for this assignment.', 'assignments')
     } else if (isDateUnavailable(service.date, person.unavailableDateRanges)) {
