@@ -2,13 +2,11 @@
 import { computed, ref, watch } from 'vue'
 import { VueDraggable } from 'vue-draggable-plus'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
-import { useUndoStore } from '@/stores/undo'
 import type { RoleGroup } from '@/models/settings'
 
 const props = defineProps<{ modelValue: RoleGroup[] }>()
 const emit = defineEmits<{ 'update:modelValue': [RoleGroup[]] }>()
 const confirmDialog = useConfirmDialogStore()
-const undoStore = useUndoStore()
 
 const selectedIndex = ref(0)
 const newGroupName = ref('')
@@ -66,13 +64,6 @@ async function removeRole(index: number) {
   if (!group || role === undefined) return
   if (!(await confirmDialog.confirm(`Remove the "${role}" role?`, 'Remove'))) return
   setRoles(group.roles.filter((_, roleIndex) => roleIndex !== index))
-  undoStore.push(`Removed "${role}"`, () => {
-    const current = selectedGroup.value
-    if (!current) return
-    const restored = [...current.roles]
-    restored.splice(index, 0, role)
-    setRoles(restored)
-  })
 }
 
 async function removeSelectedGroup() {

@@ -228,7 +228,11 @@ The installed mail application is likely the simplest and least credential-heavy
 
 ### Replace undo toasts with real undo/redo history
 
-The current global undo stack is a short-lived collection of toast messages. It applies only to selected removal actions, expires after a few seconds, captures callbacks from individual views, and does not provide conventional redo behavior. Confirmation followed by a temporary undo toast also makes deletion feel unnecessarily repetitive.
+Status: completed August 1, 2026.
+
+The former expiring callback-toast stack has been replaced with document-scoped snapshot history. The app bar now shows Undo and Redo beside Save for editors that register history, including services, assignments, songs, presentations, people, themes, service templates, roles, and settings. Continuous edits in one field are grouped, structural edits remain separate, saved revisions drive dirty state, and changing records clears the active history. The controls expose their action and shortcut in visible tooltips and support `Ctrl+Z`, `Ctrl+Y`, `Ctrl+Shift+Z`, and the corresponding macOS shortcuts.
+
+Persisted library deletion is intentionally outside editor history: Songs, Presentations, Media, and Services delete immediately after explicit confirmation rather than hiding the item while a toast timer decides whether to touch disk.
 
 Replace it with a conventional editing model:
 
@@ -241,7 +245,7 @@ Replace it with a conventional editing model:
 - Stop using expiring undo toasts as the primary undo mechanism. Ordinary success notifications may remain ordinary snackbars.
 - Handle persisted library deletion through an explicit confirmation or a deliberate future Trash workflow rather than a delayed toast callback.
 
-This is a separate 0.5.x polish item and does not block the shared loading/error-state work.
+The shared history implementation lives in `src/stores/history.ts` and `src/composables/useDocumentHistory.ts`.
 
 ### Automatic updates
 
@@ -377,7 +381,7 @@ This does not apply to user-facing imports such as OpenSong or to migrations del
 
 1. Atomic saves, corruption detection, backups, and recovery — completed August 1, 2026
 2. Standard loading, error, and save-failure handling — completed August 1, 2026
-3. Replace undo toasts with editor-scoped undo/redo history and visible controls
+3. Replace undo toasts with editor-scoped undo/redo history and visible controls — completed August 1, 2026
 4. Pre-service readiness check
 5. Sync Conflicts redesign and shared state components
 6. Credential boundary and focused security review

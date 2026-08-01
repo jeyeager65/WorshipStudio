@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useUndoStore } from '@/stores/undo'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 
 /**
@@ -11,7 +10,6 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
  */
 const props = defineProps<{ modelValue: string[]; addLabel: string }>()
 const emit = defineEmits<{ 'update:modelValue': [string[]] }>()
-const undoStore = useUndoStore()
 const confirmDialog = useConfirmDialogStore()
 
 const newValue = ref('')
@@ -30,14 +28,6 @@ async function remove(index: number) {
     'update:modelValue',
     props.modelValue.filter((_, i) => i !== index),
   )
-  undoStore.push(`Removed "${removedValue}"`, () => {
-    // Rebuilds from the current modelValue (post-removal, possibly further edited) rather
-    // than the snapshot at removal time, so undo still lands correctly even if other list
-    // edits happened in between.
-    const restored = [...props.modelValue]
-    restored.splice(index, 0, removedValue)
-    emit('update:modelValue', restored)
-  })
 }
 </script>
 

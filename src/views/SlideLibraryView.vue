@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import SlideSceneRenderer from '@/components/slides/SlideSceneRenderer.vue'
 import { useSlidesStore } from '@/stores/slides'
-import { useUndoStore } from '@/stores/undo'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import LibraryEmptyState from '@/components/LibraryEmptyState.vue'
@@ -11,19 +10,16 @@ import type { SlideLibraryItem } from '@/models/library'
 
 const router = useRouter()
 const store = useSlidesStore()
-const undoStore = useUndoStore()
 const confirmDialog = useConfirmDialogStore()
 
 const query = ref('')
 const activeTag = ref<string>()
-// Deletion is soft until the undo toast expires, consistent with the other libraries.
-const pendingDeleteIds = reactive(new Set<string>())
 
 onMounted(() => {
   if (!store.loaded) store.load()
 })
 
-const visibleItems = computed(() => store.slides.filter((item) => !pendingDeleteIds.has(item.id)))
+const visibleItems = computed(() => store.slides)
 const totalSlideCount = computed(() =>
   visibleItems.value.reduce((sum, item) => sum + item.slides.length, 0),
 )
@@ -69,15 +65,7 @@ function lastUsedLabel(item: SlideLibraryItem): string {
 
 async function deleteSlide(item: SlideLibraryItem) {
   if (!(await confirmDialog.confirm(`Delete "${item.label}"?`, 'Delete'))) return
-  pendingDeleteIds.add(item.id)
-  undoStore.push(
-    `Deleted "${item.label}"`,
-    () => pendingDeleteIds.delete(item.id),
-    async () => {
-      await store.remove(item.id)
-      pendingDeleteIds.delete(item.id)
-    },
-  )
+  await store.remove(item.id)
 }
 
 function createSlide() {

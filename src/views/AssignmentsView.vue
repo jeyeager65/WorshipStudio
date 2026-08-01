@@ -17,6 +17,7 @@ import type { Person } from '@/models/library'
 import { personDisplayName } from '@/models/library'
 import { roleDisplayLabel } from '@/models/settings'
 import { formatServiceTime } from '@/utils/serviceTime'
+import { useDocumentHistory } from '@/composables/useDocumentHistory'
 
 const route = useRoute()
 const servicesStore = useServicesStore()
@@ -26,11 +27,7 @@ const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsav
 const confirmDialog = useConfirmDialogStore()
 
 const service = ref<Service>()
-
-// `watch` called after an `await` (inside onMounted's async callback) runs outside Vue's
-// synchronous component-setup tracking, so it isn't auto-stopped on unmount — stopping it
-// explicitly is what actually scopes it to this view's lifetime rather than leaking forever.
-let stopServiceWatch: (() => void) | undefined
+const documentHistory = useDocumentHistory(service, 'assignments')
 
 onMounted(async () => {
   const [loaded] = await Promise.all([
@@ -41,13 +38,13 @@ onMounted(async () => {
   if (loaded) {
     if (!loaded.assignments) loaded.assignments = []
     service.value = loaded
+    documentHistory.start((dirty) => (isDirty.value = dirty))
+    saveHandler.value = saveRoster
   }
   isDirty.value = false
-  stopServiceWatch = watch(service, () => (isDirty.value = true), { deep: true })
-  saveHandler.value = saveRoster
 })
 onUnmounted(() => {
-  stopServiceWatch?.()
+  documentHistory.stop()
   isDirty.value = false
   saveHandler.value = undefined
   pageTitleOverride.value = undefined

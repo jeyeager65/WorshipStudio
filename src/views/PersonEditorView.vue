@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, toRaw, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, toRaw } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { usePeopleStore } from '@/stores/people'
@@ -9,6 +9,7 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { getAdapter } from '@/adapters'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import { errorMessage } from '@/composables/useAsyncStoreState'
+import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import type { RemoteDevice } from '@/adapters/types'
 import type { Person, UnavailableDateRange } from '@/models/library'
 
@@ -25,6 +26,7 @@ const newRangeEnd = ref('')
 const validationMessage = ref('')
 const editorLoading = ref(true)
 const editorLoadError = ref('')
+const documentHistory = useDocumentHistory(person, 'person')
 const remoteDevices = ref<RemoteDevice[]>([])
 const pairDialogOpen = ref(false)
 const pairing = ref(false)
@@ -42,7 +44,6 @@ const categoryColors = [
   'secondary',
   'amber',
 ]
-let stopPersonWatch: (() => void) | undefined
 
 function blankPerson(): Person {
   return {
@@ -89,8 +90,7 @@ async function loadRemoteDevices() {
 onMounted(loadEditor)
 
 async function loadEditor() {
-  stopPersonWatch?.()
-  stopPersonWatch = undefined
+  documentHistory.stop()
   editorLoading.value = true
   editorLoadError.value = ''
   try {
@@ -112,7 +112,7 @@ async function loadEditor() {
     person.value = isNew ? blankPerson() : structuredClone(toRaw(existing!))
     if (!isNew) await loadRemoteDevices()
     isDirty.value = isNew
-    stopPersonWatch = watch(person, () => (isDirty.value = true), { deep: true })
+    documentHistory.start((dirty) => (isDirty.value = dirty), isNew)
     saveHandler.value = savePerson
   } catch (error) {
     person.value = undefined
@@ -123,7 +123,7 @@ async function loadEditor() {
 }
 
 onUnmounted(() => {
-  stopPersonWatch?.()
+  documentHistory.stop()
   isDirty.value = false
   saveHandler.value = undefined
 })

@@ -18,7 +18,6 @@ import { useThemesStore } from '@/stores/themes'
 import { useExternalAppsStore } from '@/stores/externalApps'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
-import { useUndoStore } from '@/stores/undo'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useSettingsStore } from '@/stores/settings'
 import { usePeopleStore } from '@/stores/people'
@@ -34,6 +33,7 @@ import {
 import { formatCountdown } from '@/utils/countdown'
 import { formatServiceTime } from '@/utils/serviceTime'
 import { errorMessage as asyncErrorMessage } from '@/composables/useAsyncStoreState'
+import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import type { Service, ServiceItem, SermonPassage } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
 import type {
@@ -72,12 +72,12 @@ const settingsStore = useSettingsStore()
 const peopleStore = usePeopleStore()
 const { isPresenting } = storeToRefs(useLiveSessionStore())
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
-const undoStore = useUndoStore()
 const confirmDialog = useConfirmDialogStore()
 
 const service = ref<Service>()
 const workspaceLoading = ref(true)
 const workspaceLoadError = ref('')
+const documentHistory = useDocumentHistory(service, 'service')
 const selectedItemIndex = ref(0)
 /** -1 = nothing live yet; equal to flatSlides.length = live but past the last slide (blank). */
 const flatIndex = ref(-1)
@@ -298,7 +298,6 @@ async function resolveMediaItem(mediaId: string) {
 // `watch` called after an `await` (inside onMounted's async callback) runs outside Vue's
 // synchronous component-setup tracking, so it isn't auto-stopped on unmount — stopping it
 // explicitly is what actually scopes it to this view's lifetime rather than leaking forever.
-let stopServiceWatch: (() => void) | undefined
 let unlistenRemoteCommand: (() => void) | undefined
 
 // A live-ticking clock for Countdown items' operator-side preview (spec section 1) — the
@@ -364,19 +363,12 @@ onMounted(async () => {
   // leave-without-saving warning immediately, so it's never silently lost with no way to
   // recover it.
   isDirty.value = isDraft
-  // Registered after the initial load so it only reacts to actual edits, not the load
-  // itself — content edits (arrangement, presenter notes) use an explicit Save button
-  // rather than auto-save (see stores/unsavedChanges.ts); live-transport state
-  // (flatIndex/isPresenting) is intentionally NOT part of this watch, since navigating
-  // live isn't "unsaved content".
-  stopServiceWatch = watch(service, () => (isDirty.value = true), { deep: true })
+  // Start history after loading so the persisted service is the baseline. Live transport
+  // state is held outside the service document and therefore never becomes an undo step.
+  documentHistory.start((dirty) => (isDirty.value = dirty), isDraft)
   // The Save button itself lives in the persistent app bar (App.vue), not a per-page
   // toolbar that would scroll out of view — this view just supplies the action.
   saveHandler.value = saveService
-  // Keeps undo toasts from covering the live-transport footer's Previous/Next buttons,
-  // which need to stay clickable even while a toast is showing during a live service.
-  undoStore.bottomOffsetPx = 70
-
   // Remote Control (spec section 4): a paired phone's button press arrives here the same
   // way the presentation window receives slide changes — as a Tauri event, not a direct
   // function call, since the HTTP server lives entirely on the Rust side.
@@ -435,12 +427,11 @@ onUnmounted(() => {
   if (isPresenting.value) getAdapter().live.stopPresenting()
   if (externalAppActiveKey.value) getAdapter().externalApps?.restoreSelf()
   isPresenting.value = false
-  stopServiceWatch?.()
+  documentHistory.stop()
   unlistenRemoteCommand?.()
   previewResizeObserver?.disconnect()
   isDirty.value = false
   saveHandler.value = undefined
-  undoStore.bottomOffsetPx = 0
 })
 
 async function saveService() {
@@ -712,14 +703,10 @@ async function removeServiceItem(index: number) {
   if (!target) return
   const label = itemLabel(target)
   if (!(await confirmDialog.confirm(`Remove "${label}" from the service?`, 'Remove'))) return
-  const [removed] = service.value.items.splice(index, 1)
-  if (!removed) return
+  service.value.items.splice(index, 1)
   if (selectedItemIndex.value >= service.value.items.length) {
     selectedItemIndex.value = Math.max(0, service.value.items.length - 1)
   }
-  undoStore.push(`Removed "${label}" from the service`, () =>
-    service.value?.items.splice(index, 0, removed),
-  )
 }
 
 function blockLabelFor(blockId: string): string {
@@ -747,13 +734,9 @@ function itemHasLive(index: number): boolean {
 async function removeFromArrangement(index: number) {
   const item = selectedItem.value
   if (item?.type !== 'song') return
-  const blockId = item.arrangement.sequence[index]
-  const label = blockLabelFor(blockId)
+  const label = blockLabelFor(item.arrangement.sequence[index])
   if (!(await confirmDialog.confirm(`Remove "${label}" from the arrangement?`, 'Remove'))) return
   item.arrangement.sequence.splice(index, 1)
-  undoStore.push(`Removed "${label}" from arrangement`, () =>
-    item.arrangement.sequence.splice(index, 0, blockId),
-  )
 }
 function addToArrangement(blockId: string) {
   const item = selectedItem.value

@@ -2,7 +2,6 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { getAdapter } from '@/adapters'
 import { useMediaStore } from '@/stores/media'
-import { useUndoStore } from '@/stores/undo'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import LibraryEmptyState from '@/components/LibraryEmptyState.vue'
@@ -10,7 +9,6 @@ import ImportMediaDialog from '@/components/media/ImportMediaDialog.vue'
 import type { MediaItem } from '@/models/library'
 
 const store = useMediaStore()
-const undoStore = useUndoStore()
 const confirmDialog = useConfirmDialogStore()
 
 const query = ref('')
@@ -27,8 +25,6 @@ const editorPreviewLoading = ref(false)
 const editorPreviewUnavailable = ref(false)
 const deleteError = ref('')
 
-// Deletion is soft until the undo toast expires — same pattern as SongLibraryView/SlideLibraryView.
-const pendingDeleteIds = reactive(new Set<string>())
 
 onMounted(() => {
   if (!store.loaded) store.load()
@@ -56,7 +52,7 @@ watch(
   { immediate: true },
 )
 
-const visibleItems = computed(() => store.items.filter((item) => !pendingDeleteIds.has(item.id)))
+const visibleItems = computed(() => store.items)
 const imageCount = computed(() => visibleItems.value.filter((item) => item.kind === 'image').length)
 const videoCount = computed(() => visibleItems.value.filter((item) => item.kind === 'video').length)
 
@@ -110,23 +106,15 @@ function lastUsedLabel(item: MediaItem): string {
 async function deleteItem(item: MediaItem): Promise<boolean> {
   if (!(await confirmDialog.confirm(`Delete "${item.title}"?`, 'Delete'))) return false
   deleteError.value = ''
-  pendingDeleteIds.add(item.id)
-  undoStore.push(
-    `Deleted "${item.title}"`,
-    () => pendingDeleteIds.delete(item.id),
-    async () => {
-      try {
-        await store.remove(item.id)
-        previewUrlById.delete(item.id)
-      } catch (error) {
-        deleteError.value = `Could not delete “${item.title}”: ${error instanceof Error ? error.message : String(error)}`
-        await store.load()
-      } finally {
-        pendingDeleteIds.delete(item.id)
-      }
-    },
-  )
-  return true
+  try {
+    await store.remove(item.id)
+    previewUrlById.delete(item.id)
+    return true
+  } catch (error) {
+    deleteError.value = `Could not delete “${item.title}”: ${error instanceof Error ? error.message : String(error)}`
+    await store.load()
+    return false
+  }
 }
 
 const editorPreviewUrl = computed(() =>

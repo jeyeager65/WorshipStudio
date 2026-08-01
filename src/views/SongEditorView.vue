@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
 import { getAdapter } from '@/adapters'
 import { useSongsStore } from '@/stores/songs'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
-import { useUndoStore } from '@/stores/undo'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { colorForBlockLabel } from '@/utils/contentColors'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import { errorMessage } from '@/composables/useAsyncStoreState'
+import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import type { Song, SongBlock } from '@/models/song'
 import type { LibrarySettings } from '@/models/settings'
 
@@ -18,13 +18,13 @@ const route = useRoute()
 const router = useRouter()
 const store = useSongsStore()
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
-const undoStore = useUndoStore()
 const confirmDialog = useConfirmDialogStore()
 
 const song = ref<Song>()
 const librarySettings = ref<LibrarySettings>()
 const editorLoading = ref(true)
 const editorLoadError = ref('')
+const documentHistory = useDocumentHistory(song, 'song')
 
 // "New Song" (SongLibraryView) navigates straight here with id "new" rather than saving a
 // blank file first — nothing is written to disk until Save is pressed, so backing out
@@ -46,13 +46,10 @@ function blankSong(): Song {
 // `watch` called after an `await` (inside onMounted's async callback) runs outside Vue's
 // synchronous component-setup tracking, so it isn't auto-stopped on unmount — stopping it
 // explicitly is what actually scopes it to this view's lifetime rather than leaking forever.
-let stopSongWatch: (() => void) | undefined
-
 onMounted(loadEditor)
 
 async function loadEditor() {
-  stopSongWatch?.()
-  stopSongWatch = undefined
+  documentHistory.stop()
   editorLoading.value = true
   editorLoadError.value = ''
   const isNew = route.params.id === 'new'
@@ -73,10 +70,8 @@ async function loadEditor() {
   // leave-without-saving warning immediately, so it's never silently lost with no way to
   // recover it.
   isDirty.value = isNew
-  // Registered after the initial load so it only reacts to actual user edits, not the
-  // assignment above — a single deep watch instead of wiring a dirty-flag handler onto
-  // every field individually.
-    stopSongWatch = watch(song, () => (isDirty.value = true), { deep: true })
+    // Start history after loading so the persisted document is the non-undoable baseline.
+    documentHistory.start((dirty) => (isDirty.value = dirty), isNew)
   // The Save button itself lives in the persistent app bar (App.vue), not a per-page
   // toolbar that would scroll out of view — this view just supplies the action.
     saveHandler.value = saveSong
@@ -89,7 +84,7 @@ async function loadEditor() {
 }
 
 onUnmounted(() => {
-  stopSongWatch?.()
+  documentHistory.stop()
   isDirty.value = false
   saveHandler.value = undefined
 })
@@ -128,7 +123,6 @@ async function removeCollection(index: number) {
   if (!removed) return
   if (!(await confirmDialog.confirm(`Remove "${removed.collectionId || 'collection'}"?`, 'Remove'))) return
   song.value.collections.splice(index, 1)
-  undoStore.push(`Removed "${removed.collectionId || 'collection'}"`, () => song.value?.collections.splice(index, 0, removed))
 }
 
 function addBlock() {
@@ -140,13 +134,9 @@ async function removeBlock(index: number) {
   if (!removed) return
   if (!(await confirmDialog.confirm(`Remove "${removed.label}"?`, 'Remove'))) return
   song.value.blocks.splice(index, 1)
-  const previousSequence = [...song.value.defaultArrangement.sequence]
-  song.value.defaultArrangement.sequence = previousSequence.filter((id) => id !== removed.id)
-  undoStore.push(`Removed "${removed.label}"`, () => {
-    if (!song.value) return
-    song.value.blocks.splice(index, 0, removed)
-    song.value.defaultArrangement.sequence = previousSequence
-  })
+  song.value.defaultArrangement.sequence = song.value.defaultArrangement.sequence.filter(
+    (id) => id !== removed.id,
+  )
 }
 function blockLabel(id: string): string {
   return song.value?.blocks.find((block) => block.id === id)?.label ?? id
@@ -162,7 +152,6 @@ async function removeFromArrangement(index: number) {
   const label = blockLabel(removed)
   if (!(await confirmDialog.confirm(`Remove "${label}" from the Default Arrangement?`, 'Remove'))) return
   sequence.splice(index, 1)
-  undoStore.push(`Removed "${label}" from Default Arrangement`, () => sequence.splice(index, 0, removed))
 }
 </script>
 

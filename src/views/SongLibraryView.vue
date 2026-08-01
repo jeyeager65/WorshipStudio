@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSongsStore } from '@/stores/songs'
 import { useSettingsStore } from '@/stores/settings'
-import { useUndoStore } from '@/stores/undo'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import LibraryEmptyState from '@/components/LibraryEmptyState.vue'
@@ -12,24 +11,18 @@ import type { Song } from '@/models/song'
 const router = useRouter()
 const store = useSongsStore()
 const settingsStore = useSettingsStore()
-const undoStore = useUndoStore()
 const confirmDialog = useConfirmDialogStore()
 
 const query = ref('')
 const activeCollection = ref<string>()
 const activeTag = ref<string>()
 const importing = ref(false)
-// Deletion is soft until the undo toast expires (spec section 16) — the actual
-// store.remove()/adapter delete only fires in onExpire, so Undo can still fully reverse it.
-// Held locally rather than mutating store.songs directly, so an unrelated reload elsewhere
-// (e.g. creating another song) can't resurrect a pending delete before it's actually final.
-const pendingDeleteIds = reactive(new Set<string>())
 
 onMounted(async () => {
   await Promise.all([store.loaded ? Promise.resolve() : store.load(), settingsStore.load()])
 })
 
-const visibleSongs = computed(() => store.songs.filter((song) => !pendingDeleteIds.has(song.id)))
+const visibleSongs = computed(() => store.songs)
 const collectionFilters = computed(() => {
   const names = new Set(settingsStore.librarySettings?.collections ?? [])
   for (const song of visibleSongs.value)
@@ -113,15 +106,7 @@ function yearlyUsageLabel(song: Song): string {
 
 async function deleteSong(song: Song) {
   if (!(await confirmDialog.confirm(`Delete "${song.title}"?`, 'Delete'))) return
-  pendingDeleteIds.add(song.id)
-  undoStore.push(
-    `Deleted "${song.title}"`,
-    () => pendingDeleteIds.delete(song.id),
-    async () => {
-      await store.remove(song.id)
-      pendingDeleteIds.delete(song.id)
-    },
-  )
+  await store.remove(song.id)
 }
 
 // The new song only exists in memory until the editor's Save button is used (see

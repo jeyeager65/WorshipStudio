@@ -11,6 +11,7 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import MediaPickerDialog from '@/components/media/MediaPickerDialog.vue'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
+import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import type { PresentationThemeTarget, Theme } from '@/models/library'
 import {
   normalizePresentationThemeTarget,
@@ -35,6 +36,7 @@ const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsav
 const draft = ref<Theme>()
 const editorLoading = ref(true)
 const editorLoadError = ref('')
+const documentHistory = useDocumentHistory(draft, 'theme')
 const previewDialogOpen = ref(false)
 const amazingGracePreview = [
   'Amazing grace! how sweet the sound',
@@ -102,16 +104,19 @@ async function loadEditor() {
     draft.value = blankTheme()
     await nextTick()
     isDirty.value = true
+    documentHistory.start((dirty) => (isDirty.value = dirty), true)
     editorLoading.value = false
     return
   }
   const theme = store.themes.find((candidate) => candidate.id === id)
   if (theme) await loadTheme(theme)
   else editorLoadError.value = 'That theme could not be found. It may have been moved or deleted.'
+  if (draft.value) documentHistory.start((dirty) => (isDirty.value = dirty))
   editorLoading.value = false
 }
 
 onUnmounted(() => {
+  documentHistory.stop()
   isDirty.value = false
   saving.value = false
   saveHandler.value = undefined
@@ -155,10 +160,6 @@ async function loadTheme(theme: Theme) {
   await nextTick()
   isDirty.value = false
 }
-
-// Registered once (not inside an async onMounted) so it's tied to this component's whole
-// lifetime without the stop-handle dance the per-route editors need — see SongEditorView.
-watch(draft, () => (isDirty.value = true), { deep: true })
 
 async function saveDraft() {
   if (!draft.value || saving.value) return

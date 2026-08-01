@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, toRaw, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, toRaw } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { getAdapter } from '@/adapters'
 import ServiceTemplateEditor from '@/components/settings/ServiceTemplateEditor.vue'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
+import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import { useSettingsStore } from '@/stores/settings'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import type { ServiceTemplate } from '@/models/service'
@@ -19,7 +20,7 @@ const validationMessage = ref('')
 const saveMessage = ref('')
 const missingTemplate = ref(false)
 const originalTemplateName = ref('')
-let stopTemplateWatch: (() => void) | undefined
+const documentHistory = useDocumentHistory(workingTemplates, 'service template')
 
 const selectedTemplate = computed(() => workingTemplates.value[selectedIndex.value])
 const heading = computed(() => selectedTemplate.value?.serviceType.trim() || 'New Service Template')
@@ -27,8 +28,7 @@ const heading = computed(() => selectedTemplate.value?.serviceType.trim() || 'Ne
 onMounted(initialize)
 
 async function initialize() {
-  stopTemplateWatch?.()
-  stopTemplateWatch = undefined
+  documentHistory.stop()
   if (!(await settingsStore.load())) return
   const storedTemplates = settingsStore.librarySettings?.serviceTemplates ?? []
   workingTemplates.value = structuredClone(toRaw(storedTemplates))
@@ -62,12 +62,15 @@ async function initialize() {
     isDirty.value = false
   }
 
-  stopTemplateWatch = watch(workingTemplates, () => (isDirty.value = true), { deep: true })
+  documentHistory.start(
+    (dirty) => (isDirty.value = dirty),
+    route.name === 'service-template-new',
+  )
   saveHandler.value = saveTemplate
 }
 
 onUnmounted(() => {
-  stopTemplateWatch?.()
+  documentHistory.stop()
   isDirty.value = false
   saveHandler.value = undefined
 })

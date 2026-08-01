@@ -9,7 +9,6 @@ import { getAdapter } from '@/adapters'
 import { useSettingsStore } from '@/stores/settings'
 import { useSyncStore } from '@/stores/sync'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
-import { useUndoStore } from '@/stores/undo'
 import { useSongsStore } from '@/stores/songs'
 import { useServicesStore } from '@/stores/services'
 import { usePeopleStore } from '@/stores/people'
@@ -33,6 +32,7 @@ import MediaPickerDialog from '@/components/media/MediaPickerDialog.vue'
 import logoDark from '@/assets/logo-dark.png'
 import logoLight from '@/assets/logo-light.png'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
+import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import type {
   ApiBibleCatalogEntry,
   CanvaStatus,
@@ -47,13 +47,24 @@ const store = useSettingsStore()
 const router = useRouter()
 const { librarySettings, machineSettings } = storeToRefs(store)
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
-const undoStore = useUndoStore()
 const confirmDialog = useConfirmDialogStore()
 const syncStore = useSyncStore()
 const songsStore = useSongsStore()
 const servicesStore = useServicesStore()
 const peopleStore = usePeopleStore()
 const themesStore = useThemesStore()
+const settingsDocument = computed({
+  get: () =>
+    librarySettings.value && machineSettings.value
+      ? { library: librarySettings.value, machine: machineSettings.value }
+      : undefined,
+  set: (value) => {
+    if (!value) return
+    librarySettings.value = value.library
+    machineSettings.value = value.machine
+  },
+})
+const documentHistory = useDocumentHistory(settingsDocument, 'settings')
 // The folder shown in the draft settings can change before Save. Keep the last persisted path
 // separately so saving unrelated settings does not produce a reload prompt, while a real
 // library switch does—even after the reactive settings object has already been edited.
@@ -179,8 +190,6 @@ function selectSettingsSection(section: Section) {
 // keep reacting to store.librarySettings/machineSettings mutations from *other* views (e.g.
 // the setup wizard) after this one is long gone, wrongly flagging isDirty. Stopping it
 // explicitly in onUnmounted is what actually scopes it to this view's lifetime.
-let stopSettingsWatch: (() => void) | undefined
-
 onMounted(async () => {
   await store.load()
   savedLibraryPath.value = machineSettings.value?.libraryPath ?? ''
@@ -188,11 +197,8 @@ onMounted(async () => {
   savedRemoteControlHostname.value = machineSettings.value?.remoteControlHostname
   savedCanvaCallbackPort.value = machineSettings.value?.canvaCallbackPort
   isDirty.value = false
-  // Registered after the initial load so it only reacts to actual user edits, not the
-  // assignment above — same pattern as Song Editor/Service Workspace.
-  stopSettingsWatch = watch([librarySettings, machineSettings], () => (isDirty.value = true), {
-    deep: true,
-  })
+  // Start history after loading so persisted machine and church settings form the baseline.
+  documentHistory.start((dirty) => (isDirty.value = dirty))
   // The Save button itself lives in the persistent app bar (App.vue), not a per-page
   // toolbar that would scroll out of view — this view just supplies the action.
   saveHandler.value = saveSettings
@@ -213,7 +219,7 @@ onMounted(async () => {
   }
 })
 onUnmounted(() => {
-  stopSettingsWatch?.()
+  documentHistory.stop()
   if (canvaStatusTimer) clearInterval(canvaStatusTimer)
   isDirty.value = false
   saveHandler.value = undefined
@@ -844,14 +850,9 @@ async function removeApiBibleTranslation(code: string) {
   const target = librarySettings.value.apiBibleTranslations[index]
   if (!(await confirmDialog.confirm(`Remove "${target.label}"?`, 'Remove'))) return
   if (!librarySettings.value) return
-  const [removed] = librarySettings.value.apiBibleTranslations.splice(index, 1)
+  librarySettings.value.apiBibleTranslations.splice(index, 1)
   const wasDefault = librarySettings.value.defaultTranslationCode === code
   if (wasDefault) librarySettings.value.defaultTranslationCode = 'KJV'
-  undoStore.push(`Removed "${removed.label}"`, () => {
-    if (!librarySettings.value) return
-    librarySettings.value.apiBibleTranslations.splice(index, 0, removed)
-    if (wasDefault) librarySettings.value.defaultTranslationCode = removed.code
-  })
 }
 
 interface AvailableTranslationEntry {

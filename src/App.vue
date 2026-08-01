@@ -7,7 +7,6 @@ import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { emit, listen } from '@tauri-apps/api/event'
 import { useRoute, useRouter } from 'vue-router'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import UndoToastStack from '@/components/UndoToastStack.vue'
 import SplashScreen from '@/components/SplashScreen.vue'
 import PresentationView from '@/views/PresentationView.vue'
 import IdentifyView from '@/views/IdentifyView.vue'
@@ -17,12 +16,14 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useSyncStore } from '@/stores/sync'
 import { useSettingsStore } from '@/stores/settings'
 import { useServicesStore } from '@/stores/services'
+import { useHistoryStore } from '@/stores/history'
 
 const { blockedMessage } = storeToRefs(useLiveSessionStore())
 const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsavedChangesStore())
 const syncStore = useSyncStore()
 const settingsStore = useSettingsStore()
 const servicesStore = useServicesStore()
+const historyStore = useHistoryStore()
 const hasDesktopBackend = getAdapter().kind === 'tauri'
 
 // The presentation window (see src/adapters/tauri/index.ts's `live` port) loads this same
@@ -88,6 +89,10 @@ const pageTitle = computed(() => pageTitleOverride.value ?? route.meta.title)
 const navigationCollapsed = ref(false)
 const showSavedConfirmation = ref(false)
 const saveShortcutLabel = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘S' : 'Ctrl+S'
+const undoShortcutLabel = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘Z' : 'Ctrl+Z'
+const redoShortcutLabel = /Mac|iPhone|iPad/.test(navigator.platform)
+  ? '⌘Shift+Z'
+  : 'Ctrl+Y / Ctrl+Shift+Z'
 let savedConfirmationTimer: ReturnType<typeof setTimeout> | undefined
 
 async function runSave() {
@@ -100,6 +105,7 @@ async function runSave() {
     // Validation failures and write failures deliberately leave the editor dirty. Only confirm
     // a save after the registered editor says its changes were actually persisted.
     if (isDirty.value) return
+    historyStore.markSaved()
     showSavedConfirmation.value = true
     savedConfirmationTimer = setTimeout(() => {
       showSavedConfirmation.value = false
@@ -110,6 +116,17 @@ async function runSave() {
     // becoming an unhandled promise while preserving the dirty state and enabled Save action.
     console.error('Save failed:', error)
   }
+}
+
+function handleHistoryShortcut(event: KeyboardEvent) {
+  if (!historyStore.active || !(event.ctrlKey || event.metaKey) || event.altKey) return
+  const key = event.key.toLowerCase()
+  const wantsUndo = key === 'z' && !event.shiftKey
+  const wantsRedo = key === 'y' || (key === 'z' && event.shiftKey)
+  if (!wantsUndo && !wantsRedo) return
+  event.preventDefault()
+  if (wantsUndo) historyStore.undo()
+  else historyStore.redo()
 }
 
 function handleSaveShortcut(event: KeyboardEvent) {
@@ -214,6 +231,7 @@ onMounted(async () => {
   if (isPresentationWindow || isIdentifyWindow) return
 
   document.addEventListener('keydown', handleSaveShortcut)
+  document.addEventListener('keydown', handleHistoryShortcut)
 
   if (!hasDesktopBackend) {
     updateBrowserFullscreen()
@@ -288,6 +306,7 @@ onMounted(async () => {
 onUnmounted(() => {
   document.removeEventListener('fullscreenchange', updateBrowserFullscreen)
   document.removeEventListener('keydown', handleSaveShortcut)
+  document.removeEventListener('keydown', handleHistoryShortcut)
   if (savedConfirmationTimer) clearTimeout(savedConfirmationTimer)
 })
 </script>
@@ -434,6 +453,48 @@ onUnmounted(() => {
            collapses to 0px tall inside the toolbar's flex row, leaving nothing to click. -->
       <v-spacer data-tauri-drag-region class="drag-region-spacer" />
       <template v-if="!isSetupWizard">
+        <div v-if="historyStore.active" class="app-history-controls mr-2">
+          <v-tooltip
+            :text="`${historyStore.undoLabel ? `Undo ${historyStore.undoLabel}` : 'Undo'} (${undoShortcutLabel})`"
+            location="bottom end"
+            :open-delay="350"
+            content-class="app-save-tooltip"
+          >
+            <template #activator="{ props: tooltipProps }">
+              <span v-bind="tooltipProps">
+                <v-btn
+                  icon="mdi-undo"
+                  variant="text"
+                  size="small"
+                  :disabled="!historyStore.canUndo"
+                  aria-label="Undo"
+                  aria-keyshortcuts="Control+Z Meta+Z"
+                  @click="historyStore.undo"
+                />
+              </span>
+            </template>
+          </v-tooltip>
+          <v-tooltip
+            :text="`${historyStore.redoLabel ? `Redo ${historyStore.redoLabel}` : 'Redo'} (${redoShortcutLabel})`"
+            location="bottom end"
+            :open-delay="350"
+            content-class="app-save-tooltip"
+          >
+            <template #activator="{ props: tooltipProps }">
+              <span v-bind="tooltipProps">
+                <v-btn
+                  icon="mdi-redo"
+                  variant="text"
+                  size="small"
+                  :disabled="!historyStore.canRedo"
+                  aria-label="Redo"
+                  aria-keyshortcuts="Control+Y Control+Shift+Z Meta+Shift+Z"
+                  @click="historyStore.redo"
+                />
+              </span>
+            </template>
+          </v-tooltip>
+        </div>
         <v-tooltip
           v-if="saveHandler"
           :text="`Save changes (${saveShortcutLabel})`"
@@ -543,7 +604,6 @@ onUnmounted(() => {
     </v-snackbar>
 
     <ConfirmDialog />
-    <UndoToastStack />
   </v-app>
 </template>
 
@@ -586,6 +646,15 @@ onUnmounted(() => {
 }
 .app-save-wrap {
   display: inline-flex;
+}
+.app-history-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+  border-radius: 7px;
+  background: rgba(var(--v-theme-on-surface), 0.035);
 }
 .app-save-button {
   min-width: 94px;

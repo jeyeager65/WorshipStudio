@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useServicesStore } from '@/stores/services'
-import { useUndoStore } from '@/stores/undo'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { usePeopleStore } from '@/stores/people'
 import { useSongsStore } from '@/stores/songs'
@@ -13,28 +12,16 @@ import { findSermonItem, sermonMainReference, sermonPreacherId } from '@/utils/s
 import { formatServiceTime, serviceDateTimeSortKey } from '@/utils/serviceTime'
 
 const store = useServicesStore()
-const undoStore = useUndoStore()
 const confirmDialog = useConfirmDialogStore()
 const peopleStore = usePeopleStore()
 const songsStore = useSongsStore()
-// Deletion is soft until the undo toast expires (spec section 16) — see SongLibraryView for
-// the same pattern and its rationale.
-const pendingDeleteIds = reactive(new Set<string>())
 
 async function deleteService(service: Service) {
   if (!(await confirmDialog.confirm(`Delete the "${service.type} — ${service.date}" service?`, 'Delete'))) return
-  pendingDeleteIds.add(service.id)
-  undoStore.push(
-    `Deleted "${service.type} — ${service.date}"`,
-    () => pendingDeleteIds.delete(service.id),
-    async () => {
-      await store.remove(service.id)
-      pendingDeleteIds.delete(service.id)
-      // Deleting a service silently updates any of its songs' usage stats on the backend (see
-      // songs::recompute_usage) — refresh the shared songs store so that shows up immediately.
-      await songsStore.load()
-    },
-  )
+  await store.remove(service.id)
+  // Deleting a service silently updates any of its songs' usage stats on the backend (see
+  // songs::recompute_usage) — refresh the shared songs store so that shows up immediately.
+  await songsStore.load()
 }
 onMounted(() => {
   if (!store.loaded) store.load()
@@ -54,7 +41,7 @@ const browseBibleBook = ref<string | null>(null)
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
-const visibleServices = computed(() => store.services.filter((service) => !pendingDeleteIds.has(service.id)))
+const visibleServices = computed(() => store.services)
 
 const todayServices = computed(() =>
   visibleServices.value

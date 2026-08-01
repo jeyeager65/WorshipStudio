@@ -1,36 +1,28 @@
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '@/stores/settings'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import RoleGroupEditor from '@/components/settings/RoleGroupEditor.vue'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
+import { useDocumentHistory } from '@/composables/useDocumentHistory'
 
 const settingsStore = useSettingsStore()
 const { librarySettings } = storeToRefs(settingsStore)
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
-let ready = false
-
-watch(
-  () => librarySettings.value?.roleGroups,
-  () => {
-    if (ready) isDirty.value = true
-  },
-  { deep: true },
-)
+const documentHistory = useDocumentHistory(librarySettings, 'roles')
 
 onMounted(initialize)
 
 async function initialize() {
   saveHandler.value = saveRoles
   if (!(await settingsStore.load())) return
-  await nextTick()
-  ready = true
   isDirty.value = false
+  documentHistory.start((dirty) => (isDirty.value = dirty))
 }
 
 onUnmounted(() => {
-  ready = false
+  documentHistory.stop()
   isDirty.value = false
   saving.value = false
   saveHandler.value = undefined

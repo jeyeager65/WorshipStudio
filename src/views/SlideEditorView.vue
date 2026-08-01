@@ -9,6 +9,7 @@ import MediaPickerDialog from '@/components/media/MediaPickerDialog.vue'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import { getAdapter } from '@/adapters'
 import { errorMessage } from '@/composables/useAsyncStoreState'
+import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import { useSlidesStore } from '@/stores/slides'
 import { useMediaStore } from '@/stores/media'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
@@ -32,6 +33,7 @@ const confirmDialog = useConfirmDialogStore()
 const item = ref<SlideLibraryItem>()
 const editorLoading = ref(true)
 const editorLoadError = ref('')
+const documentHistory = useDocumentHistory(item, 'presentation')
 const selectedSlideId = ref('')
 const selectedElementId = ref('')
 const editingElementId = ref('')
@@ -48,7 +50,6 @@ const canvaDialog = ref(false)
 const canvaDesigns = ref<CanvaDesign[]>([])
 const canvaBusy = ref(false)
 const canvaError = ref('')
-let stopItemWatch: (() => void) | undefined
 let canvaStatusTimer: ReturnType<typeof setInterval> | undefined
 
 function blankItem(): SlideLibraryItem {
@@ -206,8 +207,7 @@ onMounted(() => {
 })
 
 async function loadEditor() {
-  stopItemWatch?.()
-  stopItemWatch = undefined
+  documentHistory.stop()
   editorLoading.value = true
   editorLoadError.value = ''
   const isNew = route.params.id === 'new'
@@ -237,7 +237,7 @@ async function loadEditor() {
     const canva = getAdapter().canva
     if (canva) canvaStatus.value = await canva.status()
     isDirty.value = isNew
-    stopItemWatch = watch(item, () => (isDirty.value = true), { deep: true })
+    documentHistory.start((dirty) => (isDirty.value = dirty), isNew)
     saveHandler.value = saveItem
   } catch (error) {
     item.value = undefined
@@ -248,7 +248,7 @@ async function loadEditor() {
 }
 
 onUnmounted(() => {
-  stopItemWatch?.()
+  documentHistory.stop()
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('keyup', onKeyup)
   isDirty.value = false
