@@ -406,15 +406,6 @@ export function createTauriAdapter(): StudioAdapter {
       resolveConflict: (conflictFilePath, keep) =>
         invoke('resolve_sync_conflict', { conflictFilePath, keep }),
     },
-    email: {
-      // Deliberately not wired to a real mail transport yet (no SMTP/API integration exists
-      // anywhere in this codebase) — composing/reviewing the message is real, sending it isn't.
-      // (sendOrderOfWorship previously called a `send_order_of_worship_email` Rust command that
-      // was never actually implemented/registered — invoking it would have thrown as soon as
-      // anything actually called this, which nothing did until now.)
-      sendOrderOfWorship: async () => {},
-      sendAssignments: async () => {},
-    },
     exports: {
       saveFile: async ({ suggestedName, extensions, bytes }, options) => {
         const path = await save({

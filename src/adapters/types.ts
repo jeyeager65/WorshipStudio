@@ -416,17 +416,6 @@ export interface SyncPort {
   resolveConflict(conflictFilePath: string, keep: 'mine' | 'theirs'): Promise<void>
 }
 
-export interface EmailPort {
-  sendOrderOfWorship(serviceId: string, toAddresses: string[], body: string): Promise<void>
-  /**
-   * Composing/reviewing the message is fully real; actually dispatching it is deliberately
-   * not wired up to any mail transport yet on either adapter — this always resolves without
-   * sending anything, so the Assignments page's "Send Assignments by Email" is safe to wire
-   * up and click today.
-   */
-  sendAssignments(serviceId: string, toAddresses: string[], body: string): Promise<void>
-}
-
 export interface GeneratedFile {
   suggestedName: string
   mimeType: string
@@ -459,6 +448,5 @@ export interface StudioAdapter {
   externalApps?: ExternalAppPort
   remote?: RemotePort
   sync: SyncPort
-  email: EmailPort
   exports: ExportPort
 }

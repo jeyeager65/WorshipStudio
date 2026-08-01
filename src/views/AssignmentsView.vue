@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { getAdapter } from '@/adapters'
 import { useServicesStore } from '@/stores/services'
 import { usePeopleStore } from '@/stores/people'
@@ -18,6 +19,12 @@ import { personDisplayName } from '@/models/library'
 import { roleDisplayLabel } from '@/models/settings'
 import { formatServiceTime } from '@/utils/serviceTime'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
+import {
+  assignmentEmailRosterLines,
+  emailDraftText,
+  mailtoUrl,
+  uniqueEmailAddresses,
+} from '@/utils/emailDraft'
 
 const route = useRoute()
 const servicesStore = useServicesStore()
@@ -146,7 +153,7 @@ function buildGroups(roles: string[]): DisplayGroup[] {
 // Order of Service roles, grouped by category the same way the Roles section below is —
 // otherwise a role's own category name would end up repeated on every single item instead of
 // shown once per group (roleLabel's "Category - Role" prefix is for contexts with no grouping
-// at all, e.g. the email summary below).
+// at all).
 const orderOfServiceGroups = computed<DisplayGroup[]>(() => buildGroups(orderOfServiceRoles.value))
 // Staffing/volunteer roles only, for this page's own display.
 const groupedRoles = computed<DisplayGroup[]>(() => buildGroups(usedStaffingRoles.value))
@@ -283,33 +290,92 @@ async function savePerson(person: Person) {
   await peopleStore.save(person)
 }
 
-// Composing/previewing is real; actually sending is deliberately not wired up to any mail
-// transport (see adapters/types.ts's EmailPort.sendAssignments) — nothing here can dispatch a
-// real email regardless of which adapter is running.
 const emailDialogOpen = ref(false)
-const emailSent = ref(false)
-const recipientEmails = computed(() =>
-  [...new Set(roster.value.map((a) => a.personId))]
-    .map((id) => peopleStore.people.find((p) => p.id === id)?.email)
-    .filter((email): email is string => !!email),
+const emailSubject = ref('')
+const emailMessage = ref('')
+const emailActionStatus = ref('')
+const emailActionError = ref('')
+const openingEmailApp = ref(false)
+const showRecipientEmails = ref(false)
+const assignedPeople = computed(() =>
+  [...new Set(roster.value.map((assignment) => assignment.personId).filter(Boolean))]
+    .map((id) => peopleStore.people.find((person) => person.id === id))
+    .filter((person): person is Person => !!person),
 )
-const emailBody = computed(() => {
+const recipientEmails = computed(() =>
+  uniqueEmailAddresses(assignedPeople.value.map((person) => person.email)),
+)
+const peopleMissingEmail = computed(() =>
+  assignedPeople.value.filter((person) => !person.email?.trim()),
+)
+const emailDraft = computed(() => ({
+  to: recipientEmails.value,
+  subject: emailSubject.value.trim(),
+  body: emailMessage.value.trim(),
+}))
+function assignmentEmailBody(): string {
   if (!service.value) return ''
-  const lines = usedRoles.value.flatMap((role) =>
-    assignmentsForRole(role).map(
-      (a) => `${roleLabel(role)}: ${personName(a.personId) || '(unassigned)'}${a.tentative ? ' (tentative)' : ''}`,
-    ),
+  const groups = buildGroups(usedRoles.value)
+  const lines = assignmentEmailRosterLines(
+    groups,
+    roster.value.map((assignment) => ({
+      role: assignment.role,
+      personName: personName(assignment.personId),
+      tentative: assignment.tentative,
+    })),
   )
-  return `Assignments for ${service.value.type} — ${service.value.date}\n\n${lines.join('\n')}`
-})
+  const churchName = settingsStore.librarySettings?.branding.churchName.trim()
+  return [
+    'Hello,',
+    '',
+    `Here are the assignments for ${service.value.type} on ${serviceDateLabel.value}.`,
+    '',
+    ...lines,
+    '',
+    'Please review the roster and reply if anything needs to change.',
+    '',
+    'Thank you,',
+    churchName || 'Worship Studio',
+  ].join('\n')
+}
 function openEmailDialog() {
-  emailSent.value = false
+  if (!service.value) return
+  const churchName = settingsStore.librarySettings?.branding.churchName.trim()
+  emailSubject.value = `${churchName ? `${churchName} — ` : ''}Assignments for ${service.value.type} — ${serviceDateLabel.value}`
+  emailMessage.value = assignmentEmailBody()
+  emailActionStatus.value = ''
+  emailActionError.value = ''
+  showRecipientEmails.value = false
   emailDialogOpen.value = true
 }
-async function sendAssignmentsEmail() {
-  if (!service.value) return
-  await getAdapter().email.sendAssignments(service.value.id, recipientEmails.value, emailBody.value)
-  emailSent.value = true
+async function openEmailDraft() {
+  emailActionStatus.value = ''
+  emailActionError.value = ''
+  openingEmailApp.value = true
+  try {
+    const url = mailtoUrl(emailDraft.value)
+    if (getAdapter().kind === 'tauri') await openUrl(url)
+    else window.location.href = url
+    emailActionStatus.value = 'Draft opened in your email app. Review it there before sending.'
+  } catch (error) {
+    emailActionError.value =
+      error instanceof Error
+        ? error.message
+        : 'No email application could open this draft. Copy the email details instead.'
+  } finally {
+    openingEmailApp.value = false
+  }
+}
+async function copyEmailDraft() {
+  emailActionStatus.value = ''
+  emailActionError.value = ''
+  try {
+    await navigator.clipboard.writeText(emailDraftText(emailDraft.value))
+    emailActionStatus.value = 'Email details copied. Paste them into the email service you use.'
+  } catch (error) {
+    emailActionError.value =
+      error instanceof Error ? error.message : 'The email details could not be copied.'
+  }
 }
 </script>
 
@@ -458,7 +524,7 @@ async function sendAssignmentsEmail() {
             New Person
           </v-btn>
           <v-btn block variant="flat" color="primary" prepend-icon="mdi-email-outline" @click="openEmailDialog">
-            Send Assignments by Email
+            Share Assignments
           </v-btn>
           <p class="settings-note">Roles are managed in Settings → Roles</p>
         </section>
@@ -529,23 +595,68 @@ async function sendAssignmentsEmail() {
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="emailDialogOpen" max-width="520">
-      <v-card>
-        <v-card-title>Send Assignments by Email</v-card-title>
-        <v-card-text>
-          <p class="text-caption text-medium-emphasis mb-2">
-            {{ recipientEmails.length }} recipient(s) with an email on file: {{ recipientEmails.join(', ') || 'none' }}
-          </p>
-          <v-textarea :model-value="emailBody" label="Message" variant="outlined" rows="8" readonly />
-          <v-alert v-if="emailSent" type="info" variant="tonal" density="compact" class="mt-2">
-            Not sent — email delivery isn't connected to a mail server in this build yet. Copy the message above to
-            send it yourself for now.
-          </v-alert>
-        </v-card-text>
-        <v-card-actions>
+    <v-dialog v-model="emailDialogOpen" max-width="720" scrollable>
+      <v-card class="share-dialog">
+        <v-card-title class="share-dialog-title">
+          <span><v-icon icon="mdi-email-edit-outline" size="22" /></span>
+          <div>
+            <strong>Share Assignments</strong>
+            <small>Prepare one roster email for everyone serving.</small>
+          </div>
           <v-spacer />
-          <v-btn variant="outlined" class="mr-2" @click="emailDialogOpen = false">Close</v-btn>
-          <v-btn variant="flat" color="primary" @click="sendAssignmentsEmail">Send</v-btn>
+          <v-btn icon="mdi-close" variant="text" size="small" aria-label="Close" @click="emailDialogOpen = false" />
+        </v-card-title>
+        <v-card-text class="share-dialog-content">
+          <section class="recipient-summary">
+            <span><v-icon icon="mdi-account-multiple-outline" size="20" /></span>
+            <div>
+              <strong>{{ recipientEmails.length }} email recipient{{ recipientEmails.length === 1 ? '' : 's' }}</strong>
+              <p v-if="recipientEmails.length">Addresses will be placed together in the email’s To field.</p>
+              <p v-else>Add email addresses to the assigned people, or enter recipients manually after opening the draft.</p>
+              <template v-if="recipientEmails.length">
+                <v-btn
+                  variant="text"
+                  density="compact"
+                  size="small"
+                  class="recipient-address-toggle"
+                  :append-icon="showRecipientEmails ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+                  @click="showRecipientEmails = !showRecipientEmails"
+                >
+                  {{ showRecipientEmails ? 'Hide addresses' : 'View addresses' }}
+                </v-btn>
+                <v-expand-transition>
+                  <p v-if="showRecipientEmails" class="recipient-addresses">{{ recipientEmails.join(', ') }}</p>
+                </v-expand-transition>
+              </template>
+            </div>
+            <span class="to-badge">TO</span>
+          </section>
+
+          <v-alert v-if="peopleMissingEmail.length" type="warning" variant="tonal" density="compact" class="mb-4">
+            <strong>{{ peopleMissingEmail.length }} assigned {{ peopleMissingEmail.length === 1 ? 'person has' : 'people have' }} no email address:</strong>
+            {{ peopleMissingEmail.map(personDisplayName).join(', ') }}
+          </v-alert>
+
+          <v-text-field v-model="emailSubject" label="Subject" variant="outlined" density="comfortable" class="mb-2" />
+          <v-textarea v-model="emailMessage" label="Message" variant="outlined" rows="9" auto-grow />
+
+          <v-alert v-if="emailActionStatus" type="success" variant="tonal" density="compact" class="mt-2">
+            {{ emailActionStatus }}
+          </v-alert>
+          <v-alert v-if="emailActionError" type="error" variant="tonal" density="compact" class="mt-2">
+            Could not prepare the email: {{ emailActionError }}
+          </v-alert>
+          <p class="share-delivery-note">
+            Worship Studio prepares the draft but does not send it. Your email application handles the account and delivery.
+          </p>
+        </v-card-text>
+        <v-card-actions class="share-dialog-actions">
+          <v-btn variant="text" @click="emailDialogOpen = false">Close</v-btn>
+          <v-spacer />
+          <v-btn variant="tonal" prepend-icon="mdi-content-copy" @click="copyEmailDraft">Copy Message</v-btn>
+          <v-btn color="primary" variant="flat" prepend-icon="mdi-open-in-new" :loading="openingEmailApp" @click="openEmailDraft">
+            Open in Email App
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -884,6 +995,112 @@ async function sendAssignmentsEmail() {
   margin: 0;
   font-size: 0.82rem;
 }
+.share-dialog {
+  display: flex;
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+}
+.share-dialog-title,
+.share-dialog-actions {
+  flex: 0 0 auto;
+}
+.share-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 15px 17px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+}
+.share-dialog-title > span {
+  display: grid;
+  width: 39px;
+  height: 39px;
+  place-items: center;
+  border-radius: 9px;
+  background: rgba(var(--v-theme-primary), 0.11);
+  color: rgb(var(--v-theme-primary));
+}
+.share-dialog-title > div {
+  display: flex;
+  flex-direction: column;
+}
+.share-dialog-title strong {
+  font-size: 0.9rem;
+}
+.share-dialog-title small {
+  margin-top: 2px;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-size: 0.68rem;
+}
+.share-dialog-content {
+  min-height: 0;
+  padding: 17px !important;
+  overflow-y: auto;
+}
+.recipient-summary {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 13px;
+  padding: 11px 12px;
+  border: 1px solid rgba(var(--v-theme-primary), 0.18);
+  border-radius: 9px;
+  background: rgba(var(--v-theme-primary), 0.055);
+}
+.recipient-summary > span:first-child {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-primary), 0.12);
+  color: rgb(var(--v-theme-primary));
+}
+.recipient-summary > div {
+  min-width: 0;
+}
+.recipient-summary strong {
+  font-size: 0.75rem;
+}
+.recipient-summary p {
+  margin: 2px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.53);
+  font-size: 0.66rem;
+  line-height: 1.4;
+}
+.recipient-address-toggle {
+  min-width: 0;
+  margin: 4px 0 -2px -8px;
+  padding-inline: 8px !important;
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.67rem;
+}
+.recipient-addresses {
+  overflow-wrap: anywhere;
+  color: rgba(var(--v-theme-on-surface), 0.72) !important;
+  font-family: monospace;
+  font-size: 0.65rem !important;
+}
+.to-badge {
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: rgba(var(--v-theme-on-surface), 0.07);
+  color: rgba(var(--v-theme-on-surface), 0.58);
+  font-size: 0.58rem;
+  font-weight: 760;
+  letter-spacing: 0.05em;
+}
+.share-delivery-note {
+  margin: 12px 2px 0;
+  color: rgba(var(--v-theme-on-surface), 0.46);
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+.share-dialog-actions {
+  padding: 11px 15px 14px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+}
 @media (max-width: 1050px) {
   .assignments-layout {
     grid-template-columns: 1fr;
@@ -913,6 +1130,16 @@ async function sendAssignmentsEmail() {
   .assignment-alerts,
   .assignments-sidebar {
     grid-template-columns: 1fr;
+  }
+  .share-dialog-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+  .share-dialog-actions .v-spacer {
+    display: none;
+  }
+  .share-dialog-actions .v-btn {
+    width: 100%;
   }
 }
 </style>

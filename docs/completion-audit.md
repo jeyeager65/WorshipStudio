@@ -73,16 +73,20 @@ Relevant implementation: `src-tauri/src/models.rs`, `src-tauri/src/commands/sett
 
 ### 4. Reconcile the email workflow
 
-Assignment message composition is real, but the email adapter methods deliberately do not send anything. The current dialog presents a **Send** button and explains only afterward that nothing was sent.
+Status: completed August 1, 2026.
 
-Until real mail delivery is implemented, use one or both of these honest actions:
+Assignments now uses an honest mail-client handoff rather than a fake delivery adapter:
 
-- **Copy Message**
-- **Open in Email App** using a `mailto:` draft
+- **Share Assignments** prepares one editable complete-roster message for everyone serving.
+- Recipients are deduplicated and placed together in the To field; assigned people without an email address are identified before the draft is opened.
+- **Open in Email App** supplies To recipients, subject, and body to the computer's configured mail handler.
+- **Copy Message** copies all draft details as a reliable fallback for webmail or computers without a configured mail application.
+- The UI states clearly that Worship Studio prepares the draft and the user's email application performs delivery.
+- The no-op `EmailPort` and misleading **Send** action were removed.
 
-Only restore **Send** when a real transport is configured and failures can be reported accurately.
+Reports already provides **Copy Bulletin**, including rich HTML with a plain-text fallback. Word and PDF exports can be opened immediately and attached manually; `mailto:` cannot reliably add attachments.
 
-The same decision applies to any Order of Worship email action.
+Direct SMTP or provider delivery is explicitly deferred until after 1.0. Only add **Send** if a real transport, authentication, delivery failures, and credential handling are implemented together.
 
 ### 5. Add a pre-service readiness check
 
@@ -217,14 +221,7 @@ KJV and API-backed translations are supported, but the general local Bible impor
 
 ### Email delivery
 
-Real email transport is not implemented. Decide between:
-
-- Delegating to the user's installed mail application
-- SMTP configuration
-- A cloud mail provider
-- Keeping Worship Studio responsible only for document/message generation
-
-The installed mail application is likely the simplest and least credential-heavy first step.
+Built-in delivery is deferred until after 1.0. Worship Studio deliberately remains responsible for message and document generation, then delegates account access and delivery to the user's installed mail application. Revisit SMTP or a cloud provider only if early adopters demonstrate that opening a prepared draft is insufficient.
 
 ### Replace undo toasts with real undo/redo history
 
@@ -385,7 +382,7 @@ This does not apply to user-facing imports such as OpenSong or to migrations del
 4. Pre-service readiness check — completed August 1, 2026
 5. Library Health and Sync Conflicts redesign — completed August 1, 2026
 6. Credential boundary and focused security review — completed August 1, 2026
-7. Honest email/copy/mail-client workflow
+7. Honest email/copy/mail-client workflow — completed August 1, 2026
 8. Windows E2E smoke CI and real-hardware testing
 9. Automatic updates and user-accessible diagnostics
 10. Finalize the 1.0 persisted schemas and remove development-era compatibility code
@@ -400,7 +397,7 @@ This does not apply to user-facing imports such as OpenSong or to migrations del
 - Shared loading/error/empty/not-found states
 - Editor-scoped undo/redo with app-bar buttons and keyboard shortcuts
 - Removal of expiring undo toasts as the primary undo mechanism
-- Honest email action wording
+- Honest email/copy/mail-client workflow
 - Pre-service readiness check
 - Documentation correction
 - Hardware testing and bug fixes

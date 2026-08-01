@@ -313,7 +313,7 @@ function formatDateRange(range: UnavailableDateRange): string {
             label="Email Address"
             type="email"
             variant="outlined"
-            hint="Used when sending assignments by email."
+            hint="Used when sharing service assignments."
             persistent-hint
           />
         </div>

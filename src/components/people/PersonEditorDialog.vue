@@ -109,7 +109,7 @@ function save() {
             type="email"
             variant="outlined"
             density="compact"
-            hint='Used for "Send Assignments by Email" — leave blank if not needed'
+            hint="Used when sharing service assignments — leave blank if not needed"
             persistent-hint
           />
         </div>

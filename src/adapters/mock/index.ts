@@ -364,14 +364,6 @@ export function createMockAdapter(): StudioAdapter {
       listConflicts: async () => [],
       resolveConflict: async () => {},
     },
-    email: {
-      sendOrderOfWorship: async () => {
-        // Demo build never sends real email — see spec section 7 (what has to be faked).
-      },
-      sendAssignments: async () => {
-        // Same as sendOrderOfWorship — no real mail transport exists in this codebase yet.
-      },
-    },
     exports: {
       saveFile: async ({ suggestedName, mimeType, bytes }) => {
         const blob = new Blob([bytes.slice().buffer as ArrayBuffer], {
