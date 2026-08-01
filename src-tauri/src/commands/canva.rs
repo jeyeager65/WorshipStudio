@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -67,6 +68,13 @@ pub struct CanvaImportResult {
 pub struct CanvaImportedPage {
     page_number: usize,
     media: MediaItem,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanvaExistingPage {
+    page_number: usize,
+    media_id: String,
 }
 
 fn credentials(app: &AppHandle) -> Result<(String, String), String> {
@@ -380,6 +388,7 @@ pub async fn open_canva_design(app: AppHandle, design_id: String) -> Result<(), 
 pub async fn import_canva_design(
     app: AppHandle,
     design_id: String,
+    existing_pages: Vec<CanvaExistingPage>,
 ) -> Result<CanvaImportResult, String> {
     let design_value = api_get(&app, &format!("/designs/{design_id}")).await?;
     let design = parse_design(&design_value["design"])?;
@@ -431,7 +440,15 @@ pub async fn import_canva_design(
     let temp_dir = app_data_dir(&app).join("canva-import");
     fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
     let client = Client::new();
-    let mut commits = Vec::new();
+    let existing_media_by_page: HashMap<usize, String> = existing_pages
+        .into_iter()
+        .map(|page| (page.page_number, page.media_id))
+        .collect();
+    let root = library_root(&app);
+    let local_root = local_media_root(&app);
+    let device = this_device_name(&app);
+    let imported_at = now_iso();
+    let mut media_items = Vec::new();
     for (index, url) in urls.iter().enumerate() {
         let bytes = client
             .get(url)
@@ -446,25 +463,47 @@ pub async fn import_canva_design(
         let filename = format!("{} - Page {}.png", design.title, index + 1);
         let temp_path = temp_dir.join(format!("{}-{index}.png", uuid::Uuid::new_v4()));
         fs::write(&temp_path, bytes).map_err(|e| e.to_string())?;
-        commits.push(MediaImportCommit {
-            path: temp_path.to_string_lossy().to_string(),
-            filename,
-            title: format!("{} - Page {}", design.title, index + 1),
-            description: Some(format!("Imported from Canva design {}", design.id)),
-            tags: vec!["Canva".to_string()],
-            location: "synced".to_string(),
-            duplicate_of_id: None,
-        });
+        let page_number = index + 1;
+        let title = format!("{} - Page {page_number}", design.title);
+        let description = Some(format!("Imported from Canva design {}", design.id));
+        let tags = vec!["Canva".to_string()];
+        let replaced = match existing_media_by_page.get(&page_number) {
+            Some(media_id) => media::replace_from_file(
+                &root,
+                &local_root,
+                media_id,
+                &temp_path,
+                title.clone(),
+                description.clone(),
+                tags.clone(),
+                &device,
+                &imported_at,
+            )
+            .map_err(|e| e.to_string())?,
+            None => None,
+        };
+        if let Some(item) = replaced {
+            media_items.push(item);
+        } else {
+            let mut created = media::commit_imports(
+                &root,
+                &local_root,
+                vec![MediaImportCommit {
+                    path: temp_path.to_string_lossy().to_string(),
+                    filename,
+                    title,
+                    description,
+                    tags,
+                    location: "synced".to_string(),
+                    duplicate_of_id: None,
+                }],
+                &device,
+                &imported_at,
+            )
+            .map_err(|e| e.to_string())?;
+            media_items.append(&mut created);
+        }
     }
-    let root = library_root(&app);
-    let media_items = media::commit_imports(
-        &root,
-        &local_media_root(&app),
-        commits,
-        &this_device_name(&app),
-        &now_iso(),
-    )
-    .map_err(|e| e.to_string())?;
     manifest::rebuild(&root).map_err(|e| e.to_string())?;
     let _ = fs::remove_dir_all(&temp_dir);
     Ok(CanvaImportResult {

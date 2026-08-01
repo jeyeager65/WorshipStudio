@@ -78,14 +78,49 @@ pub fn save(
     Ok(item)
 }
 
-/// Deletes both the metadata record and the underlying file (in whichever folder its
-/// `location` says it lives) — orphaned media files would otherwise accumulate on disk
-/// forever with no UI able to find them again.
-pub fn delete(root: &Path, local_media_root: &Path, id: &str) -> std::io::Result<()> {
-    if let Some(item) = get(root, id) {
-        let _ = fs::remove_file(file_path(root, local_media_root, &item));
+/// Replaces the bytes and descriptive metadata of an existing managed media item without
+/// changing its id or filename. Integrations such as Canva use this for refreshes so every
+/// export does not leave another nearly-identical item in the media library.
+pub fn replace_from_file(
+    root: &Path,
+    local_media_root: &Path,
+    id: &str,
+    source: &Path,
+    title: String,
+    description: Option<String>,
+    tags: Vec<String>,
+    device: &str,
+    now: &str,
+) -> std::io::Result<Option<MediaItem>> {
+    let Some(mut item) = get(root, id) else {
+        return Ok(None);
+    };
+    let destination = file_path(root, local_media_root, &item);
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)?;
     }
-    delete_file_if_exists(&media_item_path(root, id))
+    fs::copy(source, &destination)?;
+    item.content_hash = hash_file(&destination)?;
+    item.title = title;
+    item.description = description;
+    item.tags = tags;
+    save(root, item, device, now).map(Some)
+}
+
+/// Deletes the authoritative metadata record, then best-effort removes the underlying file
+/// from whichever folder its `location` identifies. A temporary file lock must never leave a
+/// broken metadata card that requires the user to delete it again.
+pub fn delete(root: &Path, local_media_root: &Path, id: &str) -> std::io::Result<()> {
+    let backing_file = get(root, id).map(|item| file_path(root, local_media_root, &item));
+
+    // Metadata is the library's authoritative record. Remove it before touching the backing
+    // file so a transient lock on the JSON cannot leave a broken, image-less card that needs
+    // a second delete. Once the record is gone, backing-file cleanup is safe to best-effort.
+    delete_file_if_exists(&media_item_path(root, id))?;
+    if let Some(path) = backing_file {
+        let _ = fs::remove_file(path);
+    }
+    Ok(())
 }
 
 /// Non-cryptographic content hash — good enough to notice an accidental duplicate import,
@@ -365,6 +400,50 @@ mod tests {
     }
 
     #[test]
+    fn replace_from_file_updates_an_existing_item_without_creating_another() {
+        let root_dir = tempfile::tempdir().unwrap();
+        let local_dir = tempfile::tempdir().unwrap();
+        let source_dir = tempfile::tempdir().unwrap();
+        let source = source_dir.path().join("refreshed.png");
+        fs::write(&source, b"new canva pixels").unwrap();
+
+        let root = root_dir.path();
+        fs::create_dir_all(synced_media_dir(root)).unwrap();
+        fs::write(synced_media_dir(root).join("canva-page.png"), b"old pixels").unwrap();
+        save(
+            root,
+            sample("media-canva", "canva-page.png", "synced", "old-hash"),
+            "computer-a",
+            "before",
+        )
+        .unwrap();
+
+        let updated = replace_from_file(
+            root,
+            local_dir.path(),
+            "media-canva",
+            &source,
+            "Sunday Slides - Page 1".to_string(),
+            Some("Imported from Canva design design-1".to_string()),
+            vec!["Canva".to_string()],
+            "computer-b",
+            "after",
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(updated.id, "media-canva");
+        assert_eq!(updated.title, "Sunday Slides - Page 1");
+        assert_eq!(updated.updated_by_device, "computer-b");
+        assert_ne!(updated.content_hash, "old-hash");
+        assert_eq!(list(root).unwrap().len(), 1);
+        assert_eq!(
+            fs::read(synced_media_dir(root).join("canva-page.png")).unwrap(),
+            b"new canva pixels"
+        );
+    }
+
+    #[test]
     fn commit_imports_copies_the_file_and_creates_a_record() {
         let root_dir = tempfile::tempdir().unwrap();
         let local_dir = tempfile::tempdir().unwrap();
@@ -506,6 +585,23 @@ mod tests {
         delete(root_dir.path(), local_dir.path(), &created[0].id).unwrap();
         assert!(get(root_dir.path(), &created[0].id).is_none());
         assert!(!synced_media_dir(root_dir.path()).join("gone.jpg").exists());
+    }
+
+    #[test]
+    fn delete_removes_metadata_even_when_backing_file_cleanup_fails() {
+        let root_dir = tempfile::tempdir().unwrap();
+        let local_dir = tempfile::tempdir().unwrap();
+        let root = root_dir.path();
+        let item = sample("media-canva", "locked.png", "synced", "hash");
+        save(root, item, "d", "now").unwrap();
+
+        // A directory at the expected file path makes remove_file fail consistently on every
+        // platform, standing in for a transient Dropbox/antivirus/WebView file lock.
+        fs::create_dir_all(synced_media_dir(root).join("locked.png")).unwrap();
+
+        delete(root, local_dir.path(), "media-canva").unwrap();
+        assert!(get(root, "media-canva").is_none());
+        assert!(synced_media_dir(root).join("locked.png").exists());
     }
 
     #[test]

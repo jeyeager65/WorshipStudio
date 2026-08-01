@@ -96,6 +96,22 @@ const router = createRouter({
       meta: { title: 'Settings' },
     },
     {
+      path: '/settings/service-templates',
+      name: 'service-template-library',
+      component: () => import('@/views/ServiceTemplateLibraryView.vue'),
+      meta: { title: 'Service Templates' },
+    },
+    {
+      path: '/settings/service-templates/new',
+      name: 'service-template-new',
+      component: () => import('@/views/ServiceTemplateEditorView.vue'),
+    },
+    {
+      path: '/settings/service-templates/edit/:templateName',
+      name: 'service-template-editor',
+      component: () => import('@/views/ServiceTemplateEditorView.vue'),
+    },
+    {
       path: '/sync-conflicts',
       name: 'sync-conflicts',
       component: () => import('@/views/SyncConflictsView.vue'),

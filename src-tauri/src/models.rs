@@ -287,6 +287,9 @@ pub struct ServiceTemplateItem {
 #[serde(rename_all = "camelCase")]
 pub struct ServiceTemplate {
     pub service_type: String,
+    /// Optional planning note explaining when this template should be used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     /// Service types that choose this template by default. None preserves the legacy behavior
     /// where a template defaults to the service type with the same name; Some(empty) explicitly
     /// means this template is not a default for any type.

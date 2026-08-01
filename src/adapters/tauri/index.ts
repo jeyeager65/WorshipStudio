@@ -34,6 +34,7 @@ import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
 import type { SlideLibraryItem, MediaItem, Theme, Person } from '@/models/library'
 import type { LibrarySettings, MachineSettings } from '@/models/settings'
+import { friendlyDisplayName } from '@/utils/displayName'
 
 /**
  * Real adapter — thin wrapper over Rust commands (src-tauri/src/commands).
@@ -317,7 +318,8 @@ export function createTauriAdapter(): StudioAdapter {
       listDesigns: () => invoke<CanvaDesign[]>('list_canva_designs'),
       createDesign: (title) => invoke<CanvaDesign>('create_canva_design', { title }),
       openDesign: (designId) => invoke('open_canva_design', { designId }),
-      importDesign: (designId) => invoke<CanvaImportResult>('import_canva_design', { designId }),
+      importDesign: (designId, existingPages = []) =>
+        invoke<CanvaImportResult>('import_canva_design', { designId, existingPages }),
     },
     themes: {
       list: () => invoke<Theme[]>('list_themes'),
@@ -381,7 +383,7 @@ export function createTauriAdapter(): StudioAdapter {
           const role = (machineSettings.displayRoles[id] as DisplayRole | undefined) ?? 'not-used'
           return {
             id,
-            name: monitor.name ?? `Display ${index + 1}`,
+            name: friendlyDisplayName(monitor.name, index),
             resolution: `${Math.round(size.width)}x${Math.round(size.height)}`,
             role,
           }

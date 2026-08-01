@@ -57,9 +57,16 @@ watch(
   async (ids) => {
     await Promise.all(
       ids.map(async (id) => {
-        if (mediaUrls.has(id)) return
         const url = await getAdapter().media.getPreviewUrl(id)
-        if (url) mediaUrls.set(id, url)
+        if (url) {
+          // Blob/data URLs used by the browser demo are exact opaque identifiers and cannot
+          // accept query parameters. Desktop asset URLs can, which forces WebView2 to read an
+          // in-place Canva refresh instead of reusing its cached pixels.
+          const versionedUrl = /^(blob:|data:)/.test(url)
+            ? url
+            : `${url}${url.includes('?') ? '&' : '?'}v=${Date.now()}`
+          mediaUrls.set(id, versionedUrl)
+        }
       }),
     )
   },
@@ -188,12 +195,11 @@ function safeAreaStyle(aspectRatio: number, color: string) {
                   ? `${((element.cornerRadius ?? 0) / scene.height) * 100}cqh`
                   : undefined,
             clipPath:
-              element.shape === 'triangle'
-                ? 'polygon(50% 0, 100% 100%, 0 100%)'
+              element.shape === 'triangle' ? 'polygon(50% 0, 100% 100%, 0 100%)' : undefined,
+            border:
+              element.fillMode === 'outline' && element.stroke
+                ? `${(element.stroke.width / scene.height) * 100}cqh solid ${element.stroke.color}`
                 : undefined,
-            border: element.fillMode === 'outline' && element.stroke
-              ? `${(element.stroke.width / scene.height) * 100}cqh solid ${element.stroke.color}`
-              : undefined,
           }"
         >
           <span

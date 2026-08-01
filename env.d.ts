@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 declare module 'pdfmake/build/pdfmake' {
-  import pdfMake = require('pdfmake')
+  import * as pdfMake from 'pdfmake'
   export default pdfMake
 }
 

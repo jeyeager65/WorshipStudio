@@ -14,8 +14,16 @@ export const seedSongs: Song[] = [
     collections: [{ collectionId: 'Hymns of Grace', number: '184' }],
     tags: ['hymn', 'grace'],
     blocks: [
-      { id: 'v1', label: 'Verse 1', text: 'Amazing grace, how sweet the sound\nThat saved a wretch like me.' },
-      { id: 'v2', label: 'Verse 2', text: "T'was grace that taught my heart to fear,\nand grace my fears relieved." },
+      {
+        id: 'v1',
+        label: 'Verse 1',
+        text: 'Amazing grace, how sweet the sound\nThat saved a wretch like me.',
+      },
+      {
+        id: 'v2',
+        label: 'Verse 2',
+        text: "T'was grace that taught my heart to fear,\nand grace my fears relieved.",
+      },
     ],
     defaultArrangement: { sequence: ['v1', 'v2'] },
     usage: { usesPastYear: 3, lastUsedAt: now },
@@ -30,13 +38,31 @@ export const seedServices: Service[] = [
     date: '2026-07-19',
     type: 'Sunday Morning Worship',
     items: [
-      { id: 'item-1', type: 'song', songId: 'song-amazing-grace', arrangement: { sequence: ['v1', 'v2'] } },
-      { id: 'item-2', type: 'scripture', reference: 'John 3:16-17', translation: 'ESV', displayMode: 'full' },
+      {
+        id: 'item-1',
+        type: 'song',
+        songId: 'song-amazing-grace',
+        arrangement: { sequence: ['v1', 'v2'] },
+      },
+      {
+        id: 'item-2',
+        type: 'scripture',
+        reference: 'John 3:16-17',
+        translation: 'ESV',
+        displayMode: 'full',
+      },
       {
         id: 'item-sermon',
         type: 'sermon',
         title: 'Sample Sermon',
-        passages: [{ id: 'passage-sermon', reference: 'Romans 8:28-30', translation: 'ESV', displayMode: 'full' }],
+        passages: [
+          {
+            id: 'passage-sermon',
+            reference: 'Romans 8:28-30',
+            translation: 'ESV',
+            displayMode: 'full',
+          },
+        ],
         mainPassageId: 'passage-sermon',
         outline: [],
         role: 'Preacher',
@@ -121,10 +147,17 @@ export const seedLibrarySettings: LibrarySettings = {
   serviceTemplates: [
     {
       serviceType: 'Sunday Morning Worship',
+      description: 'The standard Sunday worship team and service structure.',
       items: [
         { id: 'tpl-piano', kind: 'role-only', label: 'Piano', role: 'Piano', count: 1 },
         { id: 'tpl-vocals', kind: 'role-only', label: 'Vocals', role: 'Vocals', count: 2 },
-        { id: 'tpl-sound-booth', kind: 'role-only', label: 'Sound Booth', role: 'Sound Booth', count: 1 },
+        {
+          id: 'tpl-sound-booth',
+          kind: 'role-only',
+          label: 'Sound Booth',
+          role: 'Sound Booth',
+          count: 1,
+        },
       ],
     },
   ],

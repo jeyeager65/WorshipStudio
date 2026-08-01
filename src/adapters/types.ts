@@ -133,7 +133,10 @@ export interface CanvaPort {
   listDesigns(): Promise<CanvaDesign[]>
   createDesign(title: string): Promise<CanvaDesign>
   openDesign(designId: string): Promise<void>
-  importDesign(designId: string): Promise<CanvaImportResult>
+  importDesign(
+    designId: string,
+    existingPages?: Array<{ pageNumber: number; mediaId: string }>,
+  ): Promise<CanvaImportResult>
 }
 
 export interface ThemePort {
@@ -403,10 +406,7 @@ export type ExportResult = 'cancelled' | 'saved' | 'opened'
 /** Keeps report generation independent of its destination: the desktop adapter uses a native
  * save dialog and Rust's binary writer, while the static demo uses a normal browser download. */
 export interface ExportPort {
-  saveFile(
-    file: GeneratedFile,
-    options?: { openAfterSave?: boolean },
-  ): Promise<ExportResult>
+  saveFile(file: GeneratedFile, options?: { openAfterSave?: boolean }): Promise<ExportResult>
 }
 
 export interface StudioAdapter {

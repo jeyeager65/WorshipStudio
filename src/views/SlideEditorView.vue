@@ -86,6 +86,27 @@ const imageElement = computed(() =>
 const shapeElement = computed(() =>
   selectedElement.value?.type === 'shape' ? selectedElement.value : undefined,
 )
+const backgroundPositionX = computed({
+  get: () => Math.round((scene.value?.background.focalPoint?.x ?? 0.5) * 100),
+  set: (value: number) => updateBackgroundFocalPoint(value / 100, undefined),
+})
+const backgroundPositionY = computed({
+  get: () => Math.round((scene.value?.background.focalPoint?.y ?? 0.5) * 100),
+  set: (value: number) => updateBackgroundFocalPoint(undefined, value / 100),
+})
+
+function updateBackgroundFocalPoint(x?: number, y?: number) {
+  if (!scene.value) return
+  const current = scene.value.background.focalPoint ?? { x: 0.5, y: 0.5 }
+  scene.value.background.focalPoint = {
+    x: Math.min(1, Math.max(0, x ?? current.x)),
+    y: Math.min(1, Math.max(0, y ?? current.y)),
+  }
+}
+
+function centerBackground() {
+  updateBackgroundFocalPoint(0.5, 0.5)
+}
 const shapeStrokeColor = computed({
   get: () => shapeElement.value?.stroke?.color ?? shapeElement.value?.fill ?? '#ffffff',
   set: (color: string) => {
@@ -104,8 +125,7 @@ const shapeStrokeWidth = computed({
   },
 })
 const lockAspectRatio = computed({
-  get: () =>
-    selectedElement.value?.lockAspectRatio ?? selectedElement.value?.type === 'image',
+  get: () => selectedElement.value?.lockAspectRatio ?? selectedElement.value?.type === 'image',
   set: (locked: boolean) => {
     if (selectedElement.value) selectedElement.value.lockAspectRatio = locked
   },
@@ -140,19 +160,29 @@ const elementGuidelines = computed(() =>
   scene.value && canvasHost.value
     ? scene.value.elements
         .filter((element) => element.id !== selectedElementId.value)
-        .map((element) => canvasHost.value?.querySelector<HTMLElement>(`[data-scene-element-id="${CSS.escape(element.id)}"]`))
+        .map((element) =>
+          canvasHost.value?.querySelector<HTMLElement>(
+            `[data-scene-element-id="${CSS.escape(element.id)}"]`,
+          ),
+        )
         .filter((element): element is HTMLElement => !!element)
     : [],
 )
-const horizontalGuidelines = computed(() => canvasHost.value ? [canvasHost.value.clientHeight / 2] : [])
-const verticalGuidelines = computed(() => canvasHost.value ? [canvasHost.value.clientWidth / 2] : [])
+const horizontalGuidelines = computed(() =>
+  canvasHost.value ? [canvasHost.value.clientHeight / 2] : [],
+)
+const verticalGuidelines = computed(() =>
+  canvasHost.value ? [canvasHost.value.clientWidth / 2] : [],
+)
 
 watch(
   [selectedElementId, selectedSlideId],
   async () => {
     await nextTick()
     moveableTarget.value = selectedElementId.value
-      ? (canvasHost.value?.querySelector<HTMLElement>(`[data-scene-element-id="${CSS.escape(selectedElementId.value)}"]`) ?? undefined)
+      ? (canvasHost.value?.querySelector<HTMLElement>(
+          `[data-scene-element-id="${CSS.escape(selectedElementId.value)}"]`,
+        ) ?? undefined)
       : undefined
   },
   { flush: 'post' },
@@ -283,47 +313,93 @@ async function createCanvaDesign() {
   }
 }
 
+async function editCanvaDesign(designId: string) {
+  const canva = getAdapter().canva
+  if (!canva) return
+  canvaError.value = ''
+  try {
+    await canva.openDesign(designId)
+  } catch (error) {
+    canvaError.value = error instanceof Error ? error.message : String(error)
+  }
+}
+
 async function importCanvaDesign(designId: string) {
   const canva = getAdapter().canva
   if (!canva || !item.value) return
   canvaBusy.value = true
   canvaError.value = ''
   try {
-    const result = await canva.importDesign(designId)
-    const importedAt = new Date().toISOString()
-    const slides: LibrarySlide[] = result.pages.map(({ pageNumber, media }) => ({
-      id: `slide-part-${crypto.randomUUID()}`,
-      label: `${result.design.title} — ${pageNumber}`,
-      scene: {
-        ...createBlankScene(),
-        background: {
-          color: '#000000',
-          mediaId: media.id,
-          fit: 'cover',
-          focalPoint: { x: 0.5, y: 0.5 },
-        },
-      },
-      source: {
-        type: 'canva',
-        designId: result.design.id,
-        pageNumber,
-        renderedMediaId: media.id,
-        lastImportedAt: importedAt,
-      },
+    const existingByPage = new Map<number, LibrarySlide>()
+    for (const slide of item.value.slides) {
+      if (slide.source.type === 'canva' && slide.source.designId === designId) {
+        existingByPage.set(slide.source.pageNumber, slide)
+      }
+    }
+    const existingPages = [...existingByPage.entries()].map(([pageNumber, slide]) => ({
+      pageNumber,
+      mediaId: slide.source.type === 'canva' ? slide.source.renderedMediaId : '',
     }))
+    const result = await canva.importDesign(designId, existingPages)
+    const importedAt = new Date().toISOString()
+    const slides: LibrarySlide[] = result.pages.map(({ pageNumber, media }) => {
+      const existing = existingByPage.get(pageNumber)
+      if (existing?.source.type === 'canva') {
+        return {
+          ...existing,
+          label: `${result.design.title} — ${pageNumber}`,
+          scene: {
+            ...existing.scene,
+            background: { ...existing.scene.background, mediaId: media.id },
+          },
+          source: {
+            ...existing.source,
+            renderedMediaId: media.id,
+            lastImportedAt: importedAt,
+          },
+        }
+      }
+      return {
+        id: `slide-part-${crypto.randomUUID()}`,
+        label: `${result.design.title} — ${pageNumber}`,
+        scene: {
+          ...createBlankScene(),
+          background: {
+            color: '#000000',
+            mediaId: media.id,
+            fit: 'cover',
+            focalPoint: { x: 0.5, y: 0.5 },
+          },
+        },
+        source: {
+          type: 'canva',
+          designId: result.design.id,
+          pageNumber,
+          renderedMediaId: media.id,
+          lastImportedAt: importedAt,
+        },
+      }
+    })
     const existingIndexes = item.value.slides
-      .map((slide, index) => slide.source.type === 'canva' && slide.source.designId === designId ? index : -1)
+      .map((slide, index) =>
+        slide.source.type === 'canva' && slide.source.designId === designId ? index : -1,
+      )
       .filter((index) => index >= 0)
-    const insertAt = existingIndexes[0] ?? (item.value.slides.findIndex((slide) => slide.id === selectedSlideId.value) + 1)
+    const insertAt =
+      existingIndexes[0] ??
+      item.value.slides.findIndex((slide) => slide.id === selectedSlideId.value) + 1
     item.value.slides = item.value.slides.filter(
       (slide) => !(slide.source.type === 'canva' && slide.source.designId === designId),
     )
     item.value.slides.splice(Math.max(0, insertAt), 0, ...slides)
-    selectedSlideId.value = slides[0]?.id ?? selectedSlideId.value
+    if (!slides.some((slide) => slide.id === selectedSlideId.value)) {
+      selectedSlideId.value = slides[0]?.id ?? selectedSlideId.value
+    }
     await mediaStore.load()
     canvaDialog.value = false
   } catch (error) {
     canvaError.value = error instanceof Error ? error.message : String(error)
+    canvaDialog.value = true
   } finally {
     canvaBusy.value = false
   }
@@ -331,11 +407,12 @@ async function importCanvaDesign(designId: string) {
 
 async function openSelectedCanvaDesign() {
   if (selectedSlide.value?.source.type !== 'canva') return
-  try {
-    await getAdapter().canva?.openDesign(selectedSlide.value.source.designId)
-  } catch (error) {
-    canvaError.value = error instanceof Error ? error.message : String(error)
-  }
+  await editCanvaDesign(selectedSlide.value.source.designId)
+}
+
+async function refreshSelectedCanvaDesign() {
+  if (selectedSlide.value?.source.type !== 'canva') return
+  await importCanvaDesign(selectedSlide.value.source.designId)
 }
 
 function selectSlide(id: string) {
@@ -436,6 +513,8 @@ function addImage(mediaId: string) {
 function setAsBackground(mediaId?: string) {
   if (!scene.value) return
   scene.value.background.mediaId = mediaId
+  scene.value.background.fit = 'cover'
+  scene.value.background.focalPoint = { x: 0.5, y: 0.5 }
   mediaDialog.value = false
 }
 
@@ -514,7 +593,9 @@ function onKeyup(event: KeyboardEvent) {
 }
 
 function sceneScale(): number {
-  return canvasHost.value && scene.value ? scene.value.width / canvasHost.value.getBoundingClientRect().width : 1
+  return canvasHost.value && scene.value
+    ? scene.value.width / canvasHost.value.getBoundingClientRect().width
+    : 1
 }
 
 let transformStart = { x: 0, y: 0 }
@@ -524,7 +605,11 @@ function onMoveableDragStart() {
   transformStart = { x: selectedElement.value.x, y: selectedElement.value.y }
   pendingGeometry = { ...transformStart }
 }
-function onMoveableDrag(event: { beforeTranslate: number[]; transform: string; target: HTMLElement | SVGElement }) {
+function onMoveableDrag(event: {
+  beforeTranslate: number[]
+  transform: string
+  target: HTMLElement | SVGElement
+}) {
   const scale = sceneScale()
   pendingGeometry = {
     x: Math.round(transformStart.x + (event.beforeTranslate[0] ?? 0) * scale),
@@ -604,14 +689,19 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
   <div v-if="item && scene" class="editor">
     <header class="editor-header">
       <div class="editor-heading">
-        <v-btn to="/library/slides" variant="text" prepend-icon="mdi-arrow-left" class="back-button">Slides</v-btn>
+        <v-btn to="/library/slides" variant="text" prepend-icon="mdi-arrow-left" class="back-button"
+          >Slides</v-btn
+        >
         <div>
           <div class="editor-eyebrow">Slide Editor</div>
           <h1>{{ item.label || 'Untitled Presentation' }}</h1>
         </div>
       </div>
       <div class="editor-summary">
-        <span><v-icon icon="mdi-view-carousel-outline" size="17" />{{ item.slides.length }} {{ item.slides.length === 1 ? 'Slide' : 'Slides' }}</span>
+        <span
+          ><v-icon icon="mdi-view-carousel-outline" size="17" />{{ item.slides.length }}
+          {{ item.slides.length === 1 ? 'Slide' : 'Slides' }}</span
+        >
         <span><v-icon icon="mdi-history" size="17" />{{ item.usage.usesPastYear }}x This Year</span>
       </div>
     </header>
@@ -619,7 +709,13 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
     <aside class="filmstrip">
       <div class="presentation-details">
         <div class="panel-heading">Presentation Details</div>
-        <v-text-field v-model="item.label" label="Presentation Title" variant="outlined" density="compact" hide-details />
+        <v-text-field
+          v-model="item.label"
+          label="Presentation Title"
+          variant="outlined"
+          density="compact"
+          hide-details
+        />
         <v-combobox
           v-model="item.tags"
           label="Tags"
@@ -635,7 +731,12 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
         <span>Slides</span>
         <strong>{{ item.slides.length }}</strong>
       </div>
-      <VueDraggable v-model="item.slides" handle=".slide-grip" :animation="150" class="thumbnail-list">
+      <VueDraggable
+        v-model="item.slides"
+        handle=".slide-grip"
+        :animation="150"
+        class="thumbnail-list"
+      >
         <div
           v-for="(slide, index) in item.slides"
           :key="slide.id"
@@ -643,7 +744,9 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
           :class="{ active: slide.id === selectedSlideId }"
           @click="selectSlide(slide.id)"
         >
-          <span class="slide-grip"><v-icon icon="mdi-drag-vertical" size="17" />{{ index + 1 }}</span>
+          <span class="slide-grip"
+            ><v-icon icon="mdi-drag-vertical" size="17" />{{ index + 1 }}</span
+          >
           <div class="thumbnail"><SlideSceneRenderer :scene="slide.scene" /></div>
           <v-btn
             icon="mdi-close"
@@ -654,7 +757,14 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
           />
         </div>
       </VueDraggable>
-      <v-btn prepend-icon="mdi-plus" variant="tonal" color="primary" class="add-slide-button" @click="addSlide">Add Slide</v-btn>
+      <v-btn
+        prepend-icon="mdi-plus"
+        variant="tonal"
+        color="primary"
+        class="add-slide-button"
+        @click="addSlide"
+        >Add Slide</v-btn
+      >
     </aside>
 
     <main class="workspace">
@@ -662,81 +772,97 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
         <div class="toolbar-group">
           <span class="toolbar-label">Add</span>
           <v-btn prepend-icon="mdi-format-text" variant="tonal" @click="addText">Text</v-btn>
-          <v-btn prepend-icon="mdi-image-outline" variant="tonal" @click="openMediaPicker('add')">Image</v-btn>
-        <v-menu>
-          <template #activator="{ props }">
-              <v-btn v-bind="props" prepend-icon="mdi-shape-outline" append-icon="mdi-menu-down" variant="tonal">Shape</v-btn>
-          </template>
-          <v-list density="compact">
-            <v-list-item
-              v-for="option in shapeOptions"
-              :key="option.value"
-              :title="option.title"
-              :prepend-icon="option.icon"
-              @click="addShape(option.value)"
-            />
-          </v-list>
-        </v-menu>
+          <v-btn prepend-icon="mdi-image-outline" variant="tonal" @click="openMediaPicker('add')"
+            >Image</v-btn
+          >
+          <v-menu>
+            <template #activator="{ props }">
+              <v-btn
+                v-bind="props"
+                prepend-icon="mdi-shape-outline"
+                append-icon="mdi-menu-down"
+                variant="tonal"
+                >Shape</v-btn
+              >
+            </template>
+            <v-list density="compact">
+              <v-list-item
+                v-for="option in shapeOptions"
+                :key="option.value"
+                :title="option.title"
+                :prepend-icon="option.icon"
+                @click="addShape(option.value)"
+              />
+            </v-list>
+          </v-menu>
         </div>
         <v-divider vertical class="toolbar-divider" />
         <div v-if="canvaStatus?.configured" class="toolbar-group">
           <span class="toolbar-label">Canva</span>
-        <v-btn
-          prepend-icon="mdi-palette-outline"
+          <v-btn prepend-icon="mdi-palette-outline" variant="tonal" @click="openCanvaDialog">
+            Canva
+          </v-btn>
+          <v-btn
+            v-if="canvaStatus?.configured && selectedSlide?.source.type === 'canva'"
+            prepend-icon="mdi-open-in-new"
+            variant="text"
+            @click="openSelectedCanvaDesign"
+          >
+            Edit in Canva
+          </v-btn>
+          <v-btn
+            v-if="canvaStatus?.configured && selectedSlide?.source.type === 'canva'"
+            prepend-icon="mdi-cloud-refresh-outline"
             variant="tonal"
-          @click="openCanvaDialog"
-        >
-          Canva
-        </v-btn>
-        <v-btn
-          v-if="canvaStatus?.configured && selectedSlide?.source.type === 'canva'"
-          prepend-icon="mdi-open-in-new"
-          variant="text"
-          @click="openSelectedCanvaDesign"
-        >
-          Edit in Canva
-        </v-btn>
+            :loading="canvaBusy"
+            @click="refreshSelectedCanvaDesign"
+          >
+            Refresh from Canva
+          </v-btn>
         </div>
         <v-divider v-if="canvaStatus?.configured" vertical class="toolbar-divider" />
         <div class="toolbar-group toolbar-group--icons">
           <span class="toolbar-label">Arrange</span>
-        <v-btn
-          icon="mdi-arrange-bring-forward"
-          title="Bring Forward"
-          variant="text"
-          :disabled="!selectedElement"
-          @click="moveLayer('forward')"
-        />
-        <v-btn
-          icon="mdi-arrange-bring-to-front"
-          title="Bring to Front"
-          variant="text"
-          :disabled="!selectedElement"
-          @click="moveLayer('front')"
-        />
-        <v-btn
-          icon="mdi-arrange-send-backward"
-          title="Send Backward"
-          variant="text"
-          :disabled="!selectedElement"
-          @click="moveLayer('backward')"
-        />
-        <v-btn
-          icon="mdi-arrange-send-to-back"
-          title="Send to Back"
-          variant="text"
-          :disabled="!selectedElement"
-          @click="moveLayer('back')"
-        />
+          <v-btn
+            icon="mdi-arrange-bring-forward"
+            title="Bring Forward"
+            variant="text"
+            :disabled="!selectedElement"
+            @click="moveLayer('forward')"
+          />
+          <v-btn
+            icon="mdi-arrange-bring-to-front"
+            title="Bring to Front"
+            variant="text"
+            :disabled="!selectedElement"
+            @click="moveLayer('front')"
+          />
+          <v-btn
+            icon="mdi-arrange-send-backward"
+            title="Send Backward"
+            variant="text"
+            :disabled="!selectedElement"
+            @click="moveLayer('backward')"
+          />
+          <v-btn
+            icon="mdi-arrange-send-to-back"
+            title="Send to Back"
+            variant="text"
+            :disabled="!selectedElement"
+            @click="moveLayer('back')"
+          />
         </div>
         <v-spacer />
-        <v-switch v-model="showSafeArea" label="Safe Area" hide-details density="compact" color="primary" />
+        <v-switch
+          v-model="showSafeArea"
+          label="Safe Area"
+          hide-details
+          density="compact"
+          color="primary"
+        />
       </div>
       <div class="canvas-scroll">
-        <div
-          ref="canvasHost"
-          class="canvas-host"
-        >
+        <div ref="canvasHost" class="canvas-host">
           <SlideSceneRenderer
             :scene="scene"
             interactive
@@ -780,8 +906,16 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
     <aside class="properties">
       <div class="inspector-heading">
         <div class="panel-heading">Properties</div>
-        <h2>{{ selectedElement?.name || (selectedElement ? 'Element' : selectedSlide?.label || 'Slide') }}</h2>
-        <p>{{ selectedElement ? 'Adjust the selected layer.' : 'Adjust this slide and its background.' }}</p>
+        <h2>
+          {{
+            selectedElement?.name || (selectedElement ? 'Element' : selectedSlide?.label || 'Slide')
+          }}
+        </h2>
+        <p>
+          {{
+            selectedElement ? 'Adjust the selected layer.' : 'Adjust this slide and its background.'
+          }}
+        </p>
       </div>
       <template v-if="selectedElement">
         <div class="property-section-title">Layout</div>
@@ -904,11 +1038,7 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
             class="mt-4"
           />
           <div v-if="textEffectType !== 'none'" class="property-grid">
-            <v-color-input
-              v-model="textEffectColor"
-              label="Effect Color"
-              density="compact"
-            />
+            <v-color-input v-model="textEffectColor" label="Effect Color" density="compact" />
             <v-number-input
               v-model="textEffectSize"
               label="Strength"
@@ -918,10 +1048,7 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
               :max="30"
             />
           </div>
-          <div
-            v-if="textEffectType === 'shadow' && textElement.style.effect"
-            class="property-grid"
-          >
+          <div v-if="textEffectType === 'shadow' && textElement.style.effect" class="property-grid">
             <v-number-input
               v-model="textElement.style.effect.offsetX"
               label="Horizontal Offset"
@@ -1024,9 +1151,70 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
           label="Background Color"
           density="compact"
         />
-        <v-btn block variant="outlined" prepend-icon="mdi-image" @click="openMediaPicker('background')"
+        <v-btn
+          block
+          variant="outlined"
+          prepend-icon="mdi-image"
+          @click="openMediaPicker('background')"
           >Choose Background</v-btn
         >
+        <div v-if="scene.background.mediaId" class="background-position-controls">
+          <v-select
+            v-model="scene.background.fit"
+            :items="[
+              { title: 'Fill slide — crop as needed', value: 'cover' },
+              { title: 'Fit whole image', value: 'contain' },
+            ]"
+            item-title="title"
+            item-value="value"
+            label="Background Fit"
+            density="compact"
+            hide-details
+          />
+
+          <div class="background-position-heading">
+            <div>
+              <strong>Image position</strong>
+              <span v-if="scene.background.fit === 'cover'"
+                >Choose which part of the cropped image stays visible.</span
+              >
+              <span v-else>Position the fitted image within the slide.</span>
+            </div>
+            <v-btn
+              size="x-small"
+              variant="text"
+              :disabled="backgroundPositionX === 50 && backgroundPositionY === 50"
+              @click="centerBackground"
+            >
+              Center
+            </v-btn>
+          </div>
+
+          <label class="background-position-axis">
+            <span><strong>Horizontal</strong><small>Left</small><small>Right</small></span>
+            <v-slider
+              v-model="backgroundPositionX"
+              :min="0"
+              :max="100"
+              :step="1"
+              thumb-label
+              hide-details
+              color="primary"
+            />
+          </label>
+          <label class="background-position-axis">
+            <span><strong>Vertical</strong><small>Top</small><small>Bottom</small></span>
+            <v-slider
+              v-model="backgroundPositionY"
+              :min="0"
+              :max="100"
+              :step="1"
+              thumb-label
+              hide-details
+              color="primary"
+            />
+          </label>
+        </div>
         <v-btn
           v-if="scene.background.mediaId"
           block
@@ -1049,13 +1237,18 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
           <v-btn icon="mdi-close" variant="text" @click="canvaDialog = false" />
         </v-card-title>
         <v-card-text>
-          <v-alert v-if="canvaError || canvaStatus?.error" type="error" variant="tonal" class="mb-4">
+          <v-alert
+            v-if="canvaError || canvaStatus?.error"
+            type="error"
+            variant="tonal"
+            class="mb-4"
+          >
             {{ canvaError || canvaStatus?.error }}
           </v-alert>
           <template v-if="!canvaStatus?.connected">
             <p class="text-body-2 text-medium-emphasis mb-4">
-              Connect this machine to Canva. Authorization opens in your browser and returns
-              through Worship Studio's local server.
+              Connect this machine to Canva. Authorization opens in your browser and returns through
+              Worship Studio's local server.
             </p>
             <v-btn
               color="primary"
@@ -1067,11 +1260,22 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
             </v-btn>
           </template>
           <template v-else>
+            <p class="text-body-2 text-medium-emphasis mb-4">
+              Editing opens in your browser so Canva and Google can use your existing secure login.
+              Return here and choose Import / update when the design is ready.
+            </p>
             <div class="d-flex ga-2 mb-4">
-              <v-btn color="primary" prepend-icon="mdi-plus" :loading="canvaBusy" @click="createCanvaDesign">
+              <v-btn
+                color="primary"
+                prepend-icon="mdi-plus"
+                :loading="canvaBusy"
+                @click="createCanvaDesign"
+              >
                 New 16:9 design
               </v-btn>
-              <v-btn prepend-icon="mdi-refresh" :loading="canvaBusy" @click="refreshCanva">Refresh list</v-btn>
+              <v-btn prepend-icon="mdi-refresh" :loading="canvaBusy" @click="refreshCanva"
+                >Refresh list</v-btn
+              >
               <v-spacer />
               <v-btn variant="text" color="error" @click="disconnectCanva">Disconnect</v-btn>
             </div>
@@ -1084,11 +1288,25 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
                 </div>
                 <v-card-text>
                   <div class="font-weight-bold text-truncate">{{ design.title }}</div>
-                  <div class="text-caption text-medium-emphasis">{{ design.pageCount }} page(s)</div>
+                  <div class="text-caption text-medium-emphasis">
+                    {{ design.pageCount }} page(s)
+                  </div>
                 </v-card-text>
                 <v-card-actions>
-                  <v-btn size="small" variant="text" @click="getAdapter().canva?.openDesign(design.id)">Edit</v-btn>
-                  <v-btn size="small" color="primary" variant="flat" @click="importCanvaDesign(design.id)">
+                  <v-btn
+                    size="small"
+                    variant="text"
+                    prepend-icon="mdi-open-in-new"
+                    @click="editCanvaDesign(design.id)"
+                  >
+                    Edit
+                  </v-btn>
+                  <v-btn
+                    size="small"
+                    color="primary"
+                    variant="flat"
+                    @click="importCanvaDesign(design.id)"
+                  >
                     Import / update
                   </v-btn>
                 </v-card-actions>
@@ -1325,6 +1543,60 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
 }
 .properties :deep(.v-label) {
   font-size: 0.77rem;
+}
+.background-position-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 13px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.09);
+  border-radius: 8px;
+  background: rgba(var(--v-theme-background), 0.34);
+}
+.background-position-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.background-position-heading strong,
+.background-position-heading span {
+  display: block;
+}
+.background-position-heading strong {
+  font-size: 0.76rem;
+}
+.background-position-heading span {
+  margin-top: 2px;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-size: 0.66rem;
+  line-height: 1.35;
+}
+.background-position-axis {
+  display: block;
+}
+.background-position-axis > span {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 2px;
+}
+.background-position-axis strong {
+  font-size: 0.69rem;
+  font-weight: 650;
+}
+.background-position-axis small {
+  color: rgba(var(--v-theme-on-surface), 0.43);
+  font-size: 0.59rem;
+}
+.background-position-axis small:last-child {
+  min-width: 33px;
+  text-align: right;
+}
+.background-position-axis :deep(.v-slider) {
+  margin-inline: 1px;
 }
 .workspace {
   display: flex;

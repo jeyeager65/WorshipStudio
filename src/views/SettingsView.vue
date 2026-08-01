@@ -16,14 +16,30 @@ import { usePeopleStore } from '@/stores/people'
 import { useThemesStore } from '@/stores/themes'
 import { needsSingleMonitorFallback } from '@/utils/displaySetup'
 import { previewExternalAppCommand } from '@/utils/externalAppPreview'
-import { buildSampleServices, sampleSongs, sampleThemes, samplePeople, sampleRoleGroups, sampleServiceTemplates, sampleServiceTypes } from '@/utils/sampleData'
+import {
+  buildSampleServices,
+  sampleSongs,
+  sampleThemes,
+  samplePeople,
+  sampleRoleGroups,
+  sampleServiceTemplates,
+  sampleServiceTypes,
+} from '@/utils/sampleData'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import ManagedStringList from '@/components/settings/ManagedStringList.vue'
 import RoleGroupEditor from '@/components/settings/RoleGroupEditor.vue'
-import ServiceTemplateEditor from '@/components/settings/ServiceTemplateEditor.vue'
+import SettingsPageHeader from '@/components/settings/SettingsPageHeader.vue'
+import SettingsPanel from '@/components/settings/SettingsPanel.vue'
+import MediaPickerDialog from '@/components/media/MediaPickerDialog.vue'
 import logoDark from '@/assets/logo-dark.png'
 import logoLight from '@/assets/logo-light.png'
-import type { ApiBibleCatalogEntry, DisplayInfo, DisplayRole, ExternalAppProfile, RemoteDevice } from '@/adapters/types'
+import type {
+  ApiBibleCatalogEntry,
+  DisplayInfo,
+  DisplayRole,
+  ExternalAppProfile,
+  RemoteDevice,
+} from '@/adapters/types'
 
 const store = useSettingsStore()
 const router = useRouter()
@@ -48,12 +64,13 @@ async function refreshSyncStatus() {
 
 type Section =
   | 'general'
+  | 'appearance'
+  | 'branding'
   | 'display'
   | 'font-sizes'
   | 'service-types'
   | 'collections'
   | 'bible-translations'
-  | 'themes'
   | 'roles'
   | 'service-templates'
   | 'sync'
@@ -63,34 +80,85 @@ type Section =
   | 'about'
 const activeSection = ref<Section>('general')
 const sections: { key: Section; label: string; group: string }[] = [
-  { key: 'general', label: 'General', group: 'App' },
-  { key: 'sync', label: 'Sync Status', group: 'App' },
-  { key: 'about', label: 'About', group: 'App' },
+  { key: 'general', label: 'This Computer', group: 'Application' },
+  { key: 'sync', label: 'Library & Sync', group: 'Application' },
+  { key: 'about', label: 'About', group: 'Application' },
   // Display groups everything about how content actually renders on screen — the physical
   // setup (Display Setup), sizing (Font Sizes), visual styling (Themes), and hand-off to other
   // on-screen apps (External Apps/Remote Control) — not just monitor configuration narrowly.
-  { key: 'display', label: 'Display Setup', group: 'Display' },
-  { key: 'font-sizes', label: 'Font Sizes', group: 'Display' },
-  { key: 'themes', label: 'Themes', group: 'Display' },
+  { key: 'appearance', label: 'Appearance', group: 'Appearance & Displays' },
+  { key: 'branding', label: 'Branding', group: 'Appearance & Displays' },
+  { key: 'display', label: 'Display Setup', group: 'Appearance & Displays' },
+  { key: 'font-sizes', label: 'Text Sizing', group: 'Appearance & Displays' },
   // Windows-only (Win32 window hand-off) — the port is entirely absent on the macOS/demo
   // build, unlike Display Setup which still has something to show (real monitors) in mock.
-  ...(getAdapter().externalApps ? [{ key: 'external-apps' as const, label: 'External Apps', group: 'Display' }] : []),
+  ...(getAdapter().externalApps
+    ? [{ key: 'external-apps' as const, label: 'External Apps', group: 'Appearance & Displays' }]
+    : []),
   // Needs the bundled local HTTP server (see adapters/types.ts's RemotePort doc comment) —
   // not meaningful in the static/mock demo build even though the port itself exists there.
-  ...(getAdapter().kind === 'tauri' ? [{ key: 'remote-control' as const, label: 'Remote Control', group: 'Display' }] : []),
+  ...(getAdapter().kind === 'tauri'
+    ? [{ key: 'remote-control' as const, label: 'Remote Control', group: 'Appearance & Displays' }]
+    : []),
   // Content Library is genuinely just the shared library content itself — song categorization
   // and the scripture translations resolved into services, not anything about how a service
   // is structured or staffed (that's Services & Scheduling below).
   { key: 'collections', label: 'Song Collections', group: 'Content Library' },
   { key: 'bible-translations', label: 'Bible Translations', group: 'Content Library' },
-  ...(getAdapter().canva ? [{ key: 'canva' as const, label: 'Canva', group: 'Content Library' }] : []),
+  ...(getAdapter().canva
+    ? [{ key: 'canva' as const, label: 'Canva', group: 'Content Library' }]
+    : []),
   // What a service looks like (its types, its shell/template) and who fills it (roles) — these
   // three were previously scattered across Content Library despite having nothing to do with
   // library content.
-  { key: 'service-types', label: 'Service Types', group: 'Services & Scheduling' },
-  { key: 'roles', label: 'Roles', group: 'Services & Scheduling' },
-  { key: 'service-templates', label: 'Service Templates', group: 'Services & Scheduling' },
+  { key: 'service-types', label: 'Service Types', group: 'Service Planning' },
+  { key: 'roles', label: 'Roles', group: 'Service Planning' },
+  { key: 'service-templates', label: 'Service Templates', group: 'Service Planning' },
 ]
+const sectionIcons: Record<Section, string> = {
+  general: 'mdi-laptop',
+  sync: 'mdi-folder-sync-outline',
+  about: 'mdi-information-outline',
+  appearance: 'mdi-theme-light-dark',
+  branding: 'mdi-palette-swatch-outline',
+  display: 'mdi-monitor-multiple',
+  'font-sizes': 'mdi-format-size',
+  'external-apps': 'mdi-open-in-new',
+  'remote-control': 'mdi-cellphone-link',
+  collections: 'mdi-bookshelf',
+  'bible-translations': 'mdi-book-cross',
+  canva: 'mdi-palette-swatch-outline',
+  'service-types': 'mdi-calendar-multiple',
+  roles: 'mdi-account-group-outline',
+  'service-templates': 'mdi-file-tree-outline',
+}
+const sectionDescriptions: Record<Section, string> = {
+  general: 'Identify this workstation and rerun the guided setup when its role changes.',
+  sync: 'Choose where this computer keeps the shared library and monitor synchronization health.',
+  about: 'Version details, project resources, releases, and support links.',
+  appearance:
+    'Control the operator interface and manage the visual themes used on audience slides.',
+  branding: 'Set the church identity used across reports, themes, and exported documents.',
+  display: 'Assign connected monitors to operator and audience responsibilities.',
+  'font-sizes': 'Set the typography ranges used when content is fitted to audience slides.',
+  'external-apps': 'Configure reliable handoffs to PowerPoint, VLC, and other presentation tools.',
+  'remote-control': 'Pair phones and tablets that can monitor or control the live presentation.',
+  collections: 'Manage the songbooks and collections available when cataloging songs.',
+  'bible-translations': 'Choose scripture editions and configure the services that provide them.',
+  canva: 'Connect this computer to Canva for creating and importing slide designs.',
+  'service-types': 'Manage the service-type choices offered when a service is created.',
+  roles: 'Organize the responsibilities available for service assignments and planning.',
+  'service-templates': 'Define reusable service orders and additional staffing roles.',
+}
+const activeSectionInfo = computed(() => {
+  const section =
+    sections.find((candidate) => candidate.key === activeSection.value) ?? sections[0]!
+  return {
+    ...section,
+    icon: sectionIcons[section.key],
+    description: sectionDescriptions[section.key],
+  }
+})
 const groupedSections = computed(() => {
   const groups: { name: string; items: typeof sections }[] = []
   for (const section of sections) {
@@ -104,6 +172,14 @@ const groupedSections = computed(() => {
   return groups
 })
 
+function selectSettingsSection(section: Section) {
+  if (section === 'service-templates') {
+    void router.push({ name: 'service-template-library' })
+    return
+  }
+  activeSection.value = section
+}
+
 // Registering `watch` after an `await` (inside onMounted's async callback) happens outside
 // Vue's synchronous component-setup tracking, so it isn't auto-stopped on unmount — it would
 // keep reacting to store.librarySettings/machineSettings mutations from *other* views (e.g.
@@ -116,7 +192,9 @@ onMounted(async () => {
   isDirty.value = false
   // Registered after the initial load so it only reacts to actual user edits, not the
   // assignment above — same pattern as Song Editor/Service Workspace.
-  stopSettingsWatch = watch([librarySettings, machineSettings], () => (isDirty.value = true), { deep: true })
+  stopSettingsWatch = watch([librarySettings, machineSettings], () => (isDirty.value = true), {
+    deep: true,
+  })
   // The Save button itself lives in the persistent app bar (App.vue), not a per-page
   // toolbar that would scroll out of view — this view just supplies the action.
   saveHandler.value = saveSettings
@@ -157,6 +235,44 @@ async function saveSettings() {
 // launch (see App.vue, which reads the saved value at startup).
 const theme = useTheme()
 const aboutLogo = computed(() => (theme.global.current.value.dark ? logoDark : logoLight))
+const brandingLogoPickerOpen = ref(false)
+const brandingLogoPreviewUrl = ref<string>()
+const brandingLogoLoading = ref(false)
+
+watch(
+  () => librarySettings.value?.branding.logoMediaId,
+  async (mediaId) => {
+    brandingLogoPreviewUrl.value = undefined
+    if (!mediaId) return
+    brandingLogoLoading.value = true
+    try {
+      const url = await getAdapter().media.getPreviewUrl(mediaId)
+      // Do not let a slower request for the previous logo replace a newer selection.
+      if (librarySettings.value?.branding.logoMediaId === mediaId)
+        brandingLogoPreviewUrl.value = url
+    } catch (error) {
+      console.error('Failed to load branding logo:', error)
+    } finally {
+      if (librarySettings.value?.branding.logoMediaId === mediaId) brandingLogoLoading.value = false
+    }
+  },
+  { immediate: true },
+)
+
+function selectBrandingLogo(mediaId: string) {
+  if (librarySettings.value) librarySettings.value.branding.logoMediaId = mediaId
+}
+
+function removeBrandingLogo() {
+  if (!librarySettings.value) return
+  librarySettings.value.branding.logoMediaId = undefined
+  brandingLogoPreviewUrl.value = undefined
+}
+
+function setBrandingColor(which: 'primaryColor' | 'secondaryColor', event: Event) {
+  if (!librarySettings.value) return
+  librarySettings.value.branding[which] = (event.target as HTMLInputElement).value.toUpperCase()
+}
 const appVersion = ref('')
 void getVersion()
   .then((version) => (appVersion.value = version))
@@ -222,6 +338,9 @@ async function assignRole(displayId: string, role: DisplayRole) {
   await getAdapter().displays?.assignRole(displayId, role)
   const display = displays.value.find((d) => d.id === displayId)
   if (display) display.role = role
+  // Keep the staged settings model aligned with the immediate backend write so a later Save
+  // on this page cannot put the previous display role map back.
+  if (machineSettings.value) machineSettings.value.displayRoles[displayId] = role
 }
 async function identifyDisplay(displayId: string) {
   await getAdapter().displays?.identify(displayId)
@@ -240,9 +359,21 @@ async function loadExternalApps() {
     externalAppProfiles.value = []
   }
 }
-const launchModeOptions: { title: string; value: ExternalAppProfile['launchMode']; hint: string }[] = [
-  { title: 'Already Running', value: 'already-running', hint: 'Operator opens it manually before the service' },
-  { title: 'Launch Automatically', value: 'launch-automatically', hint: 'Worship Studio opens it when the slide is reached' },
+const launchModeOptions: {
+  title: string
+  value: ExternalAppProfile['launchMode']
+  hint: string
+}[] = [
+  {
+    title: 'Already Running',
+    value: 'already-running',
+    hint: 'Operator opens it manually before the service',
+  },
+  {
+    title: 'Launch Automatically',
+    value: 'launch-automatically',
+    hint: 'Worship Studio opens it when the slide is reached',
+  },
 ]
 
 const profileDialogOpen = ref(false)
@@ -250,7 +381,9 @@ const editingProfile = ref<ExternalAppProfile>()
 // Test Launch/Recapture Position both act on the profile as saved on disk (the Rust side
 // looks it up by id) — until Save Profile has run at least once, there's nothing for them to
 // act on yet, so they stay disabled with a hint rather than silently auto-saving.
-const isEditingSavedProfile = computed(() => externalAppProfiles.value.some((p) => p.id === editingProfile.value?.id))
+const isEditingSavedProfile = computed(() =>
+  externalAppProfiles.value.some((p) => p.id === editingProfile.value?.id),
+)
 
 function blankExternalAppProfile(): ExternalAppProfile {
   return {
@@ -290,7 +423,10 @@ async function saveExternalAppProfile() {
   await loadExternalApps()
 }
 async function deleteExternalAppProfile(profile: ExternalAppProfile) {
-  if (!(await confirmDialog.confirm(`Delete the "${profile.name}" external app profile?`, 'Delete'))) return
+  if (
+    !(await confirmDialog.confirm(`Delete the "${profile.name}" external app profile?`, 'Delete'))
+  )
+    return
   await getAdapter().externalApps?.deleteProfile(profile.id)
   await loadExternalApps()
 }
@@ -359,7 +495,10 @@ async function provisionDevice() {
   if (!newDeviceName.value.trim() || provisioning.value) return
   provisioning.value = true
   try {
-    provisionResult.value = await getAdapter().remote?.provisionDevice(newDeviceName.value.trim(), newDeviceAccessLevel.value)
+    provisionResult.value = await getAdapter().remote?.provisionDevice(
+      newDeviceName.value.trim(),
+      newDeviceAccessLevel.value,
+    )
     await loadRemoteDevices()
   } catch (e) {
     console.error('Failed to provision remote device:', e)
@@ -387,7 +526,12 @@ const dataCleared = ref(false)
 /** Deletes every existing song, service, person, and theme — shared by both destructive
  *  actions below (clearing outright, and loading sample data over the top of a clean slate). */
 async function deleteAllLibraryContent() {
-  await Promise.all([songsStore.load(), servicesStore.load(), peopleStore.load(), themesStore.load()])
+  await Promise.all([
+    songsStore.load(),
+    servicesStore.load(),
+    peopleStore.load(),
+    themesStore.load(),
+  ])
   for (const song of songsStore.songs) await songsStore.remove(song.id)
   for (const service of servicesStore.services) await servicesStore.remove(service.id)
   for (const person of peopleStore.people) await peopleStore.remove(person.id)
@@ -401,7 +545,7 @@ async function deleteAllLibraryContent() {
 async function loadSampleData() {
   if (
     !(await confirmDialog.confirm(
-      'This permanently deletes ALL existing songs, services, people, and themes in this library, and replaces them with demo content. This cannot be undone — only use this on a library you don\'t need (e.g. exploring the app for the first time), never on a real church\'s data.',
+      "This permanently deletes ALL existing songs, services, people, and themes in this library, and replaces them with demo content. This cannot be undone — only use this on a library you don't need (e.g. exploring the app for the first time), never on a real church's data.",
       'Delete Everything & Load Sample Data',
     ))
   ) {
@@ -524,13 +668,15 @@ function addApiBibleTranslation() {
   }
   // api.bible abbreviations often carry a trailing edition year (e.g. "NIV11") — strip it for
   // a cleaner picker/live-slide code, falling back to the raw abbreviation if that leaves nothing.
-  const code = entry.abbreviation.replace(/\d+$/, '').toUpperCase() || entry.abbreviation.toUpperCase()
+  const code =
+    entry.abbreviation.replace(/\d+$/, '').toUpperCase() || entry.abbreviation.toUpperCase()
   if (librarySettings.value.apiBibleTranslations.some((t) => t.code === code)) {
     addTranslationError.value = `"${code}" is already used by another translation — remove it first.`
     return
   }
   librarySettings.value.apiBibleTranslations.push({ code, label: entry.name, bibleId: entry.id })
-  if (!librarySettings.value.defaultTranslationCode) librarySettings.value.defaultTranslationCode = code
+  if (!librarySettings.value.defaultTranslationCode)
+    librarySettings.value.defaultTranslationCode = code
   pickedCatalogEntry.value = undefined
 }
 
@@ -562,7 +708,12 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
     { code: 'KJV', name: 'King James Version', removable: false, needsKey: false },
   ]
   if (esvAvailable.value) {
-    entries.push({ code: 'ESV', name: 'English Standard Version', removable: false, needsKey: false })
+    entries.push({
+      code: 'ESV',
+      name: 'English Standard Version',
+      removable: false,
+      needsKey: false,
+    })
   }
   const apiBibleKeyConfigured = !!machineSettings.value?.apiBibleKey
   for (const t of librarySettings.value?.apiBibleTranslations ?? []) {
@@ -570,136 +721,382 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
   }
   return entries
 })
+
+function translationSource(entry: AvailableTranslationEntry): string {
+  if (entry.code === 'KJV') return 'Included with Worship Studio'
+  if (entry.code === 'ESV') return 'Connected through the ESV API'
+  return 'Connected through api.bible'
+}
 </script>
 
 <template>
   <div v-if="librarySettings && machineSettings" class="settings-layout">
-    <div class="settings-nav">
-      <template v-for="group in groupedSections" :key="group.name">
-        <div class="text-overline font-weight-bold text-primary px-3 pt-3">{{ group.name }}</div>
-        <v-list density="compact" nav>
+    <nav class="settings-nav" aria-label="Settings sections">
+      <header class="settings-nav-header">
+        <span>Configure</span>
+        <strong>Worship Studio</strong>
+      </header>
+      <section v-for="group in groupedSections" :key="group.name" class="settings-nav-group">
+        <div class="settings-nav-group-heading">
+          <span>{{ group.name }}</span>
+          <small>{{ group.items.length }}</small>
+        </div>
+        <v-list density="compact" nav class="settings-nav-list">
           <v-list-item
             v-for="section in group.items"
             :key="section.key"
             :active="activeSection === section.key"
-            rounded="lg"
-            @click="activeSection = section.key"
+            rounded="md"
+            class="settings-nav-item"
+            @click="selectSettingsSection(section.key)"
           >
+            <template #prepend>
+              <v-icon :icon="sectionIcons[section.key]" size="18" />
+            </template>
             {{ section.label }}
           </v-list-item>
         </v-list>
-      </template>
-    </div>
+      </section>
+    </nav>
 
-    <div class="settings-content">
+    <div
+      class="settings-content"
+      :class="{
+        'settings-content--wide':
+          activeSection === 'roles' || activeSection === 'service-templates',
+      }"
+    >
+      <SettingsPageHeader
+        :eyebrow="activeSectionInfo.group"
+        :title="activeSectionInfo.label"
+        :description="activeSectionInfo.description"
+        :icon="activeSectionInfo.icon"
+      />
+
       <template v-if="activeSection === 'general'">
-        <h2 class="text-h6 mb-4">General</h2>
-        <v-text-field
-          v-model="machineSettings.thisComputerName"
-          label="This Computer's Name"
-          hint="Shown on files this machine saves, so conflicting edits can be told apart."
-          persistent-hint
-          variant="outlined"
-          density="comfortable"
-          class="mb-6"
-          style="max-width: 360px"
-        />
-        <v-switch v-model="darkMode" label="Dark mode" color="primary" hide-details class="mb-6" />
-
-        <div class="d-flex align-center ga-3 mb-2" style="max-width: 560px">
-          <div class="flex-grow-1">
-            <div class="font-weight-bold">Library Sync Folder</div>
-            <div class="text-caption text-medium-emphasis">{{ machineSettings.libraryPath }}</div>
-          </div>
-          <v-btn variant="flat" color="secondary" :loading="pickingLibraryFolder" @click="pickLibraryFolder">
-            Change…
+        <SettingsPanel
+          title="Workstation identity"
+          description="Used to distinguish this computer when synchronized files conflict."
+          icon="mdi-laptop"
+        >
+          <v-text-field
+            v-model="machineSettings.thisComputerName"
+            label="Computer name"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            class="settings-form-field"
+          />
+        </SettingsPanel>
+        <SettingsPanel
+          title="Guided setup"
+          description="Review the initial library, display, and service configuration."
+          icon="mdi-magic-staff"
+        >
+          <v-btn
+            variant="outlined"
+            color="primary"
+            prepend-icon="mdi-magic-staff"
+            @click="runSetupWizard"
+          >
+            Run Setup Wizard
           </v-btn>
-        </div>
-
-        <v-btn variant="text" color="primary" prepend-icon="mdi-magic-staff" class="mt-4" @click="runSetupWizard">
-          Run First-Time Setup Wizard
-        </v-btn>
-        <br />
-        <v-btn
-          variant="text"
-          color="primary"
-          prepend-icon="mdi-database-import-outline"
-          class="mt-2"
-          :loading="loadingSampleData"
-          @click="loadSampleData"
-        >
-          Load Sample Data
-        </v-btn>
-        <div v-if="sampleDataLoaded" class="text-caption text-medium-emphasis mt-1">
-          Sample songs, services, people, and themes added — check Home to see them.
-        </div>
-        <br />
-        <v-btn
-          variant="text"
-          color="error"
-          prepend-icon="mdi-delete-forever-outline"
-          class="mt-2"
-          :loading="clearingData"
-          @click="clearExistingData"
-        >
-          Clear Existing Data
-        </v-btn>
-        <div v-if="dataCleared" class="text-caption text-medium-emphasis mt-1">
-          All songs, services, people, and themes have been deleted.
-        </div>
+        </SettingsPanel>
       </template>
 
       <template v-else-if="activeSection === 'sync'">
-        <h2 class="text-h6 mb-4">Sync Status</h2>
-        <p class="text-medium-emphasis text-body-2 mb-4">
-          Checks that the library folder is readable, whether Dropbox appears to be running, and for any
-          conflicted-copy files a sync may have left behind.
-        </p>
-        <v-btn variant="outlined" class="mb-4" :loading="refreshingSync" @click="refreshSyncStatus">Check Now</v-btn>
+        <SettingsPanel
+          title="Library folder"
+          description="The shared location containing services, songs, people, themes, and settings."
+          icon="mdi-folder-sync-outline"
+        >
+          <div class="path-setting">
+            <code>{{ machineSettings.libraryPath }}</code>
+            <v-btn variant="outlined" :loading="pickingLibraryFolder" @click="pickLibraryFolder">
+              Change Folder…
+            </v-btn>
+          </div>
+        </SettingsPanel>
 
-        <div v-if="syncStore.status" style="max-width: 480px">
-          <div class="d-flex align-center ga-2 mb-2">
-            <v-icon
-              :icon="syncStore.status.folderReadable ? 'mdi-check-circle' : 'mdi-alert-circle'"
-              :color="syncStore.status.folderReadable ? 'success' : 'error'"
-              size="small"
-            />
-            <span class="text-body-2">Library folder {{ syncStore.status.folderReadable ? 'readable' : 'not readable' }}</span>
-          </div>
-          <div class="d-flex align-center ga-2 mb-2">
-            <v-icon
-              :icon="syncStore.status.syncClientRunning ? 'mdi-check-circle' : 'mdi-alert-circle'"
-              :color="syncStore.status.syncClientRunning ? 'success' : 'warning'"
-              size="small"
-            />
-            <span class="text-body-2">
-              Dropbox {{ syncStore.status.syncClientRunning ? 'appears to be running' : "doesn't appear to be running" }}
-            </span>
-          </div>
-          <div v-if="syncStore.status.lastLibraryChangeAt" class="text-caption text-medium-emphasis mb-4">
-            Last library change: {{ new Date(syncStore.status.lastLibraryChangeAt).toLocaleString() }}
-          </div>
+        <SettingsPanel
+          title="Sync health"
+          description="Folder access, Dropbox availability, and conflicted-copy files."
+          icon="mdi-cloud-check-outline"
+        >
+          <template #action>
+            <v-btn variant="text" size="small" :loading="refreshingSync" @click="refreshSyncStatus">
+              Check Now
+            </v-btn>
+          </template>
 
-          <v-btn
-            v-if="syncStore.status.conflictCount > 0"
-            variant="flat"
-            color="warning"
-            prepend-icon="mdi-alert"
-            to="/sync-conflicts"
-          >
-            Resolve {{ syncStore.status.conflictCount }} Conflict{{ syncStore.status.conflictCount === 1 ? '' : 's' }}
+          <div v-if="syncStore.status" class="status-list">
+            <div class="d-flex align-center ga-2 mb-2">
+              <v-icon
+                :icon="syncStore.status.folderReadable ? 'mdi-check-circle' : 'mdi-alert-circle'"
+                :color="syncStore.status.folderReadable ? 'success' : 'error'"
+                size="small"
+              />
+              <span class="text-body-2"
+                >Library folder
+                {{ syncStore.status.folderReadable ? 'readable' : 'not readable' }}</span
+              >
+            </div>
+            <div class="d-flex align-center ga-2 mb-2">
+              <v-icon
+                :icon="syncStore.status.syncClientRunning ? 'mdi-check-circle' : 'mdi-alert-circle'"
+                :color="syncStore.status.syncClientRunning ? 'success' : 'warning'"
+                size="small"
+              />
+              <span class="text-body-2">
+                Dropbox
+                {{
+                  syncStore.status.syncClientRunning
+                    ? 'appears to be running'
+                    : "doesn't appear to be running"
+                }}
+              </span>
+            </div>
+            <div
+              v-if="syncStore.status.lastLibraryChangeAt"
+              class="text-caption text-medium-emphasis mb-4"
+            >
+              Last library change:
+              {{ new Date(syncStore.status.lastLibraryChangeAt).toLocaleString() }}
+            </div>
+
+            <v-btn
+              v-if="syncStore.status.conflictCount > 0"
+              variant="flat"
+              color="warning"
+              prepend-icon="mdi-alert"
+              to="/sync-conflicts"
+            >
+              Resolve {{ syncStore.status.conflictCount }} Conflict{{
+                syncStore.status.conflictCount === 1 ? '' : 's'
+              }}
+            </v-btn>
+            <p v-else class="text-medium-emphasis text-body-2">No sync conflicts right now.</p>
+          </div>
+        </SettingsPanel>
+
+        <SettingsPanel
+          title="Data tools"
+          description="Demo and maintenance actions for the selected library folder."
+          icon="mdi-database-cog-outline"
+          tone="danger"
+        >
+          <div class="d-flex flex-wrap ga-2">
+            <v-btn
+              variant="outlined"
+              color="primary"
+              prepend-icon="mdi-database-import-outline"
+              :loading="loadingSampleData"
+              @click="loadSampleData"
+            >
+              Load Sample Data
+            </v-btn>
+            <v-btn
+              variant="outlined"
+              color="error"
+              prepend-icon="mdi-delete-forever-outline"
+              :loading="clearingData"
+              @click="clearExistingData"
+            >
+              Clear Existing Data
+            </v-btn>
+          </div>
+          <div v-if="sampleDataLoaded" class="text-caption text-medium-emphasis mt-2">
+            Sample songs, services, people, and themes added — check Home to see them.
+          </div>
+          <div v-if="dataCleared" class="text-caption text-medium-emphasis mt-2">
+            All songs, services, people, and themes have been deleted.
+          </div>
+        </SettingsPanel>
+      </template>
+
+      <template v-else-if="activeSection === 'appearance'">
+        <SettingsPanel
+          title="Operator interface"
+          description="Choose how Worship Studio looks on this computer."
+          icon="mdi-theme-light-dark"
+        >
+          <div class="settings-toggle-row">
+            <div>
+              <strong>Dark mode</strong>
+              <p>Use a darker interface that is easier on the eyes in the booth.</p>
+            </div>
+            <v-switch v-model="darkMode" color="primary" hide-details aria-label="Dark mode" />
+          </div>
+        </SettingsPanel>
+
+        <SettingsPanel
+          title="Audience visuals"
+          description="Manage the backgrounds, typography, and colors used for projected content."
+          icon="mdi-palette-outline"
+        >
+          <v-btn variant="outlined" append-icon="mdi-arrow-right" to="/library/themes">
+            Open Theme Editor
           </v-btn>
-          <p v-else class="text-medium-emphasis text-body-2">No sync conflicts right now.</p>
-        </div>
+        </SettingsPanel>
+      </template>
+
+      <template v-else-if="activeSection === 'branding'">
+        <SettingsPanel
+          title="Church identity"
+          description="The name used on reports, bulletins, and exported documents."
+          icon="mdi-church-outline"
+        >
+          <v-text-field
+            v-model="librarySettings.branding.churchName"
+            label="Church or ministry name"
+            placeholder="First Community Church"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            class="branding-name-field"
+          />
+        </SettingsPanel>
+
+        <SettingsPanel
+          title="Logo"
+          description="Choose a synced image so the logo is available on every computer using this library."
+          icon="mdi-image-outline"
+        >
+          <div class="branding-logo-layout">
+            <div class="branding-logo-preview">
+              <v-progress-circular
+                v-if="brandingLogoLoading"
+                indeterminate
+                color="primary"
+                size="28"
+              />
+              <img
+                v-else-if="brandingLogoPreviewUrl"
+                :src="brandingLogoPreviewUrl"
+                :alt="`${librarySettings.branding.churchName || 'Church'} logo`"
+              />
+              <template v-else>
+                <v-icon icon="mdi-image-outline" size="31" />
+                <span>{{
+                  librarySettings.branding.logoMediaId
+                    ? 'Logo preview unavailable'
+                    : 'No logo selected'
+                }}</span>
+              </template>
+            </div>
+            <div class="branding-logo-copy">
+              <strong>Church logo</strong>
+              <p>
+                A transparent PNG works best. The original image remains in the Media Library and
+                can be reused elsewhere.
+              </p>
+              <div>
+                <v-btn
+                  variant="flat"
+                  color="primary"
+                  prepend-icon="mdi-image-search-outline"
+                  @click="brandingLogoPickerOpen = true"
+                >
+                  {{ librarySettings.branding.logoMediaId ? 'Change Logo' : 'Choose Logo' }}
+                </v-btn>
+                <v-btn
+                  v-if="librarySettings.branding.logoMediaId"
+                  variant="text"
+                  color="error"
+                  prepend-icon="mdi-close"
+                  @click="removeBrandingLogo"
+                >
+                  Remove Logo
+                </v-btn>
+              </div>
+            </div>
+          </div>
+        </SettingsPanel>
+
+        <SettingsPanel
+          title="Brand colors"
+          description="Reusable colors for report accents and audience themes."
+          icon="mdi-palette-outline"
+        >
+          <div class="branding-color-grid">
+            <label class="branding-color-field">
+              <span>Primary color</span>
+              <div>
+                <input
+                  type="color"
+                  :value="librarySettings.branding.primaryColor"
+                  aria-label="Choose primary brand color"
+                  @input="setBrandingColor('primaryColor', $event)"
+                />
+                <v-text-field
+                  v-model="librarySettings.branding.primaryColor"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </div>
+              <small>Headings and primary accents</small>
+            </label>
+            <label class="branding-color-field">
+              <span>Secondary color</span>
+              <div>
+                <input
+                  type="color"
+                  :value="librarySettings.branding.secondaryColor"
+                  aria-label="Choose secondary brand color"
+                  @input="setBrandingColor('secondaryColor', $event)"
+                />
+                <v-text-field
+                  v-model="librarySettings.branding.secondaryColor"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </div>
+              <small>Highlights and supporting accents</small>
+            </label>
+          </div>
+        </SettingsPanel>
+
+        <SettingsPanel
+          title="Preview"
+          description="A simplified example of how the identity appears on generated documents."
+          icon="mdi-file-eye-outline"
+        >
+          <div
+            class="branding-document-preview"
+            :style="{
+              '--preview-primary': librarySettings.branding.primaryColor,
+              '--preview-secondary': librarySettings.branding.secondaryColor,
+            }"
+          >
+            <header>
+              <span class="branding-preview-logo">
+                <img v-if="brandingLogoPreviewUrl" :src="brandingLogoPreviewUrl" alt="" />
+                <v-icon v-else icon="mdi-church-outline" size="22" />
+              </span>
+              <div>
+                <small>Worship Planning Report</small>
+                <strong>{{ librarySettings.branding.churchName || 'Your Church Name' }}</strong>
+              </div>
+            </header>
+            <div class="branding-preview-rule" />
+            <section>
+              <span />
+              <span />
+              <span />
+            </section>
+          </div>
+        </SettingsPanel>
       </template>
 
       <template v-else-if="activeSection === 'about'">
-        <h2 class="text-h6 mb-4">About Worship Studio</h2>
         <div class="about-card">
           <img :src="aboutLogo" alt="Worship Studio" class="about-logo" />
           <div class="about-version">Version {{ appVersion || '…' }}</div>
           <p class="about-description">
-            Worship planning and presentation software built for calm, confident operation during a service.
+            Worship planning and presentation software built for calm, confident operation during a
+            service.
           </p>
 
           <div class="about-links">
@@ -722,69 +1119,132 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
       </template>
 
       <template v-else-if="activeSection === 'display'">
-        <h2 class="text-h6 mb-4">Display Setup</h2>
-        <p class="text-medium-emphasis text-body-2 mb-4">
-          Assign each connected display a role. Changes here apply immediately.
-        </p>
-        <v-alert v-if="needsSingleMonitorFallback(displays)" type="info" variant="tonal" class="mb-4">
-          Only one display detected — the operator view and audience output can't be shown on separate
-          screens yet. Everything uses this display until a second monitor is connected.
-        </v-alert>
-        <p v-if="displays.length === 0" class="text-medium-emphasis text-body-2">No displays detected.</p>
-        <div v-for="display in displays" :key="display.id" class="d-flex align-center ga-3 mb-3" style="max-width: 560px">
-          <div class="flex-grow-1">
-            <div class="font-weight-bold">{{ display.name }}</div>
-            <div class="text-caption text-medium-emphasis">{{ display.resolution }}</div>
+        <SettingsPanel
+          title="Connected displays"
+          description="Assign what each monitor shows. Changes take effect immediately."
+          icon="mdi-monitor-multiple"
+        >
+          <v-alert
+            v-if="needsSingleMonitorFallback(displays)"
+            type="info"
+            variant="tonal"
+            class="mb-4"
+          >
+            Only one display detected — the operator view and audience output can't be shown on
+            separate screens yet. Everything uses this display until a second monitor is connected.
+          </v-alert>
+          <div v-if="displays.length === 0" class="settings-empty">
+            <v-icon icon="mdi-monitor-off" size="28" />
+            <span>No displays detected.</span>
           </div>
-          <v-select
-            :model-value="display.role"
-            :items="roleOptions"
-            label="Role"
-            variant="outlined"
-            density="compact"
-            style="width: 220px"
-            hide-details
-            :disabled="needsSingleMonitorFallback(displays)"
-            @update:model-value="(role: DisplayRole) => assignRole(display.id, role)"
-          />
-          <v-btn variant="flat" color="secondary" @click="identifyDisplay(display.id)">Identify</v-btn>
-        </div>
+          <div v-for="display in displays" :key="display.id" class="display-setting-row">
+            <div class="display-setting-copy">
+              <strong>{{ display.name }}</strong>
+              <span>{{ display.resolution }}</span>
+            </div>
+            <v-select
+              :model-value="display.role"
+              :items="roleOptions"
+              label="Role"
+              variant="outlined"
+              density="compact"
+              hide-details
+              :disabled="needsSingleMonitorFallback(displays)"
+              @update:model-value="(role: DisplayRole) => assignRole(display.id, role)"
+            />
+            <v-btn variant="outlined" color="secondary" @click="identifyDisplay(display.id)">
+              Identify
+            </v-btn>
+          </div>
+        </SettingsPanel>
       </template>
 
       <template v-else-if="activeSection === 'external-apps'">
-        <h2 class="text-h6 mb-4">External Apps</h2>
-        <p class="text-medium-emphasis text-body-2 mb-4">
-          Profiles for handing a service item off to another app (PowerPoint, VLC, etc.) — focusing its window,
-          remembering where it sits, and optionally forwarding Next/Prev keystrokes.
-        </p>
-
-        <v-list v-if="externalAppProfiles.length > 0" density="comfortable" class="mb-4" style="max-width: 560px">
-          <v-list-item v-for="profile in externalAppProfiles" :key="profile.id" rounded="lg" class="mb-1" border>
-            <template #prepend>
-              <v-icon icon="mdi-application-outline" class="mr-3" />
-            </template>
-            <v-list-item-title class="font-weight-bold">{{ profile.name || '(Unnamed)' }}</v-list-item-title>
-            <v-list-item-subtitle>
-              {{ profile.launchMode === 'already-running' ? 'Already Running' : 'Launch Automatically' }}
-            </v-list-item-subtitle>
-            <template #append>
-              <v-btn icon="mdi-pencil-outline" variant="text" size="small" @click.stop="openEditExternalAppProfile(profile)" />
-              <v-btn icon="mdi-trash-can-outline" variant="text" size="small" color="error" @click.stop="deleteExternalAppProfile(profile)" />
-            </template>
-          </v-list-item>
-        </v-list>
-        <p v-else class="text-medium-emphasis text-body-2 mb-4">No external app profiles configured yet.</p>
-
-        <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="openNewExternalAppProfile">Add Profile</v-btn>
+        <SettingsPanel
+          title="App profiles"
+          description="Define how presentation files open and how Worship Studio controls their windows."
+          icon="mdi-application-cog-outline"
+        >
+          <template #action>
+            <v-btn
+              variant="flat"
+              color="primary"
+              prepend-icon="mdi-plus"
+              @click="openNewExternalAppProfile"
+            >
+              Add Profile
+            </v-btn>
+          </template>
+          <v-list v-if="externalAppProfiles.length > 0" density="comfortable" class="settings-list">
+            <v-list-item
+              v-for="profile in externalAppProfiles"
+              :key="profile.id"
+              rounded="lg"
+              class="mb-1"
+              border
+            >
+              <template #prepend>
+                <v-icon icon="mdi-application-outline" class="mr-3" />
+              </template>
+              <v-list-item-title class="font-weight-bold">{{
+                profile.name || '(Unnamed)'
+              }}</v-list-item-title>
+              <v-list-item-subtitle>
+                {{
+                  profile.launchMode === 'already-running'
+                    ? 'Already Running'
+                    : 'Launch Automatically'
+                }}
+              </v-list-item-subtitle>
+              <template #append>
+                <v-btn
+                  icon="mdi-pencil-outline"
+                  variant="text"
+                  size="small"
+                  @click.stop="openEditExternalAppProfile(profile)"
+                />
+                <v-btn
+                  icon="mdi-trash-can-outline"
+                  variant="text"
+                  size="small"
+                  color="error"
+                  @click.stop="deleteExternalAppProfile(profile)"
+                />
+              </template>
+            </v-list-item>
+          </v-list>
+          <div v-else class="settings-empty">
+            <v-icon icon="mdi-application-outline" size="28" />
+            <span>No external app profiles configured yet.</span>
+          </div>
+        </SettingsPanel>
 
         <v-dialog v-model="profileDialogOpen" max-width="640">
           <v-card v-if="editingProfile">
-            <v-card-title>External App Profile{{ editingProfile.name ? ` — ${editingProfile.name}` : '' }}</v-card-title>
+            <v-card-title
+              >External App Profile{{
+                editingProfile.name ? ` — ${editingProfile.name}` : ''
+              }}</v-card-title
+            >
             <v-card-text>
-              <v-text-field v-model="editingProfile.name" label="Name" variant="outlined" density="comfortable" class="mb-4" />
+              <v-text-field
+                v-model="editingProfile.name"
+                label="Name"
+                variant="outlined"
+                density="comfortable"
+                class="mb-4"
+              />
 
-              <div class="text-caption text-medium-emphasis font-weight-bold text-uppercase mb-2">Launch Mode</div>
-              <v-btn-toggle v-model="editingProfile.launchMode" mandatory density="comfortable" class="mb-4 d-flex" style="width: 100%">
+              <div class="text-caption text-medium-emphasis font-weight-bold text-uppercase mb-2">
+                Launch Mode
+              </div>
+              <v-btn-toggle
+                v-model="editingProfile.launchMode"
+                mandatory
+                density="comfortable"
+                class="mb-4 d-flex"
+                style="width: 100%"
+              >
                 <v-btn
                   v-for="option in launchModeOptions"
                   :key="option.value"
@@ -794,7 +1254,9 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
                 >
                   <div class="text-left py-1">
                     <div class="text-body-2 font-weight-bold">{{ option.title }}</div>
-                    <div class="text-caption text-medium-emphasis" style="white-space: normal">{{ option.hint }}</div>
+                    <div class="text-caption text-medium-emphasis" style="white-space: normal">
+                      {{ option.hint }}
+                    </div>
                   </div>
                 </v-btn>
               </v-btn-toggle>
@@ -824,13 +1286,19 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
                   class="mb-1"
                 />
                 <div class="param-preview mb-3">
-                  Will run: {{ previewExternalAppCommand(editingProfile.executablePath, editingProfile.parameterFormat) }}
+                  Will run:
+                  {{
+                    previewExternalAppCommand(
+                      editingProfile.executablePath,
+                      editingProfile.parameterFormat,
+                    )
+                  }}
                 </div>
 
                 <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
-                  Worship Studio checks the executable and chosen file both exist when this item is added to a
-                  service — not just when the slide is reached — so a missing file is caught during prep, not
-                  mid-service.
+                  Worship Studio checks the executable and chosen file both exist when this item is
+                  added to a service — not just when the slide is reached — so a missing file is
+                  caught during prep, not mid-service.
                 </v-alert>
               </template>
 
@@ -845,7 +1313,9 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
                 >
                   Test Launch
                 </v-btn>
-                <span v-if="!isEditingSavedProfile" class="text-caption text-medium-emphasis ml-2">Save this profile first</span>
+                <span v-if="!isEditingSavedProfile" class="text-caption text-medium-emphasis ml-2"
+                  >Save this profile first</span
+                >
               </div>
               <v-alert
                 v-if="testLaunchResult"
@@ -863,10 +1333,15 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
                 <div>
                   <div class="font-weight-bold">Basic Remote Controls</div>
                   <div class="text-caption text-medium-emphasis">
-                    Let Next/Prev and the remote control also drive this app, if it supports simple commands
+                    Let Next/Prev and the remote control also drive this app, if it supports simple
+                    commands
                   </div>
                 </div>
-                <v-switch v-model="editingProfile.remoteControlsEnabled" color="primary" hide-details />
+                <v-switch
+                  v-model="editingProfile.remoteControlsEnabled"
+                  color="primary"
+                  hide-details
+                />
               </div>
               <template v-if="editingProfile.remoteControlsEnabled">
                 <v-text-field
@@ -886,8 +1361,8 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
                   class="mb-1"
                 />
                 <div class="text-caption text-medium-emphasis mb-2">
-                  Sent as a keystroke to the app's window when Next/Prev is pressed while this item is live. Leave
-                  blank if the app doesn't support this.
+                  Sent as a keystroke to the app's window when Next/Prev is pressed while this item
+                  is live. Leave blank if the app doesn't support this.
                 </div>
               </template>
 
@@ -919,36 +1394,68 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
             <v-card-actions>
               <v-spacer />
               <v-btn variant="text" @click="profileDialogOpen = false">Cancel</v-btn>
-              <v-btn variant="flat" color="primary" @click="saveExternalAppProfile">Save Profile</v-btn>
+              <v-btn variant="flat" color="primary" @click="saveExternalAppProfile"
+                >Save Profile</v-btn
+              >
             </v-card-actions>
           </v-card>
         </v-dialog>
       </template>
 
       <template v-else-if="activeSection === 'remote-control'">
-        <h2 class="text-h6 mb-4">Remote Control</h2>
-        <p class="text-medium-emphasis text-body-2 mb-4">
-          Control the live presentation from a phone or tablet on the same network. Pair a device once — it
-          stays authorized until revoked here.
-        </p>
-        <p v-if="remoteServerInfo && !remoteServerInfo.lanIp" class="text-warning text-body-2 mb-4">
-          Couldn't detect a network address for this computer — check that it's connected to the church's
-          network, then reopen this screen.
-        </p>
-
-        <v-list v-if="remoteDevices.length > 0" density="comfortable" class="mb-4" style="max-width: 560px">
-          <v-list-item v-for="device in remoteDevices" :key="device.id" rounded="lg" class="mb-1" border>
-            <template #prepend><v-icon icon="mdi-cellphone" class="mr-3" /></template>
-            <v-list-item-title class="font-weight-bold">{{ device.name }}</v-list-item-title>
-            <v-list-item-subtitle>{{ accessLevelLabel(device.accessLevel) }}</v-list-item-subtitle>
-            <template #append>
-              <v-btn icon="mdi-trash-can-outline" variant="text" size="small" color="error" @click.stop="revokeRemoteDevice(device)" />
-            </template>
-          </v-list-item>
-        </v-list>
-        <p v-else class="text-medium-emphasis text-body-2 mb-4">No devices paired yet.</p>
-
-        <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="openProvisionDialog">Pair a Device</v-btn>
+        <SettingsPanel
+          title="Paired devices"
+          description="Phones and tablets authorized to view or control the current presentation."
+          icon="mdi-cellphone-link"
+        >
+          <template #action>
+            <v-btn
+              variant="flat"
+              color="primary"
+              prepend-icon="mdi-plus"
+              @click="openProvisionDialog"
+            >
+              Pair a Device
+            </v-btn>
+          </template>
+          <v-alert
+            v-if="remoteServerInfo && !remoteServerInfo.lanIp"
+            type="warning"
+            variant="tonal"
+            class="mb-4"
+          >
+            Couldn't detect a network address for this computer — check that it's connected to the
+            church's network, then reopen this screen.
+          </v-alert>
+          <v-list v-if="remoteDevices.length > 0" density="comfortable" class="settings-list">
+            <v-list-item
+              v-for="device in remoteDevices"
+              :key="device.id"
+              rounded="lg"
+              class="mb-1"
+              border
+            >
+              <template #prepend><v-icon icon="mdi-cellphone" class="mr-3" /></template>
+              <v-list-item-title class="font-weight-bold">{{ device.name }}</v-list-item-title>
+              <v-list-item-subtitle>{{
+                accessLevelLabel(device.accessLevel)
+              }}</v-list-item-subtitle>
+              <template #append>
+                <v-btn
+                  icon="mdi-trash-can-outline"
+                  variant="text"
+                  size="small"
+                  color="error"
+                  @click.stop="revokeRemoteDevice(device)"
+                />
+              </template>
+            </v-list-item>
+          </v-list>
+          <div v-else class="settings-empty">
+            <v-icon icon="mdi-cellphone-off" size="28" />
+            <span>No devices paired yet.</span>
+          </div>
+        </SettingsPanel>
 
         <v-dialog v-model="provisionDialogOpen" max-width="480">
           <v-card>
@@ -972,19 +1479,31 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
                   density="comfortable"
                 />
                 <div class="text-caption text-medium-emphasis mb-2">
-                  <div><strong>View Only</strong> — mirrors the presentation screen, no controls.</div>
+                  <div>
+                    <strong>View Only</strong> — mirrors the presentation screen, no controls.
+                  </div>
                   <div><strong>Advance Only</strong> — mirror plus Previous/Next.</div>
-                  <div><strong>Full Control</strong> — mirror, Previous/Next, and Start/Stop Presenting.</div>
+                  <div>
+                    <strong>Full Control</strong> — mirror, Previous/Next, and Start/Stop
+                    Presenting.
+                  </div>
                 </div>
               </template>
               <template v-else>
                 <div class="text-center mb-3">
-                  <img :src="provisionResult.qrDataUrl" alt="Pairing QR code" style="width: 220px; height: 220px" />
+                  <img
+                    :src="provisionResult.qrDataUrl"
+                    alt="Pairing QR code"
+                    style="width: 220px; height: 220px"
+                  />
                 </div>
                 <p class="text-body-2 text-center mb-2">
                   Scan this with "{{ newDeviceName }}"'s camera, or open this link on it directly:
                 </p>
-                <p class="text-caption text-medium-emphasis text-center" style="word-break: break-all">
+                <p
+                  class="text-caption text-medium-emphasis text-center"
+                  style="word-break: break-all"
+                >
                   {{ provisionResult.pairingUrl }}
                 </p>
               </template>
@@ -993,330 +1512,617 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
               <v-spacer />
               <template v-if="!provisionResult">
                 <v-btn variant="text" @click="provisionDialogOpen = false">Cancel</v-btn>
-                <v-btn variant="flat" color="primary" :loading="provisioning" :disabled="!newDeviceName.trim()" @click="provisionDevice">
+                <v-btn
+                  variant="flat"
+                  color="primary"
+                  :loading="provisioning"
+                  :disabled="!newDeviceName.trim()"
+                  @click="provisionDevice"
+                >
                   Generate QR Code
                 </v-btn>
               </template>
-              <v-btn v-else variant="flat" color="primary" @click="provisionDialogOpen = false">Done</v-btn>
+              <v-btn v-else variant="flat" color="primary" @click="provisionDialogOpen = false"
+                >Done</v-btn
+              >
             </v-card-actions>
           </v-card>
         </v-dialog>
       </template>
 
       <template v-else-if="activeSection === 'service-types'">
-        <h2 class="text-h6 mb-4">Service Types</h2>
-        <p class="text-medium-emphasis text-body-2 mb-4">
-          The choices offered on Create Service's Type field.
-        </p>
-        <ManagedStringList v-model="librarySettings.serviceTypes" add-label="Add a service type…" />
+        <SettingsPanel
+          title="Available service types"
+          description="These choices appear when creating a service and assigning template defaults."
+          icon="mdi-calendar-multiple"
+        >
+          <ManagedStringList
+            v-model="librarySettings.serviceTypes"
+            add-label="Add a service type…"
+          />
+        </SettingsPanel>
       </template>
 
       <template v-else-if="activeSection === 'collections'">
-        <h2 class="text-h6 mb-4">Song Collections</h2>
-        <p class="text-medium-emphasis text-body-2 mb-4">
-          Named songbooks/collections (e.g. "Hymns of Grace") a song can belong to, with its own number.
-        </p>
-        <ManagedStringList v-model="librarySettings.collections" add-label="Add a collection…" />
+        <SettingsPanel
+          title="Available collections"
+          description="Songbooks and catalogs a song can belong to, each with its own number."
+          icon="mdi-bookshelf"
+        >
+          <ManagedStringList v-model="librarySettings.collections" add-label="Add a collection…" />
+        </SettingsPanel>
       </template>
 
       <template v-else-if="activeSection === 'bible-translations'">
-        <h2 class="text-h6 mb-4">Bible Translations</h2>
-        <p class="text-medium-emphasis text-body-2 mb-4">
-          King James Version is bundled and always available. ESV and api.bible editions (e.g. NIV) each
-          need a free API key, entered below — keys are per-machine and never sync, so this machine's key
-          must be entered here even if another machine already has one.
-        </p>
-
-        <h3 class="text-subtitle-2 mb-2">ESV — api.esv.org</h3>
-        <v-text-field
-          v-model="machineSettings.esvApiKey"
-          label="ESV API key"
-          type="password"
-          variant="outlined"
-          density="compact"
-          autocomplete="off"
-          hint="Free account at api.esv.org (Bible Translations settings)."
-          persistent-hint
-          style="max-width: 420px"
-          class="mb-2"
-        />
-        <v-alert v-if="esvAvailable" type="success" variant="tonal" density="compact" class="mb-6" style="max-width: 560px">
-          {{ ESV_COPYRIGHT_NOTICE }}
-        </v-alert>
-        <v-alert
-          v-else-if="machineSettings.esvApiKey"
-          type="warning"
-          variant="tonal"
-          density="compact"
-          class="mb-6"
-          style="max-width: 560px"
+        <SettingsPanel
+          title="English Standard Version"
+          description="Connect an api.esv.org account to make the ESV available on this computer."
+          icon="mdi-key-outline"
         >
-          Save Settings to verify this key.
-        </v-alert>
-        <p v-else class="text-medium-emphasis text-body-2 mb-6">Not configured on this machine.</p>
-
-        <h3 class="text-subtitle-2 mb-2">api.bible — NIV and other editions</h3>
-        <v-text-field
-          v-model="machineSettings.apiBibleKey"
-          label="api.bible API key"
-          type="password"
-          variant="outlined"
-          density="compact"
-          autocomplete="off"
-          hint="Free account at scripture.api.bible."
-          persistent-hint
-          style="max-width: 420px"
-          class="mb-2"
-        />
-        <div v-if="machineSettings.apiBibleKey" class="mb-6">
-          <div class="d-flex flex-wrap align-end ga-3 mb-2">
-            <v-autocomplete
-              v-model="pickedCatalogEntry"
-              :items="apiBibleCatalog"
-              :loading="loadingApiBibleCatalog"
-              :item-title="catalogItemTitle"
-              item-value="id"
-              return-object
-              label="Add a translation…"
-              variant="outlined"
-              density="compact"
-              style="width: 380px"
-              @update:focused="(focused: boolean) => focused && loadApiBibleCatalog()"
-            />
-            <v-btn
-              variant="flat"
-              color="primary"
-              prepend-icon="mdi-plus"
-              :disabled="!pickedCatalogEntry"
-              @click="addApiBibleTranslation"
-            >
-              Add
-            </v-btn>
-          </div>
-          <p v-if="addTranslationError" class="text-caption text-error">{{ addTranslationError }}</p>
-        </div>
-        <p v-else class="text-medium-emphasis text-body-2 mb-6">Not configured on this machine.</p>
-
-        <h3 class="text-subtitle-2 mb-2">Available Translations</h3>
-        <p class="text-medium-emphasis text-body-2 mb-4">
-          The default is used unless a passage is switched to another translation live.
-        </p>
-        <v-radio-group v-model="librarySettings.defaultTranslationCode" hide-details class="mb-4">
-          <div
-            v-for="entry in availableTranslationEntries"
-            :key="entry.code"
-            class="d-flex align-center ga-3 mb-2"
-            style="max-width: 560px"
+          <v-text-field
+            v-model="machineSettings.esvApiKey"
+            label="ESV API key"
+            type="password"
+            variant="outlined"
+            density="compact"
+            autocomplete="off"
+            hint="Free account at api.esv.org."
+            persistent-hint
+            class="settings-form-field mb-3"
+          />
+          <v-alert v-if="esvAvailable" type="success" variant="tonal" density="compact">
+            {{ ESV_COPYRIGHT_NOTICE }}
+          </v-alert>
+          <v-alert
+            v-else-if="machineSettings.esvApiKey"
+            type="warning"
+            variant="tonal"
+            density="compact"
           >
-            <v-radio :value="entry.code" />
-            <div class="flex-grow-1">
-              <div class="font-weight-bold">{{ entry.name }} ({{ entry.code }})</div>
-              <div v-if="entry.needsKey" class="text-caption text-warning">Needs the api.bible key above</div>
+            Save Settings to verify this key.
+          </v-alert>
+          <p v-else class="settings-muted">Not configured on this machine.</p>
+        </SettingsPanel>
+
+        <SettingsPanel
+          title="Additional Bible editions"
+          description="Use api.bible to add NIV and other licensed translations to the library."
+          icon="mdi-book-plus-outline"
+        >
+          <v-text-field
+            v-model="machineSettings.apiBibleKey"
+            label="api.bible API key"
+            type="password"
+            variant="outlined"
+            density="compact"
+            autocomplete="off"
+            hint="Free account at scripture.api.bible."
+            persistent-hint
+            class="settings-form-field mb-3"
+          />
+          <div v-if="machineSettings.apiBibleKey">
+            <div class="translation-picker">
+              <v-autocomplete
+                v-model="pickedCatalogEntry"
+                :items="apiBibleCatalog"
+                :loading="loadingApiBibleCatalog"
+                :item-title="catalogItemTitle"
+                item-value="id"
+                return-object
+                label="Add a translation…"
+                variant="outlined"
+                density="compact"
+                hide-details
+                @update:focused="(focused: boolean) => focused && loadApiBibleCatalog()"
+              />
+              <v-btn
+                variant="flat"
+                color="primary"
+                prepend-icon="mdi-plus"
+                :disabled="!pickedCatalogEntry"
+                @click="addApiBibleTranslation"
+              >
+                Add
+              </v-btn>
             </div>
-            <v-btn
-              v-if="entry.removable"
-              icon="mdi-trash-can-outline"
-              variant="flat"
-              color="error"
-              size="small"
-              @click="removeApiBibleTranslation(entry.code)"
-            />
+            <p v-if="addTranslationError" class="text-caption text-error mt-2">
+              {{ addTranslationError }}
+            </p>
           </div>
-        </v-radio-group>
+          <p v-else class="settings-muted">Not configured on this machine.</p>
+        </SettingsPanel>
+
+        <SettingsPanel
+          title="Available translations"
+          description="Choose the default used for new passages. Operators can still switch translations live."
+          icon="mdi-book-open-page-variant-outline"
+        >
+          <div class="translation-grid" role="radiogroup" aria-label="Default Bible translation">
+            <article
+              v-for="entry in availableTranslationEntries"
+              :key="entry.code"
+              class="translation-card"
+              :class="{
+                'translation-card--selected': librarySettings.defaultTranslationCode === entry.code,
+              }"
+              role="radio"
+              :aria-checked="librarySettings.defaultTranslationCode === entry.code"
+              tabindex="0"
+              @click="librarySettings.defaultTranslationCode = entry.code"
+              @keydown.enter="librarySettings.defaultTranslationCode = entry.code"
+              @keydown.space.prevent="librarySettings.defaultTranslationCode = entry.code"
+            >
+              <header>
+                <span class="translation-code">{{ entry.code }}</span>
+                <v-icon
+                  v-if="librarySettings.defaultTranslationCode === entry.code"
+                  icon="mdi-check-circle"
+                  color="primary"
+                  size="19"
+                />
+              </header>
+              <h3>{{ entry.name }}</h3>
+              <p>{{ translationSource(entry) }}</p>
+              <footer>
+                <span v-if="entry.needsKey" class="translation-warning">
+                  <v-icon icon="mdi-alert-circle-outline" size="15" /> API key needed
+                </span>
+                <span
+                  v-else-if="librarySettings.defaultTranslationCode === entry.code"
+                  class="translation-default"
+                >
+                  <v-icon icon="mdi-check-circle" size="15" /> Default
+                </span>
+                <span v-else class="translation-available">Available</span>
+                <span class="translation-card-actions">
+                  <span
+                    v-if="librarySettings.defaultTranslationCode !== entry.code"
+                    class="translation-set-default"
+                    >Make default</span
+                  >
+                  <v-btn
+                    v-if="entry.removable"
+                    icon="mdi-delete-outline"
+                    variant="text"
+                    color="error"
+                    size="small"
+                    class="translation-remove"
+                    :aria-label="`Remove ${entry.name}`"
+                    @click.stop="removeApiBibleTranslation(entry.code)"
+                  />
+                </span>
+              </footer>
+            </article>
+          </div>
+        </SettingsPanel>
       </template>
 
       <template v-else-if="activeSection === 'canva'">
-        <h2 class="text-h6 mb-4">Canva</h2>
-        <p class="text-medium-emphasis text-body-2 mb-4" style="max-width: 680px">
-          Optional local integration for creating and editing slide designs in Canva. These
-          credentials stay on this computer and never sync. Canva tools remain completely hidden
-          in the slide editor until both values are saved.
-        </p>
-        <v-alert type="info" variant="tonal" density="compact" class="mb-4" style="max-width: 680px">
-          In the Canva Developer Portal, authorize
-          <code>http://127.0.0.1:47823/canva/callback</code> and enable
-          <code>design:meta:read</code>, <code>design:content:read</code>, and
-          <code>design:content:write</code>.
-        </v-alert>
-        <v-text-field
-          v-model="machineSettings.canvaClientId"
-          label="Canva client ID"
-          variant="outlined"
-          density="compact"
-          autocomplete="off"
-          style="max-width: 520px"
-          class="mb-2"
-        />
-        <v-text-field
-          v-model="machineSettings.canvaClientSecret"
-          label="Canva client secret"
-          type="password"
-          variant="outlined"
-          density="compact"
-          autocomplete="off"
-          style="max-width: 520px"
-          hint="Stored only in this machine's app-data settings."
-          persistent-hint
-        />
+        <SettingsPanel
+          title="Connection credentials"
+          description="Credentials stay on this computer and never sync. Canva tools appear after both values are saved."
+          icon="mdi-connection"
+        >
+          <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+            In the Canva Developer Portal, authorize
+            <code>http://127.0.0.1:47823/canva/callback</code> and enable
+            <code>design:meta:read</code>, <code>design:content:read</code>, and
+            <code>design:content:write</code>.
+          </v-alert>
+          <v-text-field
+            v-model="machineSettings.canvaClientId"
+            label="Canva client ID"
+            variant="outlined"
+            density="compact"
+            autocomplete="off"
+            class="settings-form-field mb-2"
+          />
+          <v-text-field
+            v-model="machineSettings.canvaClientSecret"
+            label="Canva client secret"
+            type="password"
+            variant="outlined"
+            density="compact"
+            autocomplete="off"
+            class="settings-form-field"
+            hint="Stored only in this machine's app-data settings."
+            persistent-hint
+          />
+        </SettingsPanel>
       </template>
 
       <template v-else-if="activeSection === 'font-sizes'">
-        <h2 class="text-h6 mb-4">Font Sizes</h2>
-        <p class="text-medium-emphasis text-body-2 mb-6">
-          How large text auto-fits on the audience display, per content type.
-        </p>
+        <SettingsPanel
+          title="Scripture"
+          description="Text auto-fits within this range. Content that still does not fit at the minimum splits at verse boundaries."
+          icon="mdi-book-open-variant"
+        >
+          <div class="number-field-grid">
+            <v-text-field
+              v-model.number="librarySettings.scriptureMinFontSizePx"
+              label="Minimum size (px)"
+              type="number"
+              variant="outlined"
+              density="compact"
+              min="1"
+              hide-details
+            />
+            <v-text-field
+              v-model.number="librarySettings.scriptureMaxFontSizePx"
+              label="Maximum size (px)"
+              type="number"
+              variant="outlined"
+              density="compact"
+              min="1"
+              hide-details
+            />
+          </div>
+        </SettingsPanel>
 
-        <h3 class="text-subtitle-2 mb-2">Scripture</h3>
-        <p class="text-medium-emphasis text-body-2 mb-4">
-          Scripture text auto-fits as large as possible within this range. A passage that still doesn't fit at the
-          minimum size splits across slides at verse boundaries instead of shrinking further.
-        </p>
-        <div class="d-flex ga-3 mb-6" style="max-width: 420px">
-          <v-text-field
-            v-model.number="librarySettings.scriptureMinFontSizePx"
-            label="Minimum size (px)"
-            type="number"
-            variant="outlined"
-            density="compact"
-            min="1"
-          />
-          <v-text-field
-            v-model.number="librarySettings.scriptureMaxFontSizePx"
-            label="Maximum size (px)"
-            type="number"
-            variant="outlined"
-            density="compact"
-            min="1"
-          />
-        </div>
+        <SettingsPanel
+          title="Song lyrics"
+          description="Each song part stays on one slide. Lines wrap only when needed and never break mid-word."
+          icon="mdi-music-note-outline"
+        >
+          <div class="number-field-grid">
+            <v-text-field
+              v-model.number="librarySettings.songMinFontSizePx"
+              label="Minimum size (px)"
+              type="number"
+              variant="outlined"
+              density="compact"
+              min="1"
+              hide-details
+            />
+            <v-text-field
+              v-model.number="librarySettings.songMaxFontSizePx"
+              label="Maximum size (px)"
+              type="number"
+              variant="outlined"
+              density="compact"
+              min="1"
+              hide-details
+            />
+          </div>
+        </SettingsPanel>
 
-        <h3 class="text-subtitle-2 mb-2">Song Lyrics</h3>
-        <p class="text-medium-emphasis text-body-2 mb-4">
-          Each part (Verse, Chorus, etc.) is already its own slide — no splitting across slides. A line only wraps
-          if it truly doesn't fit even at the minimum size, and only ever breaks at a comma or semicolon, never
-          mid-word.
-        </p>
-        <div class="d-flex ga-3" style="max-width: 420px">
-          <v-text-field
-            v-model.number="librarySettings.songMinFontSizePx"
-            label="Minimum size (px)"
-            type="number"
-            variant="outlined"
-            density="compact"
-            min="1"
-          />
-          <v-text-field
-            v-model.number="librarySettings.songMaxFontSizePx"
-            label="Maximum size (px)"
-            type="number"
-            variant="outlined"
-            density="compact"
-            min="1"
-          />
-        </div>
+        <SettingsPanel
+          title="Header and footer"
+          description="Fixed sizes for references and translation labels surrounding slide content."
+          icon="mdi-page-layout-header-footer"
+        >
+          <div class="number-field-grid">
+            <v-text-field
+              v-model.number="librarySettings.slideHeaderFontSizePx"
+              label="Header size (px)"
+              type="number"
+              variant="outlined"
+              density="compact"
+              min="1"
+              hide-details
+            />
+            <v-text-field
+              v-model.number="librarySettings.slideFooterFontSizePx"
+              label="Footer size (px)"
+              type="number"
+              variant="outlined"
+              density="compact"
+              min="1"
+              hide-details
+            />
+          </div>
+        </SettingsPanel>
 
-        <h3 class="text-subtitle-2 mb-2">Header &amp; Footer</h3>
-        <p class="text-medium-emphasis text-body-2 mb-4">
-          The reference/title above the text (e.g. "John 3:16-17") and the translation/sub-label below it (e.g.
-          "ESV") — a fixed position and size, unlike the auto-fit text above them.
-        </p>
-        <div class="d-flex ga-3" style="max-width: 420px">
-          <v-text-field
-            v-model.number="librarySettings.slideHeaderFontSizePx"
-            label="Header size (px)"
-            type="number"
-            variant="outlined"
-            density="compact"
-            min="1"
-          />
-          <v-text-field
-            v-model.number="librarySettings.slideFooterFontSizePx"
-            label="Footer size (px)"
-            type="number"
-            variant="outlined"
-            density="compact"
-            min="1"
-          />
-        </div>
-
-        <h3 class="text-subtitle-2 mb-2">Wayfinding Display</h3>
-        <p class="text-medium-emphasis text-body-2 mb-4">
-          The reference-only scripture display's surrounding book names and centered reference — the reference and
-          nearest book approach the maximum size, the farthest book shown uses the minimum, with sizes in between
-          scaled by distance. Unlike scripture/song text above, there's no auto-shrink safety net, so very large
-          sizes can overflow a long reference.
-        </p>
-        <div class="d-flex ga-3" style="max-width: 420px">
-          <v-text-field
-            v-model.number="librarySettings.wayfindingMinFontSizePx"
-            label="Minimum size (px)"
-            type="number"
-            variant="outlined"
-            density="compact"
-            min="1"
-          />
-          <v-text-field
-            v-model.number="librarySettings.wayfindingMaxFontSizePx"
-            label="Maximum size (px)"
-            type="number"
-            variant="outlined"
-            density="compact"
-            min="1"
-          />
-        </div>
-      </template>
-
-      <template v-else-if="activeSection === 'themes'">
-        <h2 class="text-h6 mb-4">Themes</h2>
-        <p class="text-medium-emphasis text-body-2 mb-4">
-          Background, font, and text-color presets for songs, scripture, announcements, and welcome/closing
-          slides — pulling backgrounds from Branding colors or the Media Library.
-        </p>
-        <v-btn variant="flat" color="primary" prepend-icon="mdi-palette-outline" to="/library/themes">
-          Open Theme Editor
-        </v-btn>
+        <SettingsPanel
+          title="Wayfinding display"
+          description="Controls the surrounding book names and centered reference. Large values can overflow long references."
+          icon="mdi-sign-direction"
+        >
+          <div class="number-field-grid">
+            <v-text-field
+              v-model.number="librarySettings.wayfindingMinFontSizePx"
+              label="Minimum size (px)"
+              type="number"
+              variant="outlined"
+              density="compact"
+              min="1"
+              hide-details
+            />
+            <v-text-field
+              v-model.number="librarySettings.wayfindingMaxFontSizePx"
+              label="Maximum size (px)"
+              type="number"
+              variant="outlined"
+              density="compact"
+              min="1"
+              hide-details
+            />
+          </div>
+        </SettingsPanel>
       </template>
 
       <template v-else-if="activeSection === 'roles'">
-        <h2 class="text-h6 mb-4">Roles</h2>
-        <p class="text-medium-emphasis text-body-2 mb-4">
-          The roles offered on each service's Assignments page (Piano, Sound Booth, Greeters, Preacher, etc.),
-          organized into categories.
-        </p>
         <RoleGroupEditor v-model="librarySettings.roleGroups" />
       </template>
-
-      <template v-else-if="activeSection === 'service-templates'">
-        <h2 class="text-h6 mb-4">Service Templates</h2>
-        <p class="text-medium-emphasis text-body-2 mb-4">
-          The shell of a typical service, in order — songs, scripture, sermon, bulletin notes, and
-          role-only assignments (e.g. 2 Greeters). Choose which service types use each template by
-          default; any template can still be selected while creating a service. Templates seed a new
-          service once, and later edits never change services already created.
-        </p>
-        <ServiceTemplateEditor
-          v-model="librarySettings.serviceTemplates"
-          :role-groups="librarySettings.roleGroups"
-          :service-types="librarySettings.serviceTypes"
-        />
-      </template>
     </div>
+    <MediaPickerDialog
+      v-model="brandingLogoPickerOpen"
+      purpose="logo"
+      @select="selectBrandingLogo"
+    />
   </div>
 </template>
 
 <style scoped>
 .settings-layout {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 252px minmax(0, 1fr);
   align-items: start;
+  min-height: calc(100vh - 49px);
+  background: rgba(var(--v-theme-background), 0.34);
 }
 .settings-nav {
+  position: sticky;
+  top: 49px;
+  height: calc(100vh - 49px);
+  overflow-y: auto;
+  padding: 18px 14px 28px;
   border-right: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  min-height: calc(100vh - 49px);
+  background: rgba(var(--v-theme-surface), 0.72);
+  scrollbar-width: thin;
+}
+.settings-nav-header {
+  display: flex;
+  flex-direction: column;
+  margin: 0 8px 21px;
+  padding: 5px 5px 16px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+}
+.settings-nav-header span {
+  color: rgba(var(--v-theme-on-surface), 0.43);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.settings-nav-header strong {
+  margin-top: 2px;
+  font-size: 0.91rem;
+  font-weight: 720;
+  letter-spacing: -0.01em;
+}
+.settings-nav-group + .settings-nav-group {
+  margin-top: 17px;
+}
+.settings-nav-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 9px 5px;
+  color: rgba(var(--v-theme-on-surface), 0.43);
+  font-size: 0.61rem;
+  font-weight: 720;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+.settings-nav-group-heading small {
+  display: grid;
+  min-width: 19px;
+  height: 19px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(var(--v-theme-on-surface), 0.055);
+  font-size: 0.57rem;
+  letter-spacing: 0;
+}
+.settings-nav-list {
+  padding: 0;
+  background: transparent;
+}
+.settings-nav-item {
+  min-height: 37px;
+  margin-bottom: 2px;
+  color: rgba(var(--v-theme-on-surface), 0.68);
+  font-size: 0.72rem;
+  font-weight: 560;
+}
+.settings-nav-item :deep(.v-list-item__prepend) {
+  margin-inline-end: 10px;
+  color: rgba(var(--v-theme-on-surface), 0.46);
+}
+.settings-nav-item.v-list-item--active {
+  color: rgb(var(--v-theme-primary));
+  font-weight: 680;
+}
+.settings-nav-item.v-list-item--active :deep(.v-list-item__overlay) {
+  opacity: 0.09;
+}
+.settings-nav-item.v-list-item--active :deep(.v-list-item__prepend) {
+  color: rgb(var(--v-theme-primary));
 }
 .settings-content {
-  padding: 24px 32px;
-  max-width: 720px;
+  padding: 24px 30px 52px;
+  width: 100%;
+  max-width: 900px;
+}
+.settings-content--wide {
+  max-width: 1240px;
+}
+.settings-toggle-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+}
+.settings-toggle-row strong,
+.display-setting-copy strong,
+.translation-row-copy strong {
+  display: block;
+  font-size: 0.82rem;
+}
+.settings-toggle-row p,
+.display-setting-copy span,
+.translation-row-copy span,
+.settings-muted {
+  margin: 3px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.52);
+  font-size: 0.69rem;
+  line-height: 1.45;
+}
+.path-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.path-setting code {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(var(--v-theme-on-surface), 0.72);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status-list {
+  max-width: 620px;
+}
+.settings-list {
+  max-width: 680px;
+  padding: 0;
+  background: transparent;
+}
+.settings-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 92px;
+  border: 1px dashed rgba(var(--v-theme-on-surface), 0.14);
+  border-radius: 9px;
+  color: rgba(var(--v-theme-on-surface), 0.45);
+  font-size: 0.73rem;
+}
+.display-setting-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) 220px auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+.display-setting-row:last-child {
+  border-bottom: 0;
+}
+.display-setting-copy,
+.translation-row-copy {
+  min-width: 0;
+}
+.settings-form-field {
+  max-width: 520px;
+}
+.translation-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 420px) auto;
+  align-items: center;
+  gap: 12px;
+}
+.translation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 11px;
+}
+.translation-card {
+  display: flex;
+  min-height: 154px;
+  flex-direction: column;
+  padding: 15px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.09);
+  border-radius: 10px;
+  background: rgba(var(--v-theme-background), 0.2);
+  cursor: pointer;
+  outline: none;
+  transition: 0.15s ease;
+}
+.translation-card:hover {
+  border-color: rgba(var(--v-theme-primary), 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.06);
+}
+.translation-card:focus-visible {
+  box-shadow: 0 0 0 2px rgba(var(--v-theme-primary), 0.45);
+}
+.translation-card--selected {
+  border-color: rgba(var(--v-theme-primary), 0.42);
+  background: rgba(var(--v-theme-primary), 0.065);
+}
+.translation-card header,
+.translation-card footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.translation-code {
+  display: inline-flex;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(var(--v-theme-primary), 0.1);
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.64rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+}
+.translation-card h3 {
+  margin: 13px 0 3px;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+.translation-card > p {
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+.translation-card footer {
+  min-height: 28px;
+  margin-top: auto;
+  padding-top: 13px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+  font-size: 0.66rem;
+}
+.translation-default,
+.translation-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 700;
+}
+.translation-default,
+.translation-set-default {
+  color: rgb(var(--v-theme-primary));
+}
+.translation-warning {
+  color: rgb(var(--v-theme-warning));
+}
+.translation-available {
+  color: rgba(var(--v-theme-on-surface), 0.42);
+}
+.translation-set-default {
+  font-weight: 650;
+}
+.translation-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.translation-remove {
+  margin: -6px -7px -6px 0;
+}
+.number-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 190px));
+  gap: 12px;
 }
 .param-preview {
   font-family: monospace;
@@ -1325,6 +2131,153 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
   border-radius: 6px;
   padding: 8px 10px;
   color: rgba(var(--v-theme-on-surface), 0.7);
+}
+.branding-name-field {
+  max-width: 560px;
+}
+.branding-logo-layout {
+  display: grid;
+  max-width: 760px;
+  grid-template-columns: 220px minmax(0, 1fr);
+  align-items: center;
+  gap: 22px;
+}
+.branding-logo-preview {
+  display: flex;
+  min-height: 132px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  overflow: hidden;
+  border: 1px dashed rgba(var(--v-theme-on-surface), 0.18);
+  border-radius: 10px;
+  background: rgba(var(--v-theme-background), 0.3);
+  color: rgba(var(--v-theme-on-surface), 0.4);
+}
+.branding-logo-preview img {
+  width: 100%;
+  height: 104px;
+  object-fit: contain;
+}
+.branding-logo-preview span {
+  font-size: 0.68rem;
+}
+.branding-logo-copy strong {
+  font-size: 0.79rem;
+}
+.branding-logo-copy p {
+  max-width: 470px;
+  margin: 5px 0 14px;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-size: 0.71rem;
+  line-height: 1.5;
+}
+.branding-logo-copy > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.branding-color-grid {
+  display: grid;
+  max-width: 620px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.branding-color-field > span {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 0.73rem;
+  font-weight: 700;
+}
+.branding-color-field > div {
+  display: grid;
+  grid-template-columns: 45px minmax(0, 1fr);
+  gap: 8px;
+}
+.branding-color-field input {
+  width: 45px;
+  height: 40px;
+  padding: 3px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.15);
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+}
+.branding-color-field small {
+  display: block;
+  margin-top: 6px;
+  color: rgba(var(--v-theme-on-surface), 0.46);
+  font-size: 0.68rem;
+}
+.branding-document-preview {
+  max-width: 620px;
+  padding: 22px 24px 25px;
+  overflow: hidden;
+  border: 1px solid #dfe3e8;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #1f2937;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
+}
+.branding-document-preview header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.branding-preview-logo {
+  display: grid;
+  width: 45px;
+  height: 45px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--preview-primary) 12%, transparent);
+  color: var(--preview-primary);
+}
+.branding-preview-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.branding-document-preview header small,
+.branding-document-preview header strong {
+  display: block;
+}
+.branding-document-preview header small {
+  color: #667085;
+  font-size: 0.64rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.branding-document-preview header strong {
+  margin-top: 2px;
+  color: var(--preview-primary);
+  font-size: 0.9rem;
+}
+.branding-preview-rule {
+  height: 3px;
+  margin: 17px 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--preview-primary), var(--preview-secondary));
+}
+.branding-document-preview section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.branding-document-preview section span {
+  width: 86%;
+  height: 7px;
+  border-radius: 999px;
+  background: #e5e9ef;
+}
+.branding-document-preview section span:nth-child(2) {
+  width: 68%;
+}
+.branding-document-preview section span:nth-child(3) {
+  width: 76%;
 }
 .about-card {
   max-width: 600px;
@@ -1411,5 +2364,76 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
 }
 .about-link-arrow {
   color: rgba(var(--v-theme-on-surface), 0.38);
+}
+
+@media (max-width: 900px) {
+  .settings-layout {
+    grid-template-columns: 218px minmax(0, 1fr);
+  }
+  .settings-content {
+    padding-inline: 22px;
+  }
+  .display-setting-row {
+    grid-template-columns: minmax(130px, 1fr) 190px;
+  }
+  .display-setting-row > .v-btn {
+    grid-column: 2;
+    justify-self: end;
+  }
+}
+
+@media (max-width: 700px) {
+  .settings-layout {
+    display: block;
+  }
+  .settings-nav {
+    position: static;
+    height: auto;
+    max-height: 255px;
+    padding: 12px 14px 16px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  }
+  .settings-nav-header {
+    display: none;
+  }
+  .settings-nav-group + .settings-nav-group {
+    margin-top: 11px;
+  }
+  .settings-content {
+    max-width: none;
+    padding: 18px 16px 42px;
+  }
+  .path-setting,
+  .translation-picker {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+  .path-setting {
+    flex-direction: column;
+  }
+  .path-setting .v-btn {
+    align-self: flex-start;
+  }
+  .display-setting-row {
+    grid-template-columns: 1fr;
+  }
+  .display-setting-row > .v-btn {
+    grid-column: auto;
+    justify-self: start;
+  }
+  .branding-logo-layout,
+  .branding-color-grid {
+    grid-template-columns: 1fr;
+  }
+  .branding-logo-preview {
+    max-width: 320px;
+  }
+}
+
+@media (max-width: 460px) {
+  .number-field-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

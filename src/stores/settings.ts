@@ -20,10 +20,11 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function save() {
     if (!librarySettings.value || !machineSettings.value) return
-    await Promise.all([
-      getAdapter().settings.saveLibrarySettings(librarySettings.value),
-      getAdapter().settings.saveMachineSettings(machineSettings.value),
-    ])
+    // LibrarySettings is written beneath MachineSettings.libraryPath in the desktop adapter.
+    // Persist the machine choice first so changing the library folder and saving in one action
+    // writes shared settings into the newly selected folder, not the previously active one.
+    await getAdapter().settings.saveMachineSettings(machineSettings.value)
+    await getAdapter().settings.saveLibrarySettings(librarySettings.value)
   }
 
   return { librarySettings, machineSettings, loaded, load, save }

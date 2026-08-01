@@ -31,7 +31,13 @@ export type ServiceItemContent =
    *  it actually falls in the service rather than pinned to a fixed header. This item is the
    *  sole source of truth for the service's sermon (title/passage/preacher, the last via the
    *  shared role field below) — there is no separate service-level sermon summary. */
-  | { type: 'sermon'; title?: string; passages: SermonPassage[]; mainPassageId: string; outline: SongBlock[] }
+  | {
+      type: 'sermon'
+      title?: string
+      passages: SermonPassage[]
+      mainPassageId: string
+      outline: SongBlock[]
+    }
   /** A bulletin-only line (e.g. "Silent Preparation", a named prayer) — never presented on
    *  screen (see flattenService.ts); its heading/body are the shared bulletinLabel/bulletinNote
    *  fields below, not fields of its own. */
@@ -74,7 +80,8 @@ export interface RoleAssignment {
  *  service at all (e.g. "2 Greeters"). */
 export interface ServiceTemplateItem {
   id: string
-  kind: 'bulletin-note' | 'sermon' | 'song' | 'scripture' | 'slide' | 'media' | 'other' | 'role-only'
+  kind:
+    'bulletin-note' | 'sermon' | 'song' | 'scripture' | 'slide' | 'media' | 'other' | 'role-only'
   /** Bulletin heading / placeholder description (e.g. "Opening Song") / role-only's own display
    *  label. */
   label: string
@@ -95,6 +102,8 @@ export interface ServiceTemplate {
    *  used it; defaultForServiceTypes now makes that association explicit while preserving the
    *  old field and stored libraries. */
   serviceType: string
+  /** Optional planning note explaining when this template should be used. */
+  description?: string
   /** Service types that select this template by default. Undefined means a legacy template,
    *  which still defaults to the matching serviceType; an empty array explicitly means none. */
   defaultForServiceTypes?: string[]

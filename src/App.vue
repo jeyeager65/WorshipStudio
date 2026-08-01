@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useTheme } from 'vuetify'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -23,6 +23,7 @@ const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsav
 const syncStore = useSyncStore()
 const settingsStore = useSettingsStore()
 const servicesStore = useServicesStore()
+const hasDesktopBackend = getAdapter().kind === 'tauri'
 
 // The presentation window (see src/adapters/tauri/index.ts's `live` port) loads this same
 // app bundle in a second native window labeled "presentation" — never reached through
@@ -85,6 +86,38 @@ const isSetupWizard = computed(() => route.name === 'setup-wizard')
 const pageTitle = computed(() => pageTitleOverride.value ?? route.meta.title)
 
 const navigationCollapsed = ref(false)
+const showSavedConfirmation = ref(false)
+const saveShortcutLabel = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘S' : 'Ctrl+S'
+let savedConfirmationTimer: ReturnType<typeof setTimeout> | undefined
+
+async function runSave() {
+  const handler = saveHandler.value
+  if (!handler || !isDirty.value || saving.value) return
+  showSavedConfirmation.value = false
+  if (savedConfirmationTimer) clearTimeout(savedConfirmationTimer)
+  try {
+    await handler()
+    // Validation failures and write failures deliberately leave the editor dirty. Only confirm
+    // a save after the registered editor says its changes were actually persisted.
+    if (isDirty.value) return
+    showSavedConfirmation.value = true
+    savedConfirmationTimer = setTimeout(() => {
+      showSavedConfirmation.value = false
+      savedConfirmationTimer = undefined
+    }, 1800)
+  } catch (error) {
+    // Editors own their specific, actionable error message; this keeps a rejected handler from
+    // becoming an unhandled promise while preserving the dirty state and enabled Save action.
+    console.error('Save failed:', error)
+  }
+}
+
+function handleSaveShortcut(event: KeyboardEvent) {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 's') return
+  if (!saveHandler.value) return
+  event.preventDefault()
+  void runSave()
+}
 
 // Splash screen (feature-spec.md section "Splash screen") — see the `isSplashWindow` comment
 // above for why this now lives in its own window instead of an overlay here. This ref only
@@ -118,8 +151,9 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 async function reportSplashProgress(progress: SplashProgress, work?: () => Promise<unknown>) {
   const stepStartedAt = Date.now()
-  await emit('splash:status', progress)
+  if (hasDesktopBackend) await emit('splash:status', progress)
   await work?.()
+  if (!hasDesktopBackend) return
   const elapsed = Date.now() - stepStartedAt
   if (elapsed < MIN_STEP_MS) await sleep(MIN_STEP_MS - elapsed)
 }
@@ -129,14 +163,35 @@ async function reportSplashProgress(progress: SplashProgress, work?: () => Promi
 // to track real window state rather than just flipping on click, since double-clicking the
 // drag region or a Windows snap gesture can also change it without going through our button.
 const isMaximized = ref(false)
+const isBrowserFullscreen = ref(false)
 function minimizeWindow() {
-  void getCurrentWindow().minimize()
+  if (hasDesktopBackend) void getCurrentWindow().minimize()
 }
 function toggleMaximizeWindow() {
-  void getCurrentWindow().toggleMaximize()
+  if (hasDesktopBackend) void getCurrentWindow().toggleMaximize()
 }
 function closeWindow() {
-  void getCurrentWindow().close()
+  if (hasDesktopBackend) void getCurrentWindow().close()
+}
+async function toggleBrowserFullscreen() {
+  if (hasDesktopBackend) return
+  const orientation = screen.orientation as ScreenOrientation & {
+    lock?: (orientation: 'landscape') => Promise<void>
+    unlock?: () => void
+  }
+  if (document.fullscreenElement) {
+    orientation.unlock?.()
+    await document.exitFullscreen()
+  } else {
+    await document.documentElement.requestFullscreen()
+    // Orientation locking is intentionally best-effort: browsers that implement it generally
+    // require fullscreen first, while desktop browsers and iOS may reject or omit it entirely.
+    await orientation.lock?.('landscape').catch(() => undefined)
+  }
+}
+
+function updateBrowserFullscreen() {
+  isBrowserFullscreen.value = !!document.fullscreenElement
 }
 
 onMounted(async () => {
@@ -158,15 +213,24 @@ onMounted(async () => {
   }
   if (isPresentationWindow || isIdentifyWindow) return
 
-  const thisWindow = getCurrentWindow()
-  isMaximized.value = await thisWindow.isMaximized()
-  await thisWindow.onResized(async () => {
+  document.addEventListener('keydown', handleSaveShortcut)
+
+  if (!hasDesktopBackend) {
+    updateBrowserFullscreen()
+    document.addEventListener('fullscreenchange', updateBrowserFullscreen)
+  }
+
+  const thisWindow = hasDesktopBackend ? getCurrentWindow() : undefined
+  if (thisWindow) {
     isMaximized.value = await thisWindow.isMaximized()
-  })
+    await thisWindow.onResized(async () => {
+      isMaximized.value = await thisWindow.isMaximized()
+    })
+  }
 
   // In E2E builds lib.rs deliberately creates no splash window, so there is nothing to wait
   // for. In normal builds, listening before probing covers both possible webview mount orders.
-  if (import.meta.env.VITE_E2E_TEST_MODE !== 'true') {
+  if (hasDesktopBackend && import.meta.env.VITE_E2E_TEST_MODE !== 'true') {
     let markSplashReady: (() => void) | undefined
     const ready = new Promise<void>((resolve) => {
       markSplashReady = resolve
@@ -200,11 +264,12 @@ onMounted(async () => {
 
   await reportSplashProgress({ step: 3, message: 'Loading services…' }, () => servicesStore.load())
 
-  const elapsed = Date.now() - startedAt
-  if (elapsed < MIN_SPLASH_MS) await sleep(MIN_SPLASH_MS - elapsed)
-
-  await emit('splash:status', { step: 4, message: 'Ready' } satisfies SplashProgress)
-  await sleep(READY_DISPLAY_MS)
+  if (hasDesktopBackend) {
+    const elapsed = Date.now() - startedAt
+    if (elapsed < MIN_SPLASH_MS) await sleep(MIN_SPLASH_MS - elapsed)
+    await emit('splash:status', { step: 4, message: 'Ready' } satisfies SplashProgress)
+    await sleep(READY_DISPLAY_MS)
+  }
 
   // E2E builds never create this window at all (see lib.rs's setup()) — the harness's
   // WebDriver session otherwise raced the splash webview's own faster startup, so avoiding
@@ -212,10 +277,18 @@ onMounted(async () => {
   // fixed it. For a real launch, this window does exist and must be actually closed, not just
   // hidden — leaving it merely hidden kept the app running after the operator closed the main
   // window, since Tauri won't quit while any window (even a hidden one) is still open.
-  const splashWindow = await WebviewWindow.getByLabel('splash')
-  await splashWindow?.close()
-  await thisWindow.show()
-  await thisWindow.setFocus()
+  if (thisWindow) {
+    const splashWindow = await WebviewWindow.getByLabel('splash')
+    await splashWindow?.close()
+    await thisWindow.show()
+    await thisWindow.setFocus()
+  }
+})
+
+onUnmounted(() => {
+  document.removeEventListener('fullscreenchange', updateBrowserFullscreen)
+  document.removeEventListener('keydown', handleSaveShortcut)
+  if (savedConfirmationTimer) clearTimeout(savedConfirmationTimer)
 })
 </script>
 
@@ -292,21 +365,42 @@ onMounted(async () => {
            collapses to 0px tall inside the toolbar's flex row, leaving nothing to click. -->
       <v-spacer data-tauri-drag-region class="drag-region-spacer" />
       <template v-if="!isSetupWizard">
-        <span v-if="saveHandler" class="text-caption text-medium-emphasis mr-3">
-          {{ saving ? 'Saving…' : isDirty ? 'Unsaved changes' : 'All changes saved' }}
-        </span>
-        <v-btn
+        <v-tooltip
           v-if="saveHandler"
-          variant="flat"
-          color="primary"
-          class="mr-3"
-          prepend-icon="mdi-content-save"
-          :loading="saving"
-          :disabled="!isDirty"
-          @click="saveHandler"
+          :text="`Save changes (${saveShortcutLabel})`"
+          location="bottom end"
+          :open-delay="450"
+          content-class="app-save-tooltip"
         >
-          Save
-        </v-btn>
+          <template #activator="{ props: tooltipProps }">
+            <span v-bind="tooltipProps" class="app-save-wrap mr-3">
+              <v-btn
+                variant="tonal"
+                color="primary"
+                class="app-save-button"
+                :class="{ 'app-save-button--dirty': isDirty }"
+                :disabled="!isDirty || saving"
+                aria-keyshortcuts="Control+S Meta+S"
+                @click="runSave"
+              >
+                <v-progress-circular v-if="saving" indeterminate size="15" width="2" class="mr-2" />
+                <v-icon
+                  v-else
+                  :icon="
+                    showSavedConfirmation && !isDirty
+                      ? 'mdi-check'
+                      : isDirty
+                        ? 'mdi-content-save'
+                        : 'mdi-content-save-outline'
+                  "
+                  size="18"
+                  class="mr-2"
+                />
+                {{ saving ? 'Saving…' : showSavedConfirmation && !isDirty ? 'Saved' : 'Save' }}
+              </v-btn>
+            </span>
+          </template>
+        </v-tooltip>
         <v-divider v-if="saveHandler" vertical inset class="mr-3" />
         <v-tooltip
           v-if="syncStore.status && !syncStore.status.folderReadable"
@@ -329,26 +423,38 @@ onMounted(async () => {
           }}
         </v-btn>
       </template>
+      <template v-if="hasDesktopBackend">
+        <v-btn
+          icon="mdi-window-minimize"
+          variant="text"
+          size="small"
+          class="title-bar-btn"
+          @click="minimizeWindow"
+        />
+        <v-btn
+          :icon="isMaximized ? 'mdi-window-restore' : 'mdi-window-maximize'"
+          variant="text"
+          size="small"
+          class="title-bar-btn"
+          @click="toggleMaximizeWindow"
+        />
+        <v-btn
+          icon="mdi-window-close"
+          variant="text"
+          size="small"
+          class="title-bar-btn title-bar-close"
+          @click="closeWindow"
+        />
+      </template>
       <v-btn
-        icon="mdi-window-minimize"
+        v-else
+        :icon="isBrowserFullscreen ? 'mdi-fullscreen-exit' : 'mdi-fullscreen'"
         variant="text"
         size="small"
-        class="title-bar-btn"
-        @click="minimizeWindow"
-      />
-      <v-btn
-        :icon="isMaximized ? 'mdi-window-restore' : 'mdi-window-maximize'"
-        variant="text"
-        size="small"
-        class="title-bar-btn"
-        @click="toggleMaximizeWindow"
-      />
-      <v-btn
-        icon="mdi-window-close"
-        variant="text"
-        size="small"
-        class="title-bar-btn title-bar-close"
-        @click="closeWindow"
+        class="browser-fullscreen-btn mr-1"
+        :title="isBrowserFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'"
+        :aria-label="isBrowserFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'"
+        @click="toggleBrowserFullscreen"
       />
     </v-app-bar>
     <v-main>
@@ -388,6 +494,36 @@ onMounted(async () => {
 .app-bar {
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.09);
   background: rgba(var(--v-theme-surface), 0.97);
+}
+.app-save-wrap {
+  display: inline-flex;
+}
+.app-save-button {
+  min-width: 94px;
+  height: 34px;
+  padding-inline: 14px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.13);
+  border-radius: 7px;
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+  box-shadow: none;
+}
+.app-save-button--dirty {
+  border-color: rgba(var(--v-theme-primary), 0.42);
+  background: rgba(var(--v-theme-primary), 0.16);
+}
+:global(.app-save-tooltip) {
+  padding: 7px 10px !important;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 7px !important;
+  background: #202833 !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.34) !important;
+  color: #f5f7fa !important;
+  font-size: 0.72rem !important;
+  font-weight: 550;
+  letter-spacing: 0;
 }
 .navigation-toggle {
   margin-right: 6px;
@@ -479,6 +615,9 @@ onMounted(async () => {
 .title-bar-close:hover {
   background-color: #e81123;
   color: white;
+}
+.browser-fullscreen-btn {
+  color: rgba(var(--v-theme-on-surface), 0.72);
 }
 
 /* Report screens (e.g. CcliReportView) use the browser/OS "print to PDF" flow rather than a

@@ -23,6 +23,7 @@ const editLocation = ref<'synced' | 'local'>('synced')
 const editTitleInvalid = computed(() => !editTitleInput.value.trim())
 const editorPreviewLoading = ref(false)
 const editorPreviewUnavailable = ref(false)
+const deleteError = ref('')
 
 // Deletion is soft until the undo toast expires — same pattern as SongLibraryView/SlideLibraryView.
 const pendingDeleteIds = reactive(new Set<string>())
@@ -102,13 +103,21 @@ function lastUsedLabel(item: MediaItem): string {
 
 async function deleteItem(item: MediaItem): Promise<boolean> {
   if (!(await confirmDialog.confirm(`Delete "${item.title}"?`, 'Delete'))) return false
+  deleteError.value = ''
   pendingDeleteIds.add(item.id)
   undoStore.push(
     `Deleted "${item.title}"`,
     () => pendingDeleteIds.delete(item.id),
     async () => {
-      await store.remove(item.id)
-      pendingDeleteIds.delete(item.id)
+      try {
+        await store.remove(item.id)
+        previewUrlById.delete(item.id)
+      } catch (error) {
+        deleteError.value = `Could not delete “${item.title}”: ${error instanceof Error ? error.message : String(error)}`
+        await store.load()
+      } finally {
+        pendingDeleteIds.delete(item.id)
+      }
     },
   )
   return true
@@ -182,6 +191,16 @@ async function saveEdits() {
     </header>
 
     <section class="media-directory">
+      <v-alert
+        v-if="deleteError"
+        type="error"
+        variant="tonal"
+        closable
+        class="ma-4 mb-0"
+        @click:close="deleteError = ''"
+      >
+        {{ deleteError }}
+      </v-alert>
       <div class="media-toolbar">
         <div>
           <h2>Media Library</h2>
