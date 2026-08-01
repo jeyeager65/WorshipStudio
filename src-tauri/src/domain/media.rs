@@ -81,29 +81,33 @@ pub fn save(
 /// Replaces the bytes and descriptive metadata of an existing managed media item without
 /// changing its id or filename. Integrations such as Canva use this for refreshes so every
 /// export does not leave another nearly-identical item in the media library.
+pub struct MediaReplacement<'a> {
+    pub id: &'a str,
+    pub source: &'a Path,
+    pub title: String,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+}
+
 pub fn replace_from_file(
     root: &Path,
     local_media_root: &Path,
-    id: &str,
-    source: &Path,
-    title: String,
-    description: Option<String>,
-    tags: Vec<String>,
+    replacement: MediaReplacement<'_>,
     device: &str,
     now: &str,
 ) -> std::io::Result<Option<MediaItem>> {
-    let Some(mut item) = get(root, id) else {
+    let Some(mut item) = get(root, replacement.id) else {
         return Ok(None);
     };
     let destination = file_path(root, local_media_root, &item);
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::copy(source, &destination)?;
+    fs::copy(replacement.source, &destination)?;
     item.content_hash = hash_file(&destination)?;
-    item.title = title;
-    item.description = description;
-    item.tags = tags;
+    item.title = replacement.title;
+    item.description = replacement.description;
+    item.tags = replacement.tags;
     save(root, item, device, now).map(Some)
 }
 
@@ -421,11 +425,13 @@ mod tests {
         let updated = replace_from_file(
             root,
             local_dir.path(),
-            "media-canva",
-            &source,
-            "Sunday Slides - Page 1".to_string(),
-            Some("Imported from Canva design design-1".to_string()),
-            vec!["Canva".to_string()],
+            MediaReplacement {
+                id: "media-canva",
+                source: &source,
+                title: "Sunday Slides - Page 1".to_string(),
+                description: Some("Imported from Canva design design-1".to_string()),
+                tags: vec!["Canva".to_string()],
+            },
             "computer-b",
             "after",
         )

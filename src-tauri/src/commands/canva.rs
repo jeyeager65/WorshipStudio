@@ -471,11 +471,13 @@ pub async fn import_canva_design(
             Some(media_id) => media::replace_from_file(
                 &root,
                 &local_root,
-                media_id,
-                &temp_path,
-                title.clone(),
-                description.clone(),
-                tags.clone(),
+                media::MediaReplacement {
+                    id: media_id,
+                    source: &temp_path,
+                    title: title.clone(),
+                    description: description.clone(),
+                    tags: tags.clone(),
+                },
                 &device,
                 &imported_at,
             )
