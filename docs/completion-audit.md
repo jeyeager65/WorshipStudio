@@ -82,7 +82,11 @@ The same decision applies to any Order of Worship email action.
 
 ### 5. Add a pre-service readiness check
 
+Status: completed August 1, 2026.
+
 A single readiness check would provide more practical Sunday-morning reliability than most new feature work.
+
+The service workspace now evaluates readiness continuously, shows a compact status beside **Start Presenting**, and provides a details dialog that separates blockers from warnings. Blockers prevent presentation and link directly to the affected service item, assignments page, or display picker. The check validates referenced content, media files, scripture resolution, external-app paths, countdowns, the audience display, and roster concerns. External applications are verified without launching them.
 
 Suggested checks:
 
@@ -382,7 +386,7 @@ This does not apply to user-facing imports such as OpenSong or to migrations del
 1. Atomic saves, corruption detection, backups, and recovery — completed August 1, 2026
 2. Standard loading, error, and save-failure handling — completed August 1, 2026
 3. Replace undo toasts with editor-scoped undo/redo history and visible controls — completed August 1, 2026
-4. Pre-service readiness check
+4. Pre-service readiness check — completed August 1, 2026
 5. Sync Conflicts redesign and shared state components
 6. Credential boundary and focused security review
 7. Honest email/copy/mail-client workflow

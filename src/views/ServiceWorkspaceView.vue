@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import SlideContentRenderer from '@/components/live/SlideContentRenderer.vue'
@@ -34,6 +34,10 @@ import { formatCountdown } from '@/utils/countdown'
 import { formatServiceTime } from '@/utils/serviceTime'
 import { errorMessage as asyncErrorMessage } from '@/composables/useAsyncStoreState'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
+import {
+  evaluateServiceReadiness,
+  type ReadinessIssue,
+} from '@/utils/serviceReadiness'
 import type { Service, ServiceItem, SermonPassage } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
 import type {
@@ -62,6 +66,7 @@ import type {
 } from '@/adapters/types'
 
 const route = useRoute()
+const router = useRouter()
 const servicesStore = useServicesStore()
 const songsStore = useSongsStore()
 const slidesStore = useSlidesStore()
@@ -283,6 +288,8 @@ async function updateSermonPassageDisplayMode(
 // otherwise-synchronous walk — resolved once up front instead, same pattern as scripture above.
 const mediaUrlById = reactive(new Map<string, string>())
 const mediaErrors = reactive(new Map<string, string>())
+const verifiedExternalAppItemIds = reactive(new Set<string>())
+const externalAppReadinessErrors = reactive(new Map<string, string>())
 
 async function resolveMediaItem(mediaId: string) {
   if (mediaUrlById.has(mediaId) || !getAdapter().media.getFilePath) return
@@ -292,6 +299,38 @@ async function resolveMediaItem(mediaId: string) {
     mediaErrors.delete(mediaId)
   } catch (e) {
     mediaErrors.set(mediaId, errorMessage(e, 'Failed to load media file.'))
+  }
+}
+
+async function verifyExternalAppReadiness(item: ServiceItem) {
+  const verifyItem = getAdapter().externalApps?.verifyItem
+  if (item.type !== 'external-app' || !verifyItem) return
+  const profileId = item.profileId
+  const file = item.file
+  verifiedExternalAppItemIds.delete(item.id)
+  externalAppReadinessErrors.delete(item.id)
+  try {
+    await verifyItem(profileId, file)
+    const current = service.value?.items.find((candidate) => candidate.id === item.id)
+    if (
+      current?.type !== 'external-app' ||
+      current.profileId !== profileId ||
+      current.file !== file
+    )
+      return
+    verifiedExternalAppItemIds.add(item.id)
+  } catch (error) {
+    const current = service.value?.items.find((candidate) => candidate.id === item.id)
+    if (
+      current?.type !== 'external-app' ||
+      current.profileId !== profileId ||
+      current.file !== file
+    )
+      return
+    externalAppReadinessErrors.set(
+      item.id,
+      errorMessage(error, 'The external application could not be verified.'),
+    )
   }
 }
 
@@ -455,6 +494,119 @@ const mediaById = computed(() => new Map(mediaStore.items.map((item) => [item.id
 const externalAppProfilesById = computed(
   () => new Map(externalAppsStore.profiles.map((profile) => [profile.id, profile])),
 )
+const peopleById = computed(() => new Map(peopleStore.people.map((person) => [person.id, person])))
+const readiness = computed(() =>
+  service.value
+    ? evaluateServiceReadiness(service.value, {
+        songs: songsById.value,
+        slides: slidesById.value,
+        media: mediaById.value,
+        themes: themesStore.themes,
+        people: peopleById.value,
+        externalApps: externalAppProfilesById.value,
+        resolvedScriptureKeys: new Set(scriptureById.keys()),
+        scriptureErrorKeys: new Set(scriptureErrors.keys()),
+        resolvedMediaIds: new Set(mediaUrlById.keys()),
+        mediaErrorIds: new Set(mediaErrors.keys()),
+        mediaAvailabilityChecked: !!getAdapter().media.getFilePath,
+        verifiedExternalAppItemIds: new Set(verifiedExternalAppItemIds),
+        externalAppErrors: new Map(externalAppReadinessErrors),
+        externalAppVerificationAvailable: !!getAdapter().externalApps?.verifyItem,
+        audienceDisplayAvailable: audienceDisplayAvailable.value,
+      })
+    : { issues: [], blockers: [], warnings: [], ready: false },
+)
+const readinessDialogOpen = ref(false)
+const readinessColor = computed(() =>
+  readiness.value.blockers.length ? 'error' : readiness.value.warnings.length ? 'warning' : 'success',
+)
+const readinessIcon = computed(() =>
+  readiness.value.blockers.length
+    ? 'mdi-alert-circle-outline'
+    : readiness.value.warnings.length
+      ? 'mdi-check-circle-outline'
+      : 'mdi-check-circle',
+)
+const readinessLabel = computed(() => {
+  const blockers = readiness.value.blockers.length
+  const warnings = readiness.value.warnings.length
+  if (blockers) return `${blockers} ${blockers === 1 ? 'blocker' : 'blockers'}`
+  if (warnings) return `Ready · ${warnings} ${warnings === 1 ? 'warning' : 'warnings'}`
+  return 'Ready to Present'
+})
+const readinessMediaIds = computed(() => {
+  const ids = new Set<string>()
+  for (const item of service.value?.items ?? []) {
+    if (item.type === 'media' || item.type === 'video' || item.type === 'audio') ids.add(item.mediaId)
+    if (item.type === 'slide-ref') {
+      const presentation = slidesById.value.get(item.slideId)
+      for (const slide of presentation?.slides ?? []) {
+        if (slide.source.type === 'canva') ids.add(slide.source.renderedMediaId)
+        if (slide.scene.background.mediaId) ids.add(slide.scene.background.mediaId)
+        for (const element of slide.scene.elements) {
+          if (element.type === 'image') ids.add(element.mediaId)
+        }
+      }
+    }
+    const target = presentationThemeTargetForItem(item)
+    const theme = resolvePresentationTheme(item, target, themesStore.themes)
+    if (
+      theme?.backgroundId &&
+      theme.backgroundId !== 'brand-primary' &&
+      theme.backgroundId !== 'brand-secondary'
+    )
+      ids.add(theme.backgroundId)
+  }
+  return [...ids]
+})
+watch(
+  readinessMediaIds,
+  (ids) => {
+    void Promise.all(ids.map(resolveMediaItem))
+  },
+  { immediate: true },
+)
+const externalAppReadinessItems = computed(() =>
+  (service.value?.items ?? [])
+    .filter((item) => item.type === 'external-app')
+    .map((item) => ({ ...item })),
+)
+watch(
+  externalAppReadinessItems,
+  (items) => {
+    const activeIds = new Set(items.map((item) => item.id))
+    for (const id of verifiedExternalAppItemIds) {
+      if (!activeIds.has(id)) verifiedExternalAppItemIds.delete(id)
+    }
+    for (const id of externalAppReadinessErrors.keys()) {
+      if (!activeIds.has(id)) externalAppReadinessErrors.delete(id)
+    }
+    for (const item of items) void verifyExternalAppReadiness(item)
+  },
+  { immediate: true },
+)
+
+async function openReadinessIssue(issue: ReadinessIssue) {
+  if (issue.action === 'display') {
+    readinessDialogOpen.value = false
+    await openPresentationDisplayDialog()
+    return
+  }
+  if (issue.action === 'assignments') {
+    readinessDialogOpen.value = false
+    await router.push(`/service/${service.value?.id}/assignments`)
+    return
+  }
+  const index = service.value?.items.findIndex((item) => item.id === issue.itemId) ?? -1
+  if (index >= 0) {
+    selectedItemIndex.value = index
+    readinessDialogOpen.value = false
+    await nextTick()
+    document
+      .querySelector(`[data-service-item-id="${CSS.escape(issue.itemId ?? '')}"]`)
+      ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }
+}
 const scriptureFontRange = computed(() => ({
   minPx: settingsStore.librarySettings?.scriptureMinFontSizePx ?? 28,
   maxPx: settingsStore.librarySettings?.scriptureMaxFontSizePx ?? 72,
@@ -823,6 +975,10 @@ function toggleBackgroundOnly() {
 async function togglePresenting() {
   if (!isPresenting.value) {
     await loadPresentationSize()
+    if (readiness.value.blockers.length) {
+      readinessDialogOpen.value = true
+      return
+    }
     if (!audienceDisplayAvailable.value) {
       await openPresentationDisplayDialog()
       return
@@ -1021,6 +1177,11 @@ async function useAudienceDisplayAndStart() {
     if (!audienceDisplayAvailable.value)
       throw new Error('The selected display is no longer available.')
     presentationDisplayDialogOpen.value = false
+    await nextTick()
+    if (readiness.value.blockers.length) {
+      readinessDialogOpen.value = true
+      return
+    }
     await startPresentation()
   } catch (e) {
     presentationDisplayError.value = errorMessage(
@@ -1757,6 +1918,16 @@ function updateRolePerson(role: string, personId: string | undefined) {
         >
           Bulletin
         </v-btn>
+        <button
+          type="button"
+          class="readiness-status"
+          :class="`readiness-status--${readinessColor}`"
+          :title="`${readiness.blockers.length} blockers, ${readiness.warnings.length} warnings`"
+          @click="readinessDialogOpen = true"
+        >
+          <v-icon :icon="readinessIcon" size="17" />
+          <span>{{ readinessLabel }}</span>
+        </button>
         <span class="action-divider" />
         <v-tooltip
           :disabled="isPresenting || audienceDisplayAvailable"
@@ -1837,6 +2008,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
             <div
               v-for="(item, index) in service.items"
               :key="item.id"
+              :data-service-item-id="item.id"
               class="service-item"
               :class="{
                 'service-item--selected': index === selectedItemIndex,
@@ -1868,6 +2040,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
             <div
               v-for="(item, index) in service.items"
               :key="item.id"
+              :data-service-item-id="item.id"
               class="service-item"
               :class="{
                 'service-item--selected': index === selectedItemIndex,
@@ -2559,6 +2732,87 @@ function updateRolePerson(role: string, personId: string | undefined) {
         <v-icon icon="mdi-chevron-right" size="25" />
       </button>
     </div>
+
+    <v-dialog v-model="readinessDialogOpen" max-width="720">
+      <v-card class="readiness-dialog-card">
+        <v-card-title class="readiness-dialog-title">
+          <span class="readiness-dialog-title-icon" :class="`is-${readinessColor}`">
+            <v-icon :icon="readinessIcon" size="23" />
+          </span>
+          <span>
+            <strong>{{ readiness.blockers.length ? 'Service Needs Attention' : 'Ready to Present' }}</strong>
+            <small>
+              {{ readiness.blockers.length }} blocker{{ readiness.blockers.length === 1 ? '' : 's' }}
+              · {{ readiness.warnings.length }} warning{{ readiness.warnings.length === 1 ? '' : 's' }}
+            </small>
+          </span>
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" size="small" @click="readinessDialogOpen = false" />
+        </v-card-title>
+        <v-card-text class="readiness-dialog-content">
+          <div v-if="!readiness.issues.length" class="readiness-complete-state">
+            <span><v-icon icon="mdi-check" size="28" /></span>
+            <div>
+              <strong>Everything required for presentation is available.</strong>
+              <p>The check will update automatically if the service or display setup changes.</p>
+            </div>
+          </div>
+          <template v-else>
+            <section v-if="readiness.blockers.length" class="readiness-issue-section">
+              <header>
+                <span>Must fix before presenting</span>
+                <strong>{{ readiness.blockers.length }}</strong>
+              </header>
+              <button
+                v-for="issue in readiness.blockers"
+                :key="issue.id"
+                type="button"
+                class="readiness-issue-row is-blocker"
+                @click="openReadinessIssue(issue)"
+              >
+                <span class="readiness-issue-icon"><v-icon icon="mdi-alert-circle-outline" size="20" /></span>
+                <span class="readiness-issue-copy">
+                  <strong>{{ issue.title }}</strong>
+                  <small>{{ issue.detail }}</small>
+                </span>
+                <span class="readiness-issue-action">
+                  {{ issue.action === 'display' ? 'Choose display' : issue.action === 'assignments' ? 'Assignments' : 'Open item' }}
+                  <v-icon icon="mdi-chevron-right" size="18" />
+                </span>
+              </button>
+            </section>
+            <section v-if="readiness.warnings.length" class="readiness-issue-section">
+              <header>
+                <span>Review before the service</span>
+                <strong>{{ readiness.warnings.length }}</strong>
+              </header>
+              <button
+                v-for="issue in readiness.warnings"
+                :key="issue.id"
+                type="button"
+                class="readiness-issue-row is-warning"
+                @click="openReadinessIssue(issue)"
+              >
+                <span class="readiness-issue-icon"><v-icon icon="mdi-alert-outline" size="20" /></span>
+                <span class="readiness-issue-copy">
+                  <strong>{{ issue.title }}</strong>
+                  <small>{{ issue.detail }}</small>
+                </span>
+                <span class="readiness-issue-action">
+                  {{ issue.action === 'assignments' ? 'Assignments' : 'Open item' }}
+                  <v-icon icon="mdi-chevron-right" size="18" />
+                </span>
+              </button>
+            </section>
+          </template>
+        </v-card-text>
+        <v-card-actions class="readiness-dialog-actions">
+          <span>Updates automatically</span>
+          <v-spacer />
+          <v-btn variant="tonal" @click="readinessDialogOpen = false">Close</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <v-dialog v-model="presentationDisplayDialogOpen" max-width="650">
       <v-card class="presentation-display-dialog">
@@ -3472,11 +3726,209 @@ function updateRolePerson(role: string, personId: string | undefined) {
   margin: 0 3px;
   background: rgba(var(--v-theme-on-surface), 0.09);
 }
+.readiness-status {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid currentColor;
+  border-radius: 7px;
+  background: transparent;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.readiness-status--success {
+  border-color: rgba(var(--v-theme-success), 0.3);
+  background: rgba(var(--v-theme-success), 0.1);
+  color: rgb(var(--v-theme-success));
+}
+.readiness-status--warning {
+  border-color: rgba(var(--v-theme-warning), 0.35);
+  background: rgba(var(--v-theme-warning), 0.1);
+  color: rgb(var(--v-theme-warning));
+}
+.readiness-status--error {
+  border-color: rgba(var(--v-theme-error), 0.36);
+  background: rgba(var(--v-theme-error), 0.1);
+  color: rgb(var(--v-theme-error));
+}
+.readiness-status:hover {
+  filter: brightness(1.12);
+}
 .present-button {
   min-width: 158px;
 }
 .present-button-wrap {
   display: inline-flex;
+}
+.readiness-dialog-card {
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.11);
+  background: rgb(var(--v-theme-surface));
+}
+.readiness-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.09);
+  white-space: normal;
+}
+.readiness-dialog-title > span:nth-child(2) {
+  display: grid;
+  gap: 2px;
+}
+.readiness-dialog-title strong {
+  font-size: 0.98rem;
+  font-weight: 720;
+}
+.readiness-dialog-title small {
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  font-size: 0.7rem;
+}
+.readiness-dialog-title-icon,
+.readiness-complete-state > span {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  place-items: center;
+  border-radius: 10px;
+}
+.readiness-dialog-title-icon.is-error {
+  background: rgba(var(--v-theme-error), 0.12);
+  color: rgb(var(--v-theme-error));
+}
+.readiness-dialog-title-icon.is-warning {
+  background: rgba(var(--v-theme-warning), 0.12);
+  color: rgb(var(--v-theme-warning));
+}
+.readiness-dialog-title-icon.is-success,
+.readiness-complete-state > span {
+  background: rgba(var(--v-theme-success), 0.12);
+  color: rgb(var(--v-theme-success));
+}
+.readiness-dialog-content {
+  display: grid;
+  max-height: min(620px, 70vh);
+  gap: 18px;
+  padding: 18px 20px !important;
+  overflow-y: auto;
+}
+.readiness-complete-state {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid rgba(var(--v-theme-success), 0.22);
+  border-radius: 10px;
+  background: rgba(var(--v-theme-success), 0.055);
+}
+.readiness-complete-state strong {
+  font-size: 0.84rem;
+}
+.readiness-complete-state p {
+  margin: 4px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  font-size: 0.72rem;
+}
+.readiness-issue-section {
+  display: grid;
+  gap: 7px;
+}
+.readiness-issue-section > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 3px 3px;
+  color: rgba(var(--v-theme-on-surface), 0.58);
+  font-size: 0.65rem;
+  font-weight: 720;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+.readiness-issue-section > header strong {
+  display: grid;
+  min-width: 23px;
+  height: 20px;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(var(--v-theme-on-surface), 0.08);
+  font-size: 0.65rem;
+}
+.readiness-issue-row {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+  border-radius: 9px;
+  background: rgba(var(--v-theme-on-surface), 0.025);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.readiness-issue-row:hover {
+  border-color: rgba(var(--v-theme-primary), 0.34);
+  background: rgba(var(--v-theme-primary), 0.055);
+}
+.readiness-issue-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 8px;
+}
+.readiness-issue-row.is-blocker .readiness-issue-icon {
+  background: rgba(var(--v-theme-error), 0.11);
+  color: rgb(var(--v-theme-error));
+}
+.readiness-issue-row.is-warning .readiness-issue-icon {
+  background: rgba(var(--v-theme-warning), 0.11);
+  color: rgb(var(--v-theme-warning));
+}
+.readiness-issue-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.readiness-issue-copy strong {
+  font-size: 0.78rem;
+  font-weight: 680;
+}
+.readiness-issue-copy small {
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  font-size: 0.69rem;
+  line-height: 1.4;
+}
+.readiness-issue-action {
+  display: inline-flex;
+  align-items: center;
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.68rem;
+  font-weight: 680;
+  white-space: nowrap;
+}
+.readiness-dialog-actions {
+  padding: 11px 18px !important;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.09);
+}
+.readiness-dialog-actions > span {
+  color: rgba(var(--v-theme-on-surface), 0.44);
+  font-size: 0.66rem;
+}
+@media (max-width: 620px) {
+  .readiness-issue-row {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+  .readiness-issue-action {
+    display: none;
+  }
 }
 @media (max-width: 1060px) {
   .workspace-service-sermon {
