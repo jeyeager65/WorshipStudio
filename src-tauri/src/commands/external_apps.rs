@@ -8,7 +8,7 @@ use crate::paths::{external_apps_path, now_iso, this_device_name};
 
 #[tauri::command]
 pub fn list_external_app_profiles(app: AppHandle) -> Result<Vec<ExternalAppProfile>, String> {
-    Ok(external_apps::list(&external_apps_path(&app)))
+    external_apps::list(&external_apps_path(&app)).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -33,6 +33,7 @@ pub fn delete_external_app_profile(app: AppHandle, id: String) -> Result<(), Str
 
 fn find_profile(app: &AppHandle, profile_id: &str) -> Result<ExternalAppProfile, String> {
     external_apps::list(&external_apps_path(app))
+        .map_err(|error| error.to_string())?
         .into_iter()
         .find(|p| p.id == profile_id)
         .ok_or_else(|| "That external app profile no longer exists.".to_string())

@@ -16,7 +16,7 @@ pub fn list(root: &Path) -> std::io::Result<Vec<SlideLibraryItem>> {
     read_json_dir(&slides_dir(root))
 }
 
-pub fn get(root: &Path, id: &str) -> Option<SlideLibraryItem> {
+pub fn get(root: &Path, id: &str) -> std::io::Result<Option<SlideLibraryItem>> {
     read_json_file(&slide_path(root, id))
 }
 
@@ -63,7 +63,7 @@ mod tests {
     fn save_then_get_round_trips() {
         let dir = tempfile::tempdir().unwrap();
         save(dir.path(), sample("slide-1"), "d", "now").unwrap();
-        let item = get(dir.path(), "slide-1").unwrap();
+        let item = get(dir.path(), "slide-1").unwrap().unwrap();
         assert_eq!(item.label, "Announcements");
         assert_eq!(item.tags, vec!["Sunday"]);
     }
@@ -73,6 +73,6 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         save(dir.path(), sample("slide-1"), "d", "now").unwrap();
         delete(dir.path(), "slide-1").unwrap();
-        assert!(get(dir.path(), "slide-1").is_none());
+        assert!(get(dir.path(), "slide-1").unwrap().is_none());
     }
 }

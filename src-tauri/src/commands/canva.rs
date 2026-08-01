@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, State};
 
 use crate::domain::media::MediaImportCommit;
-use crate::domain::{manifest, media};
+use crate::domain::{delete_file_if_exists, manifest, media, read_json_file, write_json_file};
 use crate::models::MediaItem;
 use crate::paths::{
     app_data_dir, canva_auth_path, library_root, local_media_root, now_iso, this_device_name,
@@ -95,15 +95,17 @@ fn unix_now() -> u64 {
         .as_secs()
 }
 
-fn read_tokens(app: &AppHandle) -> Option<CanvaTokens> {
-    let tokens: CanvaTokens = fs::read(canva_auth_path(app))
-        .ok()
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok())?;
+fn read_tokens(app: &AppHandle) -> Result<Option<CanvaTokens>, String> {
+    let Some(tokens): Option<CanvaTokens> =
+        read_json_file(&canva_auth_path(app)).map_err(|error| error.to_string())?
+    else {
+        return Ok(None);
+    };
     let configured_client_id = crate::commands::settings::load_library_settings(app)
-        .ok()?
+        .map_err(|error| error.to_string())?
         .canva_integration
         .client_id;
-    (tokens.client_id == configured_client_id).then_some(tokens)
+    Ok((tokens.client_id == configured_client_id).then_some(tokens))
 }
 
 fn save_tokens(app: &AppHandle, response: TokenResponse) -> Result<(), String> {
@@ -117,11 +119,7 @@ fn save_tokens(app: &AppHandle, response: TokenResponse) -> Result<(), String> {
         refresh_token: response.refresh_token,
         expires_at: unix_now() + response.expires_in,
     };
-    fs::write(
-        auth_path,
-        serde_json::to_vec_pretty(&tokens).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())
+    write_json_file(&auth_path, &tokens).map_err(|error| error.to_string())
 }
 
 fn percent_encode(value: &str) -> String {
@@ -193,7 +191,7 @@ async fn exchange_token(
 
 async fn access_token(app: &AppHandle) -> Result<String, String> {
     let tokens =
-        read_tokens(app).ok_or_else(|| "Connect this machine to Canva first.".to_string())?;
+        read_tokens(app)?.ok_or_else(|| "Connect this machine to Canva first.".to_string())?;
     if tokens.expires_at > unix_now() + 60 {
         return Ok(tokens.access_token);
     }
@@ -295,7 +293,7 @@ pub async fn get_canva_status(
     let server_status = server.canva_status().await;
     Ok(CanvaStatus {
         configured,
-        connected: configured && read_tokens(&app).is_some(),
+        connected: configured && read_tokens(&app)?.is_some(),
         connecting: server_status.0,
         error: server_status.1,
         callback_url: server
@@ -344,7 +342,7 @@ pub async fn disconnect_canva(
     app: AppHandle,
     server: State<'_, RemoteServerHandle>,
 ) -> Result<(), String> {
-    let _ = fs::remove_file(canva_auth_path(&app));
+    delete_file_if_exists(&canva_auth_path(&app)).map_err(|error| error.to_string())?;
     server.clear_canva_oauth().await;
     Ok(())
 }

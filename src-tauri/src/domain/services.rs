@@ -6,7 +6,7 @@ use crate::models::{
     ServiceItemContent, ServiceTemplateItemKind,
 };
 
-use super::{read_json_dir, read_json_file, write_json_file};
+use super::{delete_file_if_exists, read_json_dir, read_json_file, write_json_file};
 
 fn services_root(root: &Path) -> PathBuf {
     root.join("services")
@@ -41,14 +41,14 @@ pub fn list(root: &Path) -> std::io::Result<Vec<Service>> {
     Ok(services)
 }
 
-pub fn get(root: &Path, id: &str) -> Option<Service> {
-    list(root).ok()?.into_iter().find(|s| s.id == id)
+pub fn get(root: &Path, id: &str) -> std::io::Result<Option<Service>> {
+    Ok(list(root)?.into_iter().find(|s| s.id == id))
 }
 
 /// Removes any existing file for this id across all year folders — needed so changing a
 /// service's date (which changes which year folder it belongs in) doesn't leave a stale
 /// orphaned copy behind in the old folder.
-fn remove_existing(root: &Path, id: &str) -> std::io::Result<()> {
+fn remove_existing_except(root: &Path, id: &str, keep: Option<&Path>) -> std::io::Result<()> {
     let base = services_root(root);
     if !base.exists() {
         return Ok(());
@@ -57,8 +57,8 @@ fn remove_existing(root: &Path, id: &str) -> std::io::Result<()> {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
             let candidate = entry.path().join(format!("{id}.json"));
-            if candidate.exists() {
-                fs::remove_file(candidate)?;
+            if keep.is_none_or(|keep| candidate != keep) {
+                delete_file_if_exists(&candidate)?;
             }
         }
     }
@@ -73,14 +73,17 @@ pub fn save(
 ) -> std::io::Result<Service> {
     service.updated_at = now.to_string();
     service.updated_by_device = device.to_string();
-    remove_existing(root, &service.id)?;
     let year = year_of(&service.date).to_string();
-    write_json_file(&service_path(root, &year, &service.id), &service)?;
+    let destination = service_path(root, &year, &service.id);
+    // Commit the new version before removing a copy from an old year folder. If the write
+    // fails, the previous service remains intact and visible.
+    write_json_file(&destination, &service)?;
+    remove_existing_except(root, &service.id, Some(&destination))?;
     Ok(service)
 }
 
 pub fn delete(root: &Path, id: &str) -> std::io::Result<()> {
-    remove_existing(root, id)
+    remove_existing_except(root, id, None)
 }
 
 pub fn list_upcoming(root: &Path, from_date: &str, to_date: &str) -> std::io::Result<Vec<Service>> {
@@ -101,12 +104,12 @@ pub fn list_upcoming(root: &Path, from_date: &str, to_date: &str) -> std::io::Re
 /// the file is skipped entirely — no separate "already migrated" flag is needed.
 pub fn migrate_legacy_sermon_fields(root: &Path, device: &str, now: &str) -> std::io::Result<()> {
     let library_settings: Option<LibrarySettings> =
-        read_json_file(&root.join("library-settings.json"));
+        read_json_file(&root.join("library-settings.json"))?;
 
     for service in list(root)? {
         let year = year_of(&service.date).to_string();
         let path = service_path(root, &year, &service.id);
-        let Some(raw) = read_json_file::<serde_json::Value>(&path) else {
+        let Some(raw) = read_json_file::<serde_json::Value>(&path)? else {
             continue;
         };
         let legacy_title = raw
@@ -310,7 +313,10 @@ mod tests {
     fn get_finds_a_service_without_knowing_its_year_upfront() {
         let dir = tempfile::tempdir().unwrap();
         save(dir.path(), sample("svc-1", "2026-07-19"), "d", "now").unwrap();
-        assert_eq!(get(dir.path(), "svc-1").unwrap().date, "2026-07-19");
+        assert_eq!(
+            get(dir.path(), "svc-1").unwrap().unwrap().date,
+            "2026-07-19"
+        );
     }
 
     #[test]
@@ -376,7 +382,7 @@ mod tests {
 
         migrate_legacy_sermon_fields(dir.path(), "d", "migrated-time").unwrap();
 
-        let service = get(dir.path(), "svc-1").unwrap();
+        let service = get(dir.path(), "svc-1").unwrap().unwrap();
         assert_eq!(
             service.items.len(),
             1,
@@ -433,7 +439,7 @@ mod tests {
 
         migrate_legacy_sermon_fields(dir.path(), "d", "migrated-time").unwrap();
 
-        let service = get(dir.path(), "svc-1").unwrap();
+        let service = get(dir.path(), "svc-1").unwrap().unwrap();
         assert_eq!(service.items.len(), 1);
         assert_eq!(
             service.items[0].role.as_deref(),
@@ -468,7 +474,7 @@ mod tests {
 
         migrate_legacy_sermon_fields(dir.path(), "d", "migrated-time").unwrap();
 
-        let service = get(dir.path(), "svc-1").unwrap();
+        let service = get(dir.path(), "svc-1").unwrap().unwrap();
         let assignments = service.assignments.unwrap();
         assert_eq!(assignments.len(), 1);
         assert_eq!(
@@ -491,7 +497,7 @@ mod tests {
         migrate_legacy_sermon_fields(dir.path(), "d", "first-run-time").unwrap();
         migrate_legacy_sermon_fields(dir.path(), "d", "second-run-time").unwrap();
 
-        let service = get(dir.path(), "svc-1").unwrap();
+        let service = get(dir.path(), "svc-1").unwrap().unwrap();
         assert_eq!(
             service.updated_at, "first-run-time",
             "a second run should find nothing left to migrate and skip rewriting the file"

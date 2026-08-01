@@ -376,6 +376,15 @@ export interface SyncStatus {
   syncClientRunning: boolean
   lastLibraryChangeAt?: string
   conflictCount: number
+  recoveryCount: number
+}
+
+export interface RecoveryIssue {
+  relativePath: string
+  /** Opaque, validated handle passed back to the recovery commands. */
+  filePath: string
+  error: string
+  backupAvailable: boolean
 }
 
 export interface ConflictedItem {
@@ -393,6 +402,10 @@ export interface ConflictedItem {
 
 export interface SyncPort {
   getStatus(): Promise<SyncStatus>
+  listRecoveryIssues(): Promise<RecoveryIssue[]>
+  recoverFile(filePath: string): Promise<void>
+  /** Preserves damaged bytes outside the active `.json` set and returns their new path. */
+  quarantineFile(filePath: string): Promise<string>
   listConflicts(): Promise<ConflictedItem[]>
   /**
    * `keep: 'theirs'` overwrites the original with the conflicted copy's content; `'mine'`

@@ -21,7 +21,7 @@ pub fn list(root: &Path) -> std::io::Result<Vec<Song>> {
     read_json_dir(&songs_dir(root))
 }
 
-pub fn get(root: &Path, id: &str) -> Option<Song> {
+pub fn get(root: &Path, id: &str) -> std::io::Result<Option<Song>> {
     read_json_file(&song_path(root, id))
 }
 
@@ -157,7 +157,9 @@ mod tests {
         .unwrap();
         assert_eq!(saved.updated_by_device, "test-device");
 
-        let fetched = get(dir.path(), "song-1").expect("song should exist after save");
+        let fetched = get(dir.path(), "song-1")
+            .unwrap()
+            .expect("song should exist after save");
         assert_eq!(fetched.title, "Amazing Grace");
         assert_eq!(fetched.updated_at, "2026-01-01T00:00:00Z");
     }
@@ -181,7 +183,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         save(dir.path(), sample_song("song-1"), "d", "now").unwrap();
         delete(dir.path(), "song-1").unwrap();
-        assert!(get(dir.path(), "song-1").is_none());
+        assert!(get(dir.path(), "song-1").unwrap().is_none());
     }
 
     #[test]
@@ -198,7 +200,7 @@ mod tests {
             import_from_opensong_xml(dir.path(), xml, "song-imported".to_string(), "d", "now")
                 .unwrap();
         assert_eq!(song.title, "Amazing Grace");
-        assert!(get(dir.path(), "song-imported").is_some());
+        assert!(get(dir.path(), "song-imported").unwrap().is_some());
     }
 
     #[test]
@@ -260,7 +262,7 @@ mod tests {
 
         recompute_usage(dir.path(), "2026-07-28", "d", "recompute-time").unwrap();
 
-        let updated = get(dir.path(), "song-1").unwrap();
+        let updated = get(dir.path(), "song-1").unwrap().unwrap();
         assert_eq!(updated.usage.last_used_at.as_deref(), Some("2026-03-01"));
     }
 
@@ -279,7 +281,7 @@ mod tests {
 
         recompute_usage(dir.path(), "2026-07-28", "d", "recompute-time").unwrap();
 
-        let updated = get(dir.path(), "song-1").unwrap();
+        let updated = get(dir.path(), "song-1").unwrap().unwrap();
         assert_eq!(updated.usage.last_used_at.as_deref(), Some("2024-01-01"));
         assert_eq!(updated.usage.uses_past_year, 0);
     }
@@ -292,7 +294,7 @@ mod tests {
         // existing usage — recompute must not rewrite (and re-stamp) the file in that case.
         recompute_usage(dir.path(), "2026-07-28", "d", "recompute-time").unwrap();
 
-        let updated = get(dir.path(), "song-1").unwrap();
+        let updated = get(dir.path(), "song-1").unwrap().unwrap();
         assert_eq!(updated.updated_at, "original-timestamp");
     }
 
@@ -317,7 +319,7 @@ mod tests {
 
         recompute_usage(dir.path(), "2026-07-28", "d", "recompute-time").unwrap();
 
-        let updated = get(dir.path(), "song-1").unwrap();
+        let updated = get(dir.path(), "song-1").unwrap().unwrap();
         assert_eq!(updated.usage.uses_past_year, 2);
     }
 }

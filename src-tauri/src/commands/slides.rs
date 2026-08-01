@@ -11,7 +11,7 @@ pub fn list_slides(app: AppHandle) -> Result<Vec<SlideLibraryItem>, String> {
 
 #[tauri::command]
 pub fn get_slide(app: AppHandle, id: String) -> Result<Option<SlideLibraryItem>, String> {
-    Ok(slides::get(&library_root(&app), &id))
+    slides::get(&library_root(&app), &id).map_err(|error| error.to_string())
 }
 
 #[tauri::command]

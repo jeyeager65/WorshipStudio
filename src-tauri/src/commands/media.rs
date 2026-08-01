@@ -63,8 +63,9 @@ pub fn detect_media_duplicates(app: AppHandle, item: MediaItem) -> Result<Vec<Me
 #[tauri::command]
 pub fn get_media_file_path(app: AppHandle, id: String) -> Result<String, String> {
     let root = library_root(&app);
-    let item =
-        media::get(&root, &id).ok_or_else(|| "That media item no longer exists.".to_string())?;
+    let item = media::get(&root, &id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "That media item no longer exists.".to_string())?;
     let path = media::file_path(&root, &local_media_root(&app), &item);
     if !path.exists() {
         return Err(format!("File not found: {}", path.display()));

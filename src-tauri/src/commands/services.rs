@@ -11,7 +11,7 @@ pub fn list_services(app: AppHandle) -> Result<Vec<Service>, String> {
 
 #[tauri::command]
 pub fn get_service(app: AppHandle, id: String) -> Result<Option<Service>, String> {
-    Ok(services::get(&library_root(&app), &id))
+    services::get(&library_root(&app), &id).map_err(|error| error.to_string())
 }
 
 #[tauri::command]

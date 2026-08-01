@@ -1043,17 +1043,20 @@ function translationSource(entry: AvailableTranslationEntry): string {
             </div>
 
             <v-btn
-              v-if="syncStore.status.conflictCount > 0"
+              v-if="syncStore.status.conflictCount > 0 || syncStore.status.recoveryCount > 0"
               variant="flat"
-              color="warning"
-              prepend-icon="mdi-alert"
+              :color="syncStore.status.recoveryCount > 0 ? 'error' : 'warning'"
+              prepend-icon="mdi-database-alert-outline"
               to="/sync-conflicts"
             >
-              Resolve {{ syncStore.status.conflictCount }} Conflict{{
-                syncStore.status.conflictCount === 1 ? '' : 's'
+              Review
+              {{ syncStore.status.recoveryCount + syncStore.status.conflictCount }} Library Issue{{
+                syncStore.status.recoveryCount + syncStore.status.conflictCount === 1 ? '' : 's'
               }}
             </v-btn>
-            <p v-else class="text-medium-emphasis text-body-2">No sync conflicts right now.</p>
+            <p v-else class="text-medium-emphasis text-body-2">
+              No damaged files or sync conflicts right now.
+            </p>
           </div>
         </SettingsPanel>
 

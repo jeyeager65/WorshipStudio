@@ -83,7 +83,7 @@ fn migrate_legacy_canva_credentials(
 
 pub fn load_library_settings(app: &AppHandle) -> Result<LibrarySettings, String> {
     let path = library_root(app).join(LIBRARY_SETTINGS_FILE);
-    let mut settings = match read_json_file(&path) {
+    let mut settings = match read_json_file(&path).map_err(|error| error.to_string())? {
         Some(settings) => settings,
         None => default_library_settings(),
     };

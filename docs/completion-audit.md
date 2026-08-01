@@ -12,17 +12,20 @@ The next phase should emphasize reliability, consistent application states, and 
 
 ### 1. Protect library data from interrupted or invalid writes
 
-JSON files are currently written directly to their destination. An interrupted write, power loss, filesystem problem, or sync interruption could leave an incomplete file. Invalid JSON files can then be silently skipped during loading, making data appear deleted.
+Previously, JSON files were written directly to their destination, so an interrupted write, power loss, filesystem problem, or sync interruption could leave an incomplete file that was then silently skipped during loading.
 
-Recommended work:
+Status: completed August 1, 2026.
 
-- Write to a temporary file in the destination directory.
-- Flush and close the temporary file.
-- Atomically rename it over the destination.
-- Retain a recent backup where appropriate.
-- Detect and report invalid library files instead of silently omitting them.
-- Provide a recovery workflow that identifies the affected item and available backup.
-- Test interruption and malformed-file scenarios.
+- JSON is serialized before any existing file is touched, written to a unique temporary file in the destination directory, flushed to disk, and atomically moved into place.
+- Every replacement preserves the previous valid version as an adjacent `.backup` file. A corrupt current file never replaces a known-good backup.
+- Domain reads now distinguish missing files from malformed or unreadable files and return a path-specific error instead of silently omitting the record.
+- **Library Recovery** scans the active library against the expected model for each file type, identifies whether a verified backup exists, and offers **Restore Backup**.
+- When no valid backup exists, **Move Aside** preserves the damaged bytes beside the original while removing them from the active `.json` set.
+- Recovery commands are restricted to JSON files inside the active library.
+- Machine settings automatically restore a valid local backup when possible and never overwrite unrecoverable damaged settings with defaults.
+- Canva authorization and other application-owned JSON files use the same atomic persistence helper.
+- Moving a service between year folders commits the new file before removing the old copy.
+- Focused tests cover backup preservation, serialization failure, invalid JSON reporting, restoration, quarantine, and path-boundary enforcement.
 
 Relevant implementation: `src-tauri/src/domain/mod.rs` and `src-tauri/src/paths.rs`.
 
@@ -353,7 +356,7 @@ This does not apply to user-facing imports such as OpenSong or to migrations del
 
 ## Recommended execution order
 
-1. Atomic saves, corruption detection, backups, and recovery
+1. Atomic saves, corruption detection, backups, and recovery — completed August 1, 2026
 2. Standard loading, error, and save-failure handling
 3. Pre-service readiness check
 4. Sync Conflicts redesign and shared state components
@@ -378,7 +381,6 @@ This does not apply to user-facing imports such as OpenSong or to migrations del
 
 ### Before 1.0
 
-- Atomic writes and recovery
 - Credential-boundary verification and rotation documentation
 - Updater or a deliberate documented alternative
 - Windows E2E smoke CI

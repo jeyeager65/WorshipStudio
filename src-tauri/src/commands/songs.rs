@@ -11,7 +11,7 @@ pub fn list_songs(app: AppHandle) -> Result<Vec<Song>, String> {
 
 #[tauri::command]
 pub fn get_song(app: AppHandle, id: String) -> Result<Option<Song>, String> {
-    Ok(songs::get(&library_root(&app), &id))
+    songs::get(&library_root(&app), &id).map_err(|error| error.to_string())
 }
 
 #[tauri::command]

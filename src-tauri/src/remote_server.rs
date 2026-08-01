@@ -290,7 +290,13 @@ fn device_from_headers(
 }
 
 fn authorized_device_by_token(app: &AppHandle, token: &str) -> Option<crate::models::RemoteDevice> {
-    let device = remote::find_by_token(&remote_devices_path(app), token)?;
+    let device = match remote::find_by_token(&remote_devices_path(app), token) {
+        Ok(device) => device?,
+        Err(error) => {
+            log::error!("Could not read paired Remote Control devices: {error}");
+            return None;
+        }
+    };
     let person_id = device.person_id.as_deref()?;
     people::exists(&library_root(app), person_id).then_some(device)
 }
@@ -461,7 +467,7 @@ async fn get_media(
         return StatusCode::UNAUTHORIZED.into_response();
     }
     let root = library_root(&handle.app);
-    let Some(item) = media::get(&root, &id) else {
+    let Ok(Some(item)) = media::get(&root, &id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
     let path = media::file_path(&root, &local_media_root(&handle.app), &item);

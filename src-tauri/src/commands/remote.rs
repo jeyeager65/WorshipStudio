@@ -7,11 +7,12 @@ use crate::paths::{library_root, now_iso, remote_devices_path, this_device_name}
 use crate::remote_server::{self, RemoteServerHandle};
 
 #[tauri::command]
-pub fn list_remote_devices(app: AppHandle) -> Vec<RemoteDeviceSummary> {
-    remote::list(&remote_devices_path(&app))
+pub fn list_remote_devices(app: AppHandle) -> Result<Vec<RemoteDeviceSummary>, String> {
+    Ok(remote::list(&remote_devices_path(&app))
+        .map_err(|error| error.to_string())?
         .iter()
         .map(RemoteDeviceSummary::from)
-        .collect()
+        .collect())
 }
 
 #[derive(Serialize)]
@@ -75,6 +76,7 @@ pub fn repair_remote_device(
     id: String,
 ) -> Result<ProvisionResult, String> {
     let device = remote::list(&remote_devices_path(&app))
+        .map_err(|error| error.to_string())?
         .into_iter()
         .find(|device| device.id == id)
         .ok_or_else(|| "That paired device no longer exists.".to_string())?;

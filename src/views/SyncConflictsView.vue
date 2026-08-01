@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useSyncStore } from '@/stores/sync'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { diffFields } from '@/utils/conflictDiff'
-import type { ConflictedItem } from '@/adapters/types'
+import type { ConflictedItem, RecoveryIssue } from '@/adapters/types'
 
 const store = useSyncStore()
+const confirmDialog = useConfirmDialogStore()
+const recoveringPath = ref('')
+const recoveryError = ref('')
+const quarantineNotice = ref('')
 
 onMounted(() => {
   if (!store.loaded) store.load()
@@ -29,14 +34,117 @@ function thisVersionUpdatedAt(conflict: ConflictedItem): string {
 async function keep(conflict: ConflictedItem, which: 'mine' | 'theirs') {
   await store.resolve(conflict.conflictFilePath, which)
 }
+
+async function restore(issue: RecoveryIssue) {
+  recoveringPath.value = issue.filePath
+  recoveryError.value = ''
+  quarantineNotice.value = ''
+  try {
+    await store.recover(issue.filePath)
+  } catch (error) {
+    recoveryError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    recoveringPath.value = ''
+  }
+}
+
+async function moveAside(issue: RecoveryIssue) {
+  if (
+    !(await confirmDialog.confirm(
+      `Move ${issue.relativePath} out of the active library? Its damaged bytes will be preserved beside the original file, but this item will no longer load in Worship Studio.`,
+      'Move Damaged File',
+    ))
+  )
+    return
+  recoveringPath.value = issue.filePath
+  recoveryError.value = ''
+  quarantineNotice.value = ''
+  try {
+    const destination = await store.quarantine(issue.filePath)
+    quarantineNotice.value = `Damaged file preserved at ${destination}`
+  } catch (error) {
+    recoveryError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    recoveringPath.value = ''
+  }
+}
 </script>
 
 <template>
   <v-container class="py-8" style="max-width: 820px">
-    <h1 class="text-h5 font-weight-bold mb-1">Resolve Sync Conflicts</h1>
+    <h1 class="text-h5 font-weight-bold mb-1">Library Recovery</h1>
     <p class="text-medium-emphasis text-body-2 mb-6">
-      These items were edited on two machines before syncing — choose which version to keep for each.
+      Restore damaged library files from their last complete backup and resolve files changed on multiple computers.
     </p>
+
+    <section v-if="store.recoveryIssues.length > 0" class="mb-8">
+      <div class="d-flex align-center ga-3 mb-3">
+        <v-icon icon="mdi-database-alert-outline" color="error" />
+        <div>
+          <h2 class="text-subtitle-1 font-weight-bold">Damaged library files</h2>
+          <p class="text-caption text-medium-emphasis">
+            These files were left untouched. Restore a verified backup or preserve the damaged file outside the active library.
+          </p>
+        </div>
+      </div>
+      <v-card
+        v-for="issue in store.recoveryIssues"
+        :key="issue.filePath"
+        variant="outlined"
+        class="mb-3 recovery-card"
+      >
+        <div class="pa-4 recovery-row">
+          <div class="recovery-copy">
+            <strong>{{ issue.relativePath }}</strong>
+            <span>{{ issue.error }}</span>
+            <small v-if="issue.backupAvailable" class="text-success">
+              A complete previous version is available.
+            </small>
+            <small v-else class="text-warning">
+              No valid automatic backup is available.
+            </small>
+          </div>
+          <div class="d-flex flex-wrap ga-2">
+            <v-btn
+              v-if="issue.backupAvailable"
+              color="primary"
+              variant="flat"
+              prepend-icon="mdi-backup-restore"
+              :loading="recoveringPath === issue.filePath"
+              @click="restore(issue)"
+            >
+              Restore Backup
+            </v-btn>
+            <v-btn
+              color="warning"
+              variant="outlined"
+              prepend-icon="mdi-file-move-outline"
+              :loading="recoveringPath === issue.filePath"
+              @click="moveAside(issue)"
+            >
+              Move Aside
+            </v-btn>
+          </div>
+        </div>
+      </v-card>
+    </section>
+
+    <v-alert v-if="recoveryError" type="error" variant="tonal" class="mb-5">
+      {{ recoveryError }}
+    </v-alert>
+    <v-alert v-if="quarantineNotice" type="info" variant="tonal" class="mb-5">
+      {{ quarantineNotice }}
+    </v-alert>
+
+    <div v-if="store.conflicts.length > 0" class="d-flex align-center ga-3 mb-3">
+      <v-icon icon="mdi-source-branch-sync" color="warning" />
+      <div>
+        <h2 class="text-subtitle-1 font-weight-bold">Sync conflicts</h2>
+        <p class="text-caption text-medium-emphasis">
+          Choose which version to keep for each item edited on multiple computers.
+        </p>
+      </div>
+    </div>
 
     <v-card v-for="conflict in store.conflicts" :key="conflict.conflictFilePath" variant="outlined" class="mb-4 conflict-card">
       <div class="d-flex align-center justify-space-between pa-4 conflict-header">
@@ -78,8 +186,11 @@ async function keep(conflict: ConflictedItem, which: 'mine' | 'theirs') {
       </div>
     </v-card>
 
-    <p v-if="store.loaded && store.conflicts.length === 0" class="text-medium-emphasis text-body-2">
-      No sync conflicts right now.
+    <p
+      v-if="store.loaded && store.conflicts.length === 0 && store.recoveryIssues.length === 0"
+      class="text-medium-emphasis text-body-2 text-center py-10"
+    >
+      The library is healthy. There are no damaged files or sync conflicts right now.
     </p>
     <p v-if="store.conflicts.length > 0" class="text-caption text-medium-emphasis text-center mt-4">
       Only fields that differ are highlighted. Once resolved, the other version is discarded and this stops appearing.
@@ -98,5 +209,29 @@ async function keep(conflict: ConflictedItem, which: 'mine' | 'theirs') {
   background: rgba(var(--v-theme-warning), 0.2);
   padding: 2px 4px;
   border-radius: 3px;
+}
+.recovery-card {
+  border-color: rgba(var(--v-theme-error), 0.65);
+}
+.recovery-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+}
+.recovery-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.recovery-copy span {
+  color: rgba(var(--v-theme-on-surface), 0.64);
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 680px) {
+  .recovery-row {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

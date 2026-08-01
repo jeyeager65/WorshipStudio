@@ -1,8 +1,8 @@
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
+use crate::domain::{read_json_file, restore_json_backup, write_json_file};
 use crate::models::MachineSettings;
 
 const MACHINE_SETTINGS_FILE: &str = "machine-settings.json";
@@ -108,13 +108,26 @@ fn default_machine_settings(app: &AppHandle) -> MachineSettings {
 /// sensible defaults on first run.
 pub fn load_machine_settings(app: &AppHandle) -> MachineSettings {
     let path = machine_settings_path(app);
-    if let Ok(bytes) = fs::read(&path) {
-        if let Ok(mut settings) = serde_json::from_slice::<MachineSettings>(&bytes) {
+    match read_json_file::<MachineSettings>(&path) {
+        Ok(Some(mut settings)) => {
             if settings.canva_callback_port.is_none() {
                 settings.canva_callback_port = Some(default_canva_callback_port(is_portable(app)));
                 let _ = save_machine_settings(app, &settings);
             }
             return settings;
+        }
+        Ok(None) => {}
+        Err(error) => {
+            log::error!("Could not load machine settings: {error}");
+            if restore_json_backup(&path).unwrap_or(false) {
+                if let Ok(Some(settings)) = read_json_file(&path) {
+                    log::warn!("Restored machine settings from {}", path.display());
+                    return settings;
+                }
+            }
+            // Preserve the damaged bytes when recovery is unavailable. Defaults let the UI
+            // open without turning a readable corruption problem into silent data loss.
+            return default_machine_settings(app);
         }
     }
     let defaults = default_machine_settings(app);
@@ -124,10 +137,7 @@ pub fn load_machine_settings(app: &AppHandle) -> MachineSettings {
 
 pub fn save_machine_settings(app: &AppHandle, settings: &MachineSettings) -> std::io::Result<()> {
     let path = machine_settings_path(app);
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir)?;
-    }
-    fs::write(path, serde_json::to_vec_pretty(settings)?)
+    write_json_file(&path, settings)
 }
 
 /// The synced library root — where songs/services/slides/settings live.

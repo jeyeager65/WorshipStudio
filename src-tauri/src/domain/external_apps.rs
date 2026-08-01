@@ -7,8 +7,8 @@ use super::{read_json_file, write_json_file};
 /// Whole-list-in-one-file rather than one-file-per-profile (unlike songs/slides/etc.) — a
 /// church realistically has a handful of these at most, and unlike synced library content,
 /// there's no Dropbox-conflict concern to keep per-item files scoped around.
-pub fn list(external_apps_path: &Path) -> Vec<ExternalAppProfile> {
-    read_json_file(external_apps_path).unwrap_or_default()
+pub fn list(external_apps_path: &Path) -> std::io::Result<Vec<ExternalAppProfile>> {
+    Ok(read_json_file(external_apps_path)?.unwrap_or_default())
 }
 
 pub fn save(
@@ -19,7 +19,7 @@ pub fn save(
 ) -> std::io::Result<ExternalAppProfile> {
     profile.updated_at = now.to_string();
     profile.updated_by_device = device.to_string();
-    let mut all = list(external_apps_path);
+    let mut all = list(external_apps_path)?;
     match all.iter().position(|p| p.id == profile.id) {
         Some(index) => all[index] = profile.clone(),
         None => all.push(profile.clone()),
@@ -29,7 +29,7 @@ pub fn save(
 }
 
 pub fn delete(external_apps_path: &Path, id: &str) -> std::io::Result<()> {
-    let mut all = list(external_apps_path);
+    let mut all = list(external_apps_path)?;
     all.retain(|p| p.id != id);
     write_json_file(external_apps_path, &all)
 }
@@ -95,7 +95,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("external-apps.json");
         save(&path, sample("app-1", "PowerPoint"), "d", "now").unwrap();
-        assert_eq!(list(&path)[0].name, "PowerPoint");
+        assert_eq!(list(&path).unwrap()[0].name, "PowerPoint");
     }
 
     #[test]
@@ -107,7 +107,7 @@ mod tests {
         updated.id = "app-1".to_string();
         save(&path, updated, "d", "now").unwrap();
 
-        let all = list(&path);
+        let all = list(&path).unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].name, "PowerPoint Renamed");
     }
@@ -121,7 +121,7 @@ mod tests {
 
         delete(&path, "app-1").unwrap();
 
-        let all = list(&path);
+        let all = list(&path).unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].id, "app-2");
     }
@@ -129,7 +129,9 @@ mod tests {
     #[test]
     fn list_returns_empty_for_a_missing_file() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(list(&dir.path().join("does-not-exist.json")).is_empty());
+        assert!(list(&dir.path().join("does-not-exist.json"))
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

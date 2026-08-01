@@ -62,8 +62,8 @@ pub fn file_path(root: &Path, local_media_root: &Path, item: &MediaItem) -> Path
     dir.join(&item.filename)
 }
 
-pub fn get(root: &Path, id: &str) -> Option<MediaItem> {
-    read_json_file(&media_item_path(root, id)).map(normalize_title)
+pub fn get(root: &Path, id: &str) -> std::io::Result<Option<MediaItem>> {
+    Ok(read_json_file(&media_item_path(root, id))?.map(normalize_title))
 }
 
 pub fn save(
@@ -96,7 +96,7 @@ pub fn replace_from_file(
     device: &str,
     now: &str,
 ) -> std::io::Result<Option<MediaItem>> {
-    let Some(mut item) = get(root, replacement.id) else {
+    let Some(mut item) = get(root, replacement.id)? else {
         return Ok(None);
     };
     let destination = file_path(root, local_media_root, &item);
@@ -115,7 +115,7 @@ pub fn replace_from_file(
 /// from whichever folder its `location` identifies. A temporary file lock must never leave a
 /// broken metadata card that requires the user to delete it again.
 pub fn delete(root: &Path, local_media_root: &Path, id: &str) -> std::io::Result<()> {
-    let backing_file = get(root, id).map(|item| file_path(root, local_media_root, &item));
+    let backing_file = get(root, id)?.map(|item| file_path(root, local_media_root, &item));
 
     // Metadata is the library's authoritative record. Remove it before touching the backing
     // file so a transient lock on the JSON cannot leave a broken, image-less card that needs
@@ -361,7 +361,10 @@ mod tests {
             "now",
         )
         .unwrap();
-        assert_eq!(get(dir.path(), "media-1").unwrap().filename, "a.jpg");
+        assert_eq!(
+            get(dir.path(), "media-1").unwrap().unwrap().filename,
+            "a.jpg"
+        );
     }
 
     #[test]
@@ -589,7 +592,7 @@ mod tests {
         .unwrap();
 
         delete(root_dir.path(), local_dir.path(), &created[0].id).unwrap();
-        assert!(get(root_dir.path(), &created[0].id).is_none());
+        assert!(get(root_dir.path(), &created[0].id).unwrap().is_none());
         assert!(!synced_media_dir(root_dir.path()).join("gone.jpg").exists());
     }
 
@@ -606,7 +609,7 @@ mod tests {
         fs::create_dir_all(synced_media_dir(root).join("locked.png")).unwrap();
 
         delete(root, local_dir.path(), "media-canva").unwrap();
-        assert!(get(root, "media-canva").is_none());
+        assert!(get(root, "media-canva").unwrap().is_none());
         assert!(synced_media_dir(root).join("locked.png").exists());
     }
 
@@ -633,7 +636,7 @@ mod tests {
         save(dir.path(), item, "d", "now").unwrap();
 
         assert_eq!(
-            get(dir.path(), "media-1").unwrap().title,
+            get(dir.path(), "media-1").unwrap().unwrap().title,
             "cross-hill-sunset"
         );
         assert_eq!(list(dir.path()).unwrap()[0].title, "cross-hill-sunset");
@@ -647,7 +650,7 @@ mod tests {
         save(dir.path(), item, "d", "now").unwrap();
 
         assert_eq!(
-            get(dir.path(), "media-1").unwrap().title,
+            get(dir.path(), "media-1").unwrap().unwrap().title,
             "Cross Hill at Sunset"
         );
     }

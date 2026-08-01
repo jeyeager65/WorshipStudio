@@ -6,18 +6,21 @@ use super::{read_json_file, write_json_file};
 
 /// Whole-list-in-one-file, same reasoning as external_apps: a handful of provisioned devices
 /// at most, no Dropbox-conflict concern since this is per-machine and never synced.
-pub fn list(remote_devices_path: &Path) -> Vec<RemoteDevice> {
-    read_json_file(remote_devices_path).unwrap_or_default()
+pub fn list(remote_devices_path: &Path) -> std::io::Result<Vec<RemoteDevice>> {
+    Ok(read_json_file(remote_devices_path)?.unwrap_or_default())
 }
 
-pub fn find_by_token(remote_devices_path: &Path, token: &str) -> Option<RemoteDevice> {
-    list(remote_devices_path)
+pub fn find_by_token(
+    remote_devices_path: &Path,
+    token: &str,
+) -> std::io::Result<Option<RemoteDevice>> {
+    Ok(list(remote_devices_path)?
         .into_iter()
-        .find(|d| d.token == token)
+        .find(|d| d.token == token))
 }
 
 pub fn save(remote_devices_path: &Path, device: RemoteDevice) -> std::io::Result<()> {
-    let mut all = list(remote_devices_path);
+    let mut all = list(remote_devices_path)?;
     match all.iter().position(|d| d.id == device.id) {
         Some(index) => all[index] = device,
         None => all.push(device),
@@ -26,13 +29,13 @@ pub fn save(remote_devices_path: &Path, device: RemoteDevice) -> std::io::Result
 }
 
 pub fn delete(remote_devices_path: &Path, id: &str) -> std::io::Result<()> {
-    let mut all = list(remote_devices_path);
+    let mut all = list(remote_devices_path)?;
     all.retain(|d| d.id != id);
     write_json_file(remote_devices_path, &all)
 }
 
 pub fn delete_by_person(remote_devices_path: &Path, person_id: &str) -> std::io::Result<()> {
-    let mut all = list(remote_devices_path);
+    let mut all = list(remote_devices_path)?;
     all.retain(|device| device.person_id.as_deref() != Some(person_id));
     write_json_file(remote_devices_path, &all)
 }
@@ -58,7 +61,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("remote-devices.json");
         save(&path, sample("device-1", "John's iPhone", "tok-1")).unwrap();
-        assert_eq!(list(&path)[0].name, "John's iPhone");
+        assert_eq!(list(&path).unwrap()[0].name, "John's iPhone");
     }
 
     #[test]
@@ -70,7 +73,7 @@ mod tests {
         updated.id = "device-1".to_string();
         save(&path, updated).unwrap();
 
-        let all = list(&path);
+        let all = list(&path).unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].name, "John's iPad");
     }
@@ -84,7 +87,7 @@ mod tests {
 
         delete(&path, "device-1").unwrap();
 
-        let all = list(&path);
+        let all = list(&path).unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].id, "device-2");
     }
@@ -101,7 +104,7 @@ mod tests {
 
         delete_by_person(&path, "person-1").unwrap();
 
-        let remaining = list(&path);
+        let remaining = list(&path).unwrap();
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0].person_id.as_deref(), Some("person-2"));
     }
@@ -113,13 +116,18 @@ mod tests {
         save(&path, sample("device-1", "John's iPhone", "tok-1")).unwrap();
         save(&path, sample("device-2", "Mallory's iPad", "tok-2")).unwrap();
 
-        assert_eq!(find_by_token(&path, "tok-2").unwrap().id, "device-2");
-        assert!(find_by_token(&path, "unknown").is_none());
+        assert_eq!(
+            find_by_token(&path, "tok-2").unwrap().unwrap().id,
+            "device-2"
+        );
+        assert!(find_by_token(&path, "unknown").unwrap().is_none());
     }
 
     #[test]
     fn list_returns_empty_for_a_missing_file() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(list(&dir.path().join("does-not-exist.json")).is_empty());
+        assert!(list(&dir.path().join("does-not-exist.json"))
+            .unwrap()
+            .is_empty());
     }
 }

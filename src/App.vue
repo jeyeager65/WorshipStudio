@@ -480,15 +480,18 @@ onUnmounted(() => {
           </template>
         </v-tooltip>
         <v-btn
-          v-if="syncStore.status && syncStore.status.conflictCount > 0"
+          v-if="
+            syncStore.status &&
+            (syncStore.status.conflictCount > 0 || syncStore.status.recoveryCount > 0)
+          "
           to="/sync-conflicts"
           variant="flat"
-          color="warning"
+          :color="syncStore.status.recoveryCount > 0 ? 'error' : 'warning'"
           class="mr-3"
-          prepend-icon="mdi-alert"
+          prepend-icon="mdi-database-alert-outline"
         >
-          {{ syncStore.status.conflictCount }} conflict{{
-            syncStore.status.conflictCount === 1 ? '' : 's'
+          {{ syncStore.status.conflictCount + syncStore.status.recoveryCount }} library issue{{
+            syncStore.status.conflictCount + syncStore.status.recoveryCount === 1 ? '' : 's'
           }}
         </v-btn>
       </template>

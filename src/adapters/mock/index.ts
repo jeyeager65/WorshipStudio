@@ -355,7 +355,11 @@ export function createMockAdapter(): StudioAdapter {
         syncClientRunning: true,
         lastLibraryChangeAt: new Date().toISOString(),
         conflictCount: 0,
+        recoveryCount: 0,
       }),
+      listRecoveryIssues: async () => [],
+      recoverFile: async () => {},
+      quarantineFile: async () => 'damaged-file.json.damaged',
       // No real Dropbox conflict artifacts to scan for in the browser demo.
       listConflicts: async () => [],
       resolveConflict: async () => {},
