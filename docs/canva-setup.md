@@ -14,6 +14,8 @@ Canva access and refresh tokens identify an authorized Canva account. They remai
 
 Portable Worship Studio keeps these local tokens with its portable application data, so the authorization travels with that portable installation.
 
+These files are intentionally plaintext under the current trusted-church-computer model. An installed copy relies on the operating system's per-user application-data protections. A portable drive may not support equivalent permissions, so possession of the drive should be treated as access to its Canva authorization and Bible API keys. Disconnect Canva before lending or disposing of it.
+
 ## Configure the integration
 
 1. Create an integration in a church-controlled Canva Developer account.

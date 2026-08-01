@@ -75,7 +75,7 @@ pub fn repair_remote_device(
     server: tauri::State<'_, RemoteServerHandle>,
     id: String,
 ) -> Result<ProvisionResult, String> {
-    let device = remote::list(&remote_devices_path(&app))
+    let mut device = remote::list(&remote_devices_path(&app))
         .map_err(|error| error.to_string())?
         .into_iter()
         .find(|device| device.id == id)
@@ -86,7 +86,15 @@ pub fn repair_remote_device(
     if !people::exists(&library_root(&app), person_id) {
         return Err("The person assigned to this device no longer exists.".to_string());
     }
-    pairing_result(&server, &device.token)
+    // A re-pair is also the recovery path if an old link or browser authorization may have
+    // escaped. Rotate the bearer token so every previous cookie and QR code stops working.
+    let token = uuid::Uuid::new_v4().to_string();
+    let result = pairing_result(&server, &token)?;
+    device.token = token;
+    device.updated_at = now_iso();
+    device.updated_by_device = this_device_name(&app);
+    remote::save(&remote_devices_path(&app), device).map_err(|error| error.to_string())?;
+    Ok(result)
 }
 
 #[tauri::command]

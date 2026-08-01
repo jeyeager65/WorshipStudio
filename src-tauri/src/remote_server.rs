@@ -280,6 +280,13 @@ fn parse_remote_token_cookie(cookie_header: &str) -> Option<String> {
     })
 }
 
+fn remote_token_cookie(token: &str) -> String {
+    // The remote page never needs to read its bearer token from JavaScript. HttpOnly keeps a
+    // compromised page script from extracting it; SameSite limits cross-site requests. Secure
+    // cannot be used because Remote Control deliberately runs over plain HTTP on the local LAN.
+    format!("remote_token={token}; Path=/; Max-Age=315360000; HttpOnly; SameSite=Lax")
+}
+
 fn device_from_headers(
     headers: &HeaderMap,
     app: &AppHandle,
@@ -321,12 +328,7 @@ async fn pair(
     // No `Secure` attribute — this is plain HTTP on a LAN by design (see feature-spec.md's
     // remote control section), so requiring HTTPS would just break the cookie outright.
     // A ~10-year Max-Age matches "pair once, stay authorized indefinitely" from the spec.
-    if let Ok(cookie) = format!(
-        "remote_token={}; Path=/; Max-Age=315360000; SameSite=Lax",
-        query.token
-    )
-    .parse()
-    {
+    if let Ok(cookie) = remote_token_cookie(&query.token).parse() {
         response.headers_mut().insert(header::SET_COOKIE, cookie);
     }
     response
@@ -648,6 +650,14 @@ mod tests {
     #[test]
     fn parse_remote_token_cookie_returns_none_when_absent() {
         assert_eq!(parse_remote_token_cookie("other=1; another=2"), None);
+    }
+
+    #[test]
+    fn remote_pairing_cookie_is_http_only_and_same_site() {
+        let cookie = remote_token_cookie("secret-token");
+        assert!(cookie.contains("HttpOnly"));
+        assert!(cookie.contains("SameSite=Lax"));
+        assert!(!cookie.contains("Secure"));
     }
 
     #[test]

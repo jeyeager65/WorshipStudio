@@ -50,6 +50,8 @@ These should be implemented through shared components and common store conventio
 
 ### 3. Finish the focused credential review
 
+Status: completed August 1, 2026.
+
 The credential boundary is now deliberate rather than treating every credential alike:
 
 - The Canva client ID and secret define the church's private integration. They are stored in the synced church library so its Worship Studio computers share one integration.
@@ -58,12 +60,14 @@ The credential boundary is now deliberate rather than treating every credential 
 - Bible API keys remain machine-local plaintext configuration. Given the private computers, limited Dropbox exposure, and replaceable keys, this is an accepted current tradeoff rather than a blocker.
 - Remote-control pairing records and tokens remain machine-local.
 
-Recommended remaining work:
+Review findings and safeguards:
 
-- Review local file permissions for machine settings, Canva tokens, and remote pairing data.
-- Ensure diagnostics, logging, and error messages never expose credentials or tokens.
-- Revisit an OS credential store only if the distribution model or threat model expands beyond trusted church computers and a private synced library.
-- Document credential rotation and Canva reconnection procedures.
+- Installed local credentials inherit the operating system user's application-data protections. Portable storage cannot promise equivalent filesystem permissions, so the documentation explicitly treats possession of the drive as access to its local authorization.
+- Current logs contain operational paths, ports, and error summaries but do not serialize settings, OAuth requests, authorization headers, or pairing tokens. The planned diagnostics feature must remain allowlist-based and must never include credential-bearing files.
+- Remote pairing cookies are `HttpOnly` and `SameSite=Lax`. Re-pairing rotates the device bearer token, invalidating old cookies, QR codes, and manual pairing links; revocation removes it entirely.
+- The Canva loopback callback binds only to `127.0.0.1`, uses random OAuth state plus PKCE, and never exposes the authorization code or tokens to the frontend.
+- An OS credential store remains unnecessary under the accepted trusted-church-computer/private-library threat model. Revisit that decision if the distribution or threat model expands.
+- Canva rotation and reconnection procedures are documented, including the additional physical-security implications of portable storage.
 
 Relevant implementation: `src-tauri/src/models.rs`, `src-tauri/src/commands/settings.rs`, and `src-tauri/src/commands/canva.rs`. See `docs/canva-setup.md` for the operational model.
 
@@ -380,7 +384,7 @@ This does not apply to user-facing imports such as OpenSong or to migrations del
 3. Replace undo toasts with editor-scoped undo/redo history and visible controls — completed August 1, 2026
 4. Pre-service readiness check — completed August 1, 2026
 5. Library Health and Sync Conflicts redesign — completed August 1, 2026
-6. Credential boundary and focused security review
+6. Credential boundary and focused security review — completed August 1, 2026
 7. Honest email/copy/mail-client workflow
 8. Windows E2E smoke CI and real-hardware testing
 9. Automatic updates and user-accessible diagnostics

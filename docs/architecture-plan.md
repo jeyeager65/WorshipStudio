@@ -91,9 +91,10 @@ All records are JSON, one file per item, with two fields stamped on every save:
                                           # roles, branding, theme defaults, bible translations config
 ```
 
-Per-machine data (Tauri app-data dir, **not** synced):
-`display-setup.json`, `remote-devices.json` (+ tokens in OS keyring, not this file),
-`external-app-profiles.json`, `local-media/`, `this-computer.json` (device name).
+Per-machine data (Tauri app-data dir, **not** synced): machine settings and display roles,
+`remote-devices.json` (including revocable pairing tokens), `external-apps.json`,
+`canva-auth.json`, and local media. Portable mode keeps the same instance-specific files beside
+the executable so it remains independent from an installed copy.
 
 ### Core TypeScript shapes (initial cut, will firm up per-feature)
 
