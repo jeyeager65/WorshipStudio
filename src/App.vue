@@ -463,14 +463,16 @@ onUnmounted(() => {
             <template #activator="{ props: tooltipProps }">
               <span v-bind="tooltipProps">
                 <v-btn
-                  icon="mdi-undo"
-                  variant="text"
-                  size="small"
+                  variant="tonal"
+                  class="app-history-button"
                   :disabled="!historyStore.canUndo"
                   aria-label="Undo"
                   aria-keyshortcuts="Control+Z Meta+Z"
                   @click="historyStore.undo"
-                />
+                >
+                  <v-icon icon="mdi-undo" size="18" />
+                  <span>Undo</span>
+                </v-btn>
               </span>
             </template>
           </v-tooltip>
@@ -483,14 +485,16 @@ onUnmounted(() => {
             <template #activator="{ props: tooltipProps }">
               <span v-bind="tooltipProps">
                 <v-btn
-                  icon="mdi-redo"
-                  variant="text"
-                  size="small"
+                  variant="tonal"
+                  class="app-history-button"
                   :disabled="!historyStore.canRedo"
                   aria-label="Redo"
                   aria-keyshortcuts="Control+Y Control+Shift+Z Meta+Shift+Z"
                   @click="historyStore.redo"
-                />
+                >
+                  <v-icon icon="mdi-redo" size="18" />
+                  <span>Redo</span>
+                </v-btn>
               </span>
             </template>
           </v-tooltip>
@@ -650,11 +654,22 @@ onUnmounted(() => {
 .app-history-controls {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+  gap: 6px;
+}
+.app-history-button {
+  min-width: 76px;
+  height: 34px;
+  padding-inline: 11px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.13);
   border-radius: 7px;
-  background: rgba(var(--v-theme-on-surface), 0.035);
+  font-size: 0.76rem;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-transform: none;
+  box-shadow: none;
+}
+.app-history-button .v-icon {
+  margin-right: 6px;
 }
 .app-save-button {
   min-width: 94px;
@@ -682,6 +697,18 @@ onUnmounted(() => {
   font-size: 0.72rem !important;
   font-weight: 550;
   letter-spacing: 0;
+}
+@media (max-width: 1180px) {
+  .app-history-button {
+    min-width: 38px;
+    padding-inline: 9px;
+  }
+  .app-history-button span {
+    display: none;
+  }
+  .app-history-button .v-icon {
+    margin-right: 0;
+  }
 }
 .navigation-toggle {
   margin-right: 6px;
