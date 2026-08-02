@@ -2,7 +2,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { appDataDir } from '../helpers/appDataDir.js'
 
-const PORT = 47823
+// Matches remote_server.rs's DEFAULT_REMOTE_SERVER_PORT — not 47823/47824, which are the
+// separate Canva OAuth callback ports (paths.rs's INSTALLED_CANVA_CALLBACK_PORT/
+// PORTABLE_CANVA_CALLBACK_PORT).
+const PORT = 47825
 
 describe('Remote Control confidence-monitor mirror', () => {
   it('serves live state and real media bytes over HTTP to a paired device', async () => {
@@ -12,12 +15,36 @@ describe('Remote Control confidence-monitor mirror', () => {
     // for the duration of this spec file.
     const remoteDevicesPath = path.join(appDataDir, 'remote-devices.json')
     const token = 'e2e-mirror-token'
+    // A device is only authorized if its personId resolves to a real person in the library
+    // (see remote_server.rs's authorized_device_by_token) — devices without one are
+    // deliberately treated as unpaired, so this needs a real person fixture too.
+    const personId = 'person-e2e-mirror'
+    const peopleDir = path.join(appDataDir, 'Library', 'people')
+    fs.mkdirSync(peopleDir, { recursive: true })
+    const personPath = path.join(peopleDir, `${personId}.json`)
+    fs.writeFileSync(
+      personPath,
+      JSON.stringify(
+        {
+          id: personId,
+          firstName: 'Jordan',
+          lastName: 'E2EMirror',
+          preferredRoles: [],
+          unavailableDateRanges: [],
+          updatedAt: '2026-07-26T00:00:00Z',
+          updatedByDevice: 'e2e',
+        },
+        null,
+        2,
+      ),
+    )
     fs.writeFileSync(
       remoteDevicesPath,
       JSON.stringify(
         [
           {
             id: 'device-e2e-mirror',
+            personId,
             name: 'E2E Mirror Phone',
             accessLevel: 'full-control',
             token,
@@ -108,6 +135,7 @@ describe('Remote Control confidence-monitor mirror', () => {
       expect(html).toContain('renderMirror')
     } finally {
       if (fs.existsSync(remoteDevicesPath)) fs.writeFileSync(remoteDevicesPath, '[]')
+      if (fs.existsSync(personPath)) fs.unlinkSync(personPath)
       if (fs.existsSync(mediaFilePath)) fs.unlinkSync(mediaFilePath)
       if (fs.existsSync(mediaItemPath)) fs.unlinkSync(mediaItemPath)
     }

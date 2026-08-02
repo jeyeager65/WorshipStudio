@@ -5,10 +5,10 @@ describe('Order of Worship Export', () => {
     const skipLink = await $('button*=Skip setup')
     if (await skipLink.isExisting()) await skipLink.click()
 
-    const createLink = await $('a*=Create New Service')
+    const createLink = await $('a*=Create Service')
     await createLink.waitForExist({ timeout: 15000 })
     await createLink.click()
-    const submit = await $('button*=Create & Open Service')
+    const submit = await $('button*=Create and Open Service')
     await submit.waitForClickable({ timeout: 10000 })
     await submit.click()
 
@@ -21,18 +21,17 @@ describe('Order of Worship Export', () => {
     await oowLink.waitForExist({ timeout: 15000 })
     await oowLink.click()
 
-    const heading = await $('div*=Order of Worship')
+    const heading = await $('h2*=Order of Worship')
     await heading.waitForExist({ timeout: 10000 })
 
-    // Deliberately not clicking "Export as Word Document" or "Send Email" here — both trigger
-    // OS-level behavior (a file save / the default mail client) that WebdriverIO can't drive
-    // and would risk hanging the run, the same reasoning as skipping native file dialogs
-    // elsewhere in this suite.
-    const copyTextBtn = await $('button*=Copy as Text')
+    // Deliberately not clicking "Open Word"/"Open PDF" here — both trigger OS-level behavior
+    // (a file save / the default viewer) that WebdriverIO can't drive and would risk hanging
+    // the run, the same reasoning as skipping native file dialogs elsewhere in this suite.
+    const copyTextBtn = await $('button[aria-label="Copy formatted bulletin"]')
     await copyTextBtn.waitForClickable({ timeout: 10000 })
     await copyTextBtn.click()
 
-    const copiedAlert = await $('div*=Copied as plain text')
+    const copiedAlert = await $('div*=Bulletin copied')
     await copiedAlert.waitForExist({ timeout: 10000 })
     await expect(copiedAlert).toBeExisting()
   })

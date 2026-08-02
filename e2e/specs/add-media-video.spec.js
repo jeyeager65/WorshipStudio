@@ -58,26 +58,23 @@ describe('Add-to-Service Media/Video tabs', () => {
       const skipLink = await $('button*=Skip setup')
       if (await skipLink.isExisting()) await skipLink.click()
 
-      const createLink = await $('a*=Create New Service')
+      const createLink = await $('a*=Create Service')
       await createLink.waitForExist({ timeout: 15000 })
       await createLink.click()
-      const submit = await $('button*=Create & Open Service')
+      const submit = await $('button*=Create and Open Service')
       await submit.waitForClickable({ timeout: 10000 })
       await submit.click()
 
-      const addButton = await $('button*=Add to Service')
+      // "Add Item" opens a menu of item types directly (no Type dropdown inside a dialog
+      // anymore) — picking "Media" here opens the Add dialog straight to that tab. Scoped to
+      // .add-item-menu — the persistent left nav also has its own "Media" .v-list-item link,
+      // which an unscoped query would match instead (and actually navigate away from the
+      // service, not just fail the assertion).
+      const addButton = await $('button*=Add Item')
       await addButton.waitForExist({ timeout: 15000 })
       await addButton.waitForClickable({ timeout: 10000 })
       await addButton.click()
-
-      // The Add-to-Service dialog picks its content type via a "Type" dropdown, not tabs. The
-      // option lookup is scoped to the open menu's own overlay content — an unscoped query can
-      // match the persistent left nav's own .v-list-item entries instead (e.g. its "Media"
-      // link, which would navigate away from the service instead of picking the dropdown item).
-      const typeSelect = await $('.v-dialog .v-select')
-      await typeSelect.waitForClickable({ timeout: 10000 })
-      await typeSelect.click()
-      const mediaOption = await (await $('[role="listbox"]')).$('.v-list-item*=Media')
+      const mediaOption = await $('.add-item-menu').then((el) => el.$('.v-list-item*=Media'))
       await mediaOption.waitForClickable({ timeout: 10000 })
       await mediaOption.click()
 
@@ -89,17 +86,13 @@ describe('Add-to-Service Media/Video tabs', () => {
       await imageEntry.click()
 
       // Adding closes the dialog and selects the new item in the service order list.
-      const mediaRow = await $('span*=e2e-add-photo')
+      const mediaRow = await $('.service-item-title*=e2e-add-photo')
       await mediaRow.waitForExist({ timeout: 10000 })
       await expect(mediaRow).toBeExisting()
 
       await addButton.waitForClickable({ timeout: 10000 })
       await addButton.click()
-
-      const typeSelect2 = await $('.v-dialog .v-select')
-      await typeSelect2.waitForClickable({ timeout: 10000 })
-      await typeSelect2.click()
-      const videoOption = await (await $('[role="listbox"]')).$('.v-list-item*=Video')
+      const videoOption = await $('.add-item-menu').then((el) => el.$('.v-list-item*=Video'))
       await videoOption.waitForClickable({ timeout: 10000 })
       await videoOption.click()
 
@@ -107,7 +100,7 @@ describe('Add-to-Service Media/Video tabs', () => {
       await videoEntry.waitForClickable({ timeout: 10000 })
       await videoEntry.click()
 
-      const videoRow = await $('span*=e2e-add-clip')
+      const videoRow = await $('.service-item-title*=e2e-add-clip')
       await videoRow.waitForExist({ timeout: 10000 })
       await expect(videoRow).toBeExisting()
     } finally {

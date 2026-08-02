@@ -38,26 +38,24 @@ describe('External App Hand-off (live launch/restore)', () => {
       const skipLink = await $('button*=Skip setup')
       if (await skipLink.isExisting()) await skipLink.click()
 
-      const createLink = await $('a*=Create New Service')
+      const createLink = await $('a*=Create Service')
       await createLink.waitForExist({ timeout: 15000 })
       await createLink.click()
-      const submit = await $('button*=Create & Open Service')
+      const submit = await $('button*=Create and Open Service')
       await submit.waitForClickable({ timeout: 10000 })
       await submit.click()
 
-      const addButton = await $('button*=Add to Service')
+      // "Add Item" opens a menu of item types directly (no separate type-select step inside a
+      // dialog anymore) — picking "External App" here opens the Add dialog straight to that tab.
+      const addButton = await $('button*=Add Item')
       await addButton.waitForClickable({ timeout: 10000 })
       await addButton.click()
-
-      const dialog = await $('.v-dialog')
-      const typeSelect = await dialog.$('.v-select')
-      await typeSelect.waitForClickable({ timeout: 10000 })
-      await typeSelect.click()
-      // Scoped to the open menu's own overlay content — an unscoped query can match the
-      // persistent left nav's own .v-list-item entries instead.
-      const externalAppOption = await (await $('[role="listbox"]')).$('.v-list-item*=External App')
+      const externalAppOption = await $('.v-list-item*=External App')
       await externalAppOption.waitForClickable({ timeout: 10000 })
       await externalAppOption.click()
+
+      const dialog = await $('.v-dialog')
+      await dialog.waitForExist({ timeout: 10000 })
 
       // The App Profile select is looked up by its own label text, since the Type select
       // above is also a plain .v-select and would otherwise be matched first.
@@ -71,7 +69,7 @@ describe('External App Hand-off (live launch/restore)', () => {
       await addToServiceBtn.waitForClickable({ timeout: 10000 })
       await addToServiceBtn.click()
 
-      const itemRow = await $('span*=E2E Live Notepad')
+      const itemRow = await $('.service-item-title*=E2E Live Notepad')
       await itemRow.waitForExist({ timeout: 10000 })
       await itemRow.click()
 
@@ -85,12 +83,41 @@ describe('External App Hand-off (live launch/restore)', () => {
       await presentBtn.waitForClickable({ timeout: 10000 })
       await presentBtn.click()
 
-      // The live-status footer should reflect this item going live regardless of whether the
-      // launch itself succeeds — this is driven by flatIndex/isPresenting, not by the launch
-      // outcome.
-      const liveStatus = await $('span*=LIVE: E2E Live Notepad')
-      await liveStatus.waitForExist({ timeout: 10000 })
-      await expect(liveStatus).toBeExisting()
+      // A machine with no audience display configured yet surfaces the pre-service readiness
+      // gate instead of presenting directly — walk through "choose display" if it appears
+      // (real multi-monitor machines only; on a single-monitor machine there's no selectable
+      // display and this step is expected to be unreachable, same as the live UI itself).
+      const readinessTitle = await $('.readiness-dialog-title')
+      let readinessBlocked = false
+      try {
+        await readinessTitle.waitForExist({ timeout: 3000 })
+        readinessBlocked = true
+      } catch {
+        readinessBlocked = false
+      }
+      if (readinessBlocked) {
+        const displayBlocker = await $('.readiness-issue-row.is-blocker')
+        await displayBlocker.waitForClickable({ timeout: 10000 })
+        await displayBlocker.click()
+
+        const displayDialog = await $('.presentation-display-dialog')
+        await displayDialog.waitForExist({ timeout: 10000 })
+        const option = await displayDialog.$('.presentation-display-option:not(.disabled)')
+        const alreadySelected = (await option.getAttribute('class')).includes('selected')
+        if (!alreadySelected) await option.click()
+        const useAndStartBtn = await displayDialog.$('button*=Use Display & Start')
+        await useAndStartBtn.waitForClickable({ timeout: 10000 })
+        await useAndStartBtn.click()
+      }
+
+      // The presenting badge and the transport bar's current-slide label should reflect this
+      // item going live regardless of whether the launch itself succeeds — this is driven by
+      // flatIndex/isPresenting, not by the launch outcome.
+      const presentingBadge = await $('.presenting-badge')
+      await presentingBadge.waitForExist({ timeout: 10000 })
+      await expect(presentingBadge).toBeExisting()
+      const currentSlideLabel = await $('.current-slide-copy')
+      await expect(await currentSlideLabel.getText()).toContain('E2E Live Notepad')
 
       // Wait for launch_and_focus to resolve one way or the other (its own internal timeout
       // is 5s) and see which path it took.
@@ -116,9 +143,9 @@ describe('External App Hand-off (live launch/restore)', () => {
       await stopBtn.waitForClickable({ timeout: 10000 })
       await stopBtn.click()
 
-      const notPresenting = await $('span*=Not Presenting')
-      await notPresenting.waitForExist({ timeout: 10000 })
-      await expect(notPresenting).toBeExisting()
+      await presentingBadge.waitForExist({ timeout: 10000, reverse: true })
+      const restartBtn = await $('button*=Start Presenting')
+      await expect(restartBtn).toBeExisting()
     } finally {
       if (fs.existsSync(externalAppsPath)) fs.unlinkSync(externalAppsPath)
       try {

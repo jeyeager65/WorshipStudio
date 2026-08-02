@@ -1,6 +1,7 @@
 import fs from 'node:fs'
+import net from 'node:net'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { appDataDir } from './helpers/appDataDir.js'
 
@@ -11,6 +12,35 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url))
 // this suite is re-run often while iterating, and a full rebuild every time is unnecessary
 // overhead when the app hasn't changed since the last build).
 const appBinaryPath = path.resolve(__dirname, '../src-tauri/target/debug/worship-studio.exe')
+
+// A `--debug` Tauri build loads `build.devUrl` at runtime instead of the bundled dist/ assets
+// (real Tauri behavior for debug builds, not a bug) — read the same URL those debug binaries
+// were compiled against, from the same tauri.conf.json, rather than hardcoding it a second time.
+const tauriConf = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, '../src-tauri/tauri.conf.json'), 'utf-8'),
+)
+const devUrl = new URL(tauriConf.build.devUrl)
+
+function waitForPort(port, host, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  return new Promise((resolve, reject) => {
+    const attempt = () => {
+      const socket = net.connect(port, host)
+      socket.once('connect', () => {
+        socket.end()
+        resolve()
+      })
+      socket.once('error', () => {
+        socket.destroy()
+        if (Date.now() > deadline) reject(new Error(`Timed out waiting for ${host}:${port}`))
+        else setTimeout(attempt, 200)
+      })
+    }
+    attempt()
+  })
+}
+
+let viteDevServer
 
 export const config = {
   runner: 'local',
@@ -31,7 +61,7 @@ export const config = {
   // so the race never mattered; against a genuinely fresh directory it fires on every single
   // spec, not just the ones that mean to test it. setup-wizard.spec.js reaches the wizard via
   // Settings' "Run First-Time Setup Wizard" regardless of this flag, so it's unaffected.
-  onPrepare: function () {
+  onPrepare: async function () {
     fs.rmSync(appDataDir, { recursive: true, force: true })
     fs.mkdirSync(appDataDir, { recursive: true })
     fs.writeFileSync(
@@ -49,6 +79,16 @@ export const config = {
         2,
       ),
     )
+
+    // The debug e2e binary needs `devUrl` actually serving — start it for the duration of the
+    // suite rather than silently depending on some other dev server happening to already be
+    // running (that was previously masking this exact dependency).
+    viteDevServer = spawn('pnpm', ['dev'], {
+      cwd: path.resolve(__dirname, '..'),
+      stdio: 'ignore',
+      shell: true,
+    })
+    await waitForPort(Number(devUrl.port), devUrl.hostname, 30000)
   },
 
   services: [
@@ -112,6 +152,20 @@ export const config = {
   // squatting on the port a fresh run tries to bind). Best-effort and platform-guarded since
   // this is cleaning up after a dependency bug, not something core to the test run itself.
   onComplete: function () {
+    if (viteDevServer?.pid) {
+      try {
+        if (process.platform === 'win32') {
+          execFileSync('taskkill', ['/F', '/T', '/PID', String(viteDevServer.pid)], {
+            stdio: 'ignore',
+          })
+        } else {
+          process.kill(-viteDevServer.pid)
+        }
+      } catch {
+        // Already gone — fine.
+      }
+    }
+
     if (process.platform !== 'win32') return
     for (const image of ['tauri-driver.exe', 'msedgedriver.exe']) {
       try {

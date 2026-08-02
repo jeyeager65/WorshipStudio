@@ -42,30 +42,28 @@ describe('Add-to-Service External App tab', () => {
       const skipLink = await $('button*=Skip setup')
       if (await skipLink.isExisting()) await skipLink.click()
 
-      const createLink = await $('a*=Create New Service')
+      const createLink = await $('a*=Create Service')
       await createLink.waitForExist({ timeout: 15000 })
       await createLink.click()
-      const submit = await $('button*=Create & Open Service')
+      const submit = await $('button*=Create and Open Service')
       await submit.waitForClickable({ timeout: 10000 })
       await submit.click()
 
-      const addButton = await $('button*=Add to Service')
+      // "Add Item" opens a menu of item types directly (no separate type-select step inside a
+      // dialog anymore) — picking "External App" here opens the Add dialog straight to that tab.
+      const addButton = await $('button*=Add Item')
       await addButton.waitForExist({ timeout: 15000 })
       await addButton.waitForClickable({ timeout: 10000 })
       await addButton.click()
+      const externalAppOption = await $('.v-list-item*=External App')
+      await externalAppOption.waitForClickable({ timeout: 10000 })
+      await externalAppOption.click()
 
       // Scoped selectors below use the dialog as the root — the "Add to Service" text is also
       // the top-level button that opened this dialog, so an unscoped query would grab the
       // wrong one.
       const dialog = await $('.v-dialog')
-      const typeSelect = await dialog.$('.v-select')
-      await typeSelect.waitForClickable({ timeout: 10000 })
-      await typeSelect.click()
-      // Scoped to the open menu's own overlay content — an unscoped query can match the
-      // persistent left nav's own .v-list-item entries instead.
-      const externalAppOption = await (await $('[role="listbox"]')).$('.v-list-item*=External App')
-      await externalAppOption.waitForClickable({ timeout: 10000 })
-      await externalAppOption.click()
+      await dialog.waitForExist({ timeout: 10000 })
 
       // The App Profile select is looked up by its own label text, since the Type select
       // above is also a plain .v-select and would otherwise be matched first.
@@ -100,7 +98,7 @@ describe('Add-to-Service External App tab', () => {
       await addToServiceBtn.waitForClickable({ timeout: 10000 })
       await addToServiceBtn.click()
 
-      const itemRow = await $('span*=E2E Notepad')
+      const itemRow = await $('.service-item-title*=E2E Notepad')
       await itemRow.waitForExist({ timeout: 10000 })
       await expect(itemRow).toBeExisting()
     } finally {

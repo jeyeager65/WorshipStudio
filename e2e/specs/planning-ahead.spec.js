@@ -5,7 +5,7 @@ describe('Planning Ahead', () => {
     const skipLink = await $('button*=Skip setup')
     if (await skipLink.isExisting()) await skipLink.click()
 
-    const createLink = await $('a*=Create New Service')
+    const createLink = await $('a*=Create Service')
     await createLink.waitForExist({ timeout: 15000 })
     await createLink.click()
 
@@ -25,7 +25,7 @@ describe('Planning Ahead', () => {
       el.dispatchEvent(new Event('change', { bubbles: true }))
     }, dateField, '2026-09-15')
 
-    const submit = await $('button*=Create & Open Service')
+    const submit = await $('button*=Create and Open Service')
     await submit.waitForClickable({ timeout: 10000 })
     await submit.click()
 
@@ -41,38 +41,23 @@ describe('Planning Ahead', () => {
     await planningAheadLink.waitForExist({ timeout: 10000 })
     await planningAheadLink.click()
 
-    // Month groups only exist for months that actually have an upcoming service (no
-    // placeholder "empty" months in between), so September 2026 may or may not be the first
-    // group shown depending on what else exists in this profile — page forward with "next
-    // month" until it's showing, stopping once the button disables (no more months) rather
-    // than looping forever if something's wrong.
-    const monthHeading = await $('.text-h6')
-    await monthHeading.waitForExist({ timeout: 10000 })
-    for (let i = 0; i < 12; i++) {
-      const heading = await $('.text-h6').getText()
-      if (heading.includes('September 2026')) break
-      // The icon itself has pointer-events disabled (standard for icon fonts) — the
-      // clickable target is its containing button.
-      const chevronBtn = await $('button:has(.mdi-chevron-right)')
-      if (!(await chevronBtn.isEnabled())) break
-      await chevronBtn.click()
-    }
-    await expect($('.text-h6')).toHaveText(expect.stringContaining('September 2026'))
+    // Every month with an upcoming service gets its own entry in the month sidebar (no
+    // placeholder "empty" months in between) — click September 2026's directly rather than
+    // paging through a prev/next control.
+    const monthOption = await $('.month-option*=September 2026')
+    await monthOption.waitForExist({ timeout: 10000 })
+    await monthOption.click()
+    const monthHeading = await $('.month-toolbar h2')
+    await expect(monthHeading).toHaveText(expect.stringContaining('September 2026'))
 
-    const notYetDecided = await $('span*=Not yet decided')
-    await expect(notYetDecided).toBeExisting()
+    const titleNotDecided = await $('span*=Title Not Decided')
+    await expect(titleNotDecided).toBeExisting()
 
-    // These two are v-chips — their text sits inside a nested .v-chip__content span rather
-    // than as a direct text node of the chip itself, so they're matched by getText() on the
-    // chip's own class rather than the `tag*=text` shorthand (which only matches the direct
-    // text node) as used above.
-    const chips = await $$('.v-chip')
-    const chipTexts = []
-    for (const chip of chips) {
-      chipTexts.push(await chip.getText())
-    }
-    expect(chipTexts).toContain('Needs Preacher')
-    expect(chipTexts).toContain('Not started')
+    const needsPreacher = await $('span*=Needs Preacher')
+    await expect(needsPreacher).toBeExisting()
+
+    const notStarted = await $('.planning-state*=Not Started')
+    await expect(notStarted).toBeExisting()
 
     // Clicking the row opens the service directly (feature-spec.md's row-click behavior),
     // not just a link within it.

@@ -6,7 +6,7 @@ async function openWizardFromSettings() {
   await settingsBtn.waitForExist({ timeout: 15000 })
   await settingsBtn.click()
 
-  const runWizardBtn = await $('button*=Run First-Time Setup Wizard')
+  const runWizardBtn = await $('button*=Run Setup Wizard')
   await runWizardBtn.waitForExist({ timeout: 10000 })
   await runWizardBtn.waitForClickable({ timeout: 10000 })
   await runWizardBtn.click()
@@ -18,11 +18,17 @@ async function continueWizard() {
   await button.click()
 }
 
+async function assertLandingPage() {
+  const heading = await $('.services-hero').then((el) => el.$('h1*=Services'))
+  await heading.waitForExist({ timeout: 15000 })
+  return heading
+}
+
 describe('First-Time Setup Wizard', () => {
   it('has no persistent nav while active (it is a forced, standalone flow)', async () => {
     await openWizardFromSettings()
 
-    const welcome = await $('h1*=Welcome to Worship Studio')
+    const welcome = await $('h1*=Set up Worship Studio')
     await welcome.waitForExist({ timeout: 10000 })
 
     // The regular app-bar (Home/Library/Slides/Settings) must not be reachable mid-wizard —
@@ -32,62 +38,66 @@ describe('First-Time Setup Wizard', () => {
 
     // Leave the app back on the landing page so later specs (and the next `it` in this file)
     // don't inherit a mid-wizard state with no nav to click.
-    const skipLink = await $('button*=Skip setup')
+    const skipLink = await $('button*=Skip for Now')
     await skipLink.click()
-    const landingText = await $('p*=Select a service to continue')
-    await landingText.waitForExist({ timeout: 15000 })
+    await assertLandingPage()
   })
 
-  it('walks Welcome -> Displays -> Library -> Preferences -> Finish and returns to the landing page', async () => {
+  it('walks Welcome -> Church -> Displays -> Library -> Preferences -> Finish and returns to the landing page', async () => {
     await openWizardFromSettings()
 
-    const welcome = await $('h1*=Welcome to Worship Studio')
+    const welcome = await $('h1*=Set up Worship Studio')
     await welcome.waitForExist({ timeout: 10000 })
 
     await continueWizard()
-    const displays = await $('h1*=Set Up Your Displays')
+    const church = await $('h1*=Make the workspace yours')
+    await church.waitForExist({ timeout: 10000 })
+    // Continue is blocked with a validation alert until a church name is entered.
+    const churchNameInput = await $('#church-name')
+    await churchNameInput.setValue('E2E Test Church')
+
+    await continueWizard()
+    const displays = await $('h1*=Choose what each screen shows')
     await displays.waitForExist({ timeout: 10000 })
 
     await continueWizard()
-    const library = await $('h1*=Import Your Library')
+    const library = await $('h1*=Bring your existing work with you')
     await library.waitForExist({ timeout: 10000 })
     // Deliberately not clicking "Choose Files…"/"Choose Sets Folder…"/"Choose Folder…" here —
     // those open real native OS dialogs, which WebdriverIO/tauri-driver can't drive and would
     // hang the run indefinitely.
 
     await continueWizard()
-    const preferences = await $('h1*=Basic Preferences')
+    const preferences = await $('h1*=Start each service with the right choices')
     await preferences.waitForExist({ timeout: 10000 })
 
     await continueWizard()
-    const finish = await $("h1*=You're All Set")
+    const finish = await $('h1*=is ready')
     await finish.waitForExist({ timeout: 10000 })
 
-    const finishBtn = await $('button*=Finish')
+    const finishBtn = await $('button*=Open Services')
     await finishBtn.waitForClickable({ timeout: 10000 })
     await finishBtn.click()
 
-    const landingText = await $('p*=Select a service to continue')
-    await landingText.waitForExist({ timeout: 15000 })
+    const landingText = await assertLandingPage()
     await expect(landingText).toBeExisting()
   })
 
-  it('Skip setup returns to the landing page immediately from any step', async () => {
+  it('Skip for Now returns to the landing page immediately from any step', async () => {
     await openWizardFromSettings()
 
-    const welcome = await $('h1*=Welcome to Worship Studio')
+    const welcome = await $('h1*=Set up Worship Studio')
     await welcome.waitForExist({ timeout: 10000 })
     await continueWizard()
 
-    const displays = await $('h1*=Set Up Your Displays')
-    await displays.waitForExist({ timeout: 10000 })
+    const church = await $('h1*=Make the workspace yours')
+    await church.waitForExist({ timeout: 10000 })
 
-    const skipLink = await $('button*=Skip setup')
+    const skipLink = await $('button*=Skip for Now')
     await skipLink.waitForClickable({ timeout: 10000 })
     await skipLink.click()
 
-    const landingText = await $('p*=Select a service to continue')
-    await landingText.waitForExist({ timeout: 15000 })
+    const landingText = await assertLandingPage()
     await expect(landingText).toBeExisting()
   })
 })

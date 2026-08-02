@@ -71,9 +71,19 @@ describe('Multi-Week Planning Report', () => {
           id: serviceId,
           date: futureDate,
           type: 'Sunday Morning Worship',
-          sermonTitle: 'E2E Planning Report Sermon',
-          preacherId: personId,
-          items: [{ id: 'item-1', type: 'song', songId, arrangement: { sequence: ['v1'] } }],
+          // The sermon ServiceItem is the sole source of truth for title/passage/preacher now
+          // (see utils/sermonInfo.ts) — there's no separate service-level sermon field anymore.
+          items: [
+            { id: 'item-1', type: 'song', songId, arrangement: { sequence: ['v1'] } },
+            {
+              id: 'item-2',
+              type: 'sermon',
+              title: 'E2E Planning Report Sermon',
+              passages: [],
+              mainPassageId: '',
+              outline: [],
+            },
+          ],
           assignments: [{ role: 'Piano', personId, tentative: false }],
           updatedAt: '2026-07-26T00:00:00Z',
           updatedByDevice: 'e2e',
@@ -93,21 +103,21 @@ describe('Multi-Week Planning Report', () => {
       await reportsNav.waitForExist({ timeout: 15000 })
       await reportsNav.click()
 
-      const planningLink = await $('a*=Multi-Week Planning Report')
+      const planningLink = await $('a*=Multi-Week Plan')
       await planningLink.waitForExist({ timeout: 10000 })
       await planningLink.click()
 
-      const heading = await $('h1*=Multi-Week Planning Report')
+      const heading = await $('h1*=Multi-Week Plan')
       await heading.waitForExist({ timeout: 10000 })
 
       const sermonTitle = await $('span*=E2E Planning Report Sermon')
       await sermonTitle.waitForExist({ timeout: 10000 })
       await expect(sermonTitle).toBeExisting()
 
-      const songsLine = await $(`div*=${songTitle}`)
+      const songsLine = await $(`li*=${songTitle}`)
       await expect(songsLine).toBeExisting()
 
-      const rosterLine = await $('div*=Piano — Jordan E2EReport')
+      const rosterLine = await $('li*=Piano — Jordan E2EReport')
       await expect(rosterLine).toBeExisting()
     } finally {
       if (fs.existsSync(songPath)) fs.unlinkSync(songPath)

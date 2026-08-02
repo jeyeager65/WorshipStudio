@@ -9,16 +9,16 @@ describe('CCLI Reporting', () => {
     await reportsNav.waitForExist({ timeout: 15000 })
     await reportsNav.click()
 
-    const ccliLink = await $('a*=CCLI Reporting')
+    const ccliLink = await $('a*=Song Usage')
     await ccliLink.waitForExist({ timeout: 10000 })
     await ccliLink.click()
 
-    const heading = await $('h1*=CCLI Reporting')
+    const heading = await $('h1*=Song Usage')
     await heading.waitForExist({ timeout: 10000 })
 
     // Summary cards should render even with zero usage in range (a fresh profile with no
     // services yet) — this is asserting the computation doesn't error out, not a specific count.
-    const totalUsesLabel = await $('div*=Total Song Uses')
+    const totalUsesLabel = await $('div*=Song uses')
     await expect(totalUsesLabel).toBeExisting()
 
     const dateInputs = await $$('input[type="date"]')

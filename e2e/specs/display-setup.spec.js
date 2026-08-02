@@ -14,20 +14,25 @@ describe('Display Setup', () => {
     await displaySection.click()
 
     // A resolution string like "1920x1080" only shows up if real OS monitor enumeration
-    // worked — the old placeholder invoke stub had nothing behind it at all. Scoped to
-    // .settings-content (not just "div*=x") since the sidebar nav also has labels containing
-    // "x" (e.g. "External Apps").
-    const resolutionText = await $('.settings-content').$('div*=x')
+    // worked — the old placeholder invoke stub had nothing behind it at all. Scoped to the
+    // name/resolution copy block's own <span> (not just "div*=x") since a plain div-level
+    // query also picks up the sibling <strong> name text in the same container.
+    const resolutionText = await $('.display-setting-copy span')
     await resolutionText.waitForExist({ timeout: 10000 })
     const text = await resolutionText.getText()
     await expect(text).toMatch(/^\d+x\d+$/)
 
-    // This CI/dev machine has a single monitor, which intentionally disables the role
-    // picker (see utils/displaySetup.ts's needsSingleMonitorFallback — there's nowhere to
-    // send a separate audience output, so offering the choice would be misleading). Assigning
-    // a role on a genuine multi-monitor machine is covered by the Rust-level round-trip test
-    // for MachineSettings.display_roles instead of here.
+    // Single-monitor machines intentionally disable the role picker (see
+    // utils/displaySetup.ts's needsSingleMonitorFallback — there's nowhere to send a separate
+    // audience output, so offering the choice would be misleading). Genuine multi-monitor
+    // machines get a real, usable role picker instead — assert whichever is actually true
+    // rather than hardcoding one machine's monitor count.
+    const rows = await $$('.display-setting-row')
     const singleMonitorAlert = await $('div*=Only one display detected')
-    await expect(singleMonitorAlert).toBeExisting()
+    if (rows.length <= 1) {
+      await expect(singleMonitorAlert).toBeExisting()
+    } else {
+      await expect(singleMonitorAlert).not.toBeExisting()
+    }
   })
 })

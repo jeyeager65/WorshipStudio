@@ -56,7 +56,7 @@ describe('Sync Conflict Resolution', () => {
       await settingsNav.waitForExist({ timeout: 15000 })
       await settingsNav.click()
 
-      const syncSection = await $('.v-list-item*=Sync Status')
+      const syncSection = await $('.v-list-item*=Library & Sync')
       await syncSection.waitForExist({ timeout: 10000 })
       await syncSection.click()
 
@@ -64,29 +64,42 @@ describe('Sync Conflict Resolution', () => {
       await checkNowBtn.waitForClickable({ timeout: 10000 })
       await checkNowBtn.click()
 
-      const resolveBtn = await $('a*=Resolve 1 Conflict')
+      const resolveBtn = await $('a*=Review 1 Library Issue')
       await resolveBtn.waitForExist({ timeout: 10000 })
       await resolveBtn.click()
 
-      const heading = await $('h1*=Resolve Sync Conflicts')
+      const heading = await $('h1*=Library Health')
       await heading.waitForExist({ timeout: 10000 })
 
-      const conflictCard = await $(`div*=${original.title}`)
+      // Scoped to .conflict-card — the success banner shown after resolving also contains the
+      // song title ("... now uses the version from e2e."), which an unscoped query would
+      // match instead once the real card is gone.
+      const conflictCard = await $('.conflict-card')
       await expect(conflictCard).toBeExisting()
+      await expect(await conflictCard.getText()).toContain(original.title)
 
-      // Only the field that actually differs (author) should be highlighted.
-      const changedField = await $('.diff-changed')
-      await expect(changedField).toHaveText('author', { containing: true })
+      // Only the field that actually differs (author) should be listed in the comparison.
+      const changedField = await $('.comparison-row strong')
+      await expect(changedField).toHaveText('Author')
 
-      const keepButtons = await $$('button*=Keep This Version')
-      await keepButtons[0].waitForClickable({ timeout: 10000 })
-      await keepButtons[0].click()
+      // "Keep This Computer" keeps the original (this test's own fixture) version and discards
+      // the conflicted copy — "Keep {otherDevice}" is the alternative for the synced copy.
+      const keepBtn = await $('button*=Keep This Computer')
+      await keepBtn.waitForClickable({ timeout: 10000 })
+      await keepBtn.click()
+
+      // resolveConflict() confirms before actually resolving — the confirm button's label is
+      // "Keep {device} Version" using the fixture's own updatedByDevice ("e2e").
+      const confirmKeepBtn = await $('button*=Keep e2e Version')
+      await confirmKeepBtn.waitForClickable({ timeout: 10000 })
+      await confirmKeepBtn.click()
 
       // Self-clearing: resolving removes the conflicted-copy artifact, so the list entry
-      // disappears.
+      // disappears. This was the only issue in the library, so the empty state reflects a
+      // just-finished review rather than "always been healthy".
       await conflictCard.waitForExist({ timeout: 10000, reverse: true })
-      const noConflictsText = await $('p*=No sync conflicts')
-      await expect(noConflictsText).toBeExisting()
+      const reviewCompleteText = await $('h2*=Library review complete')
+      await expect(reviewCompleteText).toBeExisting()
     } finally {
       // Resolving through the UI already deletes the conflict file on the success path —
       // this is just a safety net if an assertion fails partway through.
