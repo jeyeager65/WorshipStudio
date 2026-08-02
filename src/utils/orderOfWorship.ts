@@ -92,12 +92,11 @@ function buildLines(
   service: Service,
   songs: Map<string, Song>,
   slides: Map<string, SlideLibraryItem>,
-  personNames: Map<string, string>,
-  formalPersonNames: Map<string, string>,
+  bulletinPersonNames: Map<string, string>,
 ): OrderOfWorshipLine[] {
   const assignments = service.assignments
   const lines = service.items.map((item): OrderOfWorshipLine => {
-    const line = lineFor(item, songs, slides, assignments, personNames, formalPersonNames)
+    const line = lineFor(item, songs, slides, assignments, bulletinPersonNames)
     return { ...line, kind: item.type }
   })
   // A pure post-pass (rather than computed inline above) since it needs to look at the
@@ -114,7 +113,6 @@ function lineFor(
   slides: Map<string, SlideLibraryItem>,
   assignments: RoleAssignment[] | undefined,
   personNames: Map<string, string>,
-  formalPersonNames: Map<string, string>,
 ): OrderOfWorshipLine {
   switch (item.type) {
     case 'song':
@@ -186,7 +184,7 @@ function lineFor(
       return {
         role: roleFor(item, item.title ?? 'Worship Through the Word'),
         text: '',
-        person: resolveRolePerson(item.role, assignments, formalPersonNames),
+        person: resolveRolePerson(item.role, assignments, personNames),
         note: item.bulletinNote ?? mainPassage?.reference,
       }
     }
@@ -228,7 +226,10 @@ export function buildOrderOfWorship(
   return {
     title: 'Order of Worship',
     dateLine,
-    lines: buildLines(service, songs, slides, personNames, formalPersonNames),
+    // A bulletin is a formal document, so titles apply to every participant—not only the
+    // preacher. The ordinary-name map remains the fallback for older callers that do not yet
+    // provide a distinct formal-name map.
+    lines: buildLines(service, songs, slides, formalPersonNames),
   }
 }
 

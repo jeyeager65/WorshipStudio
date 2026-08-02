@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { getAdapter } from '@/adapters'
 import ServiceTemplateEditor from '@/components/settings/ServiceTemplateEditor.vue'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
+import { errorMessage } from '@/composables/useAsyncStoreState'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import { useSettingsStore } from '@/stores/settings'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
@@ -24,6 +25,10 @@ const documentHistory = useDocumentHistory(workingTemplates, 'service template')
 
 const selectedTemplate = computed(() => workingTemplates.value[selectedIndex.value])
 const heading = computed(() => selectedTemplate.value?.serviceType.trim() || 'New Service Template')
+
+function persistenceClone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
 
 onMounted(initialize)
 
@@ -102,8 +107,10 @@ async function saveTemplate() {
   saveMessage.value = ''
   saving.value = true
   try {
-    const nextLibrarySettings = structuredClone(toRaw(settingsStore.librarySettings))
-    nextLibrarySettings.serviceTemplates = structuredClone(toRaw(workingTemplates.value))
+    // Vue can leave nested editor values wrapped in reactive proxies. Serialize at the IPC
+    // boundary both to unwrap them reliably and to produce exactly the JSON shape Tauri receives.
+    const nextLibrarySettings = persistenceClone(toRaw(settingsStore.librarySettings))
+    nextLibrarySettings.serviceTemplates = persistenceClone(toRaw(workingTemplates.value))
     await settingsStore.runMutation(() =>
       getAdapter().settings.saveLibrarySettings(nextLibrarySettings),
     )
@@ -116,7 +123,7 @@ async function saveTemplate() {
     }
   } catch (error) {
     console.error('Failed to save service template:', error)
-    validationMessage.value = 'The template could not be saved. Your changes are still here.'
+    validationMessage.value = `The template could not be saved. Your changes are still here. ${errorMessage(error)}`
   } finally {
     saving.value = false
   }

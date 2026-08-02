@@ -98,15 +98,16 @@ export function createTauriAdapter(): StudioAdapter {
         machineSettings.displayRoles[monitorId(m, i)] === 'audience',
     )
     if (!assignedAudience) return undefined
-    const workAreaPosition = assignedAudience.workArea.position.toLogical(
-      assignedAudience.scaleFactor,
-    )
-    const workAreaSize = assignedAudience.workArea.size.toLogical(assignedAudience.scaleFactor)
+    // Presentation uses the monitor's complete bounds, not its work area. The work area omits
+    // reserved desktop UI such as the Windows taskbar, which both made the audience output short
+    // and caused the operator previews to model the wrong presentation aspect ratio.
+    const monitorPosition = assignedAudience.position.toLogical(assignedAudience.scaleFactor)
+    const monitorSize = assignedAudience.size.toLogical(assignedAudience.scaleFactor)
     return {
-      x: workAreaPosition.x,
-      y: workAreaPosition.y,
-      width: workAreaSize.width,
-      height: workAreaSize.height,
+      x: monitorPosition.x,
+      y: monitorPosition.y,
+      width: monitorSize.width,
+      height: monitorSize.height,
     }
   }
 
@@ -121,6 +122,9 @@ export function createTauriAdapter(): StudioAdapter {
       width: bounds.width,
       height: bounds.height,
       title: 'Worship Studio — Presentation',
+      decorations: false,
+      fullscreen: true,
+      skipTaskbar: true,
       resizable: false,
       focus: false,
     })

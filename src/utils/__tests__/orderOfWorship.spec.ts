@@ -60,12 +60,14 @@ describe('buildOrderOfWorship', () => {
       items: [{ id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: [] } }],
     })
     const doc = buildOrderOfWorship(service, songs, slides, new Map())
-    expect(doc.lines).toMatchObject([{ text: 'Come Behold the Wondrous Mystery 184', person: undefined }])
+    expect(doc.lines).toMatchObject([
+      { text: 'Come Behold the Wondrous Mystery 184', person: undefined },
+    ])
   })
 
   it("resolves an item's person via its role's Assignments entry, not a direct id", () => {
     const service = baseService({
-      assignments: [{ role: 'Scripture Reader', personId: 'person-david', tentative: false }],
+      assignments: [{ role: 'Scripture Reader', personId: 'person-jordan', tentative: false }],
       items: [
         {
           id: 'item-1',
@@ -77,8 +79,39 @@ describe('buildOrderOfWorship', () => {
         },
       ],
     })
-    const doc = buildOrderOfWorship(service, songs, slides, new Map([['person-david', 'David Hamilton']]))
-    expect(doc.lines).toMatchObject([{ role: 'Scripture Reading:', text: 'Matthew 25:1-30', person: 'David Hamilton' }])
+    const doc = buildOrderOfWorship(
+      service,
+      songs,
+      slides,
+      new Map([['person-jordan', 'Jordan Example']]),
+    )
+    expect(doc.lines).toMatchObject([
+      { role: 'Scripture Reading:', text: 'Matthew 25:1-30', person: 'Jordan Example' },
+    ])
+  })
+
+  it('uses formal names for every assigned bulletin participant, not only the preacher', () => {
+    const service = baseService({
+      assignments: [{ role: 'Scripture Reader', personId: 'person-jordan', tentative: false }],
+      items: [
+        {
+          id: 'item-1',
+          type: 'scripture',
+          reference: 'Matthew 25:1-30',
+          translation: 'ESV',
+          displayMode: 'full',
+          role: 'Scripture Reader',
+        },
+      ],
+    })
+    const doc = buildOrderOfWorship(
+      service,
+      songs,
+      slides,
+      new Map([['person-jordan', 'Jordan Example']]),
+      new Map([['person-jordan', 'Elder Jordan Example']]),
+    )
+    expect(doc.lines[0]?.person).toBe('Elder Jordan Example')
   })
 
   it('shows no one when a role has no matching (or no) Assignments entry', () => {
@@ -103,8 +136,16 @@ describe('buildOrderOfWorship', () => {
       assignments: [{ role: 'Announcer', personId: 'person-rob', tentative: false }],
       items: [{ id: 'item-1', type: 'slide-ref', slideId: 'slide-1', role: 'Announcer' }],
     })
-    const doc = buildOrderOfWorship(service, songs, slides, new Map([['person-rob', 'Elder Rob Varano']]))
-    expect(doc.lines[0]).toMatchObject({ role: 'Welcome and Announcements', person: 'Elder Rob Varano' })
+    const doc = buildOrderOfWorship(
+      service,
+      songs,
+      slides,
+      new Map([['person-rob', 'Elder Rob Varano']]),
+    )
+    expect(doc.lines[0]).toMatchObject({
+      role: 'Welcome and Announcements',
+      person: 'Elder Rob Varano',
+    })
   })
 
   it('includes the service date and type in the date line', () => {
@@ -168,7 +209,9 @@ describe('buildOrderOfWorship', () => {
         {
           id: 'item-1',
           type: 'sermon',
-          passages: [{ id: 'p1', reference: 'Mark 5:1-20', translation: 'ESV', displayMode: 'full' }],
+          passages: [
+            { id: 'p1', reference: 'Mark 5:1-20', translation: 'ESV', displayMode: 'full' },
+          ],
           mainPassageId: 'p1',
           outline: [],
         },
@@ -185,7 +228,9 @@ describe('buildOrderOfWorship', () => {
           id: 'item-1',
           type: 'sermon',
           title: 'From Chained to Commissioned',
-          passages: [{ id: 'p1', reference: 'Mark 5:1-20', translation: 'ESV', displayMode: 'full' }],
+          passages: [
+            { id: 'p1', reference: 'Mark 5:1-20', translation: 'ESV', displayMode: 'full' },
+          ],
           mainPassageId: 'p1',
           outline: [],
           bulletinNote: 'Custom note',
@@ -193,7 +238,10 @@ describe('buildOrderOfWorship', () => {
       ],
     })
     const doc = buildOrderOfWorship(service, songs, slides, new Map())
-    expect(doc.lines[0]).toMatchObject({ role: 'From Chained to Commissioned', note: 'Custom note' })
+    expect(doc.lines[0]).toMatchObject({
+      role: 'From Chained to Commissioned',
+      note: 'Custom note',
+    })
   })
 
   it('a bulletin-note item renders its label/note/role-resolved person and never a slide-worthy text', () => {
@@ -209,7 +257,12 @@ describe('buildOrderOfWorship', () => {
         },
       ],
     })
-    const doc = buildOrderOfWorship(service, songs, slides, new Map([['person-elder', 'Elder Bruce Barton']]))
+    const doc = buildOrderOfWorship(
+      service,
+      songs,
+      slides,
+      new Map([['person-elder', 'Elder Bruce Barton']]),
+    )
     expect(doc.lines[0]).toMatchObject({
       role: 'Prayer of Praise and Confession',
       text: '',
@@ -223,19 +276,31 @@ describe('buildOrderOfWorship', () => {
       items: [{ id: 'item-1', type: 'bulletin-note', bulletinLabel: 'Silent Preparation' }],
     })
     const doc = buildOrderOfWorship(service, songs, slides, new Map())
-    expect(doc.lines[0]).toMatchObject({ role: 'Silent Preparation', text: '', person: undefined, note: undefined })
+    expect(doc.lines[0]).toMatchObject({
+      role: 'Silent Preparation',
+      text: '',
+      person: undefined,
+      note: undefined,
+    })
   })
 
   it("an unreplaced placeholder shows its label, its role's resolved person, and '(to be filled in)'", () => {
     const service = baseService({
-      assignments: [{ role: 'Scripture Reader', personId: 'person-david', tentative: false }],
-      items: [{ id: 'item-1', type: 'placeholder', label: 'Scripture Reading', role: 'Scripture Reader' }],
+      assignments: [{ role: 'Scripture Reader', personId: 'person-jordan', tentative: false }],
+      items: [
+        { id: 'item-1', type: 'placeholder', label: 'Scripture Reading', role: 'Scripture Reader' },
+      ],
     })
-    const doc = buildOrderOfWorship(service, songs, slides, new Map([['person-david', 'David Hamilton']]))
+    const doc = buildOrderOfWorship(
+      service,
+      songs,
+      slides,
+      new Map([['person-jordan', 'Jordan Example']]),
+    )
     expect(doc.lines[0]).toMatchObject({
       role: 'Scripture Reading',
       text: '(to be filled in)',
-      person: 'David Hamilton',
+      person: 'Jordan Example',
       note: undefined,
     })
   })
@@ -256,7 +321,9 @@ describe('buildOrderOfWorship', () => {
       ],
     })
     const doc = buildOrderOfWorship(service, songs, slides, new Map())
-    expect(doc.lines.map((line) => ({ kind: line.kind, separatorBefore: line.separatorBefore }))).toEqual([
+    expect(
+      doc.lines.map((line) => ({ kind: line.kind, separatorBefore: line.separatorBefore })),
+    ).toEqual([
       { kind: 'song', separatorBefore: false }, // first line, never separated
       { kind: 'song', separatorBefore: false }, // song after song — no separator
       { kind: 'scripture', separatorBefore: true }, // song -> scripture — separated
@@ -264,24 +331,32 @@ describe('buildOrderOfWorship', () => {
     ])
   })
 })
-
 describe('toPlainText', () => {
   it('formats a role, text, and person on one line', () => {
     const text = toPlainText({
       title: 'Order of Worship',
       dateLine: 'Sunday, July 26, 2026 · Sunday Morning Worship',
-      lines: [{ role: 'Scripture Reading:', text: 'Matthew 25:1-30', person: 'David Hamilton' }],
+      lines: [{ role: 'Scripture Reading:', text: 'Matthew 25:1-30', person: 'Jordan Example' }],
     })
-    expect(text).toContain('Scripture Reading: Matthew 25:1-30 — David Hamilton')
+    expect(text).toContain('Scripture Reading: Matthew 25:1-30 — Jordan Example')
   })
 
   it('renders a note on its own following line', () => {
     const text = toPlainText({
       title: 'Order of Worship',
       dateLine: 'Sunday',
-      lines: [{ role: 'Worship Through the Word', text: 'Mark 5:1-20', person: 'David Hamilton', note: '"From Chained to Commissioned"' }],
+      lines: [
+        {
+          role: 'Worship Through the Word',
+          text: 'Mark 5:1-20',
+          person: 'Jordan Example',
+          note: '"From Chained to Commissioned"',
+        },
+      ],
     })
-    expect(text).toContain('Worship Through the Word Mark 5:1-20 — David Hamilton\n"From Chained to Commissioned"')
+    expect(text).toContain(
+      'Worship Through the Word Mark 5:1-20 — Jordan Example\n"From Chained to Commissioned"',
+    )
   })
 
   it('adds a blank line before a line with separatorBefore, and none otherwise', () => {
@@ -340,7 +415,13 @@ describe('toDocxBlob', () => {
       title: 'Order of Worship',
       dateLine: 'Sunday, July 26, 2026 · Sunday Morning Worship',
       lines: [
-        { role: 'Scripture Reading:', text: 'Matthew 25:1-30', person: 'David Hamilton', kind: 'scripture', separatorBefore: false },
+        {
+          role: 'Scripture Reading:',
+          text: 'Matthew 25:1-30',
+          person: 'Jordan Example',
+          kind: 'scripture',
+          separatorBefore: false,
+        },
         {
           role: 'From Chained to Commissioned',
           text: '',

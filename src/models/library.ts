@@ -183,7 +183,7 @@ export function personDisplayName(person: Person): string {
   return `${person.preferredName?.trim() || person.firstName} ${person.lastName}`.trim()
 }
 
-/** Formal name used only where the person's office/title matters, such as sermon attribution. */
+/** Formal name used where the person's office/title matters, such as bulletin attribution. */
 export function personFormalName(person: Person): string {
   return `${person.title?.trim() || ''} ${personDisplayName(person)}`.trim()
 }
