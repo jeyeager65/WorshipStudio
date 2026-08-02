@@ -24,7 +24,17 @@ const draft = ref<Person>(blank())
 const newRangeStart = ref('')
 const newRangeEnd = ref('')
 const tab = ref('general')
-const categoryColors = ['primary', 'teal', 'violet', 'terracotta', 'rose', 'slate', 'secondary', 'amber']
+const categoryColors = [
+  'primary',
+  'teal',
+  'violet',
+  'terracotta',
+  'rose',
+  'slate',
+  'secondary',
+  'amber',
+]
+const titleSuggestions = ['Pastor', 'Elder', 'Mr.', 'Mrs.', 'Ms.', 'Dr.']
 
 // Resets to either a fresh blank record or a copy of the person being edited each time the
 // dialog opens, so repeated opens never leak a previous edit into a new one.
@@ -52,7 +62,13 @@ function addUnavailableRange() {
   newRangeEnd.value = ''
 }
 async function removeUnavailableRange(range: UnavailableDateRange) {
-  if (!(await confirmDialog.confirm(`Remove the unavailable range ${range.start} – ${range.end}?`, 'Remove'))) return
+  if (
+    !(await confirmDialog.confirm(
+      `Remove the unavailable range ${range.start} – ${range.end}?`,
+      'Remove',
+    ))
+  )
+    return
   draft.value.unavailableDateRanges = draft.value.unavailableDateRanges.filter((r) => r !== range)
 }
 
@@ -64,7 +80,11 @@ function save() {
 </script>
 
 <template>
-  <v-dialog :model-value="modelValue" max-width="520" @update:model-value="(v) => emit('update:modelValue', v)">
+  <v-dialog
+    :model-value="modelValue"
+    max-width="520"
+    @update:model-value="(v) => emit('update:modelValue', v)"
+  >
     <!-- height must be the v-card PROP, not a height CSS/style — Vuetify's own dialog
          stylesheet applies `flex: 1 1 var(--v-card-height, 100%)` to any .v-card inside a
          .v-dialog, and flex-basis overrides a plain `height` for sizing purposes regardless of
@@ -74,7 +94,11 @@ function save() {
         <span class="person-dialog-icon"><v-icon icon="mdi-account-outline" size="23" /></span>
         <span>
           <strong>{{ person ? 'Edit Person' : 'Add Person' }}</strong>
-          <small>{{ person ? 'Update directory details and serving preferences' : 'Create a new directory profile' }}</small>
+          <small>{{
+            person
+              ? 'Update directory details and serving preferences'
+              : 'Create a new directory profile'
+          }}</small>
         </span>
       </v-card-title>
       <v-tabs v-model="tab" class="person-dialog-tabs" grow>
@@ -89,17 +113,39 @@ function save() {
              ever driven by the v-card's own fixed height above. -->
         <div v-show="tab === 'general'" class="person-form-pane">
           <div class="person-name-fields">
-            <v-text-field v-model="draft.firstName" label="First Name" variant="outlined" density="compact" />
-            <v-text-field v-model="draft.lastName" label="Last Name" variant="outlined" density="compact" />
+            <v-text-field
+              v-model="draft.firstName"
+              label="First Name"
+              variant="outlined"
+              density="compact"
+            />
+            <v-text-field
+              v-model="draft.lastName"
+              label="Last Name"
+              variant="outlined"
+              density="compact"
+            />
           </div>
 
           <v-text-field
-            v-model="draft.displayName"
-            label="Display Name (optional)"
+            v-model="draft.preferredName"
+            label="Preferred Name (optional)"
             variant="outlined"
             density="compact"
-            hint='How this person&apos;s name should appear elsewhere in the app — e.g. "Mike Smith" for Michael Smith, or "Pastor Dan" for Daniel Renno.'
+            hint='The first name this person normally uses — e.g. "Dan" for Daniel.'
             persistent-hint
+            class="mb-4"
+          />
+
+          <v-combobox
+            v-model="draft.title"
+            :items="titleSuggestions"
+            label="Title (optional)"
+            variant="outlined"
+            density="compact"
+            hint="Used in formal contexts such as sermon attribution"
+            persistent-hint
+            clearable
             class="mb-4"
           />
 
@@ -115,15 +161,21 @@ function save() {
         </div>
 
         <div v-show="tab === 'roles'" class="person-form-pane">
-          <p class="pane-description">Choose the roles this person usually fills. They can still be assigned to any role.</p>
+          <p class="pane-description">
+            Choose the roles this person usually fills. They can still be assigned to any role.
+          </p>
           <div
             v-for="(group, groupIndex) in roleGroups"
             :key="group.name"
             class="role-choice-group"
-            :style="{ '--category-color': `rgb(var(--v-theme-${categoryColors[groupIndex % categoryColors.length]}))` }"
+            :style="{
+              '--category-color': `rgb(var(--v-theme-${categoryColors[groupIndex % categoryColors.length]}))`,
+            }"
           >
             <template v-if="group.roles.length">
-              <div class="role-choice-heading"><v-icon icon="mdi-shape-outline" size="16" />{{ group.name }}</div>
+              <div class="role-choice-heading">
+                <v-icon icon="mdi-shape-outline" size="16" />{{ group.name }}
+              </div>
               <div class="d-flex flex-wrap ga-2">
                 <v-chip
                   v-for="role in group.roles"
@@ -141,7 +193,9 @@ function save() {
         </div>
 
         <div v-show="tab === 'availability'" class="person-form-pane">
-          <p class="pane-description">Assignments during these dates will be clearly flagged for the service planner.</p>
+          <p class="pane-description">
+            Assignments during these dates will be clearly flagged for the service planner.
+          </p>
           <div class="availability-heading">Unavailable Dates</div>
           <div v-if="draft.unavailableDateRanges.length" class="d-flex flex-wrap ga-2 mb-3">
             <v-chip
@@ -153,17 +207,35 @@ function save() {
               {{ range.start }} – {{ range.end }}
             </v-chip>
           </div>
-          <div v-else class="availability-empty"><v-icon icon="mdi-calendar-check-outline" size="20" />No unavailable dates recorded.</div>
+          <div v-else class="availability-empty">
+            <v-icon icon="mdi-calendar-check-outline" size="20" />No unavailable dates recorded.
+          </div>
           <div class="availability-fields">
-            <v-text-field v-model="newRangeStart" label="Start" type="date" variant="outlined" density="compact" hide-details />
-            <v-text-field v-model="newRangeEnd" label="End" type="date" variant="outlined" density="compact" hide-details />
+            <v-text-field
+              v-model="newRangeStart"
+              label="Start"
+              type="date"
+              variant="outlined"
+              density="compact"
+              hide-details
+            />
+            <v-text-field
+              v-model="newRangeEnd"
+              label="End"
+              type="date"
+              variant="outlined"
+              density="compact"
+              hide-details
+            />
             <v-btn variant="outlined" @click="addUnavailableRange">Add</v-btn>
           </div>
         </div>
       </v-card-text>
       <v-card-actions style="flex-shrink: 0">
         <v-spacer />
-        <v-btn variant="outlined" class="mr-2" @click="emit('update:modelValue', false)">Cancel</v-btn>
+        <v-btn variant="outlined" class="mr-2" @click="emit('update:modelValue', false)"
+          >Cancel</v-btn
+        >
         <v-btn variant="flat" color="primary" @click="save">Save Person</v-btn>
       </v-card-actions>
     </v-card>

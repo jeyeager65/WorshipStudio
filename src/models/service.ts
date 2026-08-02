@@ -88,7 +88,8 @@ export interface ServiceTemplateItem {
   /** Bulletin heading / placeholder description (e.g. "Opening Song") / role-only's own display
    *  label. */
   label: string
-  /** bulletin-note kind only. */
+  /** Optional printed note carried into the generated service item. For bulletin-note entries,
+   *  this is the item body; for content entries, it appears beneath the item in the bulletin. */
   note?: string
   /** Optional for content kinds, required for role-only. */
   role?: string

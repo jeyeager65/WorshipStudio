@@ -5,7 +5,7 @@ import { useSongsStore } from '@/stores/songs'
 import { usePeopleStore } from '@/stores/people'
 import { useSettingsStore } from '@/stores/settings'
 import { buildPlanningReport } from '@/utils/planningReport'
-import { personDisplayName } from '@/models/library'
+import { personDisplayName, personFormalName } from '@/models/library'
 import { reportBranding } from '@/reports/branding'
 import { buildPlanningDocument, buildPlanningWorkbook } from '@/reports/builders/planning'
 import {
@@ -51,6 +51,9 @@ onMounted(async () => {
 const personNames = computed(
   () => new Map(peopleStore.people.map((p) => [p.id, personDisplayName(p)])),
 )
+const formalPersonNames = computed(
+  () => new Map(peopleStore.people.map((p) => [p.id, personFormalName(p)])),
+)
 
 const rows = computed(() =>
   buildPlanningReport(
@@ -63,6 +66,7 @@ const rows = computed(() =>
       toDate: toDate.value,
       serviceType: serviceType.value,
     },
+    formalPersonNames.value,
   ),
 )
 
@@ -78,7 +82,8 @@ const totalSongs = computed(() =>
 const totalAssignments = computed(() =>
   rows.value.reduce(
     (total, row) =>
-      total + row.rosterGroups.reduce((groupTotal, group) => groupTotal + group.assignments.length, 0),
+      total +
+      row.rosterGroups.reduce((groupTotal, group) => groupTotal + group.assignments.length, 0),
     0,
   ),
 )

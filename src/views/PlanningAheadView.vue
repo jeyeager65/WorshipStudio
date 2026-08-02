@@ -4,10 +4,11 @@ import { useRouter } from 'vue-router'
 import { useServicesStore } from '@/stores/services'
 import { usePeopleStore } from '@/stores/people'
 import { groupUpcomingByMonth, hasStarted, needsPreacher } from '@/utils/planningAhead'
-import { personDisplayName } from '@/models/library'
+import { personFormalName } from '@/models/library'
 import type { Service } from '@/models/service'
 import { findSermonItem, sermonPreacherId } from '@/utils/sermonInfo'
 import { formatServiceTime } from '@/utils/serviceTime'
+import { localCalendarDate } from '@/utils/calendarDate'
 
 const store = useServicesStore()
 const peopleStore = usePeopleStore()
@@ -20,17 +21,25 @@ onMounted(() => {
 
 function preacherName(service: Service): string | undefined {
   const person = peopleStore.people.find((p) => p.id === sermonPreacherId(service))
-  return person ? personDisplayName(person) : undefined
+  return person ? personFormalName(person) : undefined
 }
 
-const todayIso = () => new Date().toISOString().slice(0, 10)
+const todayIso = () => localCalendarDate()
 
 const months = computed(() => groupUpcomingByMonth(store.services, todayIso()))
 const monthIndex = ref(0)
 const currentMonth = computed(() => months.value[monthIndex.value])
-const upcomingServiceCount = computed(() => months.value.reduce((total, month) => total + month.services.length, 0))
-const needsPreacherCount = computed(() => months.value.flatMap((month) => month.services).filter(needsPreacher).length)
-const notStartedCount = computed(() => months.value.flatMap((month) => month.services).filter((service) => !hasStarted(service)).length)
+const upcomingServiceCount = computed(() =>
+  months.value.reduce((total, month) => total + month.services.length, 0),
+)
+const needsPreacherCount = computed(
+  () => months.value.flatMap((month) => month.services).filter(needsPreacher).length,
+)
+const notStartedCount = computed(
+  () =>
+    months.value.flatMap((month) => month.services).filter((service) => !hasStarted(service))
+      .length,
+)
 
 function serviceDateParts(service: Service) {
   const date = new Date(`${service.date}T00:00:00`)
@@ -55,18 +64,34 @@ function openService(serviceId: string) {
   <main class="planning-page">
     <header class="planning-hero">
       <div class="hero-copy">
-        <v-btn to="/" variant="text" prepend-icon="mdi-arrow-left" class="back-button">Services</v-btn>
+        <v-btn to="/" variant="text" prepend-icon="mdi-arrow-left" class="back-button"
+          >Services</v-btn
+        >
         <div class="page-eyebrow">Long-Range Planning</div>
         <h1>Planning Ahead</h1>
-        <p>See what is coming, identify missing details, and begin preparing services before the full order is ready.</p>
+        <p>
+          See what is coming, identify missing details, and begin preparing services before the full
+          order is ready.
+        </p>
       </div>
       <div class="hero-side">
         <div class="planning-summary" aria-label="Upcoming planning summary">
-          <div class="summary-stat"><strong>{{ upcomingServiceCount }}</strong><span>Services</span></div>
-          <div class="summary-stat summary-stat--warning"><strong>{{ needsPreacherCount }}</strong><span>Need Preacher</span></div>
-          <div class="summary-stat"><strong>{{ notStartedCount }}</strong><span>Not Started</span></div>
+          <div class="summary-stat">
+            <strong>{{ upcomingServiceCount }}</strong
+            ><span>Services</span>
+          </div>
+          <div class="summary-stat summary-stat--warning">
+            <strong>{{ needsPreacherCount }}</strong
+            ><span>Need Preacher</span>
+          </div>
+          <div class="summary-stat">
+            <strong>{{ notStartedCount }}</strong
+            ><span>Not Started</span>
+          </div>
         </div>
-        <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" to="/create-service">Create Service</v-btn>
+        <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" to="/create-service"
+          >Create Service</v-btn
+        >
       </div>
     </header>
 
@@ -96,10 +121,19 @@ function openService(serviceId: string) {
           <div>
             <div class="month-kicker">Upcoming Services</div>
             <h2>{{ currentMonth?.monthLabel }}</h2>
-            <p>{{ currentMonth?.services.length }} {{ currentMonth?.services.length === 1 ? 'service' : 'services' }} scheduled</p>
+            <p>
+              {{ currentMonth?.services.length }}
+              {{ currentMonth?.services.length === 1 ? 'service' : 'services' }} scheduled
+            </p>
           </div>
           <div class="month-controls">
-            <v-btn icon="mdi-chevron-left" variant="text" :disabled="monthIndex === 0" aria-label="Previous month" @click="monthIndex--" />
+            <v-btn
+              icon="mdi-chevron-left"
+              variant="text"
+              :disabled="monthIndex === 0"
+              aria-label="Previous month"
+              @click="monthIndex--"
+            />
             <span>{{ monthIndex + 1 }} of {{ months.length }}</span>
             <v-btn
               icon="mdi-chevron-right"
@@ -138,15 +172,22 @@ function openService(serviceId: string) {
             <div class="planning-detail">
               <span class="mobile-label">Sermon</span>
               <strong v-if="sermonTitle(service)">{{ sermonTitle(service) }}</strong>
-              <span v-else class="missing-detail"><v-icon icon="mdi-alert-circle-outline" size="16" />Title Not Decided</span>
+              <span v-else class="missing-detail"
+                ><v-icon icon="mdi-alert-circle-outline" size="16" />Title Not Decided</span
+              >
             </div>
             <div class="planning-detail">
               <span class="mobile-label">Preacher</span>
               <strong v-if="!needsPreacher(service)">{{ preacherName(service) }}</strong>
-              <span v-else class="missing-detail"><v-icon icon="mdi-account-alert-outline" size="16" />Needs Preacher</span>
+              <span v-else class="missing-detail"
+                ><v-icon icon="mdi-account-alert-outline" size="16" />Needs Preacher</span
+              >
             </div>
             <div>
-              <span class="planning-state" :class="{ 'planning-state--started': hasStarted(service) }">
+              <span
+                class="planning-state"
+                :class="{ 'planning-state--started': hasStarted(service) }"
+              >
                 <i />{{ hasStarted(service) ? 'Started' : 'Not Started' }}
               </span>
             </div>
@@ -160,7 +201,9 @@ function openService(serviceId: string) {
       <span><v-icon icon="mdi-calendar-plus-outline" size="34" /></span>
       <h2>No Upcoming Services</h2>
       <p>Create a service to begin building your long-range plan.</p>
-      <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" to="/create-service">Create Service</v-btn>
+      <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" to="/create-service"
+        >Create Service</v-btn
+      >
     </section>
   </main>
 </template>

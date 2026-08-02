@@ -633,7 +633,7 @@ function setDefaultTypes(serviceTypes: string[]) {
                   @update:model-value="(label: string) => setItem(selectedOrderItem!.id, { label })"
                 />
               </div>
-              <div v-if="selectedOrderItem.kind === 'bulletin-note'" class="field-group">
+              <div class="field-group">
                 <label>Bulletin note <span>Optional</span></label>
                 <v-textarea
                   :model-value="selectedOrderItem.note"

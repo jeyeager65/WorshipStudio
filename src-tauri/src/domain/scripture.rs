@@ -242,6 +242,13 @@ pub fn resolve(reference_text: &str, translation_code: &str) -> Result<Scripture
 static VERSE_MARKER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\[(\d+)\]\s*").expect("verse marker pattern must compile"));
 
+/// API passage text may wrap prose for readability or put poetic lines in separate paragraphs.
+/// Worship Studio renders each verse as flowing text, so whitespace inside a verse is normalized
+/// while the bracketed verse markers remain the only pagination boundaries.
+fn normalize_verse_text(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// Splits a flat "[16] text [17] text..." response on each verse-number marker, pairing it
 /// with the text run up to the next marker (or end of string).
 fn parse_bracketed_verses(text: &str) -> Vec<ScripturePassageVerse> {
@@ -251,20 +258,20 @@ fn parse_bracketed_verses(text: &str) -> Vec<ScripturePassageVerse> {
     for m in VERSE_MARKER.captures_iter(text) {
         let whole = m.get(0).expect("group 0 always matches");
         if let Some(number) = pending_number {
-            let segment = text[last_end..whole.start()].trim();
+            let segment = normalize_verse_text(&text[last_end..whole.start()]);
             verses.push(ScripturePassageVerse {
                 number,
-                text: segment.to_string(),
+                text: segment,
             });
         }
         pending_number = m.get(1).and_then(|n| n.as_str().parse().ok());
         last_end = whole.end();
     }
     if let Some(number) = pending_number {
-        let segment = text[last_end..].trim();
+        let segment = normalize_verse_text(&text[last_end..]);
         verses.push(ScripturePassageVerse {
             number,
-            text: segment.to_string(),
+            text: segment,
         });
     }
     verses
@@ -698,6 +705,27 @@ mod tests {
             .text
             .contains("For God so loved the world"));
         assert!(passage.copyright.is_none());
+    }
+
+    #[test]
+    fn bracketed_api_verses_remove_internal_line_breaks_and_extra_whitespace() {
+        let verses = parse_bracketed_verses(
+            "[12] saying with a loud voice,\r\n\r\nWorthy is the Lamb\twho was slain,\n\
+             to receive power. [13] And I heard every creature\n\nblessing and honor.",
+        );
+
+        assert_eq!(verses.len(), 2);
+        assert_eq!(
+            verses[0].text,
+            "saying with a loud voice, Worthy is the Lamb who was slain, to receive power."
+        );
+        assert_eq!(
+            verses[1].text,
+            "And I heard every creature blessing and honor."
+        );
+        assert!(verses
+            .iter()
+            .all(|verse| !verse.text.contains(['\r', '\n', '\t'])));
     }
 
     #[test]

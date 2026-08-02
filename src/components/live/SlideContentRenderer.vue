@@ -401,14 +401,14 @@ const progressSegments = computed(() => {
     <div
       v-if="isTextSlide && content?.itemLabel"
       class="slide-header"
-      :style="{ fontSize: `${content?.headerFontSizePx ?? 24}px` }"
+      :style="{ fontSize: `${content?.headerFontSizePx ?? 48}px` }"
     >
       {{ content?.itemLabel }}
     </div>
     <div
       v-if="isTextSlide && content?.subLabel"
       class="slide-footer"
-      :style="{ fontSize: `${content?.footerFontSizePx ?? 24}px` }"
+      :style="{ fontSize: `${content?.footerFontSizePx ?? 48}px` }"
     >
       {{ content?.subLabel }}
     </div>

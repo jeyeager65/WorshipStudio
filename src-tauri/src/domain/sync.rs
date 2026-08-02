@@ -196,14 +196,14 @@ fn label_for(kind: &str, value: &Value) -> String {
             .unwrap_or("Untitled")
             .to_string(),
         "person" => value
-            .get("displayName")
+            .get("preferredName")
             .and_then(Value::as_str)
-            .map(str::to_string)
-            .unwrap_or_else(|| {
-                let first = value.get("firstName").and_then(Value::as_str).unwrap_or("");
+            .or_else(|| value.get("firstName").and_then(Value::as_str))
+            .map(|name| {
                 let last = value.get("lastName").and_then(Value::as_str).unwrap_or("");
-                format!("{first} {last}").trim().to_string()
-            }),
+                format!("{name} {last}").trim().to_string()
+            })
+            .unwrap_or_default(),
         _ => value
             .get("id")
             .and_then(Value::as_str)

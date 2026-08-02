@@ -6,12 +6,13 @@ import { useSongsStore } from '@/stores/songs'
 import { useSlidesStore } from '@/stores/slides'
 import { usePeopleStore } from '@/stores/people'
 import { useSettingsStore } from '@/stores/settings'
-import { personDisplayName } from '@/models/library'
+import { personDisplayName, personFormalName } from '@/models/library'
 import { buildOrderOfWorship, toHtml, toPlainText } from '@/utils/orderOfWorship'
 import { buildBulletinDocument } from '@/reports/builders/bulletin'
 import { reportBranding } from '@/reports/branding'
 import { exportCompletionMessage, exportDocumentReport } from '@/reports/exportReport'
 import type { ReportFormat } from '@/reports/types'
+import { localCalendarDate } from '@/utils/calendarDate'
 
 const route = useRoute()
 const servicesStore = useServicesStore()
@@ -47,6 +48,9 @@ const selectedService = computed(() =>
 const personNames = computed(
   () => new Map(peopleStore.people.map((person) => [person.id, personDisplayName(person)])),
 )
+const formalPersonNames = computed(
+  () => new Map(peopleStore.people.map((person) => [person.id, personFormalName(person)])),
+)
 const bulletin = computed(() =>
   selectedService.value
     ? buildOrderOfWorship(
@@ -54,6 +58,7 @@ const bulletin = computed(() =>
         songsStore.songs,
         slidesStore.slides,
         personNames.value,
+        formalPersonNames.value,
       )
     : undefined,
 )
@@ -73,7 +78,7 @@ onMounted(async () => {
     return
   }
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localCalendarDate()
   const nextService = [...servicesStore.services]
     .filter((service) => service.date >= today)
     .sort((a, b) => a.date.localeCompare(b.date))[0]

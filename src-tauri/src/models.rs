@@ -219,11 +219,10 @@ pub struct Person {
     pub id: String,
     pub first_name: String,
     pub last_name: String,
-    /// How this person's name should appear elsewhere in the app (e.g. "Mike Smith" for
-    /// Michael Smith, or "Pastor Dan" for Daniel Renno) — falls back to first + last name
-    /// when unset (see personDisplayName on the frontend).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub display_name: Option<String>,
+    pub preferred_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
     /// Not a restriction — just makes this person show up first when filling roles for
@@ -272,7 +271,8 @@ pub struct ServiceTemplateItem {
     /// Bulletin heading / placeholder description (e.g. "Opening Song") / RoleOnly's own display
     /// label.
     pub label: String,
-    /// BulletinNote kind only.
+    /// Optional printed note carried into the generated service item. For BulletinNote entries,
+    /// this is the item body; for content entries, it appears beneath the item in the bulletin.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
     /// Optional for content kinds, required for RoleOnly.
@@ -604,11 +604,11 @@ pub struct LibrarySettings {
 }
 
 fn default_scripture_min_font_size_px() -> u32 {
-    28
+    72
 }
 
 fn default_scripture_max_font_size_px() -> u32 {
-    72
+    120
 }
 
 fn default_song_min_font_size_px() -> u32 {
@@ -616,15 +616,15 @@ fn default_song_min_font_size_px() -> u32 {
 }
 
 fn default_song_max_font_size_px() -> u32 {
-    72
+    120
 }
 
 fn default_slide_header_font_size_px() -> u32 {
-    24
+    48
 }
 
 fn default_slide_footer_font_size_px() -> u32 {
-    24
+    48
 }
 
 fn default_wayfinding_min_font_size_px() -> u32 {
@@ -855,12 +855,12 @@ mod tests {
             "mediaMaxSyncedFileSizeMb": 50
         }"##;
         let settings: LibrarySettings = serde_json::from_str(json).unwrap();
-        assert_eq!(settings.scripture_min_font_size_px, 28);
-        assert_eq!(settings.scripture_max_font_size_px, 72);
+        assert_eq!(settings.scripture_min_font_size_px, 72);
+        assert_eq!(settings.scripture_max_font_size_px, 120);
         assert_eq!(settings.song_min_font_size_px, 16);
-        assert_eq!(settings.song_max_font_size_px, 72);
-        assert_eq!(settings.slide_header_font_size_px, 24);
-        assert_eq!(settings.slide_footer_font_size_px, 24);
+        assert_eq!(settings.song_max_font_size_px, 120);
+        assert_eq!(settings.slide_header_font_size_px, 48);
+        assert_eq!(settings.slide_footer_font_size_px, 48);
         assert_eq!(settings.wayfinding_min_font_size_px, 56);
         assert_eq!(settings.wayfinding_max_font_size_px, 150);
         assert!(settings.canva_integration.client_id.is_empty());

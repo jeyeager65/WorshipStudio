@@ -5,17 +5,18 @@ import { useServicesStore } from '@/stores/services'
 import { useSettingsStore } from '@/stores/settings'
 import { usePeopleStore } from '@/stores/people'
 import type { Service } from '@/models/service'
-import { personDisplayName, sortByPreferredRole } from '@/models/library'
+import { personFormalName, sortByPreferredRole } from '@/models/library'
 import { applyServiceTemplate, defaultServiceTemplate } from '@/utils/serviceTemplate'
 import { applySermonEdit } from '@/utils/sermonInfo'
 import { formatServiceTime } from '@/utils/serviceTime'
+import { localCalendarDate } from '@/utils/calendarDate'
 
 const router = useRouter()
 const store = useServicesStore()
 const settingsStore = useSettingsStore()
 const peopleStore = usePeopleStore()
 
-const date = ref(new Date().toISOString().slice(0, 10))
+const date = ref(localCalendarDate())
 const time = ref('')
 const type = ref('')
 const sermonTitle = ref('')
@@ -37,7 +38,7 @@ onMounted(async () => {
 })
 
 const preacherOptions = computed(() =>
-  sortByPreferredRole(peopleStore.people, 'Preacher').map((p) => ({ title: personDisplayName(p), value: p.id })),
+  sortByPreferredRole(peopleStore.people, 'Preacher').map((p) => ({ title: personFormalName(p), value: p.id })),
 )
 
 const templateOptions = computed(() =>

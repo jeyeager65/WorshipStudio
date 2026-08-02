@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { createVuetify } from 'vuetify'
 import ServiceCard from '@/components/ServiceCard.vue'
+import { localCalendarDate } from '@/utils/calendarDate'
 import type { Service } from '@/models/service'
 
 const vuetify = createVuetify()
@@ -58,7 +59,7 @@ describe('ServiceCard', () => {
   })
 
   it('gives today, future, and past services their own distinct background class', () => {
-    const todayIso = new Date().toISOString().slice(0, 10)
+    const todayIso = localCalendarDate()
     const future = mount(ServiceCard, {
       props: { service: sampleService({ date: '2099-01-01' }) },
       global: { plugins: [vuetify, router] },

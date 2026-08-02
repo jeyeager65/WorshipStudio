@@ -7,9 +7,10 @@ import { useSongsStore } from '@/stores/songs'
 import ServiceCard from '@/components/ServiceCard.vue'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import type { Service } from '@/models/service'
-import { personDisplayName } from '@/models/library'
+import { personFormalName } from '@/models/library'
 import { findSermonItem, sermonMainReference, sermonPreacherId } from '@/utils/sermonInfo'
 import { formatServiceTime, serviceDateTimeSortKey } from '@/utils/serviceTime'
+import { localCalendarDate } from '@/utils/calendarDate'
 
 const store = useServicesStore()
 const confirmDialog = useConfirmDialogStore()
@@ -17,7 +18,13 @@ const peopleStore = usePeopleStore()
 const songsStore = useSongsStore()
 
 async function deleteService(service: Service) {
-  if (!(await confirmDialog.confirm(`Delete the "${service.type} — ${service.date}" service?`, 'Delete'))) return
+  if (
+    !(await confirmDialog.confirm(
+      `Delete the "${service.type} — ${service.date}" service?`,
+      'Delete',
+    ))
+  )
+    return
   await store.remove(service.id)
   // Deleting a service silently updates any of its songs' usage stats on the backend (see
   // songs::recompute_usage) — refresh the shared songs store so that shows up immediately.
@@ -30,7 +37,7 @@ onMounted(() => {
 
 function preacherName(service: Service): string | undefined {
   const person = peopleStore.people.find((p) => p.id === sermonPreacherId(service))
-  return person ? personDisplayName(person) : undefined
+  return person ? personFormalName(person) : undefined
 }
 
 const tab = ref<'home' | 'browse'>('home')
@@ -39,7 +46,7 @@ const browseType = ref<string | null>(null)
 const browsePreacher = ref<string | null>(null)
 const browseBibleBook = ref<string | null>(null)
 
-const todayIso = () => new Date().toISOString().slice(0, 10)
+const todayIso = () => localCalendarDate()
 
 const visibleServices = computed(() => store.services)
 
@@ -59,25 +66,50 @@ const upcomingServices = computed(() => allUpcomingServices.value.slice(0, 5))
 const pastServices = computed(() =>
   visibleServices.value
     .filter((service) => service.date < todayIso())
-    .sort((a, b) => b.date.localeCompare(a.date) || serviceDateTimeSortKey(a).localeCompare(serviceDateTimeSortKey(b))),
+    .sort(
+      (a, b) =>
+        b.date.localeCompare(a.date) ||
+        serviceDateTimeSortKey(a).localeCompare(serviceDateTimeSortKey(b)),
+    ),
 )
 
 function bibleBookFromReference(reference: string): string {
-  return reference.trim().match(/^(.+?)\s+\d/)?.[1]?.trim() ?? reference.trim()
+  return (
+    reference
+      .trim()
+      .match(/^(.+?)\s+\d/)?.[1]
+      ?.trim() ?? reference.trim()
+  )
 }
 
 function serviceBibleBooks(service: Service): string[] {
   const sermon = findSermonItem(service)
   if (!sermon) return []
-  return [...new Set(sermon.passages.map((passage) => bibleBookFromReference(passage.reference)).filter(Boolean))]
+  return [
+    ...new Set(
+      sermon.passages.map((passage) => bibleBookFromReference(passage.reference)).filter(Boolean),
+    ),
+  ]
 }
 
-const serviceTypeOptions = computed(() => [...new Set(visibleServices.value.map((service) => service.type))].sort())
-const preacherOptions = computed(() =>
-  [...new Set(visibleServices.value.map((service) => preacherName(service)).filter((name): name is string => !!name))].sort(),
+const serviceTypeOptions = computed(() =>
+  [...new Set(visibleServices.value.map((service) => service.type))].sort(),
 )
-const bibleBookOptions = computed(() => [...new Set(visibleServices.value.flatMap(serviceBibleBooks))].sort())
-const hasBrowseFilters = computed(() => !!(browseQuery.value || browseType.value || browsePreacher.value || browseBibleBook.value))
+const preacherOptions = computed(() =>
+  [
+    ...new Set(
+      visibleServices.value
+        .map((service) => preacherName(service))
+        .filter((name): name is string => !!name),
+    ),
+  ].sort(),
+)
+const bibleBookOptions = computed(() =>
+  [...new Set(visibleServices.value.flatMap(serviceBibleBooks))].sort(),
+)
+const hasBrowseFilters = computed(
+  () => !!(browseQuery.value || browseType.value || browsePreacher.value || browseBibleBook.value),
+)
 
 function clearBrowseFilters() {
   browseQuery.value = ''
@@ -90,17 +122,24 @@ const browseResults = computed(() => {
   // Vuetify's clearable button sets the model to null, not '' — clearing without this guard
   // throws mid-computed (.trim() on null), which is what silently broke the clear button.
   const query = (browseQuery.value ?? '').trim().toLowerCase()
-  const candidates = hasBrowseFilters.value ? visibleServices.value : pastServices.value.slice(0, 10)
+  const candidates = hasBrowseFilters.value
+    ? visibleServices.value
+    : pastServices.value.slice(0, 10)
   return candidates.filter((service) => {
     if (browseType.value && service.type !== browseType.value) return false
     if (browsePreacher.value && preacherName(service) !== browsePreacher.value) return false
-    if (browseBibleBook.value && !serviceBibleBooks(service).includes(browseBibleBook.value)) return false
+    if (browseBibleBook.value && !serviceBibleBooks(service).includes(browseBibleBook.value))
+      return false
     if (!query) return true
     const sermonItem = findSermonItem(service)
     const passage = sermonItem ? sermonMainReference(sermonItem) : undefined
-    return [service.type, formatServiceTime(service.time), sermonItem?.title, preacherName(service), passage].some((field) =>
-      field?.toLowerCase().includes(query),
-    )
+    return [
+      service.type,
+      formatServiceTime(service.time),
+      sermonItem?.title,
+      preacherName(service),
+      passage,
+    ].some((field) => field?.toLowerCase().includes(query))
   })
 })
 </script>
@@ -111,14 +150,25 @@ const browseResults = computed(() => {
       <div>
         <div class="page-eyebrow">Service Planning</div>
         <h1>Services</h1>
-        <p>Prepare upcoming worship services, review past plans, and open today’s presentation workspace.</p>
+        <p>
+          Prepare upcoming worship services, review past plans, and open today’s presentation
+          workspace.
+        </p>
       </div>
       <div class="hero-side">
         <div class="services-summary" aria-label="Services summary">
-          <div class="summary-stat"><strong>{{ allUpcomingServices.length }}</strong><span>Upcoming</span></div>
-          <div class="summary-stat"><strong>{{ pastServices.length }}</strong><span>Past</span></div>
+          <div class="summary-stat">
+            <strong>{{ allUpcomingServices.length }}</strong
+            ><span>Upcoming</span>
+          </div>
+          <div class="summary-stat">
+            <strong>{{ pastServices.length }}</strong
+            ><span>Past</span>
+          </div>
         </div>
-        <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" to="/create-service">Create Service</v-btn>
+        <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" to="/create-service"
+          >Create Service</v-btn
+        >
       </div>
     </header>
 
@@ -126,7 +176,13 @@ const browseResults = computed(() => {
       <div class="services-toolbar">
         <div class="directory-title">
           <h2>{{ tab === 'home' ? 'Service Schedule' : 'Browse Services' }}</h2>
-          <p>{{ tab === 'home' ? 'Today and the next services on your calendar' : 'Search current and previous service plans' }}</p>
+          <p>
+            {{
+              tab === 'home'
+                ? 'Today and the next services on your calendar'
+                : 'Search current and previous service plans'
+            }}
+          </p>
         </div>
         <div class="toolbar-actions">
           <v-text-field
@@ -141,7 +197,12 @@ const browseResults = computed(() => {
             clearable
             class="service-search"
           />
-          <v-btn variant="tonal" color="primary" prepend-icon="mdi-calendar-month-outline" to="/planning-ahead">
+          <v-btn
+            variant="tonal"
+            color="primary"
+            prepend-icon="mdi-calendar-month-outline"
+            to="/planning-ahead"
+          >
             Planning Ahead
           </v-btn>
         </div>
@@ -176,7 +237,10 @@ const browseResults = computed(() => {
                 <span class="group-kicker">Current</span>
                 <h3>Today’s Service</h3>
               </div>
-              <span class="group-count">{{ todayServices.length }} {{ todayServices.length === 1 ? 'service' : 'services' }}</span>
+              <span class="group-count"
+                >{{ todayServices.length }}
+                {{ todayServices.length === 1 ? 'service' : 'services' }}</span
+              >
             </div>
             <div class="service-list">
               <ServiceCard
@@ -209,8 +273,13 @@ const browseResults = computed(() => {
             </div>
             <div v-else class="services-empty">
               <span><v-icon icon="mdi-calendar-plus-outline" size="29" /></span>
-              <div><h3>No Upcoming Services</h3><p>Create a service to begin planning your next gathering.</p></div>
-              <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" to="/create-service">Create Service</v-btn>
+              <div>
+                <h3>No Upcoming Services</h3>
+                <p>Create a service to begin planning your next gathering.</p>
+              </div>
+              <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" to="/create-service"
+                >Create Service</v-btn
+              >
             </div>
           </section>
         </div>
@@ -222,7 +291,14 @@ const browseResults = computed(() => {
                 <span>Filters</span>
                 <small>Narrow the service history</small>
               </div>
-              <v-btn v-if="hasBrowseFilters" variant="text" color="primary" size="small" @click="clearBrowseFilters">Clear</v-btn>
+              <v-btn
+                v-if="hasBrowseFilters"
+                variant="text"
+                color="primary"
+                size="small"
+                @click="clearBrowseFilters"
+                >Clear</v-btn
+              >
             </div>
             <div class="filter-fields">
               <div class="filter-field">
@@ -247,7 +323,9 @@ const browseResults = computed(() => {
                     @click="browseType = type"
                   >
                     <span>{{ type }}</span>
-                    <strong>{{ visibleServices.filter((service) => service.type === type).length }}</strong>
+                    <strong>{{
+                      visibleServices.filter((service) => service.type === type).length
+                    }}</strong>
                   </button>
                 </div>
               </div>
@@ -261,7 +339,10 @@ const browseResults = computed(() => {
                     :aria-pressed="browsePreacher === null"
                     @click="browsePreacher = null"
                   >
-                    <span>All Preachers</span><strong>{{ visibleServices.filter((service) => !!preacherName(service)).length }}</strong>
+                    <span>All Preachers</span
+                    ><strong>{{
+                      visibleServices.filter((service) => !!preacherName(service)).length
+                    }}</strong>
                   </button>
                   <button
                     v-for="preacher in preacherOptions"
@@ -273,12 +354,16 @@ const browseResults = computed(() => {
                     @click="browsePreacher = preacher"
                   >
                     <span>{{ preacher }}</span>
-                    <strong>{{ visibleServices.filter((service) => preacherName(service) === preacher).length }}</strong>
+                    <strong>{{
+                      visibleServices.filter((service) => preacherName(service) === preacher).length
+                    }}</strong>
                   </button>
                 </div>
               </div>
               <div class="filter-field">
-                <label for="service-book-filter"><v-icon icon="mdi-book-open-page-variant-outline" size="17" />Bible Book</label>
+                <label for="service-book-filter"
+                  ><v-icon icon="mdi-book-open-page-variant-outline" size="17" />Bible Book</label
+                >
                 <v-select
                   id="service-book-filter"
                   v-model="browseBibleBook"
@@ -293,17 +378,25 @@ const browseResults = computed(() => {
             </div>
             <div class="filter-summary">
               <v-icon icon="mdi-filter-check-outline" size="18" />
-              <span>{{ browseResults.length }} {{ browseResults.length === 1 ? 'service' : 'services' }} shown</span>
+              <span
+                >{{ browseResults.length }}
+                {{ browseResults.length === 1 ? 'service' : 'services' }} shown</span
+              >
             </div>
           </aside>
 
           <section class="service-group browse-group">
             <div class="group-heading">
               <div>
-                <span class="group-kicker">{{ hasBrowseFilters ? 'Filtered Results' : 'History' }}</span>
+                <span class="group-kicker">{{
+                  hasBrowseFilters ? 'Filtered Results' : 'History'
+                }}</span>
                 <h3>{{ hasBrowseFilters ? 'Matching Services' : 'Recent Services' }}</h3>
               </div>
-              <span class="group-count">{{ browseResults.length }} {{ browseResults.length === 1 ? 'service' : 'services' }}</span>
+              <span class="group-count"
+                >{{ browseResults.length }}
+                {{ browseResults.length === 1 ? 'service' : 'services' }}</span
+              >
             </div>
             <div v-if="browseResults.length" class="service-list">
               <ServiceCard
@@ -316,7 +409,10 @@ const browseResults = computed(() => {
             </div>
             <div v-else class="services-empty services-empty--centered">
               <span><v-icon icon="mdi-calendar-search-outline" size="29" /></span>
-              <div><h3>No Services Found</h3><p>Try changing the search or clearing one of the filters.</p></div>
+              <div>
+                <h3>No Services Found</h3>
+                <p>Try changing the search or clearing one of the filters.</p>
+              </div>
             </div>
           </section>
         </div>

@@ -35,10 +35,7 @@ import { formatCountdown } from '@/utils/countdown'
 import { formatServiceTime } from '@/utils/serviceTime'
 import { errorMessage as asyncErrorMessage } from '@/composables/useAsyncStoreState'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
-import {
-  evaluateServiceReadiness,
-  type ReadinessIssue,
-} from '@/utils/serviceReadiness'
+import { evaluateServiceReadiness, type ReadinessIssue } from '@/utils/serviceReadiness'
 import type { Service, ServiceItem, SermonPassage } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
 import type {
@@ -47,7 +44,7 @@ import type {
   LibrarySlide,
   PresentationThemeTarget,
 } from '@/models/library'
-import { personDisplayName, sortByPreferredRole } from '@/models/library'
+import { personDisplayName, personFormalName, sortByPreferredRole } from '@/models/library'
 import { scenePlainText } from '@/utils/slideScene'
 import { presentationTextEffect } from '@/utils/presentationTextEffect'
 import {
@@ -161,7 +158,7 @@ function saveServiceDetails() {
 }
 const preacherOptions = computed(() =>
   sortByPreferredRole(peopleStore.people, 'Preacher').map((p) => ({
-    title: personDisplayName(p),
+    title: personFormalName(p),
     value: p.id,
   })),
 )
@@ -169,7 +166,7 @@ const preacherName = computed(() => {
   const currentService = service.value
   if (!currentService) return undefined
   const person = peopleStore.people.find((p) => p.id === sermonPreacherId(currentService))
-  return person ? personDisplayName(person) : undefined
+  return person ? personFormalName(person) : undefined
 })
 // Matches the "weekday, month day, year" format already used for the Order of Worship export
 // and planning report headers (see utils/orderOfWorship.ts/planningReport.ts) — one consistent
@@ -390,8 +387,7 @@ onMounted(async () => {
     }
   }
   if (!service.value) {
-    workspaceLoadError.value =
-      'That service could not be found. It may have been moved or deleted.'
+    workspaceLoadError.value = 'That service could not be found. It may have been moved or deleted.'
     workspaceLoading.value = false
     return
   }
@@ -526,7 +522,11 @@ const readiness = computed(() =>
 )
 const readinessDialogOpen = ref(false)
 const readinessColor = computed(() =>
-  readiness.value.blockers.length ? 'error' : readiness.value.warnings.length ? 'warning' : 'success',
+  readiness.value.blockers.length
+    ? 'error'
+    : readiness.value.warnings.length
+      ? 'warning'
+      : 'success',
 )
 const readinessIcon = computed(() =>
   readiness.value.blockers.length
@@ -545,7 +545,8 @@ const readinessLabel = computed(() => {
 const readinessMediaIds = computed(() => {
   const ids = new Set<string>()
   for (const item of service.value?.items ?? []) {
-    if (item.type === 'media' || item.type === 'video' || item.type === 'audio') ids.add(item.mediaId)
+    if (item.type === 'media' || item.type === 'video' || item.type === 'audio')
+      ids.add(item.mediaId)
     if (item.type === 'slide-ref') {
       const presentation = slidesById.value.get(item.slideId)
       for (const slide of presentation?.slides ?? []) {
@@ -621,12 +622,12 @@ async function openReadinessIssue(issue: ReadinessIssue) {
   }
 }
 const scriptureFontRange = computed(() => ({
-  minPx: settingsStore.librarySettings?.scriptureMinFontSizePx ?? 28,
-  maxPx: settingsStore.librarySettings?.scriptureMaxFontSizePx ?? 72,
+  minPx: settingsStore.librarySettings?.scriptureMinFontSizePx ?? 72,
+  maxPx: settingsStore.librarySettings?.scriptureMaxFontSizePx ?? 120,
 }))
 const songFontRange = computed(() => ({
   minPx: settingsStore.librarySettings?.songMinFontSizePx ?? 16,
-  maxPx: settingsStore.librarySettings?.songMaxFontSizePx ?? 72,
+  maxPx: settingsStore.librarySettings?.songMaxFontSizePx ?? 120,
 }))
 const flatSlides = computed<FlatSlide[]>(() =>
   service.value
@@ -1412,12 +1413,14 @@ function openAddDialog(type: AddItemType) {
 const replaceItemIndex = ref<number | null>(null)
 const replaceItemRole = ref<string>()
 const replaceItemLabel = ref<string>()
+const replaceItemNote = ref<string>()
 
 function insertItem(item: ServiceItem) {
   if (!service.value) return
   if (replaceItemIndex.value !== null) {
     if (replaceItemRole.value && !item.role) item.role = replaceItemRole.value
     if (replaceItemLabel.value && !item.bulletinLabel) item.bulletinLabel = replaceItemLabel.value
+    if (replaceItemNote.value && !item.bulletinNote) item.bulletinNote = replaceItemNote.value
     service.value.items.splice(replaceItemIndex.value, 1, item)
     // Deliberately NOT recomputed from length — it already points at the placeholder's slot,
     // which is exactly where the replacement now lives.
@@ -1432,6 +1435,7 @@ function beginReplacePlaceholder(item: ServiceItem, index: number) {
   replaceItemIndex.value = index
   replaceItemRole.value = item.role
   replaceItemLabel.value = item.bulletinLabel ?? item.label
+  replaceItemNote.value = item.bulletinNote
   addTab.value = (item.suggestedTab as typeof addTab.value) ?? 'songs'
   addDialogOpen.value = true
 }
@@ -1812,6 +1816,7 @@ function closeAddDialog() {
   replaceItemIndex.value = null
   replaceItemRole.value = undefined
   replaceItemLabel.value = undefined
+  replaceItemNote.value = undefined
 }
 
 function updatePresenterNote(itemId: string, note: string) {
@@ -2753,14 +2758,25 @@ function updateRolePerson(role: string, personId: string | undefined) {
             <v-icon :icon="readinessIcon" size="23" />
           </span>
           <span>
-            <strong>{{ readiness.blockers.length ? 'Service Needs Attention' : 'Ready to Present' }}</strong>
+            <strong>{{
+              readiness.blockers.length ? 'Service Needs Attention' : 'Ready to Present'
+            }}</strong>
             <small>
-              {{ readiness.blockers.length }} blocker{{ readiness.blockers.length === 1 ? '' : 's' }}
-              · {{ readiness.warnings.length }} warning{{ readiness.warnings.length === 1 ? '' : 's' }}
+              {{ readiness.blockers.length }} blocker{{
+                readiness.blockers.length === 1 ? '' : 's'
+              }}
+              · {{ readiness.warnings.length }} warning{{
+                readiness.warnings.length === 1 ? '' : 's'
+              }}
             </small>
           </span>
           <v-spacer />
-          <v-btn icon="mdi-close" variant="text" size="small" @click="readinessDialogOpen = false" />
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            size="small"
+            @click="readinessDialogOpen = false"
+          />
         </v-card-title>
         <v-card-text class="readiness-dialog-content">
           <div v-if="!readiness.issues.length" class="readiness-complete-state">
@@ -2783,13 +2799,21 @@ function updateRolePerson(role: string, personId: string | undefined) {
                 class="readiness-issue-row is-blocker"
                 @click="openReadinessIssue(issue)"
               >
-                <span class="readiness-issue-icon"><v-icon icon="mdi-alert-circle-outline" size="20" /></span>
+                <span class="readiness-issue-icon"
+                  ><v-icon icon="mdi-alert-circle-outline" size="20"
+                /></span>
                 <span class="readiness-issue-copy">
                   <strong>{{ issue.title }}</strong>
                   <small>{{ issue.detail }}</small>
                 </span>
                 <span class="readiness-issue-action">
-                  {{ issue.action === 'display' ? 'Choose display' : issue.action === 'assignments' ? 'Assignments' : 'Open item' }}
+                  {{
+                    issue.action === 'display'
+                      ? 'Choose display'
+                      : issue.action === 'assignments'
+                        ? 'Assignments'
+                        : 'Open item'
+                  }}
                   <v-icon icon="mdi-chevron-right" size="18" />
                 </span>
               </button>
@@ -2806,13 +2830,21 @@ function updateRolePerson(role: string, personId: string | undefined) {
                 class="readiness-issue-row is-warning"
                 @click="openReadinessIssue(issue)"
               >
-                <span class="readiness-issue-icon"><v-icon icon="mdi-alert-outline" size="20" /></span>
+                <span class="readiness-issue-icon"
+                  ><v-icon icon="mdi-alert-outline" size="20"
+                /></span>
                 <span class="readiness-issue-copy">
                   <strong>{{ issue.title }}</strong>
                   <small>{{ issue.detail }}</small>
                 </span>
                 <span class="readiness-issue-action">
-                  {{ issue.action === 'assignments' ? 'Assignments' : issue.action === 'library-health' ? 'Library Health' : 'Open item' }}
+                  {{
+                    issue.action === 'assignments'
+                      ? 'Assignments'
+                      : issue.action === 'library-health'
+                        ? 'Library Health'
+                        : 'Open item'
+                  }}
                   <v-icon icon="mdi-chevron-right" size="18" />
                 </span>
               </button>

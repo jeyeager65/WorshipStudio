@@ -34,12 +34,12 @@ fn default_library_settings() -> LibrarySettings {
         // default for a brand-new library rather than leaving the picker with nothing selected.
         default_translation_code: Some("KJV".to_string()),
         media_max_synced_file_size_mb: 50,
-        scripture_min_font_size_px: 28,
-        scripture_max_font_size_px: 72,
+        scripture_min_font_size_px: 72,
+        scripture_max_font_size_px: 120,
         song_min_font_size_px: 16,
-        song_max_font_size_px: 72,
-        slide_header_font_size_px: 24,
-        slide_footer_font_size_px: 24,
+        song_max_font_size_px: 120,
+        slide_header_font_size_px: 48,
+        slide_footer_font_size_px: 48,
         wayfinding_min_font_size_px: 56,
         wayfinding_max_font_size_px: 150,
     }

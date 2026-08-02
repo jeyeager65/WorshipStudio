@@ -93,10 +93,11 @@ function buildLines(
   songs: Map<string, Song>,
   slides: Map<string, SlideLibraryItem>,
   personNames: Map<string, string>,
+  formalPersonNames: Map<string, string>,
 ): OrderOfWorshipLine[] {
   const assignments = service.assignments
   const lines = service.items.map((item): OrderOfWorshipLine => {
-    const line = lineFor(item, songs, slides, assignments, personNames)
+    const line = lineFor(item, songs, slides, assignments, personNames, formalPersonNames)
     return { ...line, kind: item.type }
   })
   // A pure post-pass (rather than computed inline above) since it needs to look at the
@@ -113,95 +114,96 @@ function lineFor(
   slides: Map<string, SlideLibraryItem>,
   assignments: RoleAssignment[] | undefined,
   personNames: Map<string, string>,
+  formalPersonNames: Map<string, string>,
 ): OrderOfWorshipLine {
   switch (item.type) {
-      case 'song':
-        return songLine(item, songs, assignments, personNames)
-      case 'scripture':
-        return {
-          role: roleFor(item, 'Scripture Reading:'),
-          text: item.reference,
-          person: resolveRolePerson(item.role, assignments, personNames),
-          note: item.bulletinNote,
-        }
-      case 'slide-ref':
-        return slideRefLine(item, slides, assignments, personNames)
-      case 'text-slide':
-        return {
-          role: roleFor(item, item.slides[0]?.label ?? 'Custom Slide'),
-          text: '',
-          person: resolveRolePerson(item.role, assignments, personNames),
-          note: item.bulletinNote,
-        }
-      case 'media':
-        return {
-          role: roleFor(item, undefined),
-          text: '[Media]',
-          person: resolveRolePerson(item.role, assignments, personNames),
-          note: item.bulletinNote,
-        }
-      case 'video':
-        return {
-          role: roleFor(item, undefined),
-          text: '[Video]',
-          person: resolveRolePerson(item.role, assignments, personNames),
-          note: item.bulletinNote,
-        }
-      case 'audio':
-        return {
-          role: roleFor(item, undefined),
-          text: '[Audio]',
-          person: resolveRolePerson(item.role, assignments, personNames),
-          note: item.bulletinNote,
-        }
-      case 'external-app':
-        return {
-          role: roleFor(item, undefined),
-          text: '[External App]',
-          person: resolveRolePerson(item.role, assignments, personNames),
-          note: item.bulletinNote,
-        }
-      case 'countdown':
-        return {
-          role: roleFor(item, undefined),
-          text: item.text ?? '[Countdown]',
-          person: resolveRolePerson(item.role, assignments, personNames),
-          note: item.bulletinNote,
-        }
-      case 'qr':
-        return {
-          role: roleFor(item, undefined),
-          text: item.caption ?? '[QR Code]',
-          person: resolveRolePerson(item.role, assignments, personNames),
-          note: item.bulletinNote,
-        }
-      case 'sermon': {
-        // The sermon's own title (when set) is the heading — a real bulletin names the sermon,
-        // not a generic "Worship Through the Word" label — with the main passage reference as
-        // the line below it; an explicit bulletinNote (a deliberately typed note, distinct from
-        // the title) still wins that second-line slot when someone's set one.
-        const mainPassage = item.passages.find((p) => p.id === item.mainPassageId) ?? item.passages[0]
-        return {
-          role: roleFor(item, item.title ?? 'Worship Through the Word'),
-          text: '',
-          person: resolveRolePerson(item.role, assignments, personNames),
-          note: item.bulletinNote ?? mainPassage?.reference,
-        }
+    case 'song':
+      return songLine(item, songs, assignments, personNames)
+    case 'scripture':
+      return {
+        role: roleFor(item, 'Scripture Reading:'),
+        text: item.reference,
+        person: resolveRolePerson(item.role, assignments, personNames),
+        note: item.bulletinNote,
       }
-      case 'bulletin-note':
-        return {
-          role: roleFor(item, 'Note'),
-          text: '',
-          person: resolveRolePerson(item.role, assignments, personNames),
-          note: item.bulletinNote,
-        }
-      case 'placeholder':
-        return {
-          role: roleFor(item, item.label),
-          text: '(to be filled in)',
-          person: resolveRolePerson(item.role, assignments, personNames),
-          note: item.bulletinNote,
-        }
+    case 'slide-ref':
+      return slideRefLine(item, slides, assignments, personNames)
+    case 'text-slide':
+      return {
+        role: roleFor(item, item.slides[0]?.label ?? 'Custom Slide'),
+        text: '',
+        person: resolveRolePerson(item.role, assignments, personNames),
+        note: item.bulletinNote,
+      }
+    case 'media':
+      return {
+        role: roleFor(item, undefined),
+        text: '[Media]',
+        person: resolveRolePerson(item.role, assignments, personNames),
+        note: item.bulletinNote,
+      }
+    case 'video':
+      return {
+        role: roleFor(item, undefined),
+        text: '[Video]',
+        person: resolveRolePerson(item.role, assignments, personNames),
+        note: item.bulletinNote,
+      }
+    case 'audio':
+      return {
+        role: roleFor(item, undefined),
+        text: '[Audio]',
+        person: resolveRolePerson(item.role, assignments, personNames),
+        note: item.bulletinNote,
+      }
+    case 'external-app':
+      return {
+        role: roleFor(item, undefined),
+        text: '[External App]',
+        person: resolveRolePerson(item.role, assignments, personNames),
+        note: item.bulletinNote,
+      }
+    case 'countdown':
+      return {
+        role: roleFor(item, undefined),
+        text: item.text ?? '[Countdown]',
+        person: resolveRolePerson(item.role, assignments, personNames),
+        note: item.bulletinNote,
+      }
+    case 'qr':
+      return {
+        role: roleFor(item, undefined),
+        text: item.caption ?? '[QR Code]',
+        person: resolveRolePerson(item.role, assignments, personNames),
+        note: item.bulletinNote,
+      }
+    case 'sermon': {
+      // The sermon's own title (when set) is the heading — a real bulletin names the sermon,
+      // not a generic "Worship Through the Word" label — with the main passage reference as
+      // the line below it; an explicit bulletinNote (a deliberately typed note, distinct from
+      // the title) still wins that second-line slot when someone's set one.
+      const mainPassage = item.passages.find((p) => p.id === item.mainPassageId) ?? item.passages[0]
+      return {
+        role: roleFor(item, item.title ?? 'Worship Through the Word'),
+        text: '',
+        person: resolveRolePerson(item.role, assignments, formalPersonNames),
+        note: item.bulletinNote ?? mainPassage?.reference,
+      }
+    }
+    case 'bulletin-note':
+      return {
+        role: roleFor(item, 'Note'),
+        text: '',
+        person: resolveRolePerson(item.role, assignments, personNames),
+        note: item.bulletinNote,
+      }
+    case 'placeholder':
+      return {
+        role: roleFor(item, item.label),
+        text: '(to be filled in)',
+        person: resolveRolePerson(item.role, assignments, personNames),
+        note: item.bulletinNote,
+      }
   }
 }
 
@@ -210,6 +212,7 @@ export function buildOrderOfWorship(
   songList: Song[],
   slideList: SlideLibraryItem[],
   personNames: Map<string, string>,
+  formalPersonNames: Map<string, string> = personNames,
 ): OrderOfWorshipDoc {
   const songs = new Map(songList.map((s) => [s.id, s]))
   const slides = new Map(slideList.map((s) => [s.id, s]))
@@ -225,7 +228,7 @@ export function buildOrderOfWorship(
   return {
     title: 'Order of Worship',
     dateLine,
-    lines: buildLines(service, songs, slides, personNames),
+    lines: buildLines(service, songs, slides, personNames, formalPersonNames),
   }
 }
 
@@ -247,7 +250,9 @@ export function toHtml(doc: OrderOfWorshipDoc): string {
   const lineHtml = doc.lines
     .map((line) => {
       const label = line.role ? `<strong>${escapeHtml(line.role)}</strong> ` : ''
-      const note = line.note ? `<p style="margin:0 0 6px 0;color:#555;">${escapeHtml(line.note)}</p>` : ''
+      const note = line.note
+        ? `<p style="margin:0 0 6px 0;color:#555;">${escapeHtml(line.note)}</p>`
+        : ''
       // Extra space between items (skipped between consecutive songs so a multi-song worship
       // set reads as one flowing block) — no visible rule/line, just spacing.
       const margin = line.separatorBefore ? '8px 0 2px 0' : '2px 0'

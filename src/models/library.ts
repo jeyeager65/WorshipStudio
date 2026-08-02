@@ -167,9 +167,10 @@ export interface Person {
   id: string
   firstName: string
   lastName: string
-  /** How this person's name should appear elsewhere in the app (e.g. "Mike Smith" for Michael
-   *  Smith, or "Pastor Dan" for Daniel Renno) — falls back to first + last name when unset. */
-  displayName?: string
+  /** The first name this person normally uses, such as "Dan" for Daniel. */
+  preferredName?: string
+  /** A formal title, such as Pastor, Elder, Mr., Mrs., Ms., or Dr. */
+  title?: string
   email?: string
   /** Not a restriction — just makes this person show up first when filling roles for these. */
   preferredRoles: string[]
@@ -179,7 +180,18 @@ export interface Person {
 }
 
 export function personDisplayName(person: Person): string {
-  return person.displayName || `${person.firstName} ${person.lastName}`
+  return `${person.preferredName?.trim() || person.firstName} ${person.lastName}`.trim()
+}
+
+/** Formal name used only where the person's office/title matters, such as sermon attribution. */
+export function personFormalName(person: Person): string {
+  return `${person.title?.trim() || ''} ${personDisplayName(person)}`.trim()
+}
+
+/** Pastors are elders, so the directory's Elder filter intentionally includes both titles. */
+export function isElder(person: Person): boolean {
+  const title = person.title?.trim().toLocaleLowerCase()
+  return title === 'elder' || title === 'pastor'
 }
 
 /** Sorts people with `role` in their preferredRoles first — a hint for filling pickers faster,

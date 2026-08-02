@@ -65,11 +65,11 @@ describe('applyServiceTemplate', () => {
     expect(assignments).toEqual([{ role: 'Prayer', tentative: false }])
   })
 
-  it('inserts a placeholder item (with a suggested tab and role) for every other kind', () => {
+  it('inserts a placeholder item with its suggested tab, role, and bulletin note for every other kind', () => {
     const template: ServiceTemplate = {
       serviceType: 'Sunday Morning Worship',
       items: [
-        { id: 't1', kind: 'song', label: 'Opening Song' },
+        { id: 't1', kind: 'song', label: 'Opening Song', note: '(please stand)' },
         { id: 't2', kind: 'scripture', label: 'Scripture Reading', role: 'Scripture Reader' },
         { id: 't3', kind: 'sermon', label: 'Sermon' },
         { id: 't4', kind: 'other', label: 'Special Music' },
@@ -77,7 +77,12 @@ describe('applyServiceTemplate', () => {
     }
     const { items, assignments } = applyServiceTemplate(template)
     expect(items).toMatchObject([
-      { type: 'placeholder', label: 'Opening Song', suggestedTab: 'songs' },
+      {
+        type: 'placeholder',
+        label: 'Opening Song',
+        suggestedTab: 'songs',
+        bulletinNote: '(please stand)',
+      },
       { type: 'placeholder', label: 'Scripture Reading', suggestedTab: 'scripture', role: 'Scripture Reader' },
       { type: 'placeholder', label: 'Sermon', suggestedTab: 'sermon' },
       { type: 'placeholder', label: 'Special Music', suggestedTab: undefined },

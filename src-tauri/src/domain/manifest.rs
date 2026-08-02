@@ -62,8 +62,9 @@ pub fn rebuild(root: &Path) -> std::io::Result<Vec<ManifestEntry>> {
             id: person.id,
             kind: "person".to_string(),
             label: person
-                .display_name
+                .preferred_name
                 .clone()
+                .map(|name| format!("{} {}", name, person.last_name))
                 .unwrap_or_else(|| format!("{} {}", person.first_name, person.last_name)),
             updated_at: person.updated_at,
         });

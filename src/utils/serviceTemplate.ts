@@ -29,7 +29,7 @@ export function defaultServiceTemplate(
  * - 'bulletin-note' is fully specifiable from label/note alone, so it inserts a real, complete
  *   bulletin-note item.
  * - every other kind needs something specific picked/typed later, so it inserts a placeholder
- *   item instead, replaced in place once filled in.
+ *   item instead, carrying its bulletin label/note forward when replaced in place.
  * Order follows the template's own item order.
  */
 export function applyServiceTemplate(template: ServiceTemplate): { items: ServiceItem[]; assignments: RoleAssignment[] } {
@@ -65,6 +65,7 @@ export function applyServiceTemplate(template: ServiceTemplate): { items: Servic
         label: templateItem.label,
         suggestedTab: SUGGESTED_TAB_BY_KIND[templateItem.kind],
         role: templateItem.role,
+        bulletinNote: templateItem.note,
       })
     }
   }

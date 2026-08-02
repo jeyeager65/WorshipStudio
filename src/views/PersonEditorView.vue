@@ -13,6 +13,8 @@ import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import type { RemoteDevice } from '@/adapters/types'
 import type { Person, UnavailableDateRange } from '@/models/library'
 
+const titleSuggestions = ['Pastor', 'Elder', 'Mr.', 'Mrs.', 'Ms.', 'Dr.']
+
 const route = useRoute()
 const router = useRouter()
 const peopleStore = usePeopleStore()
@@ -60,8 +62,7 @@ function blankPerson(): Person {
 const headingName = computed(() => {
   if (!person.value) return ''
   return (
-    person.value.displayName ||
-    `${person.value.firstName} ${person.value.lastName}`.trim() ||
+    `${person.value.preferredName?.trim() || person.value.firstName} ${person.value.lastName}`.trim() ||
     'New Person'
   )
 })
@@ -302,11 +303,20 @@ function formatDateRange(range: UnavailableDateRange): string {
             hide-details
           />
           <v-text-field
-            v-model="person.displayName"
-            label="Display Name"
+            v-model="person.preferredName"
+            label="Preferred Name"
             variant="outlined"
-            hint="Optional name used elsewhere in the app, such as Pastor Dan."
+            hint="Optional first name used in the app, such as Dan for Daniel."
             persistent-hint
+          />
+          <v-combobox
+            v-model="person.title"
+            :items="titleSuggestions"
+            label="Title"
+            variant="outlined"
+            hint="Optional formal title. Choose a suggestion or enter another title."
+            persistent-hint
+            clearable
           />
           <v-text-field
             v-model="person.email"

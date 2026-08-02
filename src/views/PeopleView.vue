@@ -7,6 +7,7 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import LibraryEmptyState from '@/components/LibraryEmptyState.vue'
 import type { Person } from '@/models/library'
+import { isElder, personDisplayName } from '@/models/library'
 
 const router = useRouter()
 const peopleStore = usePeopleStore()
@@ -17,12 +18,10 @@ onMounted(async () => {
   await Promise.all([peopleStore.load(), settingsStore.load()])
 })
 
-// "First Last (Display Name)" — unlike personDisplayName (used everywhere else for a short,
-// unambiguous label), this list is exactly where seeing both at once matters: it's the one
-// place someone looks up who "Pastor Dan" actually is.
 function personLabel(person: Person): string {
-  const fullName = `${person.firstName} ${person.lastName}`.trim()
-  return person.displayName ? `${fullName} (${person.displayName})` : fullName
+  const legalName = `${person.firstName} ${person.lastName}`.trim()
+  const preferred = personDisplayName(person)
+  return preferred === legalName ? legalName : `${preferred} (${legalName})`
 }
 
 // A role's own category (e.g. "Praise Team" for "Guitar") — searched alongside the role's own
@@ -83,6 +82,7 @@ const categoryFilters = computed(() =>
 )
 const activeFilterLabel = computed(() => {
   if (activeFilter.value === 'all') return 'All People'
+  if (activeFilter.value === 'elder') return 'Elder'
   if (activeFilter.value === 'unassigned') return 'Unassigned'
   if (activeFilter.value === 'unavailable') return `Unavailable on ${availabilityDateLabel.value}`
   return (
@@ -94,6 +94,7 @@ const filteredPeople = computed(() => {
   // throws mid-computed (.trim() on null), which silently breaks the clear button.
   const q = (searchQuery.value ?? '').trim().toLowerCase()
   const matches = peopleStore.people.filter((person) => {
+    if (activeFilter.value === 'elder' && !isElder(person)) return false
     if (activeFilter.value === 'unassigned' && person.preferredRoles.length > 0) return false
     if (
       activeFilter.value === 'unavailable' &&
@@ -110,7 +111,8 @@ const filteredPeople = computed(() => {
     if (!q) return true
     if (person.firstName.toLowerCase().includes(q)) return true
     if (person.lastName.toLowerCase().includes(q)) return true
-    if (person.displayName?.toLowerCase().includes(q)) return true
+    if (person.preferredName?.toLowerCase().includes(q)) return true
+    if (person.title?.toLowerCase().includes(q)) return true
     return person.preferredRoles.some(
       (role) => role.toLowerCase().includes(q) || categoryFor(role)?.toLowerCase().includes(q),
     )
@@ -169,6 +171,7 @@ const peopleWithRolesCount = computed(
 const peopleWithAvailabilityCount = computed(
   () => peopleStore.people.filter((person) => person.unavailableDateRanges.length > 0).length,
 )
+const elderCount = computed(() => peopleStore.people.filter(isElder).length)
 
 function openAdd() {
   router.push('/people/new')
@@ -276,6 +279,16 @@ async function remove(person: Person) {
             <span>{{ filter.label }}</span>
             <strong>{{ filter.count }}</strong>
           </button>
+          <button
+            type="button"
+            class="filter-option"
+            :class="{ 'filter-option--active': activeFilter === 'elder' }"
+            @click="activeFilter = 'elder'"
+          >
+            <span class="filter-icon"><v-icon icon="mdi-account-tie-outline" size="18" /></span>
+            <span>Elder</span>
+            <strong>{{ elderCount }}</strong>
+          </button>
           <div class="filter-divider" />
           <button
             type="button"
@@ -374,7 +387,11 @@ async function remove(person: Person) {
                 <span class="person-avatar">{{ initials(person) }}</span>
                 <div class="person-identity">
                   <h3>{{ personLabel(person) }}</h3>
-                  <p>{{ person.email || 'No email on file' }}</p>
+                  <p>
+                    {{
+                      [person.title, person.email || 'No email on file'].filter(Boolean).join(' · ')
+                    }}
+                  </p>
                 </div>
                 <span
                   v-if="availabilityDate && isUnavailableOnDate(person, availabilityDate)"

@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import type { Service } from '@/models/service'
 import { findSermonItem, sermonMainReference } from '@/utils/sermonInfo'
 import { formatServiceTime } from '@/utils/serviceTime'
+import { localCalendarDate } from '@/utils/calendarDate'
 
 const props = defineProps<{
   service: Service
@@ -47,7 +48,7 @@ const statusLabel = computed(() => (props.service.items.length === 0 ? 'not yet 
 // Distinct background per date bucket — today's service should stand out at a glance from the
 // pile of past/future ones on the same page (Home tab shows Today + Upcoming together).
 const dateStatus = computed<'today' | 'future' | 'past'>(() => {
-  const todayIso = new Date().toISOString().slice(0, 10)
+  const todayIso = localCalendarDate()
   if (props.service.date === todayIso) return 'today'
   return props.service.date > todayIso ? 'future' : 'past'
 })
