@@ -6,6 +6,11 @@ import { VueDraggable } from 'vue-draggable-plus'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import SlideContentRenderer from '@/components/live/SlideContentRenderer.vue'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
+import ExternalAppFailureAlert from '@/components/service-workspace/ExternalAppFailureAlert.vue'
+import ServiceDetailsDialog from '@/components/service-workspace/ServiceDetailsDialog.vue'
+import ReadinessDialog from '@/components/service-workspace/ReadinessDialog.vue'
+import LiveTransportBar from '@/components/service-workspace/LiveTransportBar.vue'
+import AudiencePresentationDialog from '@/components/service-workspace/AudiencePresentationDialog.vue'
 import ScriptureReferencePicker, {
   type ScriptureReferenceValue,
 } from '@/components/ScriptureReferencePicker.vue'
@@ -24,13 +29,7 @@ import { usePeopleStore } from '@/stores/people'
 import { useSyncStore } from '@/stores/sync'
 import { flattenService, type FlatSlide } from '@/utils/flattenService'
 import { colorForBlockLabel, colorForItemType } from '@/utils/contentColors'
-import {
-  applySermonEdit,
-  defaultSermonRole,
-  findSermonItem,
-  sermonMainReference,
-  sermonPreacherId,
-} from '@/utils/sermonInfo'
+import { findSermonItem, sermonMainReference, sermonPreacherId } from '@/utils/sermonInfo'
 import { formatCountdown } from '@/utils/countdown'
 import { formatServiceTime } from '@/utils/serviceTime'
 import { errorMessage as asyncErrorMessage } from '@/composables/useAsyncStoreState'
@@ -44,7 +43,7 @@ import type {
   LibrarySlide,
   PresentationThemeTarget,
 } from '@/models/library'
-import { personDisplayName, personFormalName, sortByPreferredRole } from '@/models/library'
+import { personDisplayName, personFormalName } from '@/models/library'
 import { scenePlainText } from '@/utils/slideScene'
 import { presentationTextEffect } from '@/utils/presentationTextEffect'
 import {
@@ -107,61 +106,8 @@ function onReorderEnd() {
   draggingItemId.value = undefined
 }
 
-// Service details (date/type/sermon title/key passage/preacher) — the same fields
-// CreateServiceView collects up front, editable afterward via this dialog rather than a
-// separate screen, since it's the exact same small set of fields either way. Local drafts so
-// Cancel discards cleanly; Save writes back to the real service (picked up by the existing
-// deep watch on `service` below, same as any other in-place edit in this view).
 const serviceDetailsDialogOpen = ref(false)
-const editDate = ref('')
-const editTime = ref('')
-const editType = ref('')
-const editSermonTitle = ref('')
-const editKeyPassage = ref('')
-const editPreacherId = ref<string>()
-function openServiceDetailsDialog() {
-  if (!service.value) return
-  editDate.value = service.value.date
-  editTime.value = service.value.time ?? ''
-  editType.value = service.value.type
-  const sermonItem = findSermonItem(service.value)
-  editSermonTitle.value = sermonItem?.title ?? ''
-  editKeyPassage.value = sermonItem ? sermonMainReference(sermonItem) : ''
-  editPreacherId.value = sermonPreacherId(service.value, sermonItem)
-  serviceDetailsDialogOpen.value = true
-}
-function saveServiceDetails() {
-  if (!service.value) return
-  service.value.date = editDate.value
-  service.value.time = editTime.value || undefined
-  service.value.type = editType.value
-  // Only touch the sermon item if there's something to touch — editing just Date/Type on a
-  // service with no sermon at all shouldn't spuriously create a blank one.
-  if (
-    editSermonTitle.value ||
-    editKeyPassage.value ||
-    editPreacherId.value ||
-    findSermonItem(service.value)
-  ) {
-    applySermonEdit(
-      service.value,
-      {
-        title: editSermonTitle.value,
-        passageReference: editKeyPassage.value,
-        preacherId: editPreacherId.value,
-      },
-      defaultSermonRole(settingsStore.librarySettings?.serviceTemplates, service.value.type),
-      settingsStore.librarySettings?.defaultTranslationCode ?? 'KJV',
-    )
-  }
-  serviceDetailsDialogOpen.value = false
-}
-const preacherOptions = computed(() =>
-  sortByPreferredRole(peopleStore.people, 'Preacher').map((p) => ({
-    title: personFormalName(p),
-    value: p.id,
-  })),
-)
+
 const preacherName = computed(() => {
   const currentService = service.value
   if (!currentService) return undefined
@@ -1918,7 +1864,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
           class="edit-service-button"
           title="Edit service details"
           aria-label="Edit service details"
-          @click="openServiceDetailsDialog"
+          @click="serviceDetailsDialogOpen = true"
         />
       </div>
       <div class="workspace-actions">
@@ -2667,386 +2613,52 @@ function updateRolePerson(role: string, personId: string | undefined) {
       </div>
     </div>
 
-    <!-- External App Hand-off failure — operator-only, never shown to the congregation (spec
-         section 12); the audience display stays on whatever was live before. -->
-    <v-alert
+    <ExternalAppFailureAlert
       v-if="externalAppError"
-      type="warning"
-      variant="elevated"
-      density="compact"
-      class="external-app-alert"
-    >
-      <div class="d-flex align-center ga-3">
-        <span>⚠️ {{ externalAppError }}</span>
-        <v-spacer />
-        <v-btn variant="flat" size="small" color="white" @click="retryExternalApp">Try Again</v-btn>
-        <v-btn variant="text" size="small" @click="skipExternalAppError">Skip</v-btn>
-      </div>
-    </v-alert>
+      :error="externalAppError"
+      @retry="retryExternalApp"
+      @skip="skipExternalAppError"
+    />
 
-    <div class="live-footer">
-      <button
-        type="button"
-        class="transport-destination transport-destination--previous"
-        :disabled="previousDisabled"
-        @click="previous"
-      >
-        <v-icon icon="mdi-chevron-left" size="25" />
-        <span class="destination-copy">
-          <small>Previous</small>
-          <strong>{{ prevPreviewLabel }}</strong>
-        </span>
-        <kbd>←</kbd>
-      </button>
+    <LiveTransportBar
+      :previous-disabled="previousDisabled"
+      :next-disabled="nextDisabled"
+      :prev-preview-label="prevPreviewLabel"
+      :next-preview-label="nextPreviewLabel"
+      :is-presenting="isPresenting"
+      :current-slide-label="currentSlideLabel"
+      :live-context-snippet="liveContextSnippet"
+      :slide-position-label="slidePositionLabel"
+      :background-only="backgroundOnly"
+      :background-only-disabled="!liveSlide"
+      :is-blank-screen="isBlankScreen"
+      @previous="previous"
+      @next="next"
+      @toggle-background-only="toggleBackgroundOnly"
+      @toggle-blank-screen="toggleBlankScreen"
+    />
 
-      <div class="transport-center">
-        <div class="transport-current">
-          <span class="transport-mode" :class="{ 'transport-mode--live': isPresenting }">
-            <i />{{ isPresenting ? 'Live' : 'Preview' }}
-          </span>
-          <div class="current-slide-copy">
-            <strong>{{ currentSlideLabel }}</strong>
-            <span v-if="liveContextSnippet">{{ liveContextSnippet }}</span>
-          </div>
-          <span class="slide-position">{{ slidePositionLabel }}</span>
-        </div>
-        <div class="screen-overrides" aria-label="Screen overrides">
-          <v-btn
-            :variant="backgroundOnly ? 'flat' : 'tonal'"
-            :color="backgroundOnly ? 'primary' : undefined"
-            prepend-icon="mdi-image-outline"
-            size="small"
-            :disabled="!liveSlide"
-            class="screen-override-button"
-            @click="toggleBackgroundOnly"
-          >
-            Background Only <kbd>G</kbd>
-          </v-btn>
-          <v-btn
-            :variant="isBlankScreen ? 'flat' : 'tonal'"
-            :color="isBlankScreen ? 'primary' : undefined"
-            prepend-icon="mdi-monitor-off"
-            size="small"
-            class="screen-override-button"
-            :aria-pressed="isBlankScreen"
-            @click="toggleBlankScreen"
-          >
-            {{ isBlankScreen ? 'Restore Screen' : 'Blank Screen' }} <kbd>B</kbd>
-          </v-btn>
-        </div>
-      </div>
+    <ReadinessDialog
+      v-model="readinessDialogOpen"
+      :readiness="readiness"
+      :color="readinessColor"
+      :icon="readinessIcon"
+      @issue-selected="openReadinessIssue"
+    />
 
-      <button
-        type="button"
-        class="transport-destination transport-destination--next"
-        :disabled="nextDisabled"
-        @click="next"
-      >
-        <kbd>→</kbd>
-        <span class="destination-copy">
-          <small>Next</small>
-          <strong>{{ nextPreviewLabel }}</strong>
-        </span>
-        <v-icon icon="mdi-chevron-right" size="25" />
-      </button>
-    </div>
+    <AudiencePresentationDialog
+      v-model="presentationDisplayDialogOpen"
+      :displays="presentationDisplays"
+      :loading="presentationDisplaysLoading"
+      :error="presentationDisplayError"
+      :selected-display-id="selectedAudienceDisplayId"
+      @update:selected-display-id="selectedAudienceDisplayId = $event"
+      @identify="identifyPresentationDisplay"
+      @refresh="refreshPresentationDisplays()"
+      @use-and-start="useAudienceDisplayAndStart"
+    />
 
-    <v-dialog v-model="readinessDialogOpen" max-width="720">
-      <v-card class="readiness-dialog-card">
-        <v-card-title class="readiness-dialog-title">
-          <span class="readiness-dialog-title-icon" :class="`is-${readinessColor}`">
-            <v-icon :icon="readinessIcon" size="23" />
-          </span>
-          <span>
-            <strong>{{
-              readiness.blockers.length ? 'Service Needs Attention' : 'Ready to Present'
-            }}</strong>
-            <small>
-              {{ readiness.blockers.length }} blocker{{
-                readiness.blockers.length === 1 ? '' : 's'
-              }}
-              · {{ readiness.warnings.length }} warning{{
-                readiness.warnings.length === 1 ? '' : 's'
-              }}
-            </small>
-          </span>
-          <v-spacer />
-          <v-btn
-            icon="mdi-close"
-            variant="text"
-            size="small"
-            @click="readinessDialogOpen = false"
-          />
-        </v-card-title>
-        <v-card-text class="readiness-dialog-content">
-          <div v-if="!readiness.issues.length" class="readiness-complete-state">
-            <span><v-icon icon="mdi-check" size="28" /></span>
-            <div>
-              <strong>Everything required for presentation is available.</strong>
-              <p>The check will update automatically if the service or display setup changes.</p>
-            </div>
-          </div>
-          <template v-else>
-            <section v-if="readiness.blockers.length" class="readiness-issue-section">
-              <header>
-                <span>Must fix before presenting</span>
-                <strong>{{ readiness.blockers.length }}</strong>
-              </header>
-              <button
-                v-for="issue in readiness.blockers"
-                :key="issue.id"
-                type="button"
-                class="readiness-issue-row is-blocker"
-                @click="openReadinessIssue(issue)"
-              >
-                <span class="readiness-issue-icon"
-                  ><v-icon icon="mdi-alert-circle-outline" size="20"
-                /></span>
-                <span class="readiness-issue-copy">
-                  <strong>{{ issue.title }}</strong>
-                  <small>{{ issue.detail }}</small>
-                </span>
-                <span class="readiness-issue-action">
-                  {{
-                    issue.action === 'display'
-                      ? 'Choose display'
-                      : issue.action === 'assignments'
-                        ? 'Assignments'
-                        : 'Open item'
-                  }}
-                  <v-icon icon="mdi-chevron-right" size="18" />
-                </span>
-              </button>
-            </section>
-            <section v-if="readiness.warnings.length" class="readiness-issue-section">
-              <header>
-                <span>Review before the service</span>
-                <strong>{{ readiness.warnings.length }}</strong>
-              </header>
-              <button
-                v-for="issue in readiness.warnings"
-                :key="issue.id"
-                type="button"
-                class="readiness-issue-row is-warning"
-                @click="openReadinessIssue(issue)"
-              >
-                <span class="readiness-issue-icon"
-                  ><v-icon icon="mdi-alert-outline" size="20"
-                /></span>
-                <span class="readiness-issue-copy">
-                  <strong>{{ issue.title }}</strong>
-                  <small>{{ issue.detail }}</small>
-                </span>
-                <span class="readiness-issue-action">
-                  {{
-                    issue.action === 'assignments'
-                      ? 'Assignments'
-                      : issue.action === 'library-health'
-                        ? 'Library Health'
-                        : 'Open item'
-                  }}
-                  <v-icon icon="mdi-chevron-right" size="18" />
-                </span>
-              </button>
-            </section>
-          </template>
-        </v-card-text>
-        <v-card-actions class="readiness-dialog-actions">
-          <span>Updates automatically</span>
-          <v-spacer />
-          <v-btn variant="tonal" @click="readinessDialogOpen = false">Close</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <v-dialog v-model="presentationDisplayDialogOpen" max-width="650">
-      <v-card class="presentation-display-dialog">
-        <v-card-title class="presentation-display-title">
-          <div>
-            <span><v-icon icon="mdi-monitor-arrow-down" size="21" /></span>
-            <div>
-              <strong>Choose Audience Display</strong>
-              <small>Select where the congregation should see the presentation.</small>
-            </div>
-          </div>
-          <v-btn
-            icon="mdi-close"
-            variant="text"
-            aria-label="Close display setup"
-            @click="presentationDisplayDialogOpen = false"
-          />
-        </v-card-title>
-        <v-card-text class="presentation-display-content">
-          <v-alert
-            v-if="presentationDisplays.length <= 1 && !presentationDisplaysLoading"
-            type="info"
-            variant="tonal"
-            density="compact"
-            class="mb-3"
-          >
-            Connect the projector and set Windows to <strong>Extend</strong>, then detect displays
-            again. Mirrored displays cannot keep the operator view private.
-          </v-alert>
-          <v-alert
-            v-if="presentationDisplayError"
-            type="error"
-            variant="tonal"
-            density="compact"
-            class="mb-3"
-          >
-            {{ presentationDisplayError }}
-          </v-alert>
-          <div v-if="presentationDisplaysLoading" class="presentation-display-loading">
-            <v-progress-circular indeterminate color="primary" size="28" />
-            <span>Detecting connected displays…</span>
-          </div>
-          <div v-else class="presentation-display-list" role="radiogroup">
-            <article
-              v-for="display in presentationDisplays"
-              :key="display.id"
-              class="presentation-display-option"
-              :class="{
-                selected: selectedAudienceDisplayId === display.id,
-                disabled: display.role === 'operator',
-              }"
-              :tabindex="display.role === 'operator' ? -1 : 0"
-              role="radio"
-              :aria-checked="selectedAudienceDisplayId === display.id"
-              :aria-disabled="display.role === 'operator'"
-              @click="display.role !== 'operator' && (selectedAudienceDisplayId = display.id)"
-              @keydown.enter="
-                display.role !== 'operator' && (selectedAudienceDisplayId = display.id)
-              "
-              @keydown.space.prevent="
-                display.role !== 'operator' && (selectedAudienceDisplayId = display.id)
-              "
-            >
-              <span class="presentation-display-icon">
-                <v-icon
-                  :icon="display.role === 'operator' ? 'mdi-monitor-dashboard' : 'mdi-projector'"
-                  size="22"
-                />
-              </span>
-              <div class="presentation-display-copy">
-                <strong>{{ display.name }}</strong>
-                <span>{{ display.resolution }}</span>
-              </div>
-              <span class="presentation-display-role">
-                {{
-                  display.role === 'operator'
-                    ? 'Operator'
-                    : display.role === 'audience'
-                      ? 'Audience'
-                      : 'Available'
-                }}
-              </span>
-              <v-btn
-                variant="text"
-                size="small"
-                prepend-icon="mdi-numeric"
-                @click.stop="identifyPresentationDisplay(display.id)"
-              >
-                Identify
-              </v-btn>
-              <v-icon
-                :icon="
-                  selectedAudienceDisplayId === display.id
-                    ? 'mdi-radiobox-marked'
-                    : 'mdi-radiobox-blank'
-                "
-                :color="selectedAudienceDisplayId === display.id ? 'primary' : undefined"
-                size="20"
-              />
-            </article>
-            <div v-if="!presentationDisplays.length" class="presentation-displays-empty">
-              <v-icon icon="mdi-monitor-off" size="27" />
-              <span>No displays were detected.</span>
-            </div>
-          </div>
-        </v-card-text>
-        <v-card-actions class="presentation-display-actions">
-          <v-btn
-            variant="text"
-            prepend-icon="mdi-refresh"
-            :loading="presentationDisplaysLoading"
-            @click="refreshPresentationDisplays()"
-          >
-            Detect Again
-          </v-btn>
-          <v-spacer />
-          <v-btn variant="text" @click="presentationDisplayDialogOpen = false">Cancel</v-btn>
-          <v-btn
-            color="primary"
-            variant="flat"
-            prepend-icon="mdi-play"
-            :loading="presentationDisplaysLoading"
-            :disabled="!selectedAudienceDisplayId"
-            @click="useAudienceDisplayAndStart"
-          >
-            Use Display & Start
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <v-dialog v-model="serviceDetailsDialogOpen" max-width="560">
-      <v-card>
-        <v-card-title>Edit Service Details</v-card-title>
-        <v-card-text>
-          <v-row>
-            <v-col cols="6">
-              <v-text-field v-model="editDate" type="date" label="Date" variant="outlined" />
-            </v-col>
-            <v-col cols="6">
-              <v-text-field
-                v-model="editTime"
-                type="time"
-                step="300"
-                label="Start Time"
-                variant="outlined"
-                clearable
-              />
-            </v-col>
-          </v-row>
-          <v-select
-            v-model="editType"
-            :items="settingsStore.librarySettings?.serviceTypes ?? []"
-            label="Type"
-            variant="outlined"
-          />
-          <v-text-field
-            v-model="editSermonTitle"
-            label="Sermon Title (optional)"
-            placeholder="e.g. Our Lord's Prayer"
-            variant="outlined"
-          />
-          <v-row>
-            <v-col cols="6">
-              <v-text-field
-                v-model="editKeyPassage"
-                label="Key Passage (optional)"
-                placeholder="e.g. Matthew 6:9-13"
-                variant="outlined"
-              />
-            </v-col>
-            <v-col cols="6">
-              <v-select
-                v-model="editPreacherId"
-                :items="preacherOptions"
-                label="Preacher (optional)"
-                variant="outlined"
-                clearable
-              />
-            </v-col>
-          </v-row>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="serviceDetailsDialogOpen = false">Cancel</v-btn>
-          <v-btn variant="flat" color="primary" @click="saveServiceDetails">Save</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <ServiceDetailsDialog v-if="service" v-model="serviceDetailsDialogOpen" :service="service" />
 
     <v-dialog v-model="addDialogOpen" max-width="560">
       <!-- height must be the v-card PROP, not a height CSS class — Vuetify's own dialog
@@ -3509,122 +3121,6 @@ function updateRolePerson(role: string, personId: string | undefined) {
 </template>
 
 <style scoped>
-.presentation-display-dialog {
-  overflow: hidden;
-}
-.presentation-display-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 15px 17px;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-}
-.presentation-display-title > div,
-.presentation-display-title > div > span {
-  display: flex;
-  align-items: center;
-}
-.presentation-display-title > div {
-  gap: 10px;
-}
-.presentation-display-title > div > span {
-  width: 38px;
-  height: 38px;
-  justify-content: center;
-  border-radius: 9px;
-  background: rgba(var(--v-theme-primary), 0.1);
-  color: rgb(var(--v-theme-primary));
-}
-.presentation-display-title > div > div {
-  display: flex;
-  flex-direction: column;
-}
-.presentation-display-title strong {
-  font-size: 0.86rem;
-}
-.presentation-display-title small {
-  color: rgba(var(--v-theme-on-surface), 0.48);
-  font-size: 0.67rem;
-}
-.presentation-display-content {
-  padding: 17px !important;
-}
-.presentation-display-loading,
-.presentation-displays-empty {
-  display: flex;
-  min-height: 150px;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 10px;
-  color: rgba(var(--v-theme-on-surface), 0.48);
-  font-size: 0.72rem;
-}
-.presentation-display-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.presentation-display-option {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto auto 24px;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 11px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
-  border-radius: 9px;
-  background: rgba(var(--v-theme-background), 0.2);
-  cursor: pointer;
-  outline: none;
-}
-.presentation-display-option:hover:not(.disabled),
-.presentation-display-option:focus-visible:not(.disabled) {
-  border-color: rgba(var(--v-theme-primary), 0.3);
-  background: rgba(var(--v-theme-primary), 0.045);
-}
-.presentation-display-option.selected {
-  border-color: rgba(var(--v-theme-primary), 0.45);
-  background: rgba(var(--v-theme-primary), 0.075);
-}
-.presentation-display-option.disabled {
-  cursor: default;
-  opacity: 0.58;
-}
-.presentation-display-icon {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  place-items: center;
-  border-radius: 9px;
-  background: rgba(var(--v-theme-on-surface), 0.06);
-  color: rgb(var(--v-theme-primary));
-}
-.presentation-display-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-}
-.presentation-display-copy strong {
-  overflow: hidden;
-  font-size: 0.75rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.presentation-display-copy span,
-.presentation-display-role {
-  color: rgba(var(--v-theme-on-surface), 0.48);
-  font-size: 0.64rem;
-}
-.presentation-display-role {
-  padding: 3px 7px;
-  border-radius: 999px;
-  background: rgba(var(--v-theme-on-surface), 0.06);
-  font-weight: 650;
-}
-.presentation-display-actions {
-  padding: 11px 15px 14px;
-  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-}
 /* Fills the space below the persistent app bar (49px, see App.vue) exactly, so the
    sticky-feeling live-footer and the Add-to-Service button never depend on the page
    itself scrolling — only the panels that actually need it (service list, center
@@ -3808,172 +3304,6 @@ function updateRolePerson(role: string, personId: string | undefined) {
 }
 .present-button-wrap {
   display: inline-flex;
-}
-.readiness-dialog-card {
-  overflow: hidden;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.11);
-  background: rgb(var(--v-theme-surface));
-}
-.readiness-dialog-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 18px 20px;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.09);
-  white-space: normal;
-}
-.readiness-dialog-title > span:nth-child(2) {
-  display: grid;
-  gap: 2px;
-}
-.readiness-dialog-title strong {
-  font-size: 0.98rem;
-  font-weight: 720;
-}
-.readiness-dialog-title small {
-  color: rgba(var(--v-theme-on-surface), 0.55);
-  font-size: 0.7rem;
-}
-.readiness-dialog-title-icon,
-.readiness-complete-state > span {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  flex: none;
-  place-items: center;
-  border-radius: 10px;
-}
-.readiness-dialog-title-icon.is-error {
-  background: rgba(var(--v-theme-error), 0.12);
-  color: rgb(var(--v-theme-error));
-}
-.readiness-dialog-title-icon.is-warning {
-  background: rgba(var(--v-theme-warning), 0.12);
-  color: rgb(var(--v-theme-warning));
-}
-.readiness-dialog-title-icon.is-success,
-.readiness-complete-state > span {
-  background: rgba(var(--v-theme-success), 0.12);
-  color: rgb(var(--v-theme-success));
-}
-.readiness-dialog-content {
-  display: grid;
-  max-height: min(620px, 70vh);
-  gap: 18px;
-  padding: 18px 20px !important;
-  overflow-y: auto;
-}
-.readiness-complete-state {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 18px;
-  border: 1px solid rgba(var(--v-theme-success), 0.22);
-  border-radius: 10px;
-  background: rgba(var(--v-theme-success), 0.055);
-}
-.readiness-complete-state strong {
-  font-size: 0.84rem;
-}
-.readiness-complete-state p {
-  margin: 4px 0 0;
-  color: rgba(var(--v-theme-on-surface), 0.55);
-  font-size: 0.72rem;
-}
-.readiness-issue-section {
-  display: grid;
-  gap: 7px;
-}
-.readiness-issue-section > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 3px 3px;
-  color: rgba(var(--v-theme-on-surface), 0.58);
-  font-size: 0.65rem;
-  font-weight: 720;
-  letter-spacing: 0.055em;
-  text-transform: uppercase;
-}
-.readiness-issue-section > header strong {
-  display: grid;
-  min-width: 23px;
-  height: 20px;
-  place-items: center;
-  border-radius: 10px;
-  background: rgba(var(--v-theme-on-surface), 0.08);
-  font-size: 0.65rem;
-}
-.readiness-issue-row {
-  display: grid;
-  width: 100%;
-  grid-template-columns: 36px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 12px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
-  border-radius: 9px;
-  background: rgba(var(--v-theme-on-surface), 0.025);
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.readiness-issue-row:hover {
-  border-color: rgba(var(--v-theme-primary), 0.34);
-  background: rgba(var(--v-theme-primary), 0.055);
-}
-.readiness-issue-icon {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border-radius: 8px;
-}
-.readiness-issue-row.is-blocker .readiness-issue-icon {
-  background: rgba(var(--v-theme-error), 0.11);
-  color: rgb(var(--v-theme-error));
-}
-.readiness-issue-row.is-warning .readiness-issue-icon {
-  background: rgba(var(--v-theme-warning), 0.11);
-  color: rgb(var(--v-theme-warning));
-}
-.readiness-issue-copy {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-.readiness-issue-copy strong {
-  font-size: 0.78rem;
-  font-weight: 680;
-}
-.readiness-issue-copy small {
-  color: rgba(var(--v-theme-on-surface), 0.55);
-  font-size: 0.69rem;
-  line-height: 1.4;
-}
-.readiness-issue-action {
-  display: inline-flex;
-  align-items: center;
-  color: rgb(var(--v-theme-primary));
-  font-size: 0.68rem;
-  font-weight: 680;
-  white-space: nowrap;
-}
-.readiness-dialog-actions {
-  padding: 11px 18px !important;
-  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.09);
-}
-.readiness-dialog-actions > span {
-  color: rgba(var(--v-theme-on-surface), 0.44);
-  font-size: 0.66rem;
-}
-@media (max-width: 620px) {
-  .readiness-issue-row {
-    grid-template-columns: 34px minmax(0, 1fr);
-  }
-  .readiness-issue-action {
-    display: none;
-  }
 }
 @media (max-width: 1060px) {
   .workspace-service-sermon {
@@ -4377,218 +3707,6 @@ function updateRolePerson(role: string, personId: string | undefined) {
   min-height: 38px;
   padding-top: 7px;
   padding-bottom: 7px;
-}
-.external-app-alert {
-  flex-shrink: 0;
-  margin: 0 20px 10px;
-}
-.live-footer {
-  flex-shrink: 0;
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(390px, 1.35fr) minmax(220px, 1fr);
-  align-items: center;
-  gap: 12px;
-  min-height: 82px;
-  padding: 9px 14px;
-  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.09);
-  background: linear-gradient(
-    180deg,
-    rgba(var(--v-theme-surface), 0.98),
-    rgba(var(--v-theme-surface-variant), 0.48)
-  );
-  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08);
-}
-.transport-destination {
-  display: grid;
-  min-width: 0;
-  min-height: 58px;
-  grid-template-columns: 28px minmax(0, 1fr) 28px;
-  align-items: center;
-  gap: 9px;
-  padding: 7px 10px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.09);
-  border-radius: 8px;
-  background: rgba(var(--v-theme-background), 0.35);
-  color: rgba(var(--v-theme-on-surface), 0.72);
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-  transition:
-    border-color var(--ws-transition-fast),
-    background-color var(--ws-transition-fast),
-    color var(--ws-transition-fast);
-}
-.transport-destination:hover:not(:disabled) {
-  border-color: rgba(var(--v-theme-primary), 0.28);
-  background: rgba(var(--v-theme-primary), 0.065);
-  color: rgba(var(--v-theme-on-surface), 0.94);
-}
-.transport-destination:focus-visible {
-  outline: 2px solid rgba(var(--v-theme-primary), 0.55);
-  outline-offset: 1px;
-}
-.transport-destination:disabled {
-  cursor: default;
-  opacity: 0.42;
-}
-.transport-destination--next {
-  border-color: rgba(var(--v-theme-primary), 0.18);
-  background: rgba(var(--v-theme-primary), 0.08);
-}
-.transport-destination--next .destination-copy {
-  text-align: right;
-}
-.destination-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-}
-.destination-copy small {
-  color: rgba(var(--v-theme-on-surface), 0.42);
-  font-size: 0.61rem;
-  font-weight: 720;
-  letter-spacing: 0.075em;
-  text-transform: uppercase;
-}
-.destination-copy strong {
-  overflow: hidden;
-  color: inherit;
-  font-size: 0.72rem;
-  font-weight: 620;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.live-footer kbd {
-  display: inline-grid;
-  min-width: 24px;
-  height: 24px;
-  place-items: center;
-  padding: 0 5px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
-  border-bottom-color: rgba(var(--v-theme-on-surface), 0.2);
-  border-radius: 5px;
-  background: rgba(var(--v-theme-on-surface), 0.055);
-  color: rgba(var(--v-theme-on-surface), 0.48);
-  font-family: inherit;
-  font-size: 0.66rem;
-  font-weight: 650;
-  line-height: 1;
-}
-.transport-center {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: center;
-  gap: 11px;
-}
-.transport-current {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-}
-.transport-mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 7px;
-  border: 1px solid rgba(var(--v-theme-slate), 0.22);
-  border-radius: 5px;
-  background: rgba(var(--v-theme-slate), 0.09);
-  color: rgb(var(--v-theme-slate));
-  font-size: 0.61rem;
-  font-weight: 760;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.transport-mode i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-.transport-mode--live {
-  border-color: rgba(var(--v-theme-error), 0.28);
-  background: rgba(var(--v-theme-error), 0.1);
-  color: rgb(var(--v-theme-error));
-}
-.transport-mode--live i {
-  box-shadow: 0 0 0 3px rgba(var(--v-theme-error), 0.12);
-}
-.current-slide-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-  text-align: center;
-}
-.current-slide-copy strong,
-.current-slide-copy span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.current-slide-copy strong {
-  color: rgba(var(--v-theme-on-surface), 0.9);
-  font-size: 0.78rem;
-  font-weight: 680;
-}
-.current-slide-copy span {
-  color: rgba(var(--v-theme-on-surface), 0.46);
-  font-size: 0.67rem;
-}
-.slide-position {
-  color: rgba(var(--v-theme-on-surface), 0.45);
-  font-size: 0.66rem;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.screen-overrides {
-  display: grid;
-  flex: none;
-  gap: 4px;
-}
-.screen-override-button {
-  justify-content: flex-start;
-  width: 100%;
-  flex: none;
-  padding-inline-end: 6px;
-  font-size: 0.67rem;
-  letter-spacing: 0;
-  text-transform: none;
-}
-.screen-override-button :deep(.v-btn__content) {
-  min-width: 0;
-  flex: 1;
-  justify-content: flex-start;
-  gap: 10px;
-}
-.screen-override-button kbd {
-  min-width: 20px;
-  height: 20px;
-  margin-left: auto;
-  font-size: 0.6rem;
-}
-@media (max-width: 1250px) {
-  .live-footer {
-    grid-template-columns: minmax(190px, 0.9fr) minmax(330px, 1.2fr) minmax(190px, 0.9fr);
-    gap: 8px;
-    padding-right: 10px;
-    padding-left: 10px;
-  }
-  .transport-destination > kbd,
-  .slide-position {
-    display: none;
-  }
-  .transport-destination--previous {
-    grid-template-columns: 28px minmax(0, 1fr);
-  }
-  .transport-destination--next {
-    grid-template-columns: minmax(0, 1fr) 28px;
-  }
 }
 @media (max-width: 1500px) {
   .workspace-layout {
