@@ -423,12 +423,6 @@ function nextWednesday(from: Date): Date {
   return d
 }
 
-function countdownTarget(date: Date, hour: number, minute: number): string {
-  const d = new Date(date)
-  d.setHours(hour, minute, 0, 0)
-  return d.toISOString()
-}
-
 /** Builds the 4 sample services fresh against whatever "today" is when called — this is what
  *  makes re-running "Load Sample Data" refresh the demo to always-current dates rather than
  *  drifting into the past. */
@@ -467,12 +461,6 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       time: '10:30',
       type: 'Sunday Morning Worship',
       items: [
-        {
-          id: 'item-1',
-          type: 'countdown',
-          targetTime: countdownTarget(past, 9, 25),
-          text: 'Service begins soon',
-        },
         {
           id: 'item-2',
           type: 'song',
@@ -537,12 +525,6 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       time: '10:30',
       type: 'Sunday Morning Worship',
       items: [
-        {
-          id: 'item-1',
-          type: 'countdown',
-          targetTime: countdownTarget(soon, 9, 25),
-          text: 'Service begins soon',
-        },
         {
           id: 'item-2',
           type: 'song',

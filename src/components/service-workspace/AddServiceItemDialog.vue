@@ -26,7 +26,6 @@ export type AddItemType =
   | 'media'
   | 'video'
   | 'external-app'
-  | 'countdown'
   | 'sermon'
   | 'bulletin-note'
 
@@ -296,27 +295,6 @@ async function addExternalAppToService() {
   }
 }
 
-// Countdown sub-picker (spec section 1): custom text plus a target time, entered per-use (not
-// baked into a reusable library item — service times vary week to week). Service-specific
-// only, same as the Slides tab's "+ New Text Slides" quick-create — no Slide Library reuse.
-const countdownTargetTime = ref('')
-const countdownText = ref('')
-
-function addCountdownToService() {
-  if (!countdownTargetTime.value) return
-  // <input type="datetime-local"> has no timezone of its own — treated as this computer's
-  // local time, same as every other date the app already collects this way.
-  const targetTime = new Date(countdownTargetTime.value).toISOString()
-  const item: ServiceItem = {
-    id: `item-${crypto.randomUUID()}`,
-    type: 'countdown',
-    targetTime,
-    text: countdownText.value.trim() || undefined,
-  }
-  insertItem(item)
-  closeAddDialog()
-}
-
 // Sermon sub-picker: a reorderable list of passages (each its own ScriptureReferencePicker,
 // same as the Scripture tab, just N instances), one marked "main" for the printed bulletin
 // line (see orderOfWorship.ts), then a presentable outline — same block-editor pattern as the
@@ -442,8 +420,6 @@ function closeAddDialog() {
   externalAppProfileId.value = undefined
   externalAppFile.value = undefined
   externalAppAddError.value = undefined
-  countdownTargetTime.value = ''
-  countdownText.value = ''
   sermonTitleDraft.value = ''
   sermonPassages.value = []
   sermonMainPassageId.value = undefined
@@ -702,34 +678,6 @@ function closeAddDialog() {
                 Add to Service
               </v-btn>
             </template>
-          </v-window-item>
-
-          <v-window-item value="countdown">
-            <v-text-field
-              v-model="countdownTargetTime"
-              type="datetime-local"
-              label="Target Time"
-              variant="outlined"
-              density="comfortable"
-              class="mb-3"
-            />
-            <v-text-field
-              v-model="countdownText"
-              label="Custom Text (optional)"
-              placeholder="e.g. Join us at 10:15!"
-              variant="outlined"
-              density="comfortable"
-              class="mb-3"
-            />
-            <v-btn
-              variant="flat"
-              color="primary"
-              block
-              :disabled="!countdownTargetTime"
-              @click="addCountdownToService"
-            >
-              Add to Service
-            </v-btn>
           </v-window-item>
 
           <v-window-item value="sermon">

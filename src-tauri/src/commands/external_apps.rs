@@ -1,10 +1,31 @@
+use std::collections::HashMap;
+use std::sync::Mutex;
+
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use crate::domain::{external_apps, win32};
 use crate::models::{ExternalAppProfile, WindowPosition};
 use crate::paths::{external_apps_path, now_iso, this_device_name};
+
+/// Live-session hand-off state, scoped to Worship Studio's own process lifetime (never
+/// persisted).
+#[derive(Default)]
+pub struct EngagedExternalApp {
+    /// hwnd of whichever app `launch_external_app` most recently made topmost on the Audience
+    /// display, if any — `restore_self` needs it to know which specific window to
+    /// un-topmost/minimize when the operator advances past it.
+    current: Mutex<Option<isize>>,
+    /// Every hwnd successfully launched/focused this session, keyed by profile id + file, kept
+    /// even after being minimized by `restore_self` — so navigating back to an item whose app is
+    /// already running (just minimized) reuses that same window instead of spawning a second
+    /// instance. Without this, re-engaging the same "launch automatically" item a second time
+    /// would call `Command::spawn` again; many apps are single-instance and just hand off to the
+    /// existing window and exit, so the freshly spawned process never gets a window of its own —
+    /// `wait_for_window` times out and surfaces a false "no window appeared" error even though
+    /// the app's own instance-handoff logic actually did bring its window back correctly.
+    known: Mutex<HashMap<String, isize>>,
+}
 
 #[tauri::command]
 pub fn list_external_app_profiles(app: AppHandle) -> Result<Vec<ExternalAppProfile>, String> {
@@ -61,12 +82,33 @@ fn verify_paths(profile: &ExternalAppProfile, file: Option<&str>) -> Result<Stri
 #[tauri::command]
 pub fn launch_external_app(
     app: AppHandle,
+    engaged: tauri::State<EngagedExternalApp>,
     profile_id: String,
     file: Option<String>,
+    // The configured Audience display's current full bounds (see the Tauri adapter's
+    // computeAudienceMonitorPhysicalBounds) — an external app always fills that display, full
+    // screen, with no per-profile position to configure. The frontend itself refuses to call
+    // this command when no Audience display is assigned (see the adapter's own check), so this
+    // is never actually absent in practice — required rather than optional so that invariant is
+    // visible here too.
+    audience_bounds: WindowPosition,
 ) -> Result<(), String> {
     let profile = find_profile(&app, &profile_id)?;
+    let cache_key = format!("{profile_id}|{}", file.as_deref().unwrap_or(""));
 
-    if profile.launch_mode == "already-running" {
+    let cached_hwnd = engaged.known.lock().unwrap().get(&cache_key).copied();
+    if let Some(hwnd) = cached_hwnd {
+        if win32::is_window_alive(hwnd) {
+            win32::reposition_existing(hwnd, &audience_bounds)?;
+            *engaged.current.lock().unwrap() = Some(hwnd);
+            return Ok(());
+        }
+        // Closed since we last saw it — fall through and relaunch, but forget the stale handle
+        // first so a second failure doesn't keep tripping this same check.
+        engaged.known.lock().unwrap().remove(&cache_key);
+    }
+
+    let hwnd = if profile.launch_mode == "already-running" {
         let executable_name = profile
             .executable_path
             .as_deref()
@@ -76,12 +118,60 @@ pub fn launch_external_app(
         let pid = win32::find_running_process_id(executable_name).ok_or_else(|| {
             format!("{executable_name} doesn't appear to be open. Open it, then try again.")
         })?;
-        return win32::focus_process(pid);
+        win32::focus_process(pid, Some(&audience_bounds))?
+    } else {
+        let executable = verify_paths(&profile, file.as_deref())?;
+        let args = external_apps::build_args(&profile.parameter_format, file.as_deref());
+        win32::launch_and_focus(&executable, &args, Some(&audience_bounds))?
+    };
+    engaged.known.lock().unwrap().insert(cache_key, hwnd);
+    *engaged.current.lock().unwrap() = Some(hwnd);
+    Ok(())
+}
+
+/// "Launch Now" — starts an item's app ahead of its slide going live, so the cold-start delay
+/// (spawning, waiting for its window, possibly a single-instance handoff) happens ahead of time
+/// instead of live. Deliberately doesn't touch `engaged.current` (that's reserved for whichever
+/// app is actually topmost/live right now) — only `known`, so the later real engagement finds it
+/// cached and reuses it via the same fast `reposition_existing` path a re-engaged item already
+/// gets. A no-op if this item's app is already known and still alive.
+#[tauri::command]
+pub fn prelaunch_external_app(
+    app: AppHandle,
+    engaged: tauri::State<EngagedExternalApp>,
+    profile_id: String,
+    file: Option<String>,
+) -> Result<(), String> {
+    let profile = find_profile(&app, &profile_id)?;
+    let cache_key = format!("{profile_id}|{}", file.as_deref().unwrap_or(""));
+
+    let cached_hwnd = engaged.known.lock().unwrap().get(&cache_key).copied();
+    if let Some(hwnd) = cached_hwnd {
+        if win32::is_window_alive(hwnd) {
+            return Ok(());
+        }
+        engaged.known.lock().unwrap().remove(&cache_key);
     }
 
-    let executable = verify_paths(&profile, file.as_deref())?;
-    let args = external_apps::build_args(&profile.parameter_format, file.as_deref());
-    win32::launch_and_focus(&executable, &args, profile.window_position.as_ref())
+    let hwnd = if profile.launch_mode == "already-running" {
+        let executable_name = profile
+            .executable_path
+            .as_deref()
+            .and_then(|p| std::path::Path::new(p).file_name())
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| "This profile has no executable name to look for.".to_string())?;
+        let pid = win32::find_running_process_id(executable_name).ok_or_else(|| {
+            format!("{executable_name} doesn't appear to be open. Open it, then try again.")
+        })?;
+        win32::peek_window_for_pid(pid)
+            .ok_or_else(|| "That app doesn't appear to have a visible window.".to_string())?
+    } else {
+        let executable = verify_paths(&profile, file.as_deref())?;
+        let args = external_apps::build_args(&profile.parameter_format, file.as_deref());
+        win32::launch_in_background(&executable, &args)?
+    };
+    engaged.known.lock().unwrap().insert(cache_key, hwnd);
+    Ok(())
 }
 
 /// Add-time verification (feature-spec.md's "robustness priority over convenience" — the
@@ -128,69 +218,65 @@ pub fn send_external_app_keystroke(
     win32::send_keystroke(key)
 }
 
-#[tauri::command]
-pub fn restore_self(window: tauri::WebviewWindow) -> Result<(), String> {
-    let handle = window.window_handle().map_err(|e| e.to_string())?;
-    match handle.as_raw() {
-        RawWindowHandle::Win32(win32_handle) => win32::restore_self(win32_handle.hwnd.get()),
+fn hwnd_of(window: &tauri::WebviewWindow) -> Result<isize, String> {
+    match window.window_handle().map_err(|e| e.to_string())?.as_raw() {
+        RawWindowHandle::Win32(handle) => Ok(handle.hwnd.get()),
         _ => Err("External App Hand-off is only supported on Windows.".to_string()),
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct TestLaunchResult {
-    pub ok: bool,
-    pub message: String,
-}
-
-/// Runs the same launch/focus/keystroke sequence a live service would, on demand from
-/// Settings, without needing an actual file (see design/feature-spec.md: "so the whole setup
-/// can be verified from Settings rather than discovered broken live").
+/// Called whenever the live slide stops being an External App Hand-off item (advancing past it,
+/// or Stop Presenting) — the counterpart to `launch_external_app`'s topmost hand-off. Un-topmosts
+/// and minimizes whichever app was engaged (if any — a no-op otherwise), then brings the
+/// Audience-monitor presentation window back to the front without stealing the operator's own
+/// input focus, and finally reasserts the operator's own (main) window as foreground for good
+/// measure in case anything else ended up on top of it in the meantime.
 #[tauri::command]
-pub fn test_launch_external_app(
+pub fn restore_self(
     app: AppHandle,
-    profile_id: String,
-) -> Result<TestLaunchResult, String> {
-    let profile = match find_profile(&app, &profile_id) {
-        Ok(profile) => profile,
-        Err(e) => {
-            return Ok(TestLaunchResult {
-                ok: false,
-                message: e,
-            })
-        }
-    };
-
-    let result = if profile.launch_mode == "already-running" {
-        launch_external_app(app.clone(), profile_id.clone(), None)
-    } else {
-        match verify_paths(&profile, None) {
-            Ok(executable) => {
-                let args = external_apps::build_args(&profile.parameter_format, None);
-                win32::launch_and_focus(&executable, &args, profile.window_position.as_ref())
-            }
-            Err(e) => Err(e),
-        }
-    };
-
-    match result {
-        Ok(()) => {
-            if profile.remote_controls_enabled {
-                if let Some(key) = &profile.next_key {
-                    let _ = win32::send_keystroke(key);
-                }
-            }
-            Ok(TestLaunchResult {
-                ok: true,
-                message: "Launched and brought to the foreground successfully.".to_string(),
-            })
-        }
-        Err(message) => Ok(TestLaunchResult { ok: false, message }),
+    window: tauri::WebviewWindow,
+    engaged: tauri::State<EngagedExternalApp>,
+) -> Result<(), String> {
+    if let Some(hwnd) = engaged.current.lock().unwrap().take() {
+        win32::restore_engaged_app(hwnd);
     }
+    if let Some(presentation) = app.get_webview_window("presentation") {
+        win32::bring_to_top_without_activating(hwnd_of(&presentation)?)?;
+    }
+    win32::restore_self(hwnd_of(&window)?)
 }
 
+/// Operator-triggered ("Close App" in the transport bar) — closes just the currently-engaged
+/// app and forgets it, so a later re-engagement of the same item relaunches fresh rather than
+/// trying to reuse a handle the operator deliberately closed. A no-op if nothing's engaged.
 #[tauri::command]
-pub fn capture_external_app_window_position() -> Result<WindowPosition, String> {
-    win32::capture_foreground_window_position()
+pub fn close_current_external_app(engaged: tauri::State<EngagedExternalApp>) -> Result<(), String> {
+    if let Some(hwnd) = engaged.current.lock().unwrap().take() {
+        win32::close_window(hwnd);
+        engaged.known.lock().unwrap().retain(|_, known_hwnd| *known_hwnd != hwnd);
+    }
+    Ok(())
 }
+
+/// Stop Presenting's counterpart to `restore_self` — rather than just minimizing the most
+/// recently engaged app, this is the point where every External App Hand-off window launched
+/// this session (there could be more than one, across different items) actually gets closed,
+/// not merely tucked out of the way, per feature-spec.md: presenting stopping should leave
+/// nothing behind for the operator to clean up by hand.
+#[tauri::command]
+pub fn close_all_external_apps(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    engaged: tauri::State<EngagedExternalApp>,
+) -> Result<(), String> {
+    *engaged.current.lock().unwrap() = None;
+    let hwnds: Vec<isize> = engaged.known.lock().unwrap().drain().map(|(_, hwnd)| hwnd).collect();
+    for hwnd in hwnds {
+        win32::close_window(hwnd);
+    }
+    if let Some(presentation) = app.get_webview_window("presentation") {
+        win32::bring_to_top_without_activating(hwnd_of(&presentation)?)?;
+    }
+    win32::restore_self(hwnd_of(&window)?)
+}
+

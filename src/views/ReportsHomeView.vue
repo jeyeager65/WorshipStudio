@@ -132,11 +132,11 @@ async function copyBulletin() {
 const reports = [
   {
     to: '/reports/song-usage',
-    eyebrow: 'Compliance',
+    eyebrow: 'Statistics',
     title: 'Song Usage',
     description:
       'Review every song used across completed services for planning, records, and CCLI reporting.',
-    icon: 'mdi-music-note-check',
+    icon: 'mdi-music-note-outline',
     color: 'primary',
     detail: 'Date range · Service type · Excel · PDF',
     action: 'Open usage report',
@@ -178,50 +178,52 @@ const reports = [
       </div>
 
       <div class="bulletin-card">
-        <span class="report-icon report-icon--amber"
+        <span class="report-icon report-icon--amber bulletin-icon"
           ><v-icon icon="mdi-newspaper-variant-outline" size="27"
         /></span>
         <div class="bulletin-copy">
           <h3>Create a service bulletin</h3>
           <p>Select a service, then create the finished file or copy its formatted order.</p>
         </div>
-        <v-select
-          v-model="selectedServiceId"
-          :items="serviceOptions"
-          label="Service"
-          variant="outlined"
-          density="compact"
-          hide-details
-          class="service-picker"
-          :no-data-text="servicesStore.loaded ? 'No services available' : 'Loading services…'"
-        />
-        <div class="bulletin-actions">
-          <v-btn
-            color="primary"
-            variant="flat"
-            prepend-icon="mdi-file-word-outline"
-            :loading="exportingFormat === 'docx'"
-            :disabled="!bulletin || !!exportingFormat"
-            @click="exportBulletin('docx')"
-          >
-            Open Word
-          </v-btn>
-          <v-btn
+        <div class="bulletin-controls">
+          <v-select
+            v-model="selectedServiceId"
+            :items="serviceOptions"
+            label="Service"
             variant="outlined"
-            prepend-icon="mdi-file-pdf-box"
-            :loading="exportingFormat === 'pdf'"
-            :disabled="!bulletin || !!exportingFormat"
-            @click="exportBulletin('pdf')"
-          >
-            Open PDF
-          </v-btn>
-          <v-btn
-            variant="text"
-            icon="mdi-content-copy"
-            aria-label="Copy formatted bulletin"
-            :disabled="!bulletin || !!exportingFormat"
-            @click="copyBulletin"
+            density="compact"
+            hide-details
+            class="service-picker"
+            :no-data-text="servicesStore.loaded ? 'No services available' : 'Loading services…'"
           />
+          <div class="bulletin-actions">
+            <v-btn
+              color="primary"
+              variant="flat"
+              prepend-icon="mdi-file-word-outline"
+              :loading="exportingFormat === 'docx'"
+              :disabled="!bulletin || !!exportingFormat"
+              @click="exportBulletin('docx')"
+            >
+              Open Word
+            </v-btn>
+            <v-btn
+              variant="outlined"
+              prepend-icon="mdi-file-pdf-box"
+              :loading="exportingFormat === 'pdf'"
+              :disabled="!bulletin || !!exportingFormat"
+              @click="exportBulletin('pdf')"
+            >
+              Open PDF
+            </v-btn>
+            <v-btn
+              variant="text"
+              icon="mdi-content-copy"
+              aria-label="Copy formatted bulletin"
+              :disabled="!bulletin || !!exportingFormat"
+              @click="copyBulletin"
+            />
+          </div>
         </div>
       </div>
 
@@ -360,22 +362,37 @@ const reports = [
 }
 .bulletin-card {
   display: grid;
-  grid-template-columns: 48px minmax(190px, 1fr) minmax(220px, 0.75fr) auto;
+  grid-template-columns: 48px 1fr;
+  grid-template-areas: 'icon copy' 'icon controls';
   align-items: center;
-  gap: 17px;
+  gap: 8px 17px;
   padding: 18px 20px;
   border: 1px solid rgba(var(--v-theme-amber), 0.17);
   border-radius: 10px;
   background: rgba(var(--v-theme-amber), 0.035);
 }
+.bulletin-icon {
+  grid-area: icon;
+}
+.bulletin-controls {
+  display: flex;
+  grid-area: controls;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
 .bulletin-actions {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 8px;
 }
 .report-icon--amber {
   background: rgba(var(--v-theme-amber), 0.12);
   color: rgb(var(--v-theme-amber));
+}
+.bulletin-copy {
+  grid-area: copy;
 }
 .bulletin-copy h3 {
   margin: 0;
@@ -387,6 +404,10 @@ const reports = [
   color: rgba(var(--v-theme-on-surface), 0.5);
   font-size: 0.71rem;
   line-height: 1.4;
+}
+.service-picker {
+  flex: 1 1 280px;
+  min-width: 220px;
 }
 .service-picker :deep(.v-field) {
   border-radius: 8px;
@@ -503,9 +524,12 @@ const reports = [
   .bulletin-card {
     grid-template-columns: 48px minmax(0, 1fr);
   }
-  .service-picker,
+  .bulletin-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
   .bulletin-actions {
-    grid-column: 1 / -1;
+    justify-content: flex-end;
   }
 }
 @media (max-width: 560px) {

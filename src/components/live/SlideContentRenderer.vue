@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { formatCountdown } from '@/utils/countdown'
 import { wrapLineAtPunctuation } from '@/utils/textAutoFit'
 import { OLD_TESTAMENT_FRACTION } from '@/utils/scriptureReference'
 import { presentationTextShadow } from '@/utils/presentationTextEffect'
@@ -36,26 +35,24 @@ const props = withDefaults(
   { videoAutoplay: true, videoControls: true },
 )
 
-// Its own ticking clock (spec section 1's Countdown slide type) — each instance (real window,
-// each thumbnail) ticks independently rather than sharing state across components.
-const nowTick = ref(new Date())
-let nowTickInterval: ReturnType<typeof setInterval> | undefined
-onMounted(() => {
-  nowTickInterval = setInterval(() => (nowTick.value = new Date()), 1000)
-})
-onUnmounted(() => clearInterval(nowTickInterval))
-
 // Song/scripture/text-slide/slide-ref items — the ones rendered by the plain "slide-text"
-// branch below, as opposed to wayfinding/media/countdown which have their own distinct designs
-// and don't get a header/footer. Matches that branch's v-else-if fallthrough condition exactly.
+// branch below, as opposed to wayfinding/media which have their own distinct designs and
+// don't get a header/footer. Matches that branch's v-else-if fallthrough condition exactly.
 const isTextSlide = computed(
   () =>
     !!props.content &&
     !props.content.backgroundOnly &&
     !props.content.scene &&
     !props.content.wayfindingBooks &&
-    !props.content.media &&
-    !props.content.countdown,
+    !props.content.media,
+)
+
+// Song slides override the footer with the song's own collection citation instead of the
+// block label (see flattenService.ts's formatSongFooter) — footerText is only ever set (even
+// to '', meaning "no collection, hide the footer") for song slides, so undefined here means
+// "not a song slide, keep showing subLabel" for every other text-slide type.
+const footerDisplayText = computed(() =>
+  props.content?.footerText !== undefined ? props.content.footerText : props.content?.subLabel,
 )
 
 // Background Only is a presentation override, not a mutation of the saved scene. Advanced
@@ -279,7 +276,11 @@ const progressSegments = computed(() => {
       muted
       playsinline
     />
-    <SlideSceneRenderer v-if="renderedScene" :scene="renderedScene" />
+    <SlideSceneRenderer
+      v-if="renderedScene"
+      :scene="renderedScene"
+      :service-date-time="content?.serviceDateTime"
+    />
     <div v-else-if="content?.wayfindingBooks && !content.backgroundOnly" class="wayfinding-content">
       <div
         v-for="book in content.wayfindingBooks.filter((b) => b.distance < 0)"
@@ -361,17 +362,12 @@ const progressSegments = computed(() => {
       :autoplay="videoAutoplay"
       :controls="videoControls"
     />
-    <div v-else-if="content?.countdown && !content.backgroundOnly" class="slide-content">
-      <div
-        v-if="content.countdown.text"
-        class="slide-label"
-        style="text-transform: none; letter-spacing: normal"
-      >
-        {{ content.countdown.text }}
-      </div>
-      <div class="countdown-clock">
-        {{ formatCountdown(content.countdown.targetTime, nowTick) }}
-      </div>
+    <div
+      v-else-if="content?.outlineTitle && !content.backgroundOnly"
+      class="slide-content outline-content"
+    >
+      <div class="outline-title">{{ content.outlineTitle }}</div>
+      <div v-if="content.text" class="outline-details">{{ content.text }}</div>
     </div>
     <div
       v-else-if="content && !content.backgroundOnly && !content.scene && !content.wayfindingBooks"
@@ -397,7 +393,7 @@ const progressSegments = computed(() => {
 
     <!-- Fixed position, fixed (configurable) size — unlike the auto-fit main text above, these
          never move or resize as that text shrinks/grows. Only for the plain text slide above;
-         wayfinding/media/countdown have their own distinct designs. -->
+         wayfinding/media have their own distinct designs. -->
     <div
       v-if="isTextSlide && content?.itemLabel"
       class="slide-header"
@@ -406,11 +402,14 @@ const progressSegments = computed(() => {
       {{ content?.itemLabel }}
     </div>
     <div
-      v-if="isTextSlide && content?.subLabel"
+      v-if="isTextSlide && footerDisplayText"
       class="slide-footer"
       :style="{ fontSize: `${content?.footerFontSizePx ?? 48}px` }"
     >
-      {{ content?.subLabel }}
+      {{ footerDisplayText }}
+    </div>
+    <div v-if="isTextSlide && content?.repeatLabel" class="slide-repeat-label">
+      {{ content.repeatLabel }}
     </div>
   </div>
 </template>
@@ -480,22 +479,44 @@ const progressSegments = computed(() => {
 .slide-footer {
   bottom: 40px;
 }
+.slide-repeat-label {
+  position: absolute;
+  z-index: 1;
+  right: 40px;
+  bottom: 40px;
+  font-size: clamp(16px, 3cqw, 32px);
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
 .slide-text {
   font-size: clamp(28px, 5cqw, 72px);
   font-weight: 600;
   line-height: 1.3;
   white-space: pre-line;
 }
+.outline-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+}
+.outline-title {
+  font-size: clamp(36px, 7cqw, 96px);
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: pre-line;
+}
+.outline-details {
+  font-size: clamp(20px, 3.5cqw, 48px);
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: pre-line;
+}
 .media-fill {
   width: 100%;
   height: 100%;
 }
-.countdown-clock {
-  font-size: clamp(48px, 10cqw, 140px);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
 .wayfinding-content {
   position: relative;
   z-index: 1;

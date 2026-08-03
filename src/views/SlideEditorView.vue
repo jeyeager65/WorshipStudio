@@ -14,11 +14,13 @@ import { useSlidesStore } from '@/stores/slides'
 import { useMediaStore } from '@/stores/media'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
-import { createBlankScene, createTextElement } from '@/utils/slideScene'
+import { createBlankScene, createCountdownElement, createTextElement } from '@/utils/slideScene'
 import type {
   LibrarySlide,
+  SlideCountdownElement,
   SlideImageElement,
   SlideLibraryItem,
+  SlideQrElement,
   SlideShapeElement,
   SlideTextElement,
 } from '@/models/library'
@@ -90,6 +92,12 @@ const imageElement = computed(() =>
 )
 const shapeElement = computed(() =>
   selectedElement.value?.type === 'shape' ? selectedElement.value : undefined,
+)
+const qrElement = computed(() =>
+  selectedElement.value?.type === 'qr' ? selectedElement.value : undefined,
+)
+const countdownElement = computed(() =>
+  selectedElement.value?.type === 'countdown' ? selectedElement.value : undefined,
 )
 const backgroundPositionX = computed({
   get: () => Math.round((scene.value?.background.focalPoint?.x ?? 0.5) * 100),
@@ -540,6 +548,59 @@ function addImage(mediaId: string) {
   mediaDialog.value = false
 }
 
+function addQr() {
+  const qr: SlideQrElement = {
+    id: `element-${crypto.randomUUID()}`,
+    type: 'qr',
+    name: 'QR Code',
+    x: 660,
+    y: 300,
+    width: 480,
+    height: 480,
+    rotation: 0,
+    opacity: 1,
+    lockAspectRatio: true,
+    content: { kind: 'url', url: '' },
+  }
+  scene.value?.elements.push(qr)
+  selectedElementId.value = qr.id
+}
+
+// Reconstructs `content` from scratch on kind switch rather than patching in place — url and
+// wifi fields don't overlap, so half-updating would leave stale fields from the other kind.
+function setQrKind(kind: 'url' | 'wifi') {
+  if (!qrElement.value) return
+  qrElement.value.content =
+    kind === 'url' ? { kind: 'url', url: '' } : { kind: 'wifi', ssid: '', encryption: 'WPA' }
+}
+
+function addCountdown() {
+  const countdown = createCountdownElement()
+  scene.value?.elements.push(countdown)
+  selectedElementId.value = countdown.id
+}
+
+function setCountdownMode(mode: SlideCountdownElement['mode']) {
+  if (countdownElement.value) countdownElement.value.mode = mode
+}
+
+// <input type="datetime-local"> has no timezone of its own (interpreted as local time by
+// `new Date(...)` either direction) — converts to/from the ISO string actually stored on the
+// element, same round trip the old Countdown service item's Add dialog used.
+const countdownTargetTimeLocal = computed<string>({
+  get: () => {
+    const iso = countdownElement.value?.targetTime
+    if (!iso) return ''
+    const d = new Date(iso)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  },
+  set: (value: string) => {
+    if (!countdownElement.value) return
+    countdownElement.value.targetTime = value ? new Date(value).toISOString() : undefined
+  },
+})
+
 function setAsBackground(mediaId?: string) {
   if (!scene.value) return
   scene.value.background.mediaId = mediaId
@@ -843,6 +904,10 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
               />
             </v-list>
           </v-menu>
+          <v-btn prepend-icon="mdi-qrcode" variant="tonal" @click="addQr">QR Code</v-btn>
+          <v-btn prepend-icon="mdi-timer-outline" variant="tonal" @click="addCountdown"
+            >Countdown</v-btn
+          >
         </div>
         <v-divider vertical class="toolbar-divider" />
         <div v-if="canvaStatus?.configured" class="toolbar-group">
@@ -1176,6 +1241,135 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
             :max="300"
           />
         </template>
+        <template v-if="qrElement">
+          <div class="property-section-title property-section-title--spaced">QR Code</div>
+          <v-btn-toggle
+            :model-value="qrElement.content.kind"
+            mandatory
+            density="compact"
+            divided
+            class="mb-3"
+            @update:model-value="(value: 'url' | 'wifi') => setQrKind(value)"
+          >
+            <v-btn value="url" size="small">URL</v-btn>
+            <v-btn value="wifi" size="small">WiFi</v-btn>
+          </v-btn-toggle>
+          <v-text-field
+            v-if="qrElement.content.kind === 'url'"
+            v-model="qrElement.content.url"
+            label="URL"
+            placeholder="https://example.com/give"
+            density="compact"
+            variant="outlined"
+          />
+          <template v-else-if="qrElement.content.kind === 'wifi'">
+            <v-text-field
+              v-model="qrElement.content.ssid"
+              label="Network Name (SSID)"
+              density="compact"
+              variant="outlined"
+              class="mb-2"
+            />
+            <v-text-field
+              v-model="qrElement.content.password"
+              label="Password (optional)"
+              density="compact"
+              variant="outlined"
+              class="mb-2"
+            />
+            <v-select
+              v-model="qrElement.content.encryption"
+              :items="[
+                { title: 'WPA/WPA2', value: 'WPA' },
+                { title: 'WEP', value: 'WEP' },
+                { title: 'None (open network)', value: 'nopass' },
+              ]"
+              label="Security"
+              density="compact"
+            />
+          </template>
+        </template>
+        <template v-if="countdownElement">
+          <div class="property-section-title property-section-title--spaced">Countdown</div>
+          <v-btn-toggle
+            :model-value="countdownElement.mode"
+            mandatory
+            density="compact"
+            divided
+            class="mb-3"
+            @update:model-value="(value: SlideCountdownElement['mode']) => setCountdownMode(value)"
+          >
+            <v-btn value="service" size="small">Service Time</v-btn>
+            <v-btn value="custom" size="small">Custom Time</v-btn>
+            <v-btn value="days" size="small">Days Until</v-btn>
+          </v-btn-toggle>
+          <p v-if="countdownElement.mode === 'service'" class="text-caption text-medium-emphasis mb-3">
+            Counts down to whichever service this slide is presented in. Shows a placeholder here
+            since this slide isn't tied to a service yet.
+          </p>
+          <v-text-field
+            v-if="countdownElement.mode === 'custom'"
+            v-model="countdownTargetTimeLocal"
+            type="datetime-local"
+            label="Target Date &amp; Time"
+            density="compact"
+            variant="outlined"
+            class="mb-3"
+          />
+          <v-text-field
+            v-if="countdownElement.mode === 'days'"
+            v-model="countdownElement.targetDate"
+            type="date"
+            label="Target Day"
+            density="compact"
+            variant="outlined"
+            class="mb-3"
+          />
+          <v-text-field
+            v-model="countdownElement.label"
+            label="Label (optional)"
+            placeholder="e.g. Vacation Bible School"
+            density="compact"
+            variant="outlined"
+            class="mb-3"
+          />
+          <v-combobox
+            :model-value="countdownElement.style.fontFamily"
+            :items="['Inter', 'Arial', 'Georgia', 'Montserrat', 'Times New Roman']"
+            label="Font"
+            density="compact"
+            @update:model-value="
+              (value: string) => {
+                if (countdownElement) countdownElement.style.fontFamily = value
+              }
+            "
+          />
+          <div class="property-grid">
+            <v-number-input
+              v-model="countdownElement.style.fontSize"
+              label="Size"
+              density="compact"
+              control-variant="hidden"
+              :min="8"
+            />
+            <v-color-input v-model="countdownElement.style.color" label="Color" density="compact" />
+          </div>
+          <v-btn-toggle v-model="countdownElement.style.textAlign" mandatory>
+            <v-btn value="left" icon="mdi-format-align-left" />
+            <v-btn value="center" icon="mdi-format-align-center" />
+            <v-btn value="right" icon="mdi-format-align-right" />
+          </v-btn-toggle>
+          <v-btn-toggle class="ml-2">
+            <v-btn
+              icon="mdi-format-bold"
+              :active="countdownElement.style.fontWeight >= 700"
+              @click="
+                countdownElement.style.fontWeight =
+                  countdownElement.style.fontWeight >= 700 ? 400 : 700
+              "
+            />
+          </v-btn-toggle>
+        </template>
         <v-btn
           class="mt-4"
           block
@@ -1370,10 +1564,15 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
 <style scoped>
 .editor {
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr) 320px;
+  grid-template-columns: 250px minmax(180px, 1fr) 320px;
   grid-template-rows: 78px minmax(0, 1fr);
   height: calc(100vh - 48px);
-  overflow: hidden;
+  /* The side columns are fixed width and the middle one has a real floor (see minmax above) —
+     once a window gets too narrow for all three to fit, this scrolls horizontally instead of
+     letting the middle column get squeezed to zero, which previously let its own content (the
+     toolbar) render past its own boundary and visually overlap the Properties panel next to it. */
+  overflow-x: auto;
+  overflow-y: hidden;
   background: rgb(var(--v-theme-background));
 }
 .editor-header {
@@ -1660,6 +1859,8 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
 }
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
+  row-gap: 6px;
   min-height: 64px;
   align-items: center;
   gap: 10px;
@@ -1689,6 +1890,13 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
   height: auto;
   margin: 5px 0;
   opacity: 0.62;
+}
+/* Without this, the trailing v-spacer squeezing against wrapped/narrow content could compress
+   the Safe Area switch down to almost nothing, wrapping its label one letter per line instead
+   of just moving the whole control to its own row. */
+.toolbar :deep(.v-switch) {
+  flex: none;
+  white-space: nowrap;
 }
 .canva-grid {
   display: grid;
@@ -1733,11 +1941,19 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
 }
 @media (max-width: 1280px) {
   .editor {
-    grid-template-columns: 225px minmax(0, 1fr) 290px;
+    grid-template-columns: 225px minmax(160px, 1fr) 290px;
   }
   .toolbar-label,
   .editor-summary span:last-child {
     display: none;
+  }
+}
+/* Below this, even the narrower side columns above don't leave enough room for a usable
+   canvas — shrink them further rather than letting the middle column's floor force a
+   horizontal scrollbar this early. */
+@media (max-width: 820px) {
+  .editor {
+    grid-template-columns: 190px minmax(160px, 1fr) 250px;
   }
 }
 </style>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+import { getVersion } from '@tauri-apps/api/app'
 import logoDark from '@/assets/logo-dark.png'
 
 defineProps<{
@@ -7,6 +9,13 @@ defineProps<{
 }>()
 
 const steps = ['Preferences', 'Library', 'Services']
+
+// Same fallback Settings > About already uses — getVersion() is Tauri-only and rejects in the
+// browser demo build.
+const appVersion = ref('')
+void getVersion()
+  .then((version) => (appVersion.value = version))
+  .catch(() => (appVersion.value = ''))
 </script>
 
 <template>
@@ -38,6 +47,7 @@ const steps = ['Preferences', 'Library', 'Services']
         <span class="status-text">{{ statusText }}</span>
       </div>
     </div>
+    <div v-if="appVersion" class="version-credit">v{{ appVersion }}</div>
   </div>
 </template>
 
@@ -150,6 +160,14 @@ const steps = ['Preferences', 'Library', 'Services']
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.015em;
+}
+.version-credit {
+  position: absolute;
+  right: 16px;
+  bottom: 12px;
+  color: rgba(255, 255, 255, 0.32);
+  font-size: 11px;
+  letter-spacing: 0.02em;
 }
 
 @keyframes status-pulse {

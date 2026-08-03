@@ -107,4 +107,62 @@ describe('mock adapter', () => {
     expect(song?.usage.lastUsedAt).toBeUndefined()
     expect(song?.usage.usesPastYear).toBe(0)
   })
+
+  it('ignores a service dated after today — a planned service is not a use yet', async () => {
+    const adapter = createMockAdapter()
+    await adapter.songs.save({
+      id: 'song-usage-future',
+      title: 'Usage Test Song Future',
+      collections: [],
+      tags: [],
+      blocks: [],
+      defaultArrangement: { sequence: [] },
+      usage: { usesPastYear: 0 },
+      updatedAt: '',
+      updatedByDevice: '',
+    })
+    const farFuture = new Date()
+    farFuture.setFullYear(farFuture.getFullYear() + 1)
+    await adapter.services.save({
+      id: 'service-usage-future',
+      date: farFuture.toISOString().slice(0, 10),
+      type: 'Sunday Morning Worship',
+      items: [{ id: 'item-1', type: 'song', songId: 'song-usage-future', arrangement: { sequence: [] } }],
+      updatedAt: '',
+      updatedByDevice: '',
+    })
+
+    const song = await adapter.songs.get('song-usage-future')
+    expect(song?.usage.lastUsedAt).toBeUndefined()
+    expect(song?.usage.usesPastYear).toBe(0)
+  })
+
+  it('counts the same song used twice in one service only once', async () => {
+    const adapter = createMockAdapter()
+    await adapter.songs.save({
+      id: 'song-usage-twice',
+      title: 'Usage Test Song Twice',
+      collections: [],
+      tags: [],
+      blocks: [],
+      defaultArrangement: { sequence: [] },
+      usage: { usesPastYear: 0 },
+      updatedAt: '',
+      updatedByDevice: '',
+    })
+    await adapter.services.save({
+      id: 'service-usage-twice',
+      date: '2026-01-15',
+      type: 'Sunday Morning Worship',
+      items: [
+        { id: 'item-1', type: 'song', songId: 'song-usage-twice', arrangement: { sequence: [] } },
+        { id: 'item-2', type: 'song', songId: 'song-usage-twice', arrangement: { sequence: [] } },
+      ],
+      updatedAt: '',
+      updatedByDevice: '',
+    })
+
+    const song = await adapter.songs.get('song-usage-twice')
+    expect(song?.usage.usesPastYear).toBe(1)
+  })
 })

@@ -46,7 +46,6 @@ function context(overrides: Partial<ServiceReadinessContext> = {}): ServiceReadi
     externalAppVerificationAvailable: false,
     libraryConflictLabels: new Map(),
     audienceDisplayAvailable: true,
-    now: new Date('2026-08-01T12:00:00'),
     ...overrides,
   }
 }
@@ -70,7 +69,6 @@ describe('evaluateServiceReadiness', () => {
             translation: 'ESV',
             displayMode: 'full',
           },
-          { id: 'countdown', type: 'countdown', targetTime: 'not-a-date' },
         ],
       }),
       context({
@@ -84,7 +82,6 @@ describe('evaluateServiceReadiness', () => {
         'No audience display is ready',
         'Opening Song still needs content',
         'John 3:16 could not be resolved',
-        'Countdown has an invalid target',
       ]),
     )
     expect(result.ready).toBe(false)

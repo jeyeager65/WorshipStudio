@@ -33,14 +33,13 @@ import { useSyncStore } from '@/stores/sync'
 import { flattenService, type FlatSlide } from '@/utils/flattenService'
 import { colorForBlockLabel, colorForItemType } from '@/utils/contentColors'
 import { findSermonItem, sermonMainReference, sermonPreacherId } from '@/utils/sermonInfo'
-import { formatCountdown } from '@/utils/countdown'
 import { formatServiceTime } from '@/utils/serviceTime'
 import { errorMessage as asyncErrorMessage } from '@/composables/useAsyncStoreState'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import { useExternalAppHandoff } from '@/composables/useExternalAppHandoff'
 import { useLiveTransport } from '@/composables/useLiveTransport'
 import { evaluateServiceReadiness, type ReadinessIssue } from '@/utils/serviceReadiness'
-import type { Service, ServiceItem } from '@/models/service'
+import type { SermonPassage, Service, ServiceItem } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
 import type { LibrarySlide, PresentationThemeTarget } from '@/models/library'
 import { personDisplayName, personFormalName } from '@/models/library'
@@ -212,13 +211,7 @@ async function resolveMediaItem(mediaId: string) {
   }
 }
 
-// A live-ticking clock for Countdown items' operator-side preview (spec section 1) — the
-// presentation window ticks its own independently, since it's a separate window/component.
-const nowTick = ref(new Date())
-let nowTickInterval: ReturnType<typeof setInterval> | undefined
-
 onMounted(async () => {
-  nowTickInterval = setInterval(() => (nowTick.value = new Date()), 1000)
   if (!songsStore.loaded) await songsStore.load()
   if (!slidesStore.loaded) await slidesStore.load()
   if (!mediaStore.loaded) await mediaStore.load()
@@ -311,7 +304,6 @@ function reloadWorkspace() {
   window.location.reload()
 }
 onUnmounted(() => {
-  clearInterval(nowTickInterval)
   documentHistory.stop()
   isDirty.value = false
   saveHandler.value = undefined
@@ -472,6 +464,12 @@ const flatSlides = computed<FlatSlide[]>(() =>
 const selectedItem = computed<ServiceItem | undefined>(
   () => service.value?.items[selectedItemIndex.value],
 )
+// The selected item's own run of flat slides, in page order — lets a per-type editor branch
+// render one selector per actual auto-split page (e.g. a long scripture passage split across
+// several slides) instead of one undifferentiated block for the whole item.
+const selectedItemFlatSlides = computed(() =>
+  flatSlides.value.filter((s) => s.itemIndex === selectedItemIndex.value),
+)
 
 const themeTargetLabels: Record<PresentationThemeTarget, string> = {
   songs: 'Songs',
@@ -512,6 +510,17 @@ const themeOverrideOptions = computed(() => [
 // field — only fires once on blur, not on every keystroke while typing a whole reference.
 const scriptureReferenceDraft = ref('')
 const sermonPassageReferenceDrafts = reactive<Record<string, string>>({})
+// Toggles a passage between its condensed (reference + text preview only) and expanded
+// (reference field, display-mode toggle, translation picker) states.
+const editingSermonPassageId = ref<string>()
+// Which one supporting passage (if any) currently has its verse preview expanded — an
+// accordion, not independent per-passage toggles, so a sermon with several supporting passages
+// stays scannable instead of showing every passage's full text at once. The Main Passage isn't
+// part of this — it's always shown expanded, since there's only ever one.
+const expandedSupportingPassageId = ref<string>()
+// Same edit/expand split as passages above, applied to outline points.
+const editingSermonOutlineId = ref<string>()
+const expandedSermonOutlineId = ref<string>()
 watch(
   selectedItem,
   (item) => {
@@ -520,6 +529,12 @@ watch(
       for (const passage of item.passages)
         sermonPassageReferenceDrafts[passage.id] = passage.reference
     }
+    // Switching to a different item (or away from this sermon entirely) shouldn't leave a
+    // stale passage/outline point expanded or mid-edit for whatever's selected next.
+    editingSermonPassageId.value = undefined
+    expandedSupportingPassageId.value = undefined
+    editingSermonOutlineId.value = undefined
+    expandedSermonOutlineId.value = undefined
   },
   { immediate: true },
 )
@@ -542,6 +557,101 @@ async function commitSermonPassageReference(itemId: string, passageId: string) {
     await resolvePassage(`${itemId}:${passageId}`, reference, passage.translation)
 }
 
+// Adding/removing passages and outline points after a sermon item already exists — same
+// operations the Add dialog offers at creation time, now also available in place, so a
+// passage added mid-week (or an outline point that needs editing) doesn't require deleting
+// and re-adding the whole sermon item.
+function addSermonPassage(itemId: string) {
+  const item = service.value?.items.find((i) => i.id === itemId)
+  if (!item || item.type !== 'sermon') return
+  const id = `passage-${crypto.randomUUID()}`
+  item.passages.push({ id, reference: '', translation: scriptureDraft.value.translation, displayMode: 'full' })
+  sermonPassageReferenceDrafts[id] = ''
+  // The first passage is always "the" main passage — no manual designation needed (see
+  // removeSermonPassage for the mirrored sync on removal).
+  item.mainPassageId = item.passages[0].id
+  // Straight into edit mode — a freshly added passage has no reference yet, so there's nothing
+  // useful to look at until it's actually been given one (matches "Add Outline Point"'s own
+  // behavior below).
+  editingSermonPassageId.value = id
+  expandedSupportingPassageId.value = id
+}
+async function removeSermonPassage(itemId: string, passageId: string) {
+  const item = service.value?.items.find((i) => i.id === itemId)
+  if (!item || item.type !== 'sermon') return
+  const index = item.passages.findIndex((p) => p.id === passageId)
+  if (index === -1) return
+  if (!(await confirmDialog.confirm('Remove this passage?', 'Remove'))) return
+  item.passages.splice(index, 1)
+  delete sermonPassageReferenceDrafts[passageId]
+  scriptureById.delete(`${itemId}:${passageId}`)
+  scriptureErrors.delete(`${itemId}:${passageId}`)
+  item.mainPassageId = item.passages[0]?.id ?? ''
+}
+// Entering edit mode always expands the passage too (there's nowhere to show the edit fields
+// otherwise) — for the Main Passage this is a no-op read, since it's never gated by expansion.
+function toggleSermonPassageEdit(passageId: string) {
+  const turningOn = editingSermonPassageId.value !== passageId
+  editingSermonPassageId.value = turningOn ? passageId : undefined
+  if (turningOn) expandedSupportingPassageId.value = passageId
+}
+function toggleSupportingPassageExpanded(passageId: string) {
+  expandedSupportingPassageId.value =
+    expandedSupportingPassageId.value === passageId ? undefined : passageId
+}
+function toggleSermonOutlineEdit(blockId: string) {
+  const turningOn = editingSermonOutlineId.value !== blockId
+  editingSermonOutlineId.value = turningOn ? blockId : undefined
+  if (turningOn) expandedSermonOutlineId.value = blockId
+}
+// Expanding an outline point doubles as selecting it for presentation — there's no separate
+// "preview vs. live" row the way passages have several auto-split pages, so opening the one
+// card IS the point of going live on it. Collapsing it back just closes the card; whatever was
+// last live stays live, same as selecting away from any other item elsewhere in this view.
+function toggleSermonOutlineLive(
+  item: Extract<ServiceItem, { type: 'sermon' }>,
+  blockId: string,
+  index: number,
+) {
+  const turningOn = expandedSermonOutlineId.value !== blockId
+  expandedSermonOutlineId.value = turningOn ? blockId : undefined
+  if (turningOn) goLive(sermonOutlineFlatIndex(item, index))
+}
+function addSermonOutlineBlock(itemId: string) {
+  const item = service.value?.items.find((i) => i.id === itemId)
+  if (!item || item.type !== 'sermon') return
+  const id = `outline-${crypto.randomUUID()}`
+  // No default label text — the point's number is shown automatically from its position in the
+  // list (see the outline template), so there's nothing to fill in beyond the number until the
+  // operator actually titles it.
+  item.outline.push({ id, label: '', text: '' })
+  // Straight into edit mode — a freshly added point is still an empty placeholder, so there's
+  // nothing useful to look at until it's actually been titled and filled in.
+  expandedSermonOutlineId.value = id
+  editingSermonOutlineId.value = id
+}
+async function removeSermonOutlineBlock(itemId: string, index: number) {
+  const item = service.value?.items.find((i) => i.id === itemId)
+  if (!item || item.type !== 'sermon') return
+  const target = item.outline[index]
+  if (!target) return
+  if (!(await confirmDialog.confirm(`Remove "${target.label}"?`, 'Remove'))) return
+  item.outline.splice(index, 1)
+}
+// The Main Passage (index 0) is fixed in place — only the passages after it are reorderable, so
+// VueDraggable gets a writable slice rather than the item's own full passages array.
+const mainSermonPassage = computed(() =>
+  selectedItem.value?.type === 'sermon' ? selectedItem.value.passages[0] : undefined,
+)
+const supportingSermonPassages = computed<SermonPassage[]>({
+  get: () => (selectedItem.value?.type === 'sermon' ? selectedItem.value.passages.slice(1) : []),
+  set: (value) => {
+    const item = selectedItem.value
+    if (!item || item.type !== 'sermon' || !item.passages[0]) return
+    item.passages = [item.passages[0], ...value]
+  },
+})
+
 const selectedSong = computed<Song | undefined>(() => {
   const item = selectedItem.value
   return item?.type === 'song' ? songsById.value.get(item.songId) : undefined
@@ -562,9 +672,17 @@ function slideGroupText(slide: SongBlock | LibrarySlide): string {
 function slideFlatIndex(itemId: string, subIndex: number): number {
   return flatSlides.value.findIndex((s) => s.key === `${itemId}:${subIndex}`)
 }
-function sermonPassageText(itemId: string, passageId: string): string {
-  const passage = scriptureById.get(`${itemId}:${passageId}`)
-  return passage ? passage.verses.map((v) => `${v.number} ${v.text}`).join(' ') : ''
+// A sermon passage's own auto-split pages, in page order — same "one selector per actual page"
+// idea as selectedItemFlatSlides, but scoped to a single passage rather than the whole item
+// (a sermon may have several passages, each independently paginated).
+function passageFlatSlides(passageId: string) {
+  return selectedItemFlatSlides.value.filter((s) => s.passageId === passageId)
+}
+// Sermon passage pages don't have a fixed subIndex the way slideFlatIndex expects (a sermon's
+// subIndex numbering is cumulative across all passages plus the outline, not passage-local) —
+// this looks up a page's flat position directly off its own stable key instead.
+function flatIndexForKey(key: string): number {
+  return flatSlides.value.findIndex((s) => s.key === key)
 }
 // A sermon's outline blocks come after however many flat slides its passages produced (which
 // varies with pagination), so their flat index can't be derived the same way slideFlatIndex
@@ -592,11 +710,6 @@ const selectedScripturePassage = computed<ScripturePassage | undefined>(() => {
   const item = selectedItem.value
   return item?.type === 'scripture' ? scriptureById.get(item.id) : undefined
 })
-const selectedScriptureText = computed(() =>
-  selectedScripturePassage.value
-    ? selectedScripturePassage.value.verses.map((v) => `${v.number} ${v.text}`).join(' ')
-    : '',
-)
 const selectedScriptureError = computed<string | undefined>(() => {
   const item = selectedItem.value
   return item?.type === 'scripture' ? scriptureErrors.get(item.id) : undefined
@@ -625,7 +738,6 @@ function itemLabel(item: ServiceItem): string {
   if (item.type === 'video') return mediaById.value.get(item.mediaId)?.filename ?? 'Unknown Video'
   if (item.type === 'external-app')
     return externalAppProfilesById.value.get(item.profileId)?.name ?? 'Unknown App'
-  if (item.type === 'countdown') return item.text || 'Countdown'
   if (item.type === 'sermon') return item.bulletinLabel || item.title || 'Worship Through the Word'
   if (item.type === 'bulletin-note') return item.bulletinLabel || 'Bulletin Note'
   if (item.type === 'placeholder')
@@ -737,6 +849,9 @@ const {
   externalAppVerificationAvailable,
   retryExternalApp,
   skipExternalAppError,
+  closeExternalApp,
+  prelaunchError,
+  prelaunchExternalApp,
   tryForwardKeystroke,
 } = useExternalAppHandoff(service, liveSlide, isPresenting, externalAppProfilesById)
 
@@ -785,12 +900,6 @@ const addTabOptions = computed(() => {
     })
   }
   options.push(
-    {
-      title: 'Countdown',
-      description: 'Show a countdown to a target time',
-      icon: 'mdi-timer-outline',
-      value: 'countdown',
-    },
     {
       title: 'Sermon',
       description: 'Add passages and sermon outline slides',
@@ -1042,8 +1151,15 @@ function updateRolePerson(role: string, personId: string | undefined) {
                   style="cursor: grab"
                 />
                 <div class="flex-grow-1" style="min-width: 0">
-                  <div class="text-body-2 font-weight-bold">
-                    {{ selectedSong.blocks.find((b) => b.id === blockId)?.label ?? blockId }}
+                  <div class="slide-row-title-row">
+                    <span class="text-body-2 font-weight-bold">
+                      {{ selectedSong.blocks.find((b) => b.id === blockId)?.label ?? blockId }}
+                    </span>
+                    <span
+                      v-if="flatIndex === slideFlatIndex(selectedItem.id, index)"
+                      class="slide-row-live-badge"
+                      ><i />Live</span
+                    >
                   </div>
                   <div class="text-body-2" style="white-space: pre-line; opacity: 0.75">
                     {{ selectedSong.blocks.find((b) => b.id === blockId)?.text }}
@@ -1125,33 +1241,84 @@ function updateRolePerson(role: string, personId: string | undefined) {
               "
             />
             <div
+              v-if="selectedItem.displayMode === 'reference-only'"
               class="slide-row"
               :class="{ 'slide-row--live': itemHasLive(selectedItemIndex) }"
-              :style="[
-                { whiteSpace: 'pre-line' },
+              :style="
                 itemHasLive(selectedItemIndex)
-                  ? {}
+                  ? undefined
                   : {
                       background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
                       borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
                       paddingLeft: '9px',
-                    },
-              ]"
-              @click="goLive(flatSlides.findIndex((s) => s.itemIndex === selectedItemIndex))"
+                    }
+              "
+              @click="goLive(slideFlatIndex(selectedItem.id, 0))"
             >
-              <div
-                v-if="selectedItem.displayMode === 'reference-only'"
-                class="text-body-2 text-medium-emphasis"
-              >
+              <div class="text-body-2 text-medium-emphasis">
                 Reference only — no verse text shown.
               </div>
-              <div v-else-if="selectedScriptureError" class="text-body-2 text-error">
-                {{ selectedScriptureError }}
+            </div>
+            <div
+              v-else-if="selectedScriptureError"
+              class="slide-row"
+              :style="{
+                background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                paddingLeft: '9px',
+              }"
+            >
+              <div class="text-body-2 text-error">{{ selectedScriptureError }}</div>
+            </div>
+            <div
+              v-else-if="!selectedScripturePassage"
+              class="slide-row"
+              :style="{
+                background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                paddingLeft: '9px',
+              }"
+            >
+              <div class="text-body-2 text-medium-emphasis">Loading…</div>
+            </div>
+            <!-- One selector per actual auto-split page — a long passage that pagination
+                 splits across several slides gets one clickable row per page, same pattern as
+                 Slide-ref/Sermon-outline below, instead of one undifferentiated block that
+                 could only ever go live on the passage's first page. -->
+            <div v-else class="d-flex flex-column ga-1">
+              <div
+                v-for="(slide, index) in selectedItemFlatSlides"
+                :key="slide.key"
+                class="slide-row"
+                :class="{ 'slide-row--live': flatIndex === slideFlatIndex(selectedItem.id, index) }"
+                :style="
+                  flatIndex === slideFlatIndex(selectedItem.id, index)
+                    ? undefined
+                    : {
+                        background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                        borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                        paddingLeft: '9px',
+                      }
+                "
+                @click="goLive(slideFlatIndex(selectedItem.id, index))"
+              >
+                <div class="flex-grow-1" style="min-width: 0">
+                  <div class="slide-row-title-row">
+                    <span
+                      v-if="selectedItemFlatSlides.length > 1"
+                      class="text-caption text-medium-emphasis"
+                    >
+                      {{ slide.subLabel }}
+                    </span>
+                    <span
+                      v-if="flatIndex === slideFlatIndex(selectedItem.id, index)"
+                      class="slide-row-live-badge"
+                      ><i />Live</span
+                    >
+                  </div>
+                  <div class="text-body-2" style="white-space: pre-line">{{ slide.text }}</div>
+                </div>
               </div>
-              <template v-else-if="selectedScripturePassage">
-                <div class="text-body-2">{{ selectedScriptureText }}</div>
-              </template>
-              <div v-else class="text-body-2 text-medium-emphasis">Loading…</div>
             </div>
           </template>
 
@@ -1168,7 +1335,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
                   : 'No slides yet.'
               }}
             </p>
-            <div v-else class="d-flex flex-column ga-1" style="max-width: 460px">
+            <div v-else class="d-flex flex-column ga-1">
               <div
                 v-for="(slide, index) in selectedSlideGroup"
                 :key="slide.id"
@@ -1186,7 +1353,14 @@ function updateRolePerson(role: string, personId: string | undefined) {
                 @click="goLive(slideFlatIndex(selectedItem.id, index))"
               >
                 <div class="flex-grow-1" style="min-width: 0">
-                  <div class="text-body-2 font-weight-bold">{{ slide.label }}</div>
+                  <div class="slide-row-title-row">
+                    <span class="text-body-2 font-weight-bold">{{ slide.label }}</span>
+                    <span
+                      v-if="flatIndex === slideFlatIndex(selectedItem.id, index)"
+                      class="slide-row-live-badge"
+                      ><i />Live</span
+                    >
+                  </div>
                   <div class="text-body-2" style="white-space: pre-line; opacity: 0.75">
                     {{ slideGroupText(slide) }}
                   </div>
@@ -1231,115 +1405,426 @@ function updateRolePerson(role: string, personId: string | undefined) {
             </div>
           </template>
 
-          <template v-else-if="selectedItem.type === 'countdown'">
-            <div
-              class="slide-row"
-              :class="{ 'slide-row--live': itemHasLive(selectedItemIndex) }"
-              :style="[
-                { maxWidth: '460px' },
-                itemHasLive(selectedItemIndex)
-                  ? {}
-                  : {
-                      background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
-                      borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
-                      paddingLeft: '9px',
-                    },
-              ]"
-              @click="goLive(flatSlides.findIndex((s) => s.itemIndex === selectedItemIndex))"
-            >
-              <div v-if="selectedItem.text" class="text-body-2 mb-1">{{ selectedItem.text }}</div>
-              <div class="text-h5 font-weight-bold">
-                {{ formatCountdown(selectedItem.targetTime, nowTick) }}
-              </div>
-            </div>
-          </template>
-
           <template v-else-if="selectedItem.type === 'sermon'">
-            <div v-for="(passage, index) in selectedItem.passages" :key="passage.id" class="mb-3">
-              <div class="text-caption font-weight-bold text-medium-emphasis mb-1">
-                Passage {{ index + 1
-                }}<span v-if="passage.id === selectedItem.mainPassageId">
-                  · Main (printed in the bulletin)</span
-                >
-              </div>
-              <v-text-field
-                v-model="sermonPassageReferenceDrafts[passage.id]"
-                label="Reference"
-                placeholder="e.g. John 3:16-17"
-                variant="outlined"
-                density="compact"
-                style="max-width: 460px"
-                class="mb-2"
-                @blur="commitSermonPassageReference(selectedItem!.id, passage.id)"
-              />
-              <v-btn-toggle
-                :model-value="passage.displayMode"
-                mandatory
-                density="compact"
-                divided
-                class="mb-2"
-                @update:model-value="
-                  (value: 'full' | 'reference-only') =>
-                    updateSermonPassageDisplayMode(selectedItem!.id, passage.id, value)
-                "
-              >
-                <v-btn value="full" size="small">Show Full Text</v-btn>
-                <v-btn value="reference-only" size="small">Reference Only</v-btn>
-              </v-btn-toggle>
-              <v-select
-                v-if="passage.displayMode === 'full'"
-                :model-value="passage.translation"
-                :items="scriptureTranslations"
-                item-title="name"
-                item-value="code"
-                label="Translation"
-                variant="outlined"
-                density="compact"
-                style="max-width: 300px"
-                class="mb-2"
-                @update:model-value="
-                  (value: string) =>
-                    updateSermonPassageTranslation(selectedItem!.id, passage.id, value)
-                "
-              />
-              <div
-                class="slide-row"
-                :style="{
-                  background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
-                  borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
-                  paddingLeft: '9px',
-                }"
-              >
-                <div
-                  v-if="passage.displayMode === 'reference-only'"
-                  class="text-body-2 text-medium-emphasis"
-                >
-                  Reference only — no verse text shown.
-                </div>
-                <div
-                  v-else-if="scriptureErrors.get(`${selectedItem.id}:${passage.id}`)"
-                  class="text-body-2 text-error"
-                >
-                  {{ scriptureErrors.get(`${selectedItem.id}:${passage.id}`) }}
-                </div>
-                <template v-else-if="scriptureById.get(`${selectedItem.id}:${passage.id}`)">
-                  <div class="text-body-2">
-                    {{ sermonPassageText(selectedItem.id, passage.id) }}
+            <template v-if="mainSermonPassage">
+              <div class="text-overline text-medium-emphasis mb-2">Main Passage</div>
+              <div class="mb-3">
+                <div class="d-flex align-center justify-space-between mb-1" style="gap: 6px">
+                  <div class="text-body-2 font-weight-bold text-truncate" style="min-width: 0">
+                    {{ mainSermonPassage.reference || 'Untitled passage' }}
                   </div>
+                  <div class="d-flex align-center ga-1" style="flex: none">
+                    <v-btn
+                      :icon="
+                        editingSermonPassageId === mainSermonPassage.id
+                          ? 'mdi-check'
+                          : 'mdi-pencil-outline'
+                      "
+                      variant="text"
+                      size="x-small"
+                      :title="
+                        editingSermonPassageId === mainSermonPassage.id
+                          ? 'Done editing'
+                          : 'Edit passage'
+                      "
+                      @click="toggleSermonPassageEdit(mainSermonPassage.id)"
+                    />
+                    <v-btn
+                      icon="mdi-delete-outline"
+                      variant="text"
+                      size="x-small"
+                      title="Remove passage"
+                      @click="removeSermonPassage(selectedItem!.id, mainSermonPassage.id)"
+                    />
+                  </div>
+                </div>
+                <template v-if="editingSermonPassageId === mainSermonPassage.id">
+                  <v-text-field
+                    v-model="sermonPassageReferenceDrafts[mainSermonPassage.id]"
+                    label="Reference"
+                    placeholder="e.g. John 3:16-17"
+                    variant="outlined"
+                    density="compact"
+                    style="max-width: 460px"
+                    class="mb-2"
+                    @blur="commitSermonPassageReference(selectedItem!.id, mainSermonPassage.id)"
+                  />
+                  <v-btn-toggle
+                    :model-value="mainSermonPassage.displayMode"
+                    mandatory
+                    density="compact"
+                    divided
+                    class="mb-2"
+                    @update:model-value="
+                      (value: 'full' | 'reference-only') =>
+                        updateSermonPassageDisplayMode(selectedItem!.id, mainSermonPassage!.id, value)
+                    "
+                  >
+                    <v-btn value="full" size="small">Show Full Text</v-btn>
+                    <v-btn value="reference-only" size="small">Reference Only</v-btn>
+                  </v-btn-toggle>
+                  <v-select
+                    v-if="mainSermonPassage.displayMode === 'full'"
+                    :model-value="mainSermonPassage.translation"
+                    :items="scriptureTranslations"
+                    item-title="name"
+                    item-value="code"
+                    label="Translation"
+                    variant="outlined"
+                    density="compact"
+                    style="max-width: 300px"
+                    class="mb-2"
+                    @update:model-value="
+                      (value: string) =>
+                        updateSermonPassageTranslation(selectedItem!.id, mainSermonPassage!.id, value)
+                    "
+                  />
                 </template>
-                <div v-else class="text-body-2 text-medium-emphasis">Loading…</div>
+                <div
+                  v-if="mainSermonPassage.displayMode === 'reference-only'"
+                  class="slide-row"
+                  :class="{
+                    'slide-row--live':
+                      flatIndex === flatIndexForKey(passageFlatSlides(mainSermonPassage.id)[0]?.key ?? ''),
+                  }"
+                  :style="
+                    flatIndex === flatIndexForKey(passageFlatSlides(mainSermonPassage.id)[0]?.key ?? '')
+                      ? undefined
+                      : {
+                          background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                          borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                          paddingLeft: '9px',
+                        }
+                  "
+                  @click="
+                    goLive(flatIndexForKey(passageFlatSlides(mainSermonPassage.id)[0]?.key ?? ''))
+                  "
+                >
+                  <div class="flex-grow-1" style="min-width: 0">
+                    <div class="slide-row-title-row">
+                      <span class="text-body-2 text-medium-emphasis">
+                        Reference only — no verse text shown.
+                      </span>
+                      <span
+                        v-if="
+                          flatIndex ===
+                          flatIndexForKey(passageFlatSlides(mainSermonPassage.id)[0]?.key ?? '')
+                        "
+                        class="slide-row-live-badge"
+                        ><i />Live</span
+                      >
+                    </div>
+                  </div>
+                </div>
+                <div
+                  v-else-if="scriptureErrors.get(`${selectedItem.id}:${mainSermonPassage.id}`)"
+                  class="slide-row"
+                  :style="{
+                    background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                    borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                    paddingLeft: '9px',
+                  }"
+                >
+                  <div class="text-body-2 text-error">
+                    {{ scriptureErrors.get(`${selectedItem.id}:${mainSermonPassage.id}`) }}
+                  </div>
+                </div>
+                <div
+                  v-else-if="!scriptureById.get(`${selectedItem.id}:${mainSermonPassage.id}`)"
+                  class="slide-row"
+                  :style="{
+                    background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                    borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                    paddingLeft: '9px',
+                  }"
+                >
+                  <div class="text-body-2 text-medium-emphasis">Loading…</div>
+                </div>
+                <div v-else class="d-flex flex-column ga-1">
+                  <div
+                    v-for="slide in passageFlatSlides(mainSermonPassage.id)"
+                    :key="slide.key"
+                    class="slide-row"
+                    :class="{ 'slide-row--live': flatIndex === flatIndexForKey(slide.key) }"
+                    :style="
+                      flatIndex === flatIndexForKey(slide.key)
+                        ? undefined
+                        : {
+                            background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                            borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                            paddingLeft: '9px',
+                          }
+                    "
+                    @click="goLive(flatIndexForKey(slide.key))"
+                  >
+                    <div class="flex-grow-1" style="min-width: 0">
+                      <div class="slide-row-title-row">
+                        <span
+                          v-if="passageFlatSlides(mainSermonPassage.id).length > 1"
+                          class="text-caption text-medium-emphasis"
+                        >
+                          {{ slide.subLabel }}
+                        </span>
+                        <span
+                          v-if="flatIndex === flatIndexForKey(slide.key)"
+                          class="slide-row-live-badge"
+                          ><i />Live</span
+                        >
+                      </div>
+                      <div class="text-body-2" style="white-space: pre-line">{{ slide.text }}</div>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
+            </template>
+            <p v-else class="text-medium-emphasis mb-3">No passage yet.</p>
+
+            <template v-if="supportingSermonPassages.length > 0">
+              <div class="text-overline text-medium-emphasis mt-4 mb-2">Supporting Passages</div>
+              <VueDraggable
+                v-model="supportingSermonPassages"
+                handle=".drag-handle"
+                :animation="150"
+                class="d-flex flex-column ga-2 mb-3"
+              >
+                <div v-for="passage in supportingSermonPassages" :key="passage.id">
+                  <div
+                    class="slide-row"
+                    style="align-items: center"
+                    :class="{
+                      'slide-row--live':
+                        expandedSupportingPassageId !== passage.id &&
+                        passageFlatSlides(passage.id).some((s) => flatIndex === flatIndexForKey(s.key)),
+                    }"
+                    :style="
+                      expandedSupportingPassageId === passage.id ||
+                      passageFlatSlides(passage.id).some((s) => flatIndex === flatIndexForKey(s.key))
+                        ? undefined
+                        : {
+                            background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                            borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                            paddingLeft: '9px',
+                          }
+                    "
+                    @click="toggleSupportingPassageExpanded(passage.id)"
+                  >
+                    <v-icon
+                      icon="mdi-drag-vertical"
+                      class="drag-handle"
+                      size="small"
+                      style="cursor: grab"
+                      @click.stop
+                    />
+                    <v-icon
+                      :icon="
+                        expandedSupportingPassageId === passage.id
+                          ? 'mdi-chevron-down'
+                          : 'mdi-chevron-right'
+                      "
+                      size="small"
+                    />
+                    <div class="flex-grow-1" style="min-width: 0">
+                      <div class="slide-row-title-row">
+                        <span class="text-body-2 font-weight-bold text-truncate">
+                          {{ passage.reference || 'Untitled passage' }}
+                        </span>
+                        <span
+                          v-if="
+                            expandedSupportingPassageId !== passage.id &&
+                            passageFlatSlides(passage.id).some(
+                              (s) => flatIndex === flatIndexForKey(s.key),
+                            )
+                          "
+                          class="slide-row-live-badge"
+                          ><i />Live</span
+                        >
+                      </div>
+                    </div>
+                    <v-btn
+                      :icon="
+                        editingSermonPassageId === passage.id ? 'mdi-check' : 'mdi-pencil-outline'
+                      "
+                      variant="text"
+                      size="x-small"
+                      :title="editingSermonPassageId === passage.id ? 'Done editing' : 'Edit passage'"
+                      @click.stop="toggleSermonPassageEdit(passage.id)"
+                    />
+                    <v-btn
+                      icon="mdi-delete-outline"
+                      variant="text"
+                      size="x-small"
+                      title="Remove passage"
+                      class="row-remove"
+                      @click.stop="removeSermonPassage(selectedItem!.id, passage.id)"
+                    />
+                  </div>
+                  <div v-if="expandedSupportingPassageId === passage.id" class="mt-2 ml-6">
+                    <template v-if="editingSermonPassageId === passage.id">
+                      <v-text-field
+                        v-model="sermonPassageReferenceDrafts[passage.id]"
+                        label="Reference"
+                        placeholder="e.g. John 3:16-17"
+                        variant="outlined"
+                        density="compact"
+                        style="max-width: 460px"
+                        class="mb-2"
+                        @blur="commitSermonPassageReference(selectedItem!.id, passage.id)"
+                      />
+                      <v-btn-toggle
+                        :model-value="passage.displayMode"
+                        mandatory
+                        density="compact"
+                        divided
+                        class="mb-2"
+                        @update:model-value="
+                          (value: 'full' | 'reference-only') =>
+                            updateSermonPassageDisplayMode(selectedItem!.id, passage.id, value)
+                        "
+                      >
+                        <v-btn value="full" size="small">Show Full Text</v-btn>
+                        <v-btn value="reference-only" size="small">Reference Only</v-btn>
+                      </v-btn-toggle>
+                      <v-select
+                        v-if="passage.displayMode === 'full'"
+                        :model-value="passage.translation"
+                        :items="scriptureTranslations"
+                        item-title="name"
+                        item-value="code"
+                        label="Translation"
+                        variant="outlined"
+                        density="compact"
+                        style="max-width: 300px"
+                        class="mb-2"
+                        @update:model-value="
+                          (value: string) =>
+                            updateSermonPassageTranslation(selectedItem!.id, passage.id, value)
+                        "
+                      />
+                    </template>
+                    <div
+                      v-if="passage.displayMode === 'reference-only'"
+                      class="slide-row"
+                      :class="{
+                        'slide-row--live':
+                          flatIndex === flatIndexForKey(passageFlatSlides(passage.id)[0]?.key ?? ''),
+                      }"
+                      :style="
+                        flatIndex === flatIndexForKey(passageFlatSlides(passage.id)[0]?.key ?? '')
+                          ? undefined
+                          : {
+                              background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                              borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                              paddingLeft: '9px',
+                            }
+                      "
+                      @click="goLive(flatIndexForKey(passageFlatSlides(passage.id)[0]?.key ?? ''))"
+                    >
+                      <div class="flex-grow-1" style="min-width: 0">
+                        <div class="slide-row-title-row">
+                          <span class="text-body-2 text-medium-emphasis">
+                            Reference only — no verse text shown.
+                          </span>
+                          <span
+                            v-if="
+                              flatIndex === flatIndexForKey(passageFlatSlides(passage.id)[0]?.key ?? '')
+                            "
+                            class="slide-row-live-badge"
+                            ><i />Live</span
+                          >
+                        </div>
+                      </div>
+                    </div>
+                    <div
+                      v-else-if="scriptureErrors.get(`${selectedItem.id}:${passage.id}`)"
+                      class="slide-row"
+                      :style="{
+                        background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                        borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                        paddingLeft: '9px',
+                      }"
+                    >
+                      <div class="text-body-2 text-error">
+                        {{ scriptureErrors.get(`${selectedItem.id}:${passage.id}`) }}
+                      </div>
+                    </div>
+                    <div
+                      v-else-if="!scriptureById.get(`${selectedItem.id}:${passage.id}`)"
+                      class="slide-row"
+                      :style="{
+                        background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                        borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                        paddingLeft: '9px',
+                      }"
+                    >
+                      <div class="text-body-2 text-medium-emphasis">Loading…</div>
+                    </div>
+                    <div v-else class="d-flex flex-column ga-1">
+                      <div
+                        v-for="slide in passageFlatSlides(passage.id)"
+                        :key="slide.key"
+                        class="slide-row"
+                        :class="{ 'slide-row--live': flatIndex === flatIndexForKey(slide.key) }"
+                        :style="
+                          flatIndex === flatIndexForKey(slide.key)
+                            ? undefined
+                            : {
+                                background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                                borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                                paddingLeft: '9px',
+                              }
+                        "
+                        @click="goLive(flatIndexForKey(slide.key))"
+                      >
+                        <div class="flex-grow-1" style="min-width: 0">
+                          <div class="slide-row-title-row">
+                            <span
+                              v-if="passageFlatSlides(passage.id).length > 1"
+                              class="text-caption text-medium-emphasis"
+                            >
+                              {{ slide.subLabel }}
+                            </span>
+                            <span
+                              v-if="flatIndex === flatIndexForKey(slide.key)"
+                              class="slide-row-live-badge"
+                              ><i />Live</span
+                            >
+                          </div>
+                          <div class="text-body-2" style="white-space: pre-line">
+                            {{ slide.text }}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </VueDraggable>
+            </template>
+            <v-btn
+              variant="outlined"
+              size="small"
+              class="mb-4"
+              prepend-icon="mdi-plus"
+              @click="addSermonPassage(selectedItem!.id)"
+            >
+              Add Passage
+            </v-btn>
 
             <div class="text-overline text-medium-emphasis mt-4 mb-2">Outline</div>
             <p v-if="selectedItem.outline.length === 0" class="text-medium-emphasis">
               No outline yet.
             </p>
-            <div v-else class="d-flex flex-column ga-1" style="max-width: 460px">
+            <VueDraggable
+              v-else
+              v-model="selectedItem.outline"
+              handle=".drag-handle"
+              :animation="150"
+              class="d-flex flex-column ga-2"
+            >
               <div
                 v-for="(block, index) in selectedItem.outline"
                 :key="block.id"
                 class="slide-row"
+                style="flex-direction: column; align-items: stretch"
                 :class="{
                   'slide-row--live': flatIndex === sermonOutlineFlatIndex(selectedItem, index),
                 }"
@@ -1352,16 +1837,92 @@ function updateRolePerson(role: string, personId: string | undefined) {
                         paddingLeft: '9px',
                       }
                 "
-                @click="goLive(sermonOutlineFlatIndex(selectedItem, index))"
               >
-                <div class="flex-grow-1" style="min-width: 0">
-                  <div class="text-body-2 font-weight-bold">{{ block.label }}</div>
-                  <div class="text-caption text-medium-emphasis text-truncate">
+                <div
+                  class="d-flex align-center"
+                  style="gap: 10px; cursor: pointer"
+                  @click="toggleSermonOutlineLive(selectedItem, block.id, index)"
+                >
+                  <!-- Only draggable while actively editing — reordering isn't something you'd
+                       do while just browsing, and showing a handle on every collapsed point
+                       would clutter the common case. -->
+                  <v-icon
+                    v-if="editingSermonOutlineId === block.id"
+                    icon="mdi-drag-vertical"
+                    class="drag-handle"
+                    size="small"
+                    style="cursor: grab"
+                    @click.stop
+                  />
+                  <v-icon
+                    :icon="
+                      expandedSermonOutlineId === block.id ? 'mdi-chevron-down' : 'mdi-chevron-right'
+                    "
+                    size="small"
+                  />
+                  <div class="flex-grow-1" style="min-width: 0">
+                    <div class="slide-row-title-row">
+                      <span class="text-body-2 font-weight-bold text-truncate">
+                        {{ index + 1 }}. {{ block.label || 'Untitled point' }}
+                      </span>
+                      <span
+                        v-if="flatIndex === sermonOutlineFlatIndex(selectedItem, index)"
+                        class="slide-row-live-badge"
+                        ><i />Live</span
+                      >
+                    </div>
+                  </div>
+                  <v-btn
+                    :icon="editingSermonOutlineId === block.id ? 'mdi-check' : 'mdi-pencil-outline'"
+                    variant="text"
+                    size="x-small"
+                    :title="editingSermonOutlineId === block.id ? 'Done editing' : 'Edit point'"
+                    @click.stop="toggleSermonOutlineEdit(block.id)"
+                  />
+                  <v-btn
+                    icon="mdi-delete-outline"
+                    variant="text"
+                    size="x-small"
+                    class="row-remove"
+                    @click.stop="removeSermonOutlineBlock(selectedItem!.id, index)"
+                  />
+                </div>
+                <div v-if="expandedSermonOutlineId === block.id" class="mt-2" @click.stop>
+                  <template v-if="editingSermonOutlineId === block.id">
+                    <v-text-field
+                      v-model="block.label"
+                      label="Title"
+                      variant="outlined"
+                      density="compact"
+                      class="mb-2"
+                    />
+                    <v-textarea
+                      v-model="block.text"
+                      label="Details"
+                      variant="outlined"
+                      density="compact"
+                      rows="3"
+                      auto-grow
+                    />
+                  </template>
+                  <div v-else-if="block.text" class="text-body-2" style="white-space: pre-line">
                     {{ block.text }}
+                  </div>
+                  <div v-else class="text-body-2 text-medium-emphasis font-italic">
+                    No details yet.
                   </div>
                 </div>
               </div>
-            </div>
+            </VueDraggable>
+            <v-btn
+              variant="outlined"
+              size="small"
+              class="mt-2"
+              prepend-icon="mdi-plus"
+              @click="addSermonOutlineBlock(selectedItem!.id)"
+            >
+              Add Outline Point
+            </v-btn>
           </template>
 
           <template v-else-if="selectedItem.type === 'bulletin-note'">
@@ -1404,6 +1965,70 @@ function updateRolePerson(role: string, personId: string | undefined) {
             >
               Fill In This Slot
             </v-btn>
+          </template>
+
+          <template v-else-if="selectedItem.type === 'external-app'">
+            <div
+              class="slide-row"
+              :class="{ 'slide-row--live': itemHasLive(selectedItemIndex) }"
+              :style="[
+                { maxWidth: '460px' },
+                itemHasLive(selectedItemIndex)
+                  ? {}
+                  : {
+                      background: `rgba(var(--v-theme-${itemColor(selectedItem)}), 0.08)`,
+                      borderLeft: `3px solid rgb(var(--v-theme-${itemColor(selectedItem)}))`,
+                      paddingLeft: '9px',
+                    },
+              ]"
+              @click="goLive(flatSlides.findIndex((s) => s.itemIndex === selectedItemIndex))"
+            >
+              <div class="text-body-2">Click to make this item live.</div>
+            </div>
+
+            <!-- Reopen/Close act on whatever's actually engaged right now, so they only make
+                 sense while this item IS the live one; otherwise "Launch Now" pre-launches it in
+                 the background ahead of time so its slide going live doesn't pay the cold-start
+                 delay (spawning, waiting for its window) live. -->
+            <div class="d-flex align-center ga-2 mt-3" style="max-width: 460px">
+              <template v-if="isPresenting && itemHasLive(selectedItemIndex)">
+                <v-btn
+                  variant="tonal"
+                  size="small"
+                  prepend-icon="mdi-refresh"
+                  @click="retryExternalApp"
+                >
+                  Reopen App
+                </v-btn>
+                <v-btn
+                  variant="tonal"
+                  size="small"
+                  prepend-icon="mdi-close-box-outline"
+                  @click="closeExternalApp"
+                >
+                  Close App
+                </v-btn>
+              </template>
+              <v-btn
+                v-else
+                variant="tonal"
+                size="small"
+                prepend-icon="mdi-rocket-launch-outline"
+                @click="prelaunchExternalApp(selectedItem)"
+              >
+                Launch Now
+              </v-btn>
+            </div>
+            <v-alert
+              v-if="prelaunchError"
+              type="error"
+              variant="tonal"
+              density="compact"
+              class="mt-2"
+              style="max-width: 460px"
+            >
+              {{ prelaunchError }}
+            </v-alert>
           </template>
 
           <template v-else>
@@ -1864,8 +2489,8 @@ function updateRolePerson(role: string, personId: string | undefined) {
 }
 .slide-row--live {
   background: rgba(var(--v-theme-error), 0.1);
-  border-left: 3px solid rgb(var(--v-theme-error));
-  padding-left: 9px;
+  border-left: 5px solid rgb(var(--v-theme-error));
+  padding-left: 7px;
 }
 .row-remove {
   opacity: 0;
@@ -1876,6 +2501,36 @@ function updateRolePerson(role: string, personId: string | undefined) {
 }
 .slide-row:hover .row-remove {
   opacity: 1;
+}
+/* Same visual language as ServiceOrderList's live badge, for the sub-item rows within a
+   selected item's own editor (bible verse pages, song arrangement blocks, sermon outline). */
+.slide-row-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.slide-row-live-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border: 1px solid rgba(var(--v-theme-error), 0.25);
+  border-radius: 5px;
+  background: rgba(var(--v-theme-error), 0.12);
+  color: rgb(var(--v-theme-error));
+  font-size: 0.6rem;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.slide-row-live-badge i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 2px rgba(var(--v-theme-error), 0.15);
 }
 .row-remove:hover {
   color: rgb(var(--v-theme-error));

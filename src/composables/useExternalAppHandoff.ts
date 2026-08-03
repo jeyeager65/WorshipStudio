@@ -107,21 +107,39 @@ export function useExternalAppHandoff(
 
   async function engageExternalAppIfNeeded() {
     const slide = liveSlide.value
-    if (!isPresenting.value || !slide?.externalApp) {
-      if (externalAppActiveKey.value) {
-        externalAppActiveKey.value = undefined
-        externalAppError.value = undefined
-        try {
-          await getAdapter().externalApps?.restoreSelf()
-        } catch (e) {
-          console.error('Failed to restore Worship Studio to the foreground:', e)
-        }
+    if (!isPresenting.value) {
+      // Stop Presenting: close everything this session launched (there can be more than one,
+      // across different items), not just minimize the most recent one — nothing should be left
+      // for the operator to clean up by hand once presenting has actually ended.
+      externalAppActiveKey.value = undefined
+      externalAppError.value = undefined
+      try {
+        await getAdapter().externalApps?.closeAll()
+      } catch (e) {
+        console.error('Failed to close external apps:', e)
       }
       return
     }
-    if (externalAppActiveKey.value === slide.key) return
-    externalAppActiveKey.value = slide.key
+    // Key we're about to be engaged for — undefined if the new slide isn't an external-app item
+    // at all. Comparing against this (rather than just checking "is there an external app on
+    // this slide") is what makes leaving-and-entering symmetric: moving straight from one
+    // external-app item to a *different* one must restore/minimize the first before the second
+    // launches, exactly the same as moving to an ordinary slide would — otherwise the first app
+    // is simply never told to get out of the way and sits topmost over everything after it.
+    const enteringKey = slide?.externalApp ? slide.key : undefined
+    if (externalAppActiveKey.value === enteringKey) return
+
+    if (externalAppActiveKey.value) {
+      try {
+        await getAdapter().externalApps?.restoreSelf()
+      } catch (e) {
+        console.error('Failed to restore Worship Studio to the foreground:', e)
+      }
+    }
+    externalAppActiveKey.value = enteringKey
     externalAppError.value = undefined
+    if (!slide?.externalApp) return
+
     try {
       await getAdapter().externalApps?.launch(slide.externalApp.profileId, slide.externalApp.file)
     } catch (e) {
@@ -130,6 +148,10 @@ export function useExternalAppHandoff(
   }
   watch([liveSlide, isPresenting], engageExternalAppIfNeeded)
 
+  // Shared by the error alert's "Try Again" and the selected-item panel's "Reopen App" —
+  // resetting the active key makes engageExternalAppIfNeeded treat it as a fresh engagement,
+  // which re-launches (or, if the cached window from last time is still alive, just reuses it —
+  // see launch_external_app's own cache on the Rust side).
   async function retryExternalApp() {
     externalAppActiveKey.value = undefined
     await engageExternalAppIfNeeded()
@@ -142,11 +164,40 @@ export function useExternalAppHandoff(
     externalAppError.value = undefined
   }
 
+  // Selected-item panel's "Close App" — an explicit, operator-requested close (e.g. they closed
+  // it themselves at the OS level and want Worship Studio to stop believing it's still open, or
+  // they just want it out of the way without stopping the whole presentation). Clearing the
+  // active key means the next engagement of this same item launches fresh rather than trying to
+  // reuse a handle that's about to stop existing.
+  async function closeExternalApp() {
+    externalAppActiveKey.value = undefined
+    try {
+      await getAdapter().externalApps?.closeCurrent()
+    } catch (e) {
+      console.error('Failed to close the external app:', e)
+    }
+  }
+
+  // Selected-item panel's "Launch Now" — pre-launches an item's app while it *isn't* live yet
+  // (before its slide, or even before Start Presenting), so the cold-start delay happens ahead
+  // of time. Kept separate from externalAppError since that's specifically about the *live*
+  // slide's engagement and this can target a different, not-yet-live item.
+  const prelaunchError = ref<string>()
+  async function prelaunchExternalApp(item: ServiceItem) {
+    if (item.type !== 'external-app') return
+    prelaunchError.value = undefined
+    try {
+      await getAdapter().externalApps?.prelaunch(item.profileId, item.file)
+    } catch (e) {
+      prelaunchError.value = errorMessage(e, 'Failed to launch the external app.')
+    }
+  }
+
   // Safety net: the router guard (router/index.ts) is what normally prevents leaving while
   // presenting, but if this view ever unmounts some other way, don't leave an external app
   // covering the audience display with nothing left able to restore Worship Studio to it.
   onUnmounted(() => {
-    if (externalAppActiveKey.value) getAdapter().externalApps?.restoreSelf()
+    if (externalAppActiveKey.value) getAdapter().externalApps?.closeAll()
   })
 
   return {
@@ -156,6 +207,9 @@ export function useExternalAppHandoff(
     externalAppVerificationAvailable,
     retryExternalApp,
     skipExternalAppError,
+    closeExternalApp,
+    prelaunchError,
+    prelaunchExternalApp,
     tryForwardKeystroke,
   }
 }

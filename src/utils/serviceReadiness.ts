@@ -38,7 +38,6 @@ export interface ServiceReadinessContext {
   externalAppVerificationAvailable: boolean
   libraryConflictLabels: Map<string, string>
   audienceDisplayAvailable: boolean
-  now?: Date
 }
 
 export interface ServiceReadinessResult {
@@ -58,7 +57,6 @@ function serviceItemLabel(item: ServiceItem, context: ServiceReadinessContext): 
   if (item.type === 'placeholder') return item.label || 'Placeholder'
   if (item.type === 'external-app')
     return context.externalApps.get(item.profileId)?.name ?? 'External application'
-  if (item.type === 'countdown') return item.text || 'Countdown'
   if (item.type === 'text-slide') return 'Text slides'
   return item.bulletinLabel || item.type
 }
@@ -80,7 +78,6 @@ export function evaluateServiceReadiness(
   context: ServiceReadinessContext,
 ): ServiceReadinessResult {
   const issues: ReadinessIssue[] = []
-  const now = context.now ?? new Date()
   const reportedConflicts = new Set<string>()
 
   function add(
@@ -283,14 +280,6 @@ export function evaluateServiceReadiness(
         )
           add('blocker', 'external-app-pending', `${profile.name} is still being checked`, 'Wait for executable and file verification to finish.', 'service-item', item.id)
       }
-    } else if (item.type === 'countdown') {
-      const target = new Date(item.targetTime)
-      if (!item.targetTime || Number.isNaN(target.getTime()))
-        add('blocker', 'invalid-countdown', `${label} has an invalid target`, 'Choose a valid countdown date and time.', 'service-item', item.id)
-      else if (target.getTime() <= now.getTime())
-        add('warning', 'past-countdown', `${label} has already ended`, 'Update the target time or remove the countdown.', 'service-item', item.id)
-    } else if (item.type === 'qr') {
-      add('blocker', 'unsupported-qr', 'QR presentation is not implemented', 'Remove this item or replace it with supported content.', 'service-item', item.id)
     }
   }
 

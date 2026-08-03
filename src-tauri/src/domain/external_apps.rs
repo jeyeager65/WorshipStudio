@@ -84,7 +84,6 @@ mod tests {
             remote_controls_enabled: false,
             next_key: None,
             prev_key: None,
-            window_position: None,
             updated_at: String::new(),
             updated_by_device: String::new(),
         }

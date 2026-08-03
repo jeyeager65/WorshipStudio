@@ -19,20 +19,19 @@ describe('External App Hand-off', () => {
 
     // Fields aren't individually id'd, so they're targeted positionally within the dialog —
     // same approach assignments.spec.js uses for its add-person dialog. With "Launch
-    // Automatically" selected by default (it is, out of the box), the order is
-    // Name, Executable, Parameter Format. Waiting for all 3 inputs (not just the dialog's
-    // existence) so the open transition has actually finished before typing into it.
-    await browser.waitUntil(async () => (await $$('.v-dialog input')).length >= 3, { timeout: 10000 })
+    // Automatically" selected by default (it is, out of the box), the order is Name, Launch
+    // Mode (a v-select — its own input is read-only/unfillable, hence skipping index 1),
+    // Executable, Parameter Format. Waiting for all 4 inputs (not just the dialog's existence)
+    // so the open transition has actually finished before typing into it.
+    await browser.waitUntil(async () => (await $$('.v-dialog input')).length >= 4, { timeout: 10000 })
     const dialogInputs = await $$('.v-dialog input')
     await dialogInputs[0].setValue('Notepad E2E Test')
 
     // Filling the Executable field directly rather than clicking "Browse…" — that opens a
     // native OS file picker WebdriverIO can't drive, the same reasoning the rest of this
-    // suite uses for skipping native dialogs. "Test Launch" and "Recapture Position" are
-    // skipped for the same reason: both trigger real Win32 window focus/positioning that
-    // could interfere with the E2E harness's own window tracking.
-    await dialogInputs[1].setValue('C:\\Windows\\System32\\notepad.exe')
-    await dialogInputs[2].setValue('"{file}"')
+    // suite uses for skipping native dialogs.
+    await dialogInputs[2].setValue('C:\\Windows\\System32\\notepad.exe')
+    await dialogInputs[3].setValue('"{file}"')
 
     const preview = await $('div*=Will run:')
     await preview.waitForExist({ timeout: 5000 })
@@ -54,8 +53,8 @@ describe('External App Hand-off', () => {
     await editIcon.waitForClickable({ timeout: 10000 })
     await editIcon.click()
 
-    await browser.waitUntil(async () => (await $$('.v-dialog input')).length >= 3, { timeout: 10000 })
-    const reopenedExecInput = (await $$('.v-dialog input'))[1]
+    await browser.waitUntil(async () => (await $$('.v-dialog input')).length >= 4, { timeout: 10000 })
+    const reopenedExecInput = (await $$('.v-dialog input'))[2]
     await expect(reopenedExecInput).toHaveValue('C:\\Windows\\System32\\notepad.exe')
 
     const cancelBtn = await $('button*=Cancel')

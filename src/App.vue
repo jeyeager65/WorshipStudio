@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useTheme } from 'vuetify'
+import { useDisplay, useTheme } from 'vuetify'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { emit, listen } from '@tauri-apps/api/event'
@@ -86,7 +86,13 @@ const isSetupWizard = computed(() => route.name === 'setup-wizard')
 // via pageTitleOverride instead — see unsavedChanges.ts's doc comment.
 const pageTitle = computed(() => pageTitleOverride.value ?? route.meta.title)
 
-const navigationCollapsed = ref(false)
+// Below this width the expanded drawer eats too much of the content area, so it's forced into
+// rail mode regardless of the operator's own manual preference — matches Vuetify's own `md`
+// breakpoint, the usual point content-heavy layouts start feeling cramped.
+const { width } = useDisplay()
+const isNarrowWindow = computed(() => width.value < 960)
+const manualNavCollapsed = ref(false)
+const navigationCollapsed = computed(() => isNarrowWindow.value || manualNavCollapsed.value)
 const showSavedConfirmation = ref(false)
 const saveShortcutLabel = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘S' : 'Ctrl+S'
 const undoShortcutLabel = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘Z' : 'Ctrl+Z'
@@ -440,8 +446,15 @@ onUnmounted(() => {
         icon="mdi-menu"
         variant="text"
         class="navigation-toggle ml-1"
-        :title="navigationCollapsed ? 'Expand navigation' : 'Collapse navigation'"
-        @click="navigationCollapsed = !navigationCollapsed"
+        :disabled="isNarrowWindow"
+        :title="
+          isNarrowWindow
+            ? 'Widen the window to expand navigation'
+            : navigationCollapsed
+              ? 'Expand navigation'
+              : 'Collapse navigation'
+        "
+        @click="manualNavCollapsed = !manualNavCollapsed"
       />
       <span class="app-brand" :class="{ 'ml-4': isSetupWizard }">Worship Studio</span>
       <v-divider v-if="pageTitle" vertical inset class="app-brand-divider mx-3" />

@@ -8,22 +8,23 @@ use crate::models::WindowPosition;
 
 #[cfg(windows)]
 mod imp {
+    use std::collections::HashSet;
     use std::process::Command;
     use std::thread;
     use std::time::{Duration, Instant};
 
-    use windows::Win32::Foundation::{HWND, LPARAM, RECT};
-    use windows::Win32::Graphics::Gdi::{
-        GetMonitorInfoW, MonitorFromWindow, HMONITOR, MONITORINFOEXW, MONITOR_DEFAULTTONEAREST,
-    };
+    use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
     use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
         VIRTUAL_KEY,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId, IsWindowVisible,
-        SetForegroundWindow, SetWindowPos, ShowWindow, SWP_NOZORDER, SW_RESTORE,
+        EnumWindows, GetWindowRect, GetWindowTextLengthW, GetWindowThreadProcessId, IsWindow,
+        IsWindowVisible, PostMessageW, SetForegroundWindow, SetWindowPos, ShowWindow, HWND_NOTOPMOST,
+        HWND_TOP, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_MINIMIZE,
+        SW_RESTORE, WM_CLOSE,
     };
 
     use super::*;
@@ -59,10 +60,70 @@ mod imp {
         state.found
     }
 
-    fn wait_for_window(pid: u32, timeout: Duration) -> Option<HWND> {
+    /// Every currently visible, titled top-level window, keyed by its raw handle value — a
+    /// snapshot taken just before spawning, so `find_new_window` can recognize a freshly
+    /// launched app's window by "wasn't there a moment ago" (see that function's own doc
+    /// comment for why that's needed at all).
+    fn snapshot_visible_windows() -> HashSet<isize> {
+        unsafe extern "system" fn callback(hwnd: HWND, lparam: LPARAM) -> windows::core::BOOL {
+            unsafe {
+                let set = &mut *(lparam.0 as *mut HashSet<isize>);
+                if IsWindowVisible(hwnd).as_bool() && GetWindowTextLengthW(hwnd) > 0 {
+                    set.insert(hwnd.0 as isize);
+                }
+                true.into()
+            }
+        }
+        let mut set = HashSet::new();
+        unsafe {
+            let _ = EnumWindows(Some(callback), LPARAM(&mut set as *mut HashSet<isize> as isize));
+        }
+        set
+    }
+
+    /// Fallback for when the process we actually spawned never gets its own window — true for
+    /// apps packaged as a Windows Store/UWP app (the modern Notepad included): the executable
+    /// Worship Studio spawns is a launcher stub that hands off to, and then exits in favor of, a
+    /// different host process, so no window ever belongs to `child.id()`. Finds the first
+    /// visible, titled top-level window that wasn't present in an earlier snapshot instead.
+    fn find_new_window(existing: &HashSet<isize>) -> Option<HWND> {
+        struct SearchState {
+            existing: HashSet<isize>,
+            found: Option<HWND>,
+        }
+        unsafe extern "system" fn callback(hwnd: HWND, lparam: LPARAM) -> windows::core::BOOL {
+            unsafe {
+                let state = &mut *(lparam.0 as *mut SearchState);
+                if IsWindowVisible(hwnd).as_bool()
+                    && GetWindowTextLengthW(hwnd) > 0
+                    && !state.existing.contains(&(hwnd.0 as isize))
+                {
+                    state.found = Some(hwnd);
+                    return false.into();
+                }
+                true.into()
+            }
+        }
+        let mut state = SearchState {
+            existing: existing.clone(),
+            found: None,
+        };
+        unsafe {
+            let _ = EnumWindows(
+                Some(callback),
+                LPARAM(&mut state as *mut SearchState as isize),
+            );
+        }
+        state.found
+    }
+
+    fn wait_for_window(pid: u32, existing_windows: &HashSet<isize>, timeout: Duration) -> Option<HWND> {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
             if let Some(hwnd) = find_window_for_pid(pid) {
+                return Some(hwnd);
+            }
+            if let Some(hwnd) = find_new_window(existing_windows) {
                 return Some(hwnd);
             }
             thread::sleep(Duration::from_millis(150));
@@ -70,71 +131,135 @@ mod imp {
         None
     }
 
-    fn monitor_name(hwnd: HWND) -> String {
+    /// A normal top-level window's `GetWindowRect` includes an invisible DWM resize border
+    /// outside its actually-visible frame (thickness varies with DPI/window style, so it can't
+    /// be hard-coded) — left uncorrected, positioning a window to exactly the monitor's rect
+    /// visibly falls short of the screen edges by that border's thickness. Compares the visible
+    /// frame (`DWMWA_EXTENDED_FRAME_BOUNDS`) against the window rect just placed and returns a
+    /// grown rect that pushes the invisible border off-monitor, or `None` if there's no
+    /// discrepancy worth a second move (or the measurement failed — best-effort only).
+    fn compensate_for_dwm_border(hwnd: HWND, target: &WindowPosition) -> Option<WindowPosition> {
+        let mut window_rect = RECT::default();
+        unsafe { GetWindowRect(hwnd, &mut window_rect).ok()? };
+        let mut visible_rect = RECT::default();
         unsafe {
-            let monitor: HMONITOR = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-            let mut info = MONITORINFOEXW::default();
-            info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
-            if GetMonitorInfoW(monitor, &mut info as *mut _ as *mut _).as_bool() {
-                String::from_utf16_lossy(&info.szDevice)
-                    .trim_end_matches('\0')
-                    .to_string()
-            } else {
-                "Unknown".to_string()
-            }
+            DwmGetWindowAttribute(
+                hwnd,
+                DWMWA_EXTENDED_FRAME_BOUNDS,
+                &mut visible_rect as *mut RECT as *mut std::ffi::c_void,
+                std::mem::size_of::<RECT>() as u32,
+            )
+            .ok()?
+        };
+        let left_pad = visible_rect.left - window_rect.left;
+        let top_pad = visible_rect.top - window_rect.top;
+        let right_pad = window_rect.right - visible_rect.right;
+        let bottom_pad = window_rect.bottom - visible_rect.bottom;
+        if left_pad == 0 && top_pad == 0 && right_pad == 0 && bottom_pad == 0 {
+            return None;
         }
+        Some(WindowPosition {
+            monitor_id: target.monitor_id.clone(),
+            x: target.x - left_pad,
+            y: target.y - top_pad,
+            width: target.width + left_pad + right_pad,
+            height: target.height + top_pad + bottom_pad,
+        })
     }
 
+    /// Positions a window to exactly fill `position`, compensating for the invisible DWM border
+    /// above, and forces it topmost — Windows only auto-hides the taskbar for windows it
+    /// recognizes as truly fullscreen (e.g. exclusive-mode games or Tauri's own `fullscreen: true`
+    /// presentation window), not for an arbitrary third-party window merely resized to the
+    /// monitor's bounds, so this forces it above the taskbar's own always-on-top band instead of
+    /// relying on that shell heuristic.
     fn set_position(hwnd: HWND, position: &WindowPosition) -> Result<(), String> {
         unsafe {
             SetWindowPos(
                 hwnd,
-                None,
+                Some(HWND_TOPMOST),
                 position.x,
                 position.y,
                 position.width,
                 position.height,
-                SWP_NOZORDER,
+                SWP_SHOWWINDOW,
             )
-            .map_err(|e| format!("Failed to position window: {e}"))
+            .map_err(|e| format!("Failed to position window: {e}"))?;
         }
+        if let Some(adjusted) = compensate_for_dwm_border(hwnd, position) {
+            unsafe {
+                SetWindowPos(
+                    hwnd,
+                    Some(HWND_TOPMOST),
+                    adjusted.x,
+                    adjusted.y,
+                    adjusted.width,
+                    adjusted.height,
+                    SWP_NOACTIVATE,
+                )
+                .map_err(|e| format!("Failed to position window: {e}"))?;
+            }
+        }
+        Ok(())
     }
 
-    pub fn launch_and_focus(
-        executable: &str,
-        args: &[String],
-        position: Option<&WindowPosition>,
-    ) -> Result<(), String> {
-        let child = Command::new(executable)
-            .args(args)
-            .spawn()
-            .map_err(|e| format!("Failed to launch \"{executable}\": {e}"))?;
-
-        let hwnd = wait_for_window(child.id(), Duration::from_secs(5)).ok_or_else(|| {
-            format!("\"{executable}\" launched but no window appeared within 5 seconds.")
-        })?;
-
+    /// Shared trailer for every path that ends with a specific hwnd that should end up
+    /// unminimized, positioned, and focused — a fresh spawn, an already-running process found by
+    /// pid, or a cached hwnd from a previous engagement being reused.
+    fn activate_and_position(hwnd: HWND, position: Option<&WindowPosition>) -> Result<(), String> {
         unsafe {
             let _ = ShowWindow(hwnd, SW_RESTORE);
         }
         if let Some(position) = position {
             set_position(hwnd, position)?;
         }
-        unsafe {
-            SetForegroundWindow(hwnd)
-                .as_bool()
-                .then_some(())
-                .ok_or_else(|| {
-                    "Windows declined the request to bring the app's window to the foreground."
-                        .to_string()
-                })
+        // Best-effort, not a hard failure: apps like PowerPoint juggle several windows of their
+        // own right as a slide show starts (a loading window handing off to the real one, etc.),
+        // and the first attempt sometimes loses the race against Windows' foreground-focus-
+        // stealing prevention even though the window is already shown/positioned/topmost by this
+        // point. Retried briefly since it's usually just that transient race, but even if every
+        // attempt fails, this must still return Ok — the caller needs the real hwnd back either
+        // way (see launch_and_focus/focus_process/reposition_existing) so it stays trackable for
+        // Reopen/Close, rather than the whole engagement being silently forgotten over what's at
+        // worst a minor "didn't grab keyboard focus" nicety.
+        for attempt in 0..3 {
+            if unsafe { SetForegroundWindow(hwnd) }.as_bool() {
+                break;
+            }
+            if attempt < 2 {
+                thread::sleep(Duration::from_millis(150));
+            }
         }
+        Ok(())
+    }
+
+    pub fn launch_and_focus(
+        executable: &str,
+        args: &[String],
+        position: Option<&WindowPosition>,
+    ) -> Result<isize, String> {
+        let existing_windows = snapshot_visible_windows();
+        let child = Command::new(executable)
+            .args(args)
+            .spawn()
+            .map_err(|e| format!("Failed to launch \"{executable}\": {e}"))?;
+
+        let hwnd = wait_for_window(child.id(), &existing_windows, Duration::from_secs(5))
+            .ok_or_else(|| {
+                format!("\"{executable}\" launched but no window appeared within 5 seconds.")
+            })?;
+
+        activate_and_position(hwnd, position)?;
+        Ok(hwnd.0 as isize)
     }
 
     /// Brings an already-running app's window (identified by its owning process id, from a
     /// previous `launch_and_focus`) back to the foreground — used for "Already Running" mode,
     /// where Worship Studio never launched it and so has no window handle cached from a spawn.
-    pub fn focus_process(pid: u32) -> Result<(), String> {
+    /// Also repositions it when given a position, same as `launch_and_focus` — the point of
+    /// automatically filling the Audience display doesn't stop applying just because the app
+    /// happened to already be open.
+    pub fn focus_process(pid: u32, position: Option<&WindowPosition>) -> Result<isize, String> {
         // Confirming the process is at least still alive gives a clearer error than a raw
         // Win32 failure when the operator never actually started the app.
         unsafe {
@@ -143,15 +268,60 @@ mod imp {
         }
         let hwnd = find_window_for_pid(pid)
             .ok_or_else(|| "That app doesn't appear to have a visible window.".to_string())?;
+        activate_and_position(hwnd, position)?;
+        Ok(hwnd.0 as isize)
+    }
+
+    /// "Launch Now" (pre-launching an item's app before its slide goes live, so the cold-start
+    /// delay happens ahead of time instead of live) — spawns and locates the window exactly like
+    /// `launch_and_focus`, but deliberately never positions, foregrounds, or topmosts it: the
+    /// operator asked for this app to be ready in the background, not put in front of whatever
+    /// they're currently doing. Minimizing it keeps it out of the way in the meantime; the later
+    /// real engagement (when its slide actually goes live) finds this same hwnd already cached
+    /// and just repositions/foregrounds it via `reposition_existing`.
+    pub fn launch_in_background(executable: &str, args: &[String]) -> Result<isize, String> {
+        let existing_windows = snapshot_visible_windows();
+        let child = Command::new(executable)
+            .args(args)
+            .spawn()
+            .map_err(|e| format!("Failed to launch \"{executable}\": {e}"))?;
+
+        let hwnd = wait_for_window(child.id(), &existing_windows, Duration::from_secs(5))
+            .ok_or_else(|| {
+                format!("\"{executable}\" launched but no window appeared within 5 seconds.")
+            })?;
         unsafe {
-            SetForegroundWindow(hwnd)
-                .as_bool()
-                .then_some(())
-                .ok_or_else(|| {
-                    "Windows declined the request to bring the app's window to the foreground."
-                        .to_string()
-                })
+            let _ = ShowWindow(hwnd, SW_MINIMIZE);
         }
+        Ok(hwnd.0 as isize)
+    }
+
+    /// "Launch Now" for an "Already Running" profile — there's nothing to spawn (the operator
+    /// starts these themselves), so pre-launching just means confirming it's actually running and
+    /// noting its window so the real engagement later skips straight to `reposition_existing`.
+    /// Doesn't touch the window at all, unlike `launch_in_background` — it's already in whatever
+    /// state the operator left it, which is exactly right to leave alone.
+    pub fn peek_window_for_pid(pid: u32) -> Option<isize> {
+        find_window_for_pid(pid).map(|hwnd| hwnd.0 as isize)
+    }
+
+    /// Whether a cached hwnd from an earlier engagement is still worth reusing — the app may
+    /// have been closed since Worship Studio last saw it, in which case this specific check is
+    /// what routes the caller back to a normal (re-)launch instead of trying to reposition a
+    /// handle that no longer refers to anything.
+    pub fn is_window_alive(hwnd_value: isize) -> bool {
+        let hwnd = HWND(hwnd_value as *mut std::ffi::c_void);
+        unsafe { IsWindow(Some(hwnd)) }.as_bool()
+    }
+
+    /// Re-engages a hand-off app Worship Studio already knows about (see
+    /// `commands::external_apps::EngagedExternalApp`'s `known` cache) instead of launching a
+    /// second instance — un-minimizes, repositions/tops it back over the Audience display, and
+    /// refocuses it, same end state as a fresh `launch_and_focus`, just without spawning
+    /// anything. Callers must check `is_window_alive` first; this doesn't re-check.
+    pub fn reposition_existing(hwnd_value: isize, position: &WindowPosition) -> Result<(), String> {
+        let hwnd = HWND(hwnd_value as *mut std::ffi::c_void);
+        activate_and_position(hwnd, Some(position))
     }
 
     pub fn restore_self(hwnd_value: isize) -> Result<(), String> {
@@ -167,27 +337,61 @@ mod imp {
         }
     }
 
-    pub fn capture_foreground_window_position() -> Result<WindowPosition, String> {
+    /// Brings a Worship Studio window (the presentation window, specifically) to the top of the
+    /// z-order without stealing input focus from wherever the operator is currently clicking —
+    /// `SetForegroundWindow` would also activate it, which would yank keyboard focus away from
+    /// the operator's own window mid-click.
+    pub fn bring_to_top_without_activating(hwnd_value: isize) -> Result<(), String> {
+        let hwnd = HWND(hwnd_value as *mut std::ffi::c_void);
         unsafe {
-            let hwnd = GetForegroundWindow();
-            if hwnd.0.is_null() {
-                return Err(
-                    "No foreground window to capture — bring the target app to the front first."
-                        .to_string(),
-                );
-            }
-            let mut rect = RECT::default();
-            GetWindowRect(hwnd, &mut rect)
-                .map_err(|e| format!("Failed to read the window's position: {e}"))?;
-            Ok(WindowPosition {
-                monitor_id: monitor_name(hwnd),
-                x: rect.left,
-                y: rect.top,
-                width: rect.right - rect.left,
-                height: rect.bottom - rect.top,
-            })
+            SetWindowPos(
+                hwnd,
+                Some(HWND_TOP),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            )
+            .map_err(|e| format!("Failed to restore the presentation window: {e}"))
         }
     }
+
+    /// Undoes `set_position`'s `topmost` so a hand-off app that's been engaged, once the
+    /// operator moves on, doesn't keep permanently covering everything on the Audience display —
+    /// minimizing it (rather than just dropping the topmost flag) is what actually gets it out
+    /// of the way visually, since otherwise it would just sit as an ordinary top-level window
+    /// still directly over the presentation window's exact same bounds. Best-effort: the app may
+    /// have already been closed by the time this runs, which isn't an error worth surfacing —
+    /// Worship Studio getting its own display back is what matters here, not this cleanup step.
+    pub fn restore_engaged_app(hwnd_value: isize) {
+        let hwnd = HWND(hwnd_value as *mut std::ffi::c_void);
+        unsafe {
+            let _ = SetWindowPos(
+                hwnd,
+                Some(HWND_NOTOPMOST),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+            let _ = ShowWindow(hwnd, SW_MINIMIZE);
+        }
+    }
+
+    /// Explicit close (Settings' operator-facing "Close App" control, and Stop Presenting
+    /// closing everything it launched) — posts `WM_CLOSE`, the same message a window's own
+    /// close button/titlebar X sends, rather than `TerminateProcess`, so an app with unsaved
+    /// state gets the chance to prompt exactly as it would for a manual close. Best-effort: a
+    /// no-op if the window's already gone.
+    pub fn close_window(hwnd_value: isize) {
+        let hwnd = HWND(hwnd_value as *mut std::ffi::c_void);
+        unsafe {
+            let _ = PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
+        }
+    }
+
 
     fn key_name_to_vk(name: &str) -> Option<VIRTUAL_KEY> {
         // Covers the handful of keys the sketch's "Basic Remote Controls" fields realistically
@@ -272,17 +476,31 @@ mod imp {
         _executable: &str,
         _args: &[String],
         _position: Option<&WindowPosition>,
-    ) -> Result<(), String> {
+    ) -> Result<isize, String> {
         Err(UNSUPPORTED.to_string())
     }
-    pub fn focus_process(_pid: u32) -> Result<(), String> {
+    pub fn focus_process(_pid: u32, _position: Option<&WindowPosition>) -> Result<isize, String> {
         Err(UNSUPPORTED.to_string())
     }
     pub fn restore_self(_hwnd_value: isize) -> Result<(), String> {
         Err(UNSUPPORTED.to_string())
     }
-    pub fn capture_foreground_window_position() -> Result<WindowPosition, String> {
+    pub fn bring_to_top_without_activating(_hwnd_value: isize) -> Result<(), String> {
         Err(UNSUPPORTED.to_string())
+    }
+    pub fn restore_engaged_app(_hwnd_value: isize) {}
+    pub fn is_window_alive(_hwnd_value: isize) -> bool {
+        false
+    }
+    pub fn reposition_existing(_hwnd_value: isize, _position: &WindowPosition) -> Result<(), String> {
+        Err(UNSUPPORTED.to_string())
+    }
+    pub fn close_window(_hwnd_value: isize) {}
+    pub fn launch_in_background(_executable: &str, _args: &[String]) -> Result<isize, String> {
+        Err(UNSUPPORTED.to_string())
+    }
+    pub fn peek_window_for_pid(_pid: u32) -> Option<isize> {
+        None
     }
     pub fn send_keystroke(_key_name: &str) -> Result<(), String> {
         Err(UNSUPPORTED.to_string())

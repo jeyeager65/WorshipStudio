@@ -1,4 +1,4 @@
-import type { SlideScene, SlideTextElement } from '@/models/library'
+import type { SlideCountdownElement, SlideScene, SlideTextElement } from '@/models/library'
 
 export const DEFAULT_SLIDE_SIZE = { width: 1920, height: 1080 } as const
 
@@ -28,6 +28,28 @@ export function createTextElement(text = 'Double-click to edit'): SlideTextEleme
       effect: { type: 'outline', color: '#000000', size: 4 },
     },
     autoFit: 'shrink',
+  }
+}
+
+export function createCountdownElement(): SlideCountdownElement {
+  return {
+    id: `element-${crypto.randomUUID()}`,
+    type: 'countdown',
+    name: 'Countdown',
+    mode: 'service',
+    x: 360,
+    y: 390,
+    width: 1200,
+    height: 300,
+    rotation: 0,
+    opacity: 1,
+    style: {
+      fontFamily: 'Inter',
+      fontSize: 120,
+      fontWeight: 700,
+      color: '#ffffff',
+      textAlign: 'center',
+    },
   }
 }
 

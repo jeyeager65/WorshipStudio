@@ -430,7 +430,7 @@ async function loadDisplays() {
 }
 // Role assignment is an immediate hardware-config action, not a staged edit like the rest
 // of this screen — there's nothing meaningful to "revert" before Save, so it applies (and
-// persists) right away, same reasoning as the spec's External Apps "Test Launch" button.
+// persists) right away.
 async function assignRole(displayId: string, role: DisplayRole) {
   await getAdapter().displays?.assignRole(displayId, role)
   const display = displays.value.find((d) => d.id === displayId)
@@ -475,12 +475,6 @@ const launchModeOptions: {
 
 const profileDialogOpen = ref(false)
 const editingProfile = ref<ExternalAppProfile>()
-// Test Launch/Recapture Position both act on the profile as saved on disk (the Rust side
-// looks it up by id) — until Save Profile has run at least once, there's nothing for them to
-// act on yet, so they stay disabled with a hint rather than silently auto-saving.
-const isEditingSavedProfile = computed(() =>
-  externalAppProfiles.value.some((p) => p.id === editingProfile.value?.id),
-)
 
 function blankExternalAppProfile(): ExternalAppProfile {
   return {
@@ -492,21 +486,18 @@ function blankExternalAppProfile(): ExternalAppProfile {
     remoteControlsEnabled: false,
     nextKey: '',
     prevKey: '',
-    windowPosition: undefined,
     updatedAt: '',
     updatedByDevice: '',
   }
 }
 function openNewExternalAppProfile() {
   editingProfile.value = blankExternalAppProfile()
-  testLaunchResult.value = undefined
   profileDialogOpen.value = true
 }
 function openEditExternalAppProfile(profile: ExternalAppProfile) {
   // toRaw first — profile is the reactive v-for item, and structuredClone can't clone a Vue
   // reactive Proxy directly (throws DataCloneError).
   editingProfile.value = structuredClone(toRaw(profile))
-  testLaunchResult.value = undefined
   profileDialogOpen.value = true
 }
 async function pickExternalAppExecutable() {
@@ -526,30 +517,6 @@ async function deleteExternalAppProfile(profile: ExternalAppProfile) {
     return
   await getAdapter().externalApps?.deleteProfile(profile.id)
   await loadExternalApps()
-}
-
-const testingLaunch = ref(false)
-const testLaunchResult = ref<{ ok: boolean; message: string }>()
-async function testLaunchExternalApp() {
-  if (!editingProfile.value) return
-  testingLaunch.value = true
-  try {
-    testLaunchResult.value = await getAdapter().externalApps?.testLaunch(editingProfile.value.id)
-  } finally {
-    testingLaunch.value = false
-  }
-}
-const capturingPosition = ref(false)
-async function recaptureWindowPosition() {
-  if (!editingProfile.value) return
-  capturingPosition.value = true
-  try {
-    editingProfile.value.windowPosition = await getAdapter().externalApps?.captureWindowPosition()
-  } catch (e) {
-    console.error('Failed to capture window position:', e)
-  } finally {
-    capturingPosition.value = false
-  }
 }
 
 // Remote Control devices are machine-local, but ownership points at the synced people library.
@@ -1554,31 +1521,20 @@ function translationSource(entry: AvailableTranslationEntry): string {
                 class="mb-4"
               />
 
-              <div class="text-caption text-medium-emphasis font-weight-bold text-uppercase mb-2">
-                Launch Mode
-              </div>
-              <v-btn-toggle
+              <v-select
                 v-model="editingProfile.launchMode"
-                mandatory
+                :items="launchModeOptions"
+                item-title="title"
+                item-value="value"
+                label="Launch Mode"
+                variant="outlined"
                 density="comfortable"
-                class="mb-4 d-flex"
-                style="width: 100%"
+                class="mb-4"
               >
-                <v-btn
-                  v-for="option in launchModeOptions"
-                  :key="option.value"
-                  :value="option.value"
-                  class="flex-grow-1"
-                  style="height: auto"
-                >
-                  <div class="text-left py-1">
-                    <div class="text-body-2 font-weight-bold">{{ option.title }}</div>
-                    <div class="text-caption text-medium-emphasis" style="white-space: normal">
-                      {{ option.hint }}
-                    </div>
-                  </div>
-                </v-btn>
-              </v-btn-toggle>
+                <template #item="{ item, props: itemProps }">
+                  <v-list-item v-bind="itemProps" :subtitle="item.hint" />
+                </template>
+              </v-select>
 
               <v-text-field
                 v-model="editingProfile.executablePath"
@@ -1604,7 +1560,7 @@ function translationSource(entry: AvailableTranslationEntry): string {
                   persistent-hint
                   class="mb-1"
                 />
-                <div class="param-preview mb-3">
+                <div class="param-preview mb-4">
                   Will run:
                   {{
                     previewExternalAppCommand(
@@ -1613,38 +1569,7 @@ function translationSource(entry: AvailableTranslationEntry): string {
                     )
                   }}
                 </div>
-
-                <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
-                  Worship Studio checks the executable and chosen file both exist when this item is
-                  added to a service — not just when the slide is reached — so a missing file is
-                  caught during prep, not mid-service.
-                </v-alert>
               </template>
-
-              <div>
-                <v-btn
-                  variant="outlined"
-                  color="primary"
-                  size="small"
-                  :loading="testingLaunch"
-                  :disabled="!isEditingSavedProfile"
-                  @click="testLaunchExternalApp"
-                >
-                  Test Launch
-                </v-btn>
-                <span v-if="!isEditingSavedProfile" class="text-caption text-medium-emphasis ml-2"
-                  >Save this profile first</span
-                >
-              </div>
-              <v-alert
-                v-if="testLaunchResult"
-                :type="testLaunchResult.ok ? 'success' : 'error'"
-                variant="tonal"
-                density="compact"
-                class="mt-3"
-              >
-                {{ testLaunchResult.message }}
-              </v-alert>
 
               <v-divider class="my-5" />
 
@@ -1684,31 +1609,6 @@ function translationSource(entry: AvailableTranslationEntry): string {
                   is live. Leave blank if the app doesn't support this.
                 </div>
               </template>
-
-              <v-divider class="my-5" />
-
-              <div class="d-flex align-center justify-space-between">
-                <div>
-                  <div class="font-weight-bold">Window Position</div>
-                  <div class="text-caption text-medium-emphasis">
-                    {{
-                      editingProfile.windowPosition
-                        ? `Captured — ${editingProfile.windowPosition.width}×${editingProfile.windowPosition.height} on ${editingProfile.windowPosition.monitorId}`
-                        : 'Not captured yet'
-                    }}
-                  </div>
-                </div>
-                <v-btn
-                  variant="flat"
-                  color="secondary"
-                  size="small"
-                  :loading="capturingPosition"
-                  :disabled="!isEditingSavedProfile"
-                  @click="recaptureWindowPosition"
-                >
-                  Recapture Position
-                </v-btn>
-              </div>
             </v-card-text>
             <v-card-actions>
               <v-spacer />
@@ -2665,7 +2565,7 @@ function translationSource(entry: AvailableTranslationEntry): string {
 }
 .display-setting-row {
   display: grid;
-  grid-template-columns: minmax(140px, 1fr) 220px auto;
+  grid-template-columns: minmax(140px, 1fr) 260px auto;
   align-items: center;
   gap: 14px;
   padding: 12px 0;
@@ -3048,7 +2948,7 @@ function translationSource(entry: AvailableTranslationEntry): string {
     padding-inline: 22px;
   }
   .display-setting-row {
-    grid-template-columns: minmax(130px, 1fr) 190px;
+    grid-template-columns: minmax(130px, 1fr) 220px;
   }
   .display-setting-row > .v-btn {
     grid-column: 2;

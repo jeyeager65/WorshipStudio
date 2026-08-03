@@ -63,6 +63,9 @@ export interface SlideLibraryPort {
   get(id: string): Promise<SlideLibraryItem | undefined>
   save(item: SlideLibraryItem): Promise<void>
   delete(id: string): Promise<void>
+  /** Encodes arbitrary text (a URL, or a `WIFI:T:...;S:...;P:...;;` string) as a QR code PNG
+   *  data URL — same rendering the Remote Control pairing flow already uses. */
+  generateQrCode(content: string): Promise<string>
 }
 
 export interface StagedMediaFile {
@@ -252,6 +255,9 @@ export interface LiveSlideContent {
   backgroundOnly?: boolean
   /** Advanced library slides — rendered by the same scene component used in the editor. */
   scene?: SlideScene
+  /** Advanced library slides only — this service's own date/time (ISO), for a Countdown scene
+   *  element in 'service' mode to count down to. */
+  serviceDateTime?: string
   /** Reference-only scripture slides only — the surrounding-books wayfinding visual (spec section 1). */
   wayfindingBooks?: { name: string; distance: number }[]
   /** Reference-only scripture slides only — 0-1 fraction of the way through the whole Bible
@@ -259,12 +265,23 @@ export interface LiveSlideContent {
   bibleProgress?: number
   /** Media/Video items only — the actual image/video to display live (spec sections 1/3). */
   media?: LiveMediaRef
-  /** Countdown items only (spec section 1) — the ticking clock's target and optional custom text. */
-  countdown?: { targetTime: string; text?: string }
   /** Full-text scripture and song slides only — auto-fit `text` within this range (spec section 1) rather than the static size used for other slide types. */
   fontRange?: { minPx: number; maxPx: number }
   /** Song slides only — treat each `\n`-separated line in `text` as its own unit that shouldn't wrap unless necessary, preferring a comma/semicolon break over an arbitrary word boundary. */
   lineWrap?: boolean
+  /** Song slides only — overrides the footer (otherwise subLabel, the block's own label) with
+   *  the song's first collection citation, e.g. "Hymns of Grace #123". Empty string when the
+   *  song has no collections (hide the footer rather than fall back to the block label). */
+  footerText?: string
+  /** Song slides only — set when this block is one of a back-to-back run of the same block
+   *  (e.g. "2/2" for the second of two consecutive Chorus slides), local to that one run, not
+   *  the block's total appearances in the song. Shown bottom-right, distinct from the centered
+   *  header/footer bars. */
+  repeatLabel?: string
+  /** Sermon outline points only — the point's own title, shown large in the main slide area
+   *  with `text` (its details, if any) below it in a smaller size, instead of the usual single
+   *  auto-fit block. */
+  outlineTitle?: string
   /** Song/scripture/text-slide items only — fixed (not auto-fit) size for itemLabel/subLabel, shown as a pinned header/footer rather than above the main text. */
   headerFontSizePx?: number
   footerFontSizePx?: number
@@ -298,6 +315,10 @@ export interface LivePresentationPort {
   getPresentationSize?(): Promise<{ width: number; height: number } | undefined>
 }
 
+/** The configured Audience display's current full bounds — computed fresh from the monitor
+ *  layout on every External App Hand-off launch (see the Tauri adapter's
+ *  computeAudienceMonitorPhysicalBounds), never stored. An external app's window is always
+ *  positioned to exactly fill this rect, full screen. */
 export interface WindowPosition {
   monitorId: string
   x: number
@@ -315,7 +336,6 @@ export interface ExternalAppProfile {
   remoteControlsEnabled: boolean
   nextKey?: string
   prevKey?: string
-  windowPosition?: WindowPosition
   updatedAt: string
   updatedByDevice: string
 }
@@ -329,11 +349,24 @@ export interface ExternalAppPort {
   pickExecutable(): Promise<string | undefined>
   /** Opens a native file picker (no extension filter) for the file an Add-to-Service item hands to the app. */
   pickFile(): Promise<string | undefined>
+  /** Always fills the configured Audience display, full screen — throws if none is assigned. */
   launch(profileId: string, file?: string): Promise<void>
+  /** "Launch Now" — starts this item's app ahead of time, minimized/in the background, so its
+   *  cold-start delay happens before its slide goes live instead of during. A no-op if it's
+   *  already running and cached from an earlier launch/prelaunch this session. */
+  prelaunch(profileId: string, file?: string): Promise<void>
+  /** Minimizes whichever app is currently engaged (if any) and restores Worship Studio's own
+   *  presentation/operator windows — used when navigating to a different (non-external-app)
+   *  slide mid-presentation. Doesn't close anything, so returning to the same item later reuses
+   *  the same window instead of relaunching. */
   restoreSelf(): Promise<void>
-  testLaunch(profileId: string): Promise<{ ok: boolean; message: string }>
-  /** Captures the currently-foreground window's bounds, for the profile editor's "Recapture Position" button. */
-  captureWindowPosition(): Promise<WindowPosition>
+  /** Operator-triggered: closes just the currently-engaged app and forgets it, so the next time
+   *  its item goes live it launches fresh rather than trying to reuse a handle the operator
+   *  deliberately closed. */
+  closeCurrent(): Promise<void>
+  /** Stop Presenting's counterpart to restoreSelf — closes every app launched this session
+   *  (there can be more than one, across different items), not just the most recent one. */
+  closeAll(): Promise<void>
   /** Add-time robustness check (spec section 12) — executable/file existence, no launch. */
   verifyItem(profileId: string, file?: string): Promise<void>
   /** Basic Remote Controls — forwards Next/Prev as a keystroke instead of advancing the service, while this item is live. */

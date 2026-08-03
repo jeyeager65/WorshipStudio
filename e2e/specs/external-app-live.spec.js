@@ -6,14 +6,12 @@ import { appDataDir } from '../helpers/appDataDir.js'
 describe('External App Hand-off (live launch/restore)', () => {
   it('launches on advance, and cleanly surfaces a Try Again/Skip error if the window never appears', async () => {
     // Windows 11's inbox notepad.exe is a redirector stub for the modern (UWP/MSIX) Notepad —
-    // the process this app spawns exits almost immediately after handing off to
-    // ApplicationFrameHost.exe, so launch_and_focus's 5s wait-for-window never finds a window
-    // owned by the PID it's actually tracking. That's a real Windows 11 environment quirk,
-    // not a Worship Studio bug — the same launch_and_focus primitive already works when
-    // driven from Settings' "Test Launch" against a real Win32 executable. This spec exists
-    // to verify the *live* wiring around it (auto-launch on advance, the operator-only
-    // error banner with Try Again/Skip, and that Stop Presenting/restore-self afterward
-    // doesn't hang the session) — not to require an app that happens to cold-start under 5s.
+    // the process this app spawns exits almost immediately after handing off to a different
+    // host process, so launch_and_focus's own PID-based lookup alone wouldn't find its window
+    // (a fallback that scans for a newly-appeared window handles this case — see win32.rs).
+    // This spec exists to verify the *live* wiring around it (auto-launch on advance, the
+    // operator-only error banner with Try Again/Skip, and that Stop Presenting/restore-self
+    // afterward doesn't hang the session) — not to require any particular launch outcome.
     const externalAppsPath = path.join(appDataDir, 'external-apps.json')
     fs.writeFileSync(
       externalAppsPath,

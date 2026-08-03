@@ -18,6 +18,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .manage(commands::external_apps::EngagedExternalApp::default())
         .setup(|app| {
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()
@@ -50,7 +51,9 @@ pub fn run() {
                 .title("Worship Studio")
                 // Sized to the logo + progress bar + status text (SplashScreen.vue) plus a
                 // small margin, not an arbitrary round window size — a taller window just
-                // centers that same content in more empty black space.
+                // centers that same content in more empty black space. The version line sits
+                // in its own corner (see .version-credit) rather than in this centered column,
+                // so it doesn't factor into this sizing at all.
                 .inner_size(700.0, 360.0)
                 .resizable(false)
                 .decorations(false)
@@ -93,6 +96,7 @@ pub fn run() {
             commands::slides::get_slide,
             commands::slides::save_slide,
             commands::slides::delete_slide,
+            commands::slides::generate_qr_code,
             commands::settings::get_library_settings,
             commands::settings::save_library_settings,
             commands::settings::get_machine_settings,
@@ -132,9 +136,10 @@ pub fn run() {
             commands::external_apps::save_external_app_profile,
             commands::external_apps::delete_external_app_profile,
             commands::external_apps::launch_external_app,
+            commands::external_apps::prelaunch_external_app,
             commands::external_apps::restore_self,
-            commands::external_apps::test_launch_external_app,
-            commands::external_apps::capture_external_app_window_position,
+            commands::external_apps::close_current_external_app,
+            commands::external_apps::close_all_external_apps,
             commands::external_apps::verify_external_app_item,
             commands::external_apps::send_external_app_keystroke,
             commands::remote::list_remote_devices,

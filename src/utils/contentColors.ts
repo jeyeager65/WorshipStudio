@@ -36,7 +36,6 @@ const ITEM_TYPE_COLORS: Record<string, string> = {
   video: 'rose',
   audio: 'slate',
   'external-app': 'terracotta',
-  countdown: 'secondary',
   qr: 'teal',
   sermon: 'teal',
   'bulletin-note': 'slate',

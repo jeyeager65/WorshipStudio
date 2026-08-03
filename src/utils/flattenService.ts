@@ -10,6 +10,7 @@ import {
 } from '@/utils/scriptureReference'
 import { paginateTextUnits, type FontSizeRange } from '@/utils/textAutoFit'
 import { scenePlainText } from '@/utils/slideScene'
+import { serviceDateTimeIso } from '@/utils/serviceTime'
 
 // Matches LibrarySettings' scriptureMin/MaxFontSizePx defaults (see models/settings.ts) — used
 // whenever a caller doesn't pass its own configured range (e.g. existing tests).
@@ -34,6 +35,13 @@ export interface FlatSlide {
   themeTarget?: PresentationThemeTarget
   /** Advanced slide-library pages only. */
   scene?: SlideScene
+  /** Advanced slide-library pages only — this service's own date/time (ISO), for a Countdown
+   *  scene element in 'service' mode to count down to (see models/library.ts). Undefined when
+   *  the service has no start time set. */
+  serviceDateTime?: string
+  /** Sermon passages only — which passage (by id) this page belongs to, so the editor can
+   *  group a passage's own auto-split pages together. Absent for every other slide type. */
+  passageId?: string
   /** Reference-only scripture slides only — the surrounding-books wayfinding visual (spec section 1). */
   wayfindingBooks?: WayfindingBook[]
   /** Reference-only scripture slides only — 0-1 fraction of the way through the whole Bible
@@ -45,8 +53,6 @@ export interface FlatSlide {
   mediaFit?: 'cover' | 'contain'
   /** External App Hand-off items only (spec section 12) — what to launch/focus when this slide goes live. */
   externalApp?: { profileId: string; file?: string }
-  /** Countdown items only (spec section 1) — the live-ticking clock's target and optional custom text. */
-  countdown?: { targetTime: string; text?: string }
   /** Full-text scripture and song slides only — the configured auto-fit range (spec section 1) PresentationView fits this slide's text within (see DEFAULT_SCRIPTURE_FONT_RANGE/DEFAULT_SONG_FONT_RANGE). */
   fontRange?: FontSizeRange
   /**
@@ -56,6 +62,32 @@ export interface FlatSlide {
    * one flowing paragraph instead (see the scripture branch below), which wraps normally.
    */
   lineWrap?: boolean
+  /** Song blocks only — overrides the footer text PresentationView would otherwise show
+   *  (subLabel, the block's own label) with the song's first collection citation instead (e.g.
+   *  "Hymns of Grace #123"). Empty string when the song has no collections (hide the footer
+   *  rather than fall back to the block label). Undefined for every other slide type, which
+   *  keeps showing subLabel as its footer exactly as before. */
+  footerText?: string
+  /** Song blocks only — set when this block is one of a *back-to-back* run of the same block
+   *  (e.g. "2/2" for the second of two consecutive Chorus slides), so a same-block repeat
+   *  doesn't look identical to the one before it. Local to that one run, not the block's total
+   *  appearances in the song — a Chorus used twice elsewhere, not consecutively, gets no label
+   *  either time. Absent for a run of length 1 (this block, right here, isn't repeated in place). */
+  repeatLabel?: string
+  /** Sermon outline points only — the point's own title, shown large in the main slide area
+   *  with `text` (its details, if any) below it in a smaller size, instead of the usual single
+   *  auto-fit block. Undefined for every other slide type. */
+  outlineTitle?: string
+}
+
+// Presentation footer for a song block: the song's own reference material (its first hymnal/
+// collection citation) is more useful to a congregation following along in print than the
+// operator-facing block label ("Chorus") ever was. Empty string (not undefined) when the song
+// has no collections, so the caller can tell "no footer" apart from "not a song".
+function formatSongFooter(song: Song): string {
+  const entry = song.collections[0]
+  if (!entry?.collectionId) return ''
+  return entry.number ? `${entry.collectionId} #${entry.number}` : entry.collectionId
 }
 
 function labelForOtherType(item: ServiceItem): string {
@@ -66,8 +98,6 @@ function labelForOtherType(item: ServiceItem): string {
       return 'Video'
     case 'audio':
       return 'Audio'
-    case 'qr':
-      return 'QR Code'
     default:
       return 'Item'
   }
@@ -76,11 +106,15 @@ function labelForOtherType(item: ServiceItem): string {
 /**
  * Shared by the `scripture` branch (one passage per item) and the `sermon` branch (one call
  * per passage in its list) — same reference-only/unresolved/paginated-full-text shape either
- * way. `keyPrefix` is the owning item's id; `startSubIndex` lets a sermon's later passages (and
- * then its outline) continue the same item's slide-key sequence rather than each restarting at
- * 0, which would collide (see flattenService's own slideFlatIndex lookup-by-exact-key in
- * ServiceWorkspaceView.vue). Returns how many slides were pushed, so the caller can advance its
- * own counter by that amount.
+ * way. `keyPrefix`/`startSubIndex` key a standalone scripture item's own (single, stable)
+ * passage; a sermon passage instead keys off its own `passageId` (page number only relative to
+ * that one passage, not cumulative across the sermon's other passages) — a *content-addressed*
+ * key that can never collide with, or be reassigned to, a sibling passage's or outline block's
+ * key. That matters because `liveSlideKey` (see useLiveTransport.ts) is a bare string stored
+ * across re-flattens: a cumulative position-based key would shift for every passage/outline
+ * that comes after one just added, removed, or re-paginated, and the live slide would silently
+ * jump to whatever unrelated content now happened to land on that same stale key string.
+ * Returns how many slides were pushed.
  */
 function pushScriptureSlides(
   flat: FlatSlide[],
@@ -94,17 +128,27 @@ function pushScriptureSlides(
   passage: ScripturePassage | undefined,
   scriptureFontRange: FontSizeRange,
   themeTarget: PresentationThemeTarget,
+  /** Set only when called for one of a sermon's several passages — lets the editor group that
+   *  passage's own pages together (see ServiceWorkspaceView's sermon passage editor) without
+   *  having to re-derive pagination boundaries itself, and keys this passage's pages stably
+   *  (see this function's own doc comment). Absent for a standalone scripture item, which has
+   *  only the one (implicit) passage. */
+  passageId?: string,
 ): number {
+  const keyFor = (pageIndex: number) =>
+    passageId ? `${itemId}:passage:${passageId}:${pageIndex}` : `${keyPrefix}:${startSubIndex + pageIndex}`
+
   if (displayMode === 'reference-only') {
     const parsed = parseReference(reference)
     flat.push({
-      key: `${keyPrefix}:${startSubIndex}`,
+      key: keyFor(0),
       itemIndex,
       itemId,
       itemLabel: reference,
       subLabel: 'Reference Only',
       text: '',
       themeTarget,
+      passageId,
       wayfindingBooks: parsed?.book ? getWayfindingBooks(parsed.book) : undefined,
       bibleProgress: parsed ? getBibleProgress(parsed) : undefined,
     })
@@ -112,13 +156,14 @@ function pushScriptureSlides(
   }
   if (!passage) {
     flat.push({
-      key: `${keyPrefix}:${startSubIndex}`,
+      key: keyFor(0),
       itemIndex,
       itemId,
       itemLabel: reference,
       subLabel: translation,
       text: '',
       themeTarget,
+      passageId,
     })
     return 1
   }
@@ -128,7 +173,7 @@ function pushScriptureSlides(
   const pages = paginateTextUnits(verseUnits, scriptureFontRange, ' ')
   pages.forEach((pageUnits, i) => {
     flat.push({
-      key: `${keyPrefix}:${startSubIndex + i}`,
+      key: keyFor(i),
       itemIndex,
       itemId,
       itemLabel: passage.reference,
@@ -138,6 +183,7 @@ function pushScriptureSlides(
           : passage.translation,
       text: pageUnits.join(' '),
       themeTarget,
+      passageId,
       fontRange: scriptureFontRange,
     })
   })
@@ -161,11 +207,9 @@ function pushScriptureSlides(
  * below), same shape as text-slide; media/video items carry a `mediaId` for the caller to
  * resolve to a real displayable URL (this function stays synchronous, so it can't do that
  * Rust round trip itself); external-app items carry their profileId/file for the caller to
- * launch/focus when live (see ServiceWorkspaceView); countdown items carry their target
- * time/text for the caller to render a live-ticking clock from (computed client-side, not
- * baked in here, since "now" obviously isn't a pure function of the service data); every
- * other item type (audio, qr) is still a work-in-progress content type, so each becomes a
- * single placeholder slide for now rather than being left out of the sequence entirely.
+ * launch/focus when live (see ServiceWorkspaceView); every other item type (audio) is still
+ * a work-in-progress content type, so each becomes a single placeholder slide for now rather
+ * than being left out of the sequence entirely.
  * Sermon items present each of their passages (same shape as scripture, just resolved under a
  * composite id since one sermon can hold several) followed by their outline, one per block
  * like text-slide. Bulletin-note items are the one deliberate exception to "every item gets at
@@ -182,12 +226,14 @@ export function flattenService(
   songFontRange: FontSizeRange = DEFAULT_SONG_FONT_RANGE,
 ): FlatSlide[] {
   const flat: FlatSlide[] = []
+  const serviceDateTime = serviceDateTimeIso(service)
 
   service.items.forEach((item, itemIndex) => {
     if (item.type === 'song') {
       const song = songsById.get(item.songId)
       const itemLabel = song?.title ?? 'Unknown Song'
       const sequence = item.arrangement.sequence
+      const footerText = song ? formatSongFooter(song) : ''
       if (sequence.length === 0) {
         flat.push({
           key: `${item.id}:0`,
@@ -199,22 +245,39 @@ export function flattenService(
           themeTarget: 'songs',
           fontRange: songFontRange,
           lineWrap: true,
+          footerText,
         })
       } else {
-        sequence.forEach((blockId, subIndex) => {
-          const block = song?.blocks.find((b) => b.id === blockId)
-          flat.push({
-            key: `${item.id}:${subIndex}`,
-            itemIndex,
-            itemId: item.id,
-            itemLabel,
-            subLabel: block?.label ?? blockId,
-            text: block?.text ?? '',
-            themeTarget: 'songs',
-            fontRange: songFontRange,
-            lineWrap: true,
-          })
-        })
+        // A repeat indicator is per back-to-back run, not total appearances in the song — e.g.
+        // V1, C, V2, C, C, V3, C, C has 5 Choruses overall, but only the two *consecutive*
+        // pairs get numbered ("1/2"/"2/2" each), independently of each other; the two lone
+        // Choruses get no label at all, same as any other non-repeated block.
+        let subIndex = 0
+        let i = 0
+        while (i < sequence.length) {
+          let j = i
+          while (j < sequence.length && sequence[j] === sequence[i]) j++
+          const runLength = j - i
+          for (let k = i; k < j; k++) {
+            const blockId = sequence[k]
+            const block = song?.blocks.find((b) => b.id === blockId)
+            flat.push({
+              key: `${item.id}:${subIndex}`,
+              itemIndex,
+              itemId: item.id,
+              itemLabel,
+              subLabel: block?.label ?? blockId,
+              text: block?.text ?? '',
+              themeTarget: 'songs',
+              fontRange: songFontRange,
+              lineWrap: true,
+              footerText,
+              repeatLabel: runLength > 1 ? `${k - i + 1}/${runLength}` : undefined,
+            })
+            subIndex++
+          }
+          i = j
+        }
       }
     } else if (item.type === 'text-slide') {
       if (item.slides.length === 0) {
@@ -259,42 +322,55 @@ export function flattenService(
       // Every passage presents in list order (reusing the exact same reference-only/
       // unresolved/paginated shape as a plain scripture item, resolved from the same
       // scriptureById map but under a composite `itemId:passageId` key since one sermon can
-      // hold several passages), then the outline — one continuous key sequence across both
-      // halves so an outline block's key never collides with an earlier passage's page (see
-      // pushScriptureSlides's own doc comment for why that matters).
-      let subIndex = 0
+      // hold several passages), then the outline. Passage keys are content-addressed by the
+      // passage's own id, and outline keys by the block's own id — neither depends on how many
+      // slides came before it, so adding/removing/reordering a sibling can never shift, or
+      // collide with, another passage's or outline block's key (see pushScriptureSlides's own
+      // doc comment for why that matters).
       for (const passage of item.passages) {
         const resolved =
           passage.displayMode === 'reference-only'
             ? undefined
             : scriptureById.get(`${item.id}:${passage.id}`)
-        subIndex += pushScriptureSlides(
+        // Passage slides use the default *scripture* theme (not the sermon theme) unless the
+        // item has its own override — resolvePresentationTheme already checks the override
+        // against this target first, so an override that isn't valid for 'scripture' still
+        // falls back to the scripture default rather than silently applying anyway.
+        pushScriptureSlides(
           flat,
           itemIndex,
           item.id,
           item.id,
-          subIndex,
+          0,
           passage.reference,
           passage.translation,
           passage.displayMode,
           resolved,
           scriptureFontRange,
-          'sermon',
+          'scripture',
+          passage.id,
         )
       }
-      item.outline.forEach((block, i) => {
+      item.outline.forEach((block, outlineIndex) => {
         flat.push({
-          key: `${item.id}:${subIndex + i}`,
+          key: `${item.id}:outline:${block.id}`,
           itemIndex,
           itemId: item.id,
           itemLabel: 'Sermon Outline',
           subLabel: block.label,
           text: block.text,
           themeTarget: 'sermon',
+          // Numbered the same way the editor shows it (see ServiceWorkspaceView's outline
+          // list) — the point's position in the outline, not baked into the stored label
+          // itself, so reordering or deleting a point always renumbers correctly.
+          outlineTitle: `${outlineIndex + 1}. ${block.label}`,
+          // The title now lives in the main slide area (see outlineTitle) rather than the
+          // footer — an explicit override (not just leaving subLabel alone) so it can never
+          // fall back to showing the same title twice.
+          footerText: '',
         })
       })
-      subIndex += item.outline.length
-      if (subIndex === 0) {
+      if (item.passages.length === 0 && item.outline.length === 0) {
         flat.push({
           key: `${item.id}:0`,
           itemIndex,
@@ -330,6 +406,7 @@ export function flattenService(
             subLabel: slide.label,
             text: scenePlainText(slide.scene),
             scene: slide.scene,
+            serviceDateTime,
           })
         })
       }
@@ -369,16 +446,6 @@ export function flattenService(
         subLabel: '',
         text: '',
         externalApp: { profileId: item.profileId, file: item.file },
-      })
-    } else if (item.type === 'countdown') {
-      flat.push({
-        key: `${item.id}:0`,
-        itemIndex,
-        itemId: item.id,
-        itemLabel: 'Countdown',
-        subLabel: '',
-        text: item.text ?? '',
-        countdown: { targetTime: item.targetTime, text: item.text },
       })
     } else if (item.type === 'placeholder') {
       // Deliberately not blank — an unreplaced placeholder accidentally presented live should

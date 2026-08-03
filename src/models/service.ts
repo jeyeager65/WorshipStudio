@@ -25,8 +25,6 @@ export type ServiceItemContent =
   | { type: 'video'; mediaId: string }
   | { type: 'audio'; mediaId: string }
   | { type: 'external-app'; profileId: string; file?: string }
-  | { type: 'countdown'; targetTime: string; text?: string }
-  | { type: 'qr'; url: string; caption?: string }
   /** "Worship Through the Word" — presentable passage(s) plus an outline, positioned wherever
    *  it actually falls in the service rather than pinned to a fixed header. This item is the
    *  sole source of truth for the service's sermon (title/passage/preacher, the last via the

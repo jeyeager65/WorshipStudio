@@ -107,6 +107,19 @@ async function deleteTheme(theme: Theme) {
     return
   await store.remove(theme.id)
 }
+
+// useAsDefaultFor deliberately cleared — a duplicate shouldn't silently compete with the
+// original as a content type's default; the original stays the default until changed by hand.
+// updatedAt/updatedByDevice aren't set here since save() (both the Tauri and mock adapters)
+// overwrites them itself regardless of what's passed in.
+async function duplicateTheme(theme: Theme) {
+  await store.save({
+    ...theme,
+    id: `theme-${crypto.randomUUID()}`,
+    name: `${theme.name} (Copy)`,
+    useAsDefaultFor: [],
+  })
+}
 </script>
 
 <template>
@@ -214,6 +227,13 @@ async function deleteTheme(theme: Theme) {
               </p>
             </div>
             <div class="theme-card-actions">
+              <v-btn
+                icon="mdi-content-copy"
+                variant="text"
+                size="small"
+                aria-label="Duplicate theme"
+                @click.stop="duplicateTheme(theme)"
+              />
               <v-btn
                 icon="mdi-trash-can-outline"
                 variant="text"

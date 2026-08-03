@@ -161,20 +161,6 @@ function lineFor(
         person: resolveRolePerson(item.role, assignments, personNames),
         note: item.bulletinNote,
       }
-    case 'countdown':
-      return {
-        role: roleFor(item, undefined),
-        text: item.text ?? '[Countdown]',
-        person: resolveRolePerson(item.role, assignments, personNames),
-        note: item.bulletinNote,
-      }
-    case 'qr':
-      return {
-        role: roleFor(item, undefined),
-        text: item.caption ?? '[QR Code]',
-        person: resolveRolePerson(item.role, assignments, personNames),
-        note: item.bulletinNote,
-      }
     case 'sermon': {
       // The sermon's own title (when set) is the heading — a real bulletin names the sermon,
       // not a generic "Worship Through the Word" label — with the main passage reference as

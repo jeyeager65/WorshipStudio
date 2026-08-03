@@ -129,16 +129,6 @@ pub enum ServiceItemContent {
         #[serde(skip_serializing_if = "Option::is_none")]
         file: Option<String>,
     },
-    Countdown {
-        target_time: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        text: Option<String>,
-    },
-    Qr {
-        url: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        caption: Option<String>,
-    },
     /// "Worship Through the Word" — presentable passage(s) plus an outline, positioned wherever
     /// it actually falls in the service rather than pinned to a fixed header. This item is the
     /// sole source of truth for the service's sermon (title/passage/preacher, the last via the
@@ -303,11 +293,14 @@ pub struct ServiceTemplate {
     pub items: Vec<ServiceTemplateItem>,
 }
 
+/// The configured Audience display's current full bounds — computed fresh from the monitor
+/// layout on every External App Hand-off launch (see the Tauri adapter's
+/// computeAudienceMonitorPhysicalBounds), not stored anywhere. An external app's window is
+/// always positioned to exactly fill this rect, full screen.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct WindowPosition {
-    /// The OS-reported monitor name this position was captured on — informational only
-    /// (display purposes), not re-validated against current hardware before positioning.
+    /// The OS-reported monitor name — informational only (display purposes).
     pub monitor_id: String,
     pub x: i32,
     pub y: i32,
@@ -338,8 +331,6 @@ pub struct ExternalAppProfile {
     pub next_key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prev_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub window_position: Option<WindowPosition>,
     pub updated_at: String,
     pub updated_by_device: String,
 }
@@ -806,14 +797,6 @@ pub struct LivePresentationTheme {
 /// pushes this to Rust (see commands::remote::update_remote_live_state) whenever the live
 /// slide changes, so the remote HTTP server's /api/state has something to report without the
 /// server itself needing any awareness of songs/scripture/slides.
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct LiveCountdownRef {
-    pub target_time: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub text: Option<String>,
-}
-
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct LiveSlideContent {
@@ -827,11 +810,11 @@ pub struct LiveSlideContent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scene: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub service_date_time: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub wayfinding_books: Option<Vec<WayfindingBook>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media: Option<LiveMediaRef>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub countdown: Option<LiveCountdownRef>,
 }
 
 #[cfg(test)]

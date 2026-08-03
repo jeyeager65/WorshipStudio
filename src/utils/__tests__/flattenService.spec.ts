@@ -51,6 +51,86 @@ describe('flattenService', () => {
     expect(flat.every((s) => s.itemId === 'item-1')).toBe(true)
     // Repeats of the same block get distinct keys — they're different flat positions.
     expect(new Set(flat.map((s) => s.key)).size).toBe(3)
+    // The non-repeated block (Verse 1) gets no repeat label; the twice-used Chorus is
+    // numbered "1/2" then "2/2" in the order it actually appears.
+    expect(flat.map((s) => s.repeatLabel)).toEqual([undefined, '1/2', '2/2'])
+  })
+
+  it('numbers repeats per back-to-back run, not by total appearances in the arrangement', () => {
+    // V1, C, V2, C, C, V3, C, C — 5 Choruses overall, but only the two *consecutive* pairs are
+    // numbered, independently of each other; the two lone (non-repeated-in-place) Choruses get
+    // no label at all, same as any other non-repeated block.
+    const song = makeSong({
+      blocks: [
+        { id: 'v1', label: 'Verse 1', text: '' },
+        { id: 'v2', label: 'Verse 2', text: '' },
+        { id: 'v3', label: 'Verse 3', text: '' },
+        { id: 'c', label: 'Chorus', text: '' },
+      ],
+    })
+    const service = makeService({
+      items: [
+        {
+          id: 'item-1',
+          type: 'song',
+          songId: 'song-1',
+          arrangement: { sequence: ['v1', 'c', 'v2', 'c', 'c', 'v3', 'c', 'c'] },
+        },
+      ],
+    })
+    const flat = flattenService(service, new Map([['song-1', song]]))
+    expect(flat.map((s) => s.subLabel)).toEqual([
+      'Verse 1',
+      'Chorus',
+      'Verse 2',
+      'Chorus',
+      'Chorus',
+      'Verse 3',
+      'Chorus',
+      'Chorus',
+    ])
+    expect(flat.map((s) => s.repeatLabel)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      '1/2',
+      '2/2',
+      undefined,
+      '1/2',
+      '2/2',
+    ])
+  })
+
+  it("shows the song's first collection citation as the footer instead of the block label", () => {
+    const song = makeSong({
+      collections: [
+        { collectionId: 'Hymns of Grace', number: '123' },
+        { collectionId: 'Second Book', number: '9' },
+      ],
+    })
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: ['v1'] } }],
+    })
+    const flat = flattenService(service, new Map([['song-1', song]]))
+    expect(flat[0].footerText).toBe('Hymns of Grace #123')
+  })
+
+  it('omits the collection number when the entry has none, and returns an empty footer when there are no collections', () => {
+    const withoutNumber = flattenService(
+      makeService({
+        items: [{ id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: ['v1'] } }],
+      }),
+      new Map([['song-1', makeSong({ collections: [{ collectionId: 'Hymns of Grace' }] })]]),
+    )
+    expect(withoutNumber[0].footerText).toBe('Hymns of Grace')
+
+    const withoutCollections = flattenService(
+      makeService({
+        items: [{ id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: ['v1'] } }],
+      }),
+      new Map([['song-1', makeSong({ collections: [] })]]),
+    )
+    expect(withoutCollections[0].footerText).toBe('')
   })
 
   it('applies the configured song font range to every block', () => {
@@ -178,27 +258,6 @@ describe('flattenService', () => {
     })
     const flat = flattenService(service, new Map())
     expect(flat[0]).toMatchObject({ itemLabel: 'External App', externalApp: { profileId: 'missing-profile' } })
-  })
-
-  it('carries a countdown item through with its target time and custom text', () => {
-    const service = makeService({
-      items: [{ id: 'item-1', type: 'countdown', targetTime: '2026-08-01T10:15:00Z', text: 'Join us at 10:15!' }],
-    })
-    const flat = flattenService(service, new Map())
-    expect(flat).toHaveLength(1)
-    expect(flat[0]).toMatchObject({
-      itemLabel: 'Countdown',
-      text: 'Join us at 10:15!',
-      countdown: { targetTime: '2026-08-01T10:15:00Z', text: 'Join us at 10:15!' },
-    })
-  })
-
-  it('handles a countdown item with no custom text', () => {
-    const service = makeService({
-      items: [{ id: 'item-1', type: 'countdown', targetTime: '2026-08-01T10:15:00Z' }],
-    })
-    const flat = flattenService(service, new Map())
-    expect(flat[0]).toMatchObject({ text: '', countdown: { targetTime: '2026-08-01T10:15:00Z', text: undefined } })
   })
 
   it('falls back gracefully when a slide-ref cannot be resolved', () => {
@@ -383,6 +442,26 @@ describe('flattenService — slide-ref', () => {
     expect(flat).toHaveLength(1)
     expect(flat[0]).toMatchObject({ itemLabel: 'Announcements', subLabel: '(empty)' })
   })
+
+  it("carries the service's own date/time through for a Countdown scene element in 'service' mode", () => {
+    const service = makeService({
+      date: '2026-08-02',
+      time: '10:30',
+      items: [{ id: 'item-1', type: 'slide-ref', slideId: 'slide-1' }],
+    })
+    const flat = flattenService(service, new Map(), new Map(), new Map([['slide-1', makeSlideItem()]]))
+    expect(flat[0].serviceDateTime).toBeDefined()
+    expect(new Date(flat[0].serviceDateTime!).getHours()).toBe(10)
+    expect(new Date(flat[0].serviceDateTime!).getMinutes()).toBe(30)
+  })
+
+  it('omits serviceDateTime when the service has no start time set', () => {
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'slide-ref', slideId: 'slide-1' }],
+    })
+    const flat = flattenService(service, new Map(), new Map(), new Map([['slide-1', makeSlideItem()]]))
+    expect(flat[0].serviceDateTime).toBeUndefined()
+  })
 })
 
 describe('flattenService — bulletin-note', () => {
@@ -442,11 +521,102 @@ describe('flattenService — sermon', () => {
     expect(flat.map((s) => s.itemLabel)).toEqual(['Romans 8:28', 'Mark 5:1-20', 'Sermon Outline', 'Sermon Outline'])
     expect(flat.map((s) => s.subLabel)).toEqual(['Reference Only', 'ESV', 'The Setup', 'The Turn'])
     expect(flat[3].text).toBe('Point two')
-    // The bug this guards against: restarting the outline's key counter at 0 would collide
-    // with an earlier passage page's key, making a click on outline block 2 silently resolve
-    // to the wrong slide (see ServiceWorkspaceView's slideFlatIndex, which looks up by exact key).
     expect(new Set(flat.map((s) => s.key)).size).toBe(4)
-    expect(flat.map((s) => s.key)).toEqual(['item-1:0', 'item-1:1', 'item-1:2', 'item-1:3'])
+    // Content-addressed keys (by the passage's/block's own id, not cumulative position) — see
+    // the "keeps a passage's key stable" test below for the regression this guards against.
+    expect(flat.map((s) => s.key)).toEqual([
+      'item-1:passage:p1:0',
+      'item-1:passage:p2:0',
+      'item-1:outline:o1',
+      'item-1:outline:o2',
+    ])
+  })
+
+  it("carries an outline block's title separately from its details, and suppresses the footer", () => {
+    const service = makeService({
+      items: [
+        {
+          id: 'item-1',
+          type: 'sermon',
+          passages: [],
+          mainPassageId: '',
+          outline: [
+            { id: 'o1', label: 'The Setup', text: 'Point one' },
+            { id: 'o2', label: 'The Turn', text: '' },
+          ],
+        },
+      ],
+    })
+    const flat = flattenService(service, new Map())
+    // outlineTitle drives the large title in the main slide area (see
+    // SlideContentRenderer.vue), numbered by position same as the editor shows it; footerText
+    // is explicitly '' so the title never also shows in the footer via a subLabel fallback.
+    expect(flat[0]).toMatchObject({ outlineTitle: '1. The Setup', text: 'Point one', footerText: '' })
+    expect(flat[1]).toMatchObject({ outlineTitle: '2. The Turn', text: '', footerText: '' })
+  })
+
+  it("keeps a passage's key stable when another passage is added, so a live slide can never silently reassign to unrelated content", () => {
+    const before = flattenService(
+      makeService({
+        items: [
+          {
+            id: 'item-1',
+            type: 'sermon',
+            passages: [{ id: 'p1', reference: 'Romans 8:28', translation: 'ESV', displayMode: 'reference-only' }],
+            mainPassageId: 'p1',
+            outline: [{ id: 'o1', label: 'The Setup', text: 'Point one' }],
+          },
+        ],
+      }),
+      new Map(),
+    )
+    const p1KeyBefore = before.find((s) => s.itemLabel === 'Romans 8:28')!.key
+    const outlineKeyBefore = before.find((s) => s.itemLabel === 'Sermon Outline')!.key
+
+    // Adding a brand-new second passage must not change either existing slide's key — the bug
+    // this guards against: a cumulative position-based key shifted every later passage/outline
+    // by one slot, so the newly-added (unrelated, still-empty) passage silently inherited
+    // whatever key used to point at the previously-live slide.
+    const after = flattenService(
+      makeService({
+        items: [
+          {
+            id: 'item-1',
+            type: 'sermon',
+            passages: [
+              { id: 'p1', reference: 'Romans 8:28', translation: 'ESV', displayMode: 'reference-only' },
+              { id: 'p2', reference: '', translation: 'ESV', displayMode: 'full' },
+            ],
+            mainPassageId: 'p1',
+            outline: [{ id: 'o1', label: 'The Setup', text: 'Point one' }],
+          },
+        ],
+      }),
+      new Map(),
+    )
+    expect(after.find((s) => s.itemLabel === 'Romans 8:28')!.key).toBe(p1KeyBefore)
+    expect(after.find((s) => s.itemLabel === 'Sermon Outline')!.key).toBe(outlineKeyBefore)
+    // And the new passage must not reuse either of those pre-existing keys.
+    const p2Key = after.find((s) => s.passageId === 'p2')!.key
+    expect(p2Key).not.toBe(p1KeyBefore)
+    expect(p2Key).not.toBe(outlineKeyBefore)
+  })
+
+  it("passage slides use the 'scripture' theme target, but outline slides use 'sermon'", () => {
+    const service = makeService({
+      items: [
+        {
+          id: 'item-1',
+          type: 'sermon',
+          passages: [{ id: 'p1', reference: 'Mark 5:1-20', translation: 'ESV', displayMode: 'full' }],
+          mainPassageId: 'p1',
+          outline: [{ id: 'o1', label: 'The Setup', text: 'Point one' }],
+        },
+      ],
+    })
+    const scriptureById = new Map([['item-1:p1', makePassage()]])
+    const flat = flattenService(service, new Map(), scriptureById)
+    expect(flat.map((s) => s.themeTarget)).toEqual(['scripture', 'sermon'])
   })
 
   it('produces a placeholder when a sermon has neither passages nor outline yet', () => {

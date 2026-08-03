@@ -46,8 +46,13 @@ function nowStamp() {
 // date are edited later, or the most recent service referencing a song is deleted. lastUsedAt
 // is the service's own date, not when it was saved. Only songs whose stats actually changed are
 // re-saved.
+//
+// Only services dated on or before today count — a future-dated (planned) service isn't a use
+// yet. Each song counts at most once per service regardless of how many items in that service
+// reference it (e.g. an opening song reprised as the closing song).
 async function recomputeSongUsage(songs: MockCollection<Song>, services: MockCollection<Service>) {
   const allServices = (await services.list()) as Service[]
+  const today = new Date().toISOString().slice(0, 10)
   const oneYearAgo = new Date()
   oneYearAgo.setDate(oneYearAgo.getDate() - 365)
   const oneYearAgoStr = oneYearAgo.toISOString().slice(0, 10)
@@ -55,12 +60,15 @@ async function recomputeSongUsage(songs: MockCollection<Song>, services: MockCol
   const lastUsedAt = new Map<string, string>()
   const usesPastYear = new Map<string, number>()
   for (const service of allServices) {
-    for (const item of service.items) {
-      if (item.type !== 'song') continue
-      const current = lastUsedAt.get(item.songId)
-      if (!current || service.date > current) lastUsedAt.set(item.songId, service.date)
+    if (service.date > today) continue
+    const songIdsInService = new Set(
+      service.items.filter((item) => item.type === 'song').map((item) => item.songId),
+    )
+    for (const songId of songIdsInService) {
+      const current = lastUsedAt.get(songId)
+      if (!current || service.date > current) lastUsedAt.set(songId, service.date)
       if (service.date >= oneYearAgoStr)
-        usesPastYear.set(item.songId, (usesPastYear.get(item.songId) ?? 0) + 1)
+        usesPastYear.set(songId, (usesPastYear.get(songId) ?? 0) + 1)
     }
   }
 
@@ -222,6 +230,9 @@ export function createMockAdapter(): StudioAdapter {
       get: (id) => slides.get(id),
       save: (item) => slides.save({ ...item, ...nowStamp() }),
       delete: (id) => slides.delete(id),
+      // Real QR rendering is Rust-side only (see the Tauri adapter) — same "empty, not faked"
+      // precedent as remote device provisioning's qrDataUrl in the browser demo build.
+      generateQrCode: async () => '',
     },
     media: {
       list: () => media.list() as Promise<MediaItem[]>,

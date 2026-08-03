@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use chrono::{Duration, NaiveDate};
@@ -44,6 +44,12 @@ pub fn delete(root: &Path, id: &str) -> std::io::Result<()> {
 /// songs whose stats actually changed are rewritten, so saving/deleting a service that doesn't
 /// affect a given song's history never touches that song's file (avoids needless sync
 /// churn/conflicts across every song in the library on every save).
+///
+/// Only services dated on or before `today` count — a service planned for a future date is a
+/// plan, not a use, so it must not show up as "last used" or count toward this year's total
+/// until its date actually arrives. Each song counts at most once per service regardless of how
+/// many items in that service reference it (e.g. an opening song reprised as the closing song),
+/// so a single week never inflates a song's "used N times this year" total by more than one.
 pub fn recompute_usage(root: &Path, today: &str, device: &str, now: &str) -> std::io::Result<()> {
     let services = services::list(root)?;
     let one_year_ago = NaiveDate::parse_from_str(today, "%Y-%m-%d")
@@ -54,12 +60,20 @@ pub fn recompute_usage(root: &Path, today: &str, device: &str, now: &str) -> std
     let mut uses_past_year: HashMap<String, u32> = HashMap::new();
 
     for service in &services {
-        for item in &service.items {
-            let ServiceItemContent::Song { song_id, .. } = &item.content else {
-                continue;
-            };
+        if service.date.as_str() > today {
+            continue;
+        }
+        let song_ids_in_service: HashSet<&str> = service
+            .items
+            .iter()
+            .filter_map(|item| match &item.content {
+                ServiceItemContent::Song { song_id, .. } => Some(song_id.as_str()),
+                _ => None,
+            })
+            .collect();
+        for song_id in song_ids_in_service {
             let entry = last_used_at
-                .entry(song_id.clone())
+                .entry(song_id.to_string())
                 .or_insert_with(|| service.date.clone());
             if service.date > *entry {
                 *entry = service.date.clone();
@@ -68,7 +82,7 @@ pub fn recompute_usage(root: &Path, today: &str, device: &str, now: &str) -> std
                 .as_deref()
                 .is_none_or(|cutoff| service.date.as_str() >= cutoff)
             {
-                *uses_past_year.entry(song_id.clone()).or_insert(0) += 1;
+                *uses_past_year.entry(song_id.to_string()).or_insert(0) += 1;
             }
         }
     }
@@ -321,5 +335,43 @@ mod tests {
 
         let updated = get(dir.path(), "song-1").unwrap().unwrap();
         assert_eq!(updated.usage.uses_past_year, 2);
+    }
+
+    #[test]
+    fn recompute_usage_ignores_a_service_dated_after_today() {
+        let dir = tempfile::tempdir().unwrap();
+        save(dir.path(), sample_song("song-1"), "d", "now").unwrap();
+        // Planned for next month — hasn't happened yet as of "today" below.
+        services::save(
+            dir.path(),
+            sample_service("svc-1", "2026-08-15", "song-1"),
+            "d",
+            "now",
+        )
+        .unwrap();
+
+        recompute_usage(dir.path(), "2026-07-28", "d", "recompute-time").unwrap();
+
+        let updated = get(dir.path(), "song-1").unwrap().unwrap();
+        assert_eq!(updated.usage.last_used_at, None);
+        assert_eq!(updated.usage.uses_past_year, 0);
+    }
+
+    #[test]
+    fn recompute_usage_counts_the_same_song_used_twice_in_one_service_only_once() {
+        let dir = tempfile::tempdir().unwrap();
+        save(dir.path(), sample_song("song-1"), "d", "now").unwrap();
+        let mut service = sample_service("svc-1", "2026-07-01", "song-1");
+        // The same song reprised as a second item within the same service (e.g. opening and
+        // closing) — should still only count as one use of that song for the week.
+        let mut second_item = service.items[0].clone();
+        second_item.id = "item-song-1-again".to_string();
+        service.items.push(second_item);
+        services::save(dir.path(), service, "d", "now").unwrap();
+
+        recompute_usage(dir.path(), "2026-07-28", "d", "recompute-time").unwrap();
+
+        let updated = get(dir.path(), "song-1").unwrap().unwrap();
+        assert_eq!(updated.usage.uses_past_year, 1);
     }
 }

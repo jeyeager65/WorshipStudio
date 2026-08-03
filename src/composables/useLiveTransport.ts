@@ -219,15 +219,18 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
       text: slide.text,
       presentationTheme: buildPresentationTheme(slide),
       scene: slide.scene,
+      serviceDateTime: slide.serviceDateTime,
       wayfindingBooks: slide.wayfindingBooks,
       bibleProgress: slide.bibleProgress,
       media:
         mediaUrl && slide.mediaId && slide.mediaKind && slide.mediaFit
           ? { url: mediaUrl, mediaId: slide.mediaId, kind: slide.mediaKind, fit: slide.mediaFit }
           : undefined,
-      countdown: slide.countdown,
       fontRange: slide.fontRange,
       lineWrap: slide.lineWrap,
+      footerText: slide.footerText,
+      repeatLabel: slide.repeatLabel,
+      outlineTitle: slide.outlineTitle,
       headerFontSizePx: settingsStore.librarySettings?.slideHeaderFontSizePx,
       footerFontSizePx: settingsStore.librarySettings?.slideFooterFontSizePx,
       wayfindingMinFontSizePx: settingsStore.librarySettings?.wayfindingMinFontSizePx,

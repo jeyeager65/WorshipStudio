@@ -68,10 +68,6 @@ function itemIcon(item: ServiceItem): string {
       return 'mdi-volume-high'
     case 'external-app':
       return 'mdi-application'
-    case 'countdown':
-      return 'mdi-timer-outline'
-    case 'qr':
-      return 'mdi-qrcode'
     case 'sermon':
       return 'mdi-account-voice'
     case 'bulletin-note':
@@ -182,8 +178,11 @@ async function removeServiceItem(index: number) {
             style="cursor: grab"
           />
           <div class="flex-grow-1" style="min-width: 0">
-            <div :class="{ 'font-italic': item.type === 'placeholder' }">
-              {{ serviceOrderPrimaryLabel(item) }}
+            <div class="service-item-title-row">
+              <span class="service-item-title" :class="{ 'font-italic': item.type === 'placeholder' }">
+                {{ serviceOrderPrimaryLabel(item) }}
+              </span>
+              <span v-if="itemHasLive(index)" class="service-item-live-badge"><i />Live</span>
             </div>
             <div v-if="serviceOrderSecondaryLabel(item)" class="text-caption text-medium-emphasis">
               {{ serviceOrderSecondaryLabel(item) }}
@@ -208,8 +207,11 @@ async function removeServiceItem(index: number) {
             <v-icon :icon="itemIcon(item)" size="17" />
           </span>
           <div class="flex-grow-1" style="min-width: 0">
-            <div class="service-item-title" :class="{ 'font-italic': item.type === 'placeholder' }">
-              {{ serviceOrderPrimaryLabel(item) }}
+            <div class="service-item-title-row">
+              <span class="service-item-title" :class="{ 'font-italic': item.type === 'placeholder' }">
+                {{ serviceOrderPrimaryLabel(item) }}
+              </span>
+              <span v-if="itemHasLive(index)" class="service-item-live-badge"><i />Live</span>
             </div>
             <div v-if="serviceOrderSecondaryLabel(item)" class="text-caption text-medium-emphasis">
               {{ serviceOrderSecondaryLabel(item) }}
@@ -367,18 +369,25 @@ async function removeServiceItem(index: number) {
   border-color: rgba(var(--v-theme-primary), 0.25);
   background: rgba(var(--v-theme-primary), 0.08);
 }
+/* A full-perimeter border + ring (not just a thin left accent) so "selected" reads as a
+   genuinely focused card at a glance, distinct from "live" below rather than a subtly
+   different shade of the same thin line. */
 .service-item--selected {
-  border-color: rgba(var(--v-theme-primary), 0.42);
+  border-color: rgb(var(--v-theme-primary));
   background: rgba(var(--v-theme-primary), 0.14);
-  box-shadow: inset 3px 0 rgb(var(--v-theme-primary));
+  box-shadow: 0 0 0 1px rgb(var(--v-theme-primary));
 }
+/* A thick left border (not an inset shadow) plus the "Live" badge in the title row — live is
+   the single most important state here, so it gets the most visually distinct treatment. */
 .service-item--live {
-  box-shadow: inset 3px 0 rgb(var(--v-theme-error));
+  padding-left: 4px;
+  border-color: rgba(var(--v-theme-error), 0.5);
+  border-left: 4px solid rgb(var(--v-theme-error));
+  background: rgba(var(--v-theme-error), 0.07);
 }
 .service-item--selected.service-item--live {
-  box-shadow:
-    inset 3px 0 rgb(var(--v-theme-error)),
-    inset 0 0 0 1px rgba(var(--v-theme-primary), 0.2);
+  border-color: rgb(var(--v-theme-error));
+  box-shadow: 0 0 0 1px rgb(var(--v-theme-error));
 }
 .service-item-index {
   width: 16px;
@@ -397,13 +406,43 @@ async function removeServiceItem(index: number) {
   border-radius: 6px;
   background: color-mix(in srgb, currentColor 16%, transparent);
 }
+.service-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
 .service-item-title {
   overflow: hidden;
+  flex: 1 1 auto;
+  min-width: 0;
   color: rgba(var(--v-theme-on-surface), 0.94);
   font-weight: 600;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.service-item-live-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border: 1px solid rgba(var(--v-theme-error), 0.25);
+  border-radius: 5px;
+  background: rgba(var(--v-theme-error), 0.12);
+  color: rgb(var(--v-theme-error));
+  font-size: 0.6rem;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.service-item-live-badge i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 2px rgba(var(--v-theme-error), 0.15);
 }
 .row-remove {
   opacity: 0;

@@ -76,27 +76,32 @@ export function createTauriAdapter(): StudioAdapter {
     height: number
   }
 
+  // Shared by computePresentationBounds and the External App Hand-off launch below — both need
+  // "which monitor is Audience", just converted to different pixel spaces afterward (see each
+  // caller). Presentation only runs on a distinct monitor explicitly assigned as Audience.
+  // Guessing from monitor order risks putting private operator content on the projector after
+  // Windows renumbers displays, and the old single-monitor split was not useful to a
+  // congregation.
+  async function findAssignedAudienceMonitor() {
+    const monitors = await availableMonitors()
+    if (monitors.length <= 1) return undefined
+    const [machineSettings, operatorMonitor] = await Promise.all([
+      invoke<MachineSettings>('get_machine_settings'),
+      currentMonitor(),
+    ])
+    return monitors.find(
+      (m, i) =>
+        !isSameMonitor(m, operatorMonitor) &&
+        machineSettings.displayRoles[monitorId(m, i)] === 'audience',
+    )
+  }
+
   // Shared by openPresentationWindow (the real thing) and getPresentationSize (the operator's
   // Previous/Current/Next preview thumbnails, which need the exact same size to make the same
   // auto-fit sizing/wrapping decisions the real presentation window would) — computed once
   // here so the two can never drift apart into two different answers for "how big is it".
   async function computePresentationBounds(): Promise<PresentationBounds | undefined> {
-    const monitors = await availableMonitors()
-
-    if (monitors.length <= 1) return undefined
-
-    // Presentation only runs on a distinct monitor explicitly assigned as Audience. Guessing
-    // from monitor order risks putting private operator content on the projector after Windows
-    // renumbers displays, and the old single-monitor split was not useful to a congregation.
-    const [machineSettings, operatorMonitor] = await Promise.all([
-      invoke<MachineSettings>('get_machine_settings'),
-      currentMonitor(),
-    ])
-    const assignedAudience = monitors.find(
-      (m, i) =>
-        !isSameMonitor(m, operatorMonitor) &&
-        machineSettings.displayRoles[monitorId(m, i)] === 'audience',
-    )
+    const assignedAudience = await findAssignedAudienceMonitor()
     if (!assignedAudience) return undefined
     // Presentation uses the monitor's complete bounds, not its work area. The work area omits
     // reserved desktop UI such as the Windows taskbar, which both made the audience output short
@@ -108,6 +113,22 @@ export function createTauriAdapter(): StudioAdapter {
       y: monitorPosition.y,
       width: monitorSize.width,
       height: monitorSize.height,
+    }
+  }
+
+  // External App Hand-off's window positioning goes through raw Win32 SetWindowPos (see
+  // src-tauri/src/domain/win32.rs), which works in *physical* pixels — unlike
+  // computePresentationBounds above (used only to create Tauri's own WebviewWindow, whose x/y/
+  // width/height are logical), this deliberately skips the .toLogical() conversion.
+  async function computeAudienceMonitorPhysicalBounds(): Promise<WindowPosition | undefined> {
+    const assignedAudience = await findAssignedAudienceMonitor()
+    if (!assignedAudience) return undefined
+    return {
+      monitorId: assignedAudience.name ?? 'audience',
+      x: assignedAudience.position.x,
+      y: assignedAudience.position.y,
+      width: assignedAudience.size.width,
+      height: assignedAudience.size.height,
     }
   }
 
@@ -168,7 +189,7 @@ export function createTauriAdapter(): StudioAdapter {
       await identifyWindow.close()
       identifyWindow = undefined
     }
-    const label = monitor.name ?? `Display ${index + 1}`
+    const label = friendlyDisplayName(monitor.name, index)
     const thisWindow = new WebviewWindow('identify', {
       // A real query string, not a `#/...` hash fragment — the app uses createWebHistory
       // (path-based) routing, so a hash here would be inert. Read the same way the
@@ -235,6 +256,7 @@ export function createTauriAdapter(): StudioAdapter {
       get: (id) => invoke<SlideLibraryItem | undefined>('get_slide', { id }),
       save: (item) => invoke('save_slide', { item }),
       delete: (id) => invoke('delete_slide', { id }),
+      generateQrCode: (content) => invoke<string>('generate_qr_code', { content }),
     },
     media: {
       list: () => invoke<MediaItem[]>('list_media'),
@@ -372,10 +394,21 @@ export function createTauriAdapter(): StudioAdapter {
         const selection = await open({ title: 'Select File' })
         return typeof selection === 'string' ? selection : undefined
       },
-      launch: (profileId, file) => invoke('launch_external_app', { profileId, file }),
+      // Always fills the configured Audience display, full screen — computed fresh from the
+      // current monitor layout on every launch. There's no per-profile position to fall back
+      // to, so a missing Audience display is a hard error here rather than a silent no-op —
+      // same reasoning as openPresentationWindow's identical check above.
+      launch: async (profileId, file) => {
+        const audienceBounds = await computeAudienceMonitorPhysicalBounds()
+        if (!audienceBounds) throw new Error('No configured audience display is available.')
+        return invoke('launch_external_app', { profileId, file, audienceBounds })
+      },
+      // Deliberately doesn't need an audience-bounds check the way launch does — this never
+      // positions or shows the window, just gets it running quietly in the background.
+      prelaunch: (profileId, file) => invoke('prelaunch_external_app', { profileId, file }),
       restoreSelf: () => invoke('restore_self'),
-      testLaunch: (profileId) => invoke('test_launch_external_app', { profileId }),
-      captureWindowPosition: () => invoke<WindowPosition>('capture_external_app_window_position'),
+      closeCurrent: () => invoke('close_current_external_app'),
+      closeAll: () => invoke('close_all_external_apps'),
       verifyItem: (profileId, file) => invoke('verify_external_app_item', { profileId, file }),
       sendKeystroke: (profileId, direction) =>
         invoke('send_external_app_keystroke', { profileId, direction }),

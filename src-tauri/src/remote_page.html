@@ -78,7 +78,6 @@
   .mirror-text { font-size: clamp(14px, 4vw, 26px); font-weight: 600; line-height: 1.3; white-space: pre-line; }
   .mirror-theme-background { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; }
   .mirror-theme-foreground { position: relative; z-index: 1; }
-  .mirror-countdown { font-size: clamp(28px, 10vw, 56px); font-weight: 700; font-variant-numeric: tabular-nums; }
   .wayfinding-content { display: flex; flex-direction: column; align-items: center; gap: 4px; }
   .wayfinding-book { font-weight: 600; letter-spacing: 0.03em; }
   .wayfinding-reference { font-size: clamp(20px, 6vw, 40px); font-weight: 700; margin: 6px 0; }
@@ -173,30 +172,11 @@
     document.getElementById('next-btn').addEventListener('click', () => postAction('next'));
     document.getElementById('present-btn').addEventListener('click', () => postAction('toggle-presenting'));
 
-    // Countdown items tick locally every second (spec section 1), independent of the ~1.2s
-    // state poll below — same reasoning as the operator app's own separate ticking clock.
-    let countdownTarget = null;
-    function formatCountdown(targetTime, now) {
-      const target = new Date(targetTime);
-      const totalSeconds = Math.max(0, Math.floor((target.getTime() - now.getTime()) / 1000));
-      const hours = Math.floor(totalSeconds / 3600);
-      const minutes = Math.floor((totalSeconds % 3600) / 60);
-      const seconds = totalSeconds % 60;
-      const pad = (n) => String(n).padStart(2, '0');
-      return hours > 0 ? `${pad(hours)}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`;
-    }
-    setInterval(() => {
-      if (!countdownTarget) return;
-      const el = document.getElementById('mirror-countdown');
-      if (el) el.textContent = formatCountdown(countdownTarget, new Date());
-    }, 1000);
-
-    // Mirrors PresentationView.vue's own rendering branches (wayfinding / media / countdown /
-    // plain text) — this is a separate, vanilla-JS implementation (no build step for a page
-    // served straight from Rust), not a shared component with the Vue app.
+    // Mirrors PresentationView.vue's own rendering branches (wayfinding / media / plain text) —
+    // this is a separate, vanilla-JS implementation (no build step for a page served straight
+    // from Rust), not a shared component with the Vue app.
     function renderMirror(isPresenting, content) {
       const mirror = document.getElementById('mirror');
-      countdownTarget = null;
       mirror.style.backgroundColor = '#000000';
       mirror.style.color = '#ffffff';
       mirror.style.fontFamily = '';
@@ -238,12 +218,6 @@
         // Muted: mobile browsers block non-muted autoplay, and this is a visual mirror, not
         // an audio source — the room's own sound system already carries the real audio.
         mirror.innerHTML = `<video src="/api/media/${encodeURIComponent(content.media.mediaId)}" autoplay muted playsinline loop></video>`;
-        return;
-      }
-      if (content.countdown) {
-        const label = content.countdown.text ? `<div class="mirror-label">${escapeHtml(content.countdown.text)}</div>` : '';
-        mirror.innerHTML = `${label}<div class="mirror-countdown" id="mirror-countdown">${formatCountdown(content.countdown.targetTime, new Date())}</div>`;
-        countdownTarget = content.countdown.targetTime;
         return;
       }
       const sub = content.subLabel ? ` — ${escapeHtml(content.subLabel)}` : '';

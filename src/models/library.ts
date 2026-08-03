@@ -69,7 +69,48 @@ export interface SlideShapeElement extends SlideElementBase {
   cornerRadius?: number
 }
 
-export type SlideElement = SlideTextElement | SlideImageElement | SlideShapeElement
+/** A QR code encoding either a plain URL or a WiFi network's join details (the standard
+ *  `WIFI:T:...;S:...;P:...;;` format phones already recognize when scanning) — the actual PNG
+ *  is generated on demand from `content` (see the Rust `qr_data_url` command, the same one the
+ *  Remote Control pairing flow already uses), not stored as image data on the element itself. */
+export interface SlideQrElement extends SlideElementBase {
+  type: 'qr'
+  content:
+    | { kind: 'url'; url: string }
+    | { kind: 'wifi'; ssid: string; password?: string; encryption: 'WPA' | 'WEP' | 'nopass' }
+}
+
+/** A live-computed countdown, rendered like a text element but with the displayed value always
+ *  derived rather than typed. 'service' targets whichever service this slide ends up presented
+ *  in (resolved at render time from that service's own date/time — see flattenService.ts's
+ *  serviceDateTime — so the same reusable Library Slide works unmodified across every service it's
+ *  added to); 'custom' targets a fixed date/time baked into the element itself; 'days' counts
+ *  whole days remaining until a target calendar day rather than ticking a clock (e.g. "12 Days
+ *  Until Vacation Bible School"). */
+export interface SlideCountdownElement extends SlideElementBase {
+  type: 'countdown'
+  mode: 'service' | 'custom' | 'days'
+  /** 'custom' mode only — the fixed target date/time (ISO string). */
+  targetTime?: string
+  /** 'days' mode only — the target calendar day (YYYY-MM-DD, no time-of-day). */
+  targetDate?: string
+  /** Optional caption shown above the countdown value, e.g. "Vacation Bible School" or "Join us at 10:15!". */
+  label?: string
+  style: {
+    fontFamily: string
+    fontSize: number
+    fontWeight: number
+    color: string
+    textAlign: 'left' | 'center' | 'right'
+  }
+}
+
+export type SlideElement =
+  | SlideTextElement
+  | SlideImageElement
+  | SlideShapeElement
+  | SlideQrElement
+  | SlideCountdownElement
 
 export interface LibrarySlide {
   id: string
