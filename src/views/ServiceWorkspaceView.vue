@@ -11,9 +11,12 @@ import ServiceDetailsDialog from '@/components/service-workspace/ServiceDetailsD
 import ReadinessDialog from '@/components/service-workspace/ReadinessDialog.vue'
 import LiveTransportBar from '@/components/service-workspace/LiveTransportBar.vue'
 import AudiencePresentationDialog from '@/components/service-workspace/AudiencePresentationDialog.vue'
-import ScriptureReferencePicker, {
-  type ScriptureReferenceValue,
-} from '@/components/ScriptureReferencePicker.vue'
+import AddServiceItemDialog, {
+  type AddItemType,
+} from '@/components/service-workspace/AddServiceItemDialog.vue'
+import ServiceOrderList from '@/components/service-workspace/ServiceOrderList.vue'
+import PropertyInspector from '@/components/service-workspace/PropertyInspector.vue'
+import type { ScriptureReferenceValue } from '@/components/ScriptureReferencePicker.vue'
 import { getAdapter } from '@/adapters'
 import { useServicesStore } from '@/stores/services'
 import { useSongsStore } from '@/stores/songs'
@@ -34,33 +37,21 @@ import { formatCountdown } from '@/utils/countdown'
 import { formatServiceTime } from '@/utils/serviceTime'
 import { errorMessage as asyncErrorMessage } from '@/composables/useAsyncStoreState'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
+import { useExternalAppHandoff } from '@/composables/useExternalAppHandoff'
+import { useLiveTransport } from '@/composables/useLiveTransport'
 import { evaluateServiceReadiness, type ReadinessIssue } from '@/utils/serviceReadiness'
-import type { Service, ServiceItem, SermonPassage } from '@/models/service'
+import type { Service, ServiceItem } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
-import type {
-  SlideLibraryItem,
-  MediaItem,
-  LibrarySlide,
-  PresentationThemeTarget,
-} from '@/models/library'
+import type { LibrarySlide, PresentationThemeTarget } from '@/models/library'
 import { personDisplayName, personFormalName } from '@/models/library'
 import { scenePlainText } from '@/utils/slideScene'
-import { presentationTextEffect } from '@/utils/presentationTextEffect'
 import {
   isPresentationThemeAvailableFor,
   isPresentationThemeDefaultFor,
   presentationThemeTargetForItem,
   resolvePresentationTheme,
 } from '@/utils/presentationTheme'
-import { resolvePresentationFontFamily } from '@/utils/presentationFonts'
-import type {
-  ScripturePassage,
-  ScriptureTranslation,
-  LiveSlideContent,
-  LivePresentationTheme,
-  RemoteCommand,
-  DisplayInfo,
-} from '@/adapters/types'
+import type { ScripturePassage, ScriptureTranslation } from '@/adapters/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -82,29 +73,6 @@ const workspaceLoading = ref(true)
 const workspaceLoadError = ref('')
 const documentHistory = useDocumentHistory(service, 'service')
 const selectedItemIndex = ref(0)
-/** -1 = nothing live yet; equal to flatSlides.length = live but past the last slide (blank). */
-const flatIndex = ref(-1)
-const backgroundOnly = ref(false)
-const indexBeforeBlank = ref(-1)
-
-// Off by default — accidental drags while just browsing/clicking the Service Order list would
-// be far more disruptive here than useful, so reordering is opt-in via the toggle next to the
-// header rather than always-on.
-const reorderMode = ref(false)
-// selectedItemIndex is a raw array position, not an id — capture the selected item's own id
-// before a drag starts so it can be re-found by id afterward, otherwise the "selected" item
-// would silently become whatever ended up at that same index once the drag reshuffles the array.
-const draggingItemId = ref<string>()
-function onReorderStart() {
-  draggingItemId.value = selectedItem.value?.id
-}
-function onReorderEnd() {
-  if (service.value && draggingItemId.value) {
-    const newIndex = service.value.items.findIndex((i) => i.id === draggingItemId.value)
-    if (newIndex !== -1) selectedItemIndex.value = newIndex
-  }
-  draggingItemId.value = undefined
-}
 
 const serviceDetailsDialogOpen = ref(false)
 
@@ -137,7 +105,6 @@ const serviceSubtitle = computed(() => {
 })
 
 const addDialogOpen = ref(false)
-const addQuery = ref('')
 
 // A rejected Tauri invoke() surfaces its Rust Err(String) payload as a plain JS string, not an
 // Error instance — `e instanceof Error` is always false for it, silently discarding the real
@@ -233,8 +200,6 @@ async function updateSermonPassageDisplayMode(
 // otherwise-synchronous walk — resolved once up front instead, same pattern as scripture above.
 const mediaUrlById = reactive(new Map<string, string>())
 const mediaErrors = reactive(new Map<string, string>())
-const verifiedExternalAppItemIds = reactive(new Set<string>())
-const externalAppReadinessErrors = reactive(new Map<string, string>())
 
 async function resolveMediaItem(mediaId: string) {
   if (mediaUrlById.has(mediaId) || !getAdapter().media.getFilePath) return
@@ -247,43 +212,6 @@ async function resolveMediaItem(mediaId: string) {
   }
 }
 
-async function verifyExternalAppReadiness(item: ServiceItem) {
-  const verifyItem = getAdapter().externalApps?.verifyItem
-  if (item.type !== 'external-app' || !verifyItem) return
-  const profileId = item.profileId
-  const file = item.file
-  verifiedExternalAppItemIds.delete(item.id)
-  externalAppReadinessErrors.delete(item.id)
-  try {
-    await verifyItem(profileId, file)
-    const current = service.value?.items.find((candidate) => candidate.id === item.id)
-    if (
-      current?.type !== 'external-app' ||
-      current.profileId !== profileId ||
-      current.file !== file
-    )
-      return
-    verifiedExternalAppItemIds.add(item.id)
-  } catch (error) {
-    const current = service.value?.items.find((candidate) => candidate.id === item.id)
-    if (
-      current?.type !== 'external-app' ||
-      current.profileId !== profileId ||
-      current.file !== file
-    )
-      return
-    externalAppReadinessErrors.set(
-      item.id,
-      errorMessage(error, 'The external application could not be verified.'),
-    )
-  }
-}
-
-// `watch` called after an `await` (inside onMounted's async callback) runs outside Vue's
-// synchronous component-setup tracking, so it isn't auto-stopped on unmount — stopping it
-// explicitly is what actually scopes it to this view's lifetime rather than leaking forever.
-let unlistenRemoteCommand: (() => void) | undefined
-
 // A live-ticking clock for Countdown items' operator-side preview (spec section 1) — the
 // presentation window ticks its own independently, since it's a separate window/component.
 const nowTick = ref(new Date())
@@ -291,11 +219,6 @@ let nowTickInterval: ReturnType<typeof setInterval> | undefined
 
 onMounted(async () => {
   nowTickInterval = setInterval(() => (nowTick.value = new Date()), 1000)
-  if (typeof ResizeObserver !== 'undefined') {
-    previewResizeObserver = new ResizeObserver(([entry]) => {
-      if (entry) previewThumbWidth.value = Math.max(240, Math.floor(entry.contentRect.width - 32))
-    })
-  }
   if (!songsStore.loaded) await songsStore.load()
   if (!slidesStore.loaded) await slidesStore.load()
   if (!mediaStore.loaded) await mediaStore.load()
@@ -316,7 +239,6 @@ onMounted(async () => {
     workspaceLoading.value = false
     return
   }
-  await loadPresentationSize()
   // A just-created service arrives via the store instead of disk — see CreateServiceView —
   // so it's never persisted until Save is actually pressed.
   const isDraft = servicesStore.draftService?.id === route.params.id
@@ -338,9 +260,7 @@ onMounted(async () => {
     return
   }
   await nextTick()
-  if (previewPanelRef.value) previewResizeObserver?.observe(previewPanelRef.value)
-  window.addEventListener('keydown', onKeydown)
-  window.addEventListener('focus', loadPresentationSize)
+  observePreviewPanel()
   // A freshly created service is inherently unsaved — starting dirty (rather than false, as
   // for an existing service) enables the Save button and the router guard's
   // leave-without-saving warning immediately, so it's never silently lost with no way to
@@ -352,15 +272,6 @@ onMounted(async () => {
   // The Save button itself lives in the persistent app bar (App.vue), not a per-page
   // toolbar that would scroll out of view — this view just supplies the action.
   saveHandler.value = saveService
-  // Remote Control (spec section 4): a paired phone's button press arrives here the same
-  // way the presentation window receives slide changes — as a Tauri event, not a direct
-  // function call, since the HTTP server lives entirely on the Rust side.
-  unlistenRemoteCommand = await getAdapter().remote?.onCommand((command: RemoteCommand) => {
-    if (command.action === 'next') next()
-    else if (command.action === 'previous') previous()
-    else if (command.action === 'goto' && command.index !== undefined) goLive(command.index)
-    else if (command.action === 'toggle-presenting') togglePresenting()
-  })
 
   // Scripture resolution isn't wired to a real command on the native Tauri backend yet
   // (README's adapter-status note) — best-effort and last, so a rejected invoke() here can
@@ -401,18 +312,7 @@ function reloadWorkspace() {
 }
 onUnmounted(() => {
   clearInterval(nowTickInterval)
-  window.removeEventListener('keydown', onKeydown)
-  window.removeEventListener('focus', loadPresentationSize)
-  // Safety net: the router guard (router/index.ts) is what normally prevents leaving while
-  // presenting, but if this view ever unmounts some other way, don't leave the app
-  // permanently believing a torn-down workspace is still live — or a presentation window
-  // open with nothing left able to close it.
-  if (isPresenting.value) getAdapter().live.stopPresenting()
-  if (externalAppActiveKey.value) getAdapter().externalApps?.restoreSelf()
-  isPresenting.value = false
   documentHistory.stop()
-  unlistenRemoteCommand?.()
-  previewResizeObserver?.disconnect()
   isDirty.value = false
   saveHandler.value = undefined
 })
@@ -455,7 +355,7 @@ const readiness = computed(() =>
         mediaAvailabilityChecked: !!getAdapter().media.getFilePath,
         verifiedExternalAppItemIds: new Set(verifiedExternalAppItemIds),
         externalAppErrors: new Map(externalAppReadinessErrors),
-        externalAppVerificationAvailable: !!getAdapter().externalApps?.verifyItem,
+        externalAppVerificationAvailable: externalAppVerificationAvailable.value,
         libraryConflictLabels: new Map(
           syncStore.conflicts.map((conflict) => [
             `${conflict.kind}:${conflict.id}`,
@@ -521,26 +421,6 @@ watch(
   },
   { immediate: true },
 )
-const externalAppReadinessItems = computed(() =>
-  (service.value?.items ?? [])
-    .filter((item) => item.type === 'external-app')
-    .map((item) => ({ ...item })),
-)
-watch(
-  externalAppReadinessItems,
-  (items) => {
-    const activeIds = new Set(items.map((item) => item.id))
-    for (const id of verifiedExternalAppItemIds) {
-      if (!activeIds.has(id)) verifiedExternalAppItemIds.delete(id)
-    }
-    for (const id of externalAppReadinessErrors.keys()) {
-      if (!activeIds.has(id)) externalAppReadinessErrors.delete(id)
-    }
-    for (const item of items) void verifyExternalAppReadiness(item)
-  },
-  { immediate: true },
-)
-
 async function openReadinessIssue(issue: ReadinessIssue) {
   if (issue.action === 'display') {
     readinessDialogOpen.value = false
@@ -722,41 +602,9 @@ const selectedScriptureError = computed<string | undefined>(() => {
   return item?.type === 'scripture' ? scriptureErrors.get(item.id) : undefined
 })
 
-function itemIcon(item: ServiceItem): string {
-  switch (item.type) {
-    case 'song':
-      return 'mdi-music-note'
-    case 'scripture':
-      return 'mdi-book-open-page-variant'
-    case 'text-slide':
-    case 'slide-ref':
-      return 'mdi-file-document-outline'
-    case 'media':
-      return 'mdi-image'
-    case 'video':
-      return 'mdi-movie-open'
-    case 'audio':
-      return 'mdi-volume-high'
-    case 'external-app':
-      return 'mdi-application'
-    case 'countdown':
-      return 'mdi-timer-outline'
-    case 'qr':
-      return 'mdi-qrcode'
-    case 'sermon':
-      return 'mdi-account-voice'
-    case 'bulletin-note':
-      return 'mdi-note-text-outline'
-    case 'placeholder':
-      return 'mdi-help-rhombus-outline'
-    default:
-      return 'mdi-file'
-  }
-}
-
 // The Service Order list's icon is the same generic "?" for every placeholder regardless of
-// what kind of content it wants (see itemIcon) — this is what actually distinguishes them at a
-// glance in that list when the template didn't give this slot its own bulletin heading.
+// what kind of content it wants — this is what actually distinguishes them at a glance in that
+// list when the template didn't give this slot its own bulletin heading.
 const PLACEHOLDER_TYPE_NAMES: Record<string, string> = {
   songs: 'Song',
   scripture: 'Scripture',
@@ -766,24 +614,6 @@ const PLACEHOLDER_TYPE_NAMES: Record<string, string> = {
 }
 function placeholderTypeName(suggestedTab: string | undefined): string {
   return PLACEHOLDER_TYPE_NAMES[suggestedTab ?? ''] ?? 'Item'
-}
-
-// sermon/bulletin-note/placeholder already resolve bulletinLabel as their own itemLabel() —
-// showing it again as a distinct first line would just repeat the exact same text.
-const BULLETIN_LABEL_DRIVEN_TYPES = new Set(['sermon', 'bulletin-note', 'placeholder'])
-
-// For every other item type, an explicit bulletinLabel override takes the first line (with
-// the item's own default content — song title, scripture reference, etc. — moved to the
-// second line below), same as sermon/bulletin-note already prioritize it as their whole label.
-function serviceOrderPrimaryLabel(item: ServiceItem): string {
-  if (item.bulletinLabel && !BULLETIN_LABEL_DRIVEN_TYPES.has(item.type)) return item.bulletinLabel
-  return itemLabel(item)
-}
-
-function serviceOrderSecondaryLabel(item: ServiceItem): string | undefined {
-  if (item.type === 'sermon') return sermonMainReference(item) || undefined
-  if (item.bulletinLabel && !BULLETIN_LABEL_DRIVEN_TYPES.has(item.type)) return itemLabel(item)
-  return undefined
 }
 
 function itemLabel(item: ServiceItem): string {
@@ -807,18 +637,6 @@ function itemLabel(item: ServiceItem): string {
 
 function itemColor(item: ServiceItem): string {
   return colorForItemType(item.type)
-}
-
-async function removeServiceItem(index: number) {
-  if (!service.value) return
-  const target = service.value.items[index]
-  if (!target) return
-  const label = itemLabel(target)
-  if (!(await confirmDialog.confirm(`Remove "${label}" from the service?`, 'Remove'))) return
-  service.value.items.splice(index, 1)
-  if (selectedItemIndex.value >= service.value.items.length) {
-    selectedItemIndex.value = Math.max(0, service.value.items.length - 1)
-  }
 }
 
 function blockLabelFor(blockId: string): string {
@@ -862,424 +680,68 @@ function resetArrangementToDefault() {
   item.arrangement.sequence = [...song.defaultArrangement.sequence]
 }
 
-// Live transport — flattened Next/Prev across the whole service (spec section 3).
-function describeSlide(index: number): string {
-  const slide = flatSlides.value[index]
-  if (slide) return `${slide.itemLabel} — ${slide.subLabel}`
-  return flatSlides.value.length === 0 ? 'Service is empty' : 'End of service'
-}
-const nextIndex = computed(() =>
-  flatIndex.value === -1
-    ? 0
-    : Math.min(flatIndex.value + 1, Math.max(flatSlides.value.length - 1, 0)),
-)
-const prevIndex = computed(() => Math.max(flatIndex.value - 1, 0))
-const previousDisabled = computed(() => flatSlides.value.length === 0 || flatIndex.value <= 0)
-const nextDisabled = computed(
-  () => flatSlides.value.length === 0 || flatIndex.value >= flatSlides.value.length - 1,
-)
-const isBlankScreen = computed(
-  () => flatIndex.value >= 0 && flatIndex.value === flatSlides.value.length,
-)
-const nextPreviewLabel = computed(() =>
-  nextDisabled.value ? 'End of service' : describeSlide(nextIndex.value),
-)
-const prevPreviewLabel = computed(() =>
-  previousDisabled.value ? 'Beginning of service' : describeSlide(prevIndex.value),
-)
-
-function goLive(index: number) {
-  flatIndex.value = index
-}
-
-// Basic Remote Controls (spec section 12) — while an External App Hand-off item is live and
-// its profile has this configured, Next/Prev forward a keystroke to the app's own window
-// instead of advancing the service's slide sequence.
-async function tryForwardKeystroke(direction: 'next' | 'previous'): Promise<boolean> {
-  if (!isPresenting.value) return false
-  const externalApp = liveSlide.value?.externalApp
-  if (!externalApp) return false
-  const profile = externalAppProfilesById.value.get(externalApp.profileId)
-  const key = direction === 'next' ? profile?.nextKey : profile?.prevKey
-  if (!profile?.remoteControlsEnabled || !key) return false
-  try {
-    await getAdapter().externalApps?.sendKeystroke(profile.id, direction)
-  } catch (e) {
-    console.error(`Failed to forward ${direction} to the external app:`, e)
-  }
-  return true
-}
-async function next() {
-  if (await tryForwardKeystroke('next')) return
-  if (nextDisabled.value) return
-  flatIndex.value = nextIndex.value
-}
-async function previous() {
-  if (await tryForwardKeystroke('previous')) return
-  if (previousDisabled.value) return
-  flatIndex.value = prevIndex.value
-}
-function toggleBlankScreen() {
-  if (isBlankScreen.value) {
-    flatIndex.value = indexBeforeBlank.value
-    return
-  }
-  indexBeforeBlank.value = flatIndex.value
-  backgroundOnly.value = false
-  flatIndex.value = flatSlides.value.length
-}
-function toggleBackgroundOnly() {
-  if (!liveSlide.value) return
-  backgroundOnly.value = !backgroundOnly.value
-}
-async function togglePresenting() {
-  if (!isPresenting.value) {
-    await loadPresentationSize()
-    if (readiness.value.blockers.length) {
-      readinessDialogOpen.value = true
-      return
-    }
-    if (!audienceDisplayAvailable.value) {
-      await openPresentationDisplayDialog()
-      return
-    }
-    await startPresentation()
-  } else {
-    await getAdapter().live.stopPresenting()
-    isPresenting.value = false
-    getAdapter().remote?.pushLiveState(undefined, false)
-  }
-}
-
-async function startPresentation() {
-  try {
-    if (flatIndex.value === -1 && flatSlides.value.length > 0) flatIndex.value = 0
-    await getAdapter().live.startPresenting()
-    isPresenting.value = true
-    // Explicit send in addition to the watch below — if flatIndex was already at this value
-    // (e.g. the operator had already clicked this slide before pressing Start Presenting),
-    // the watch alone wouldn't fire since liveContentPayload wouldn't actually change.
-    await getAdapter().live.setLiveContent(liveContentPayload.value)
-    getAdapter().remote?.pushLiveState(liveContentPayload.value, true)
-  } catch (e) {
-    console.error('Failed to start presentation:', e)
-    audienceDisplayAvailable.value = false
-    presentationDisplayError.value = errorMessage(
-      e,
-      'The audience display could not be opened. Check the connection and try again.',
-    )
-    await openPresentationDisplayDialog(false)
-  }
-}
-
-const liveSlide = computed(() =>
-  flatIndex.value >= 0 && flatIndex.value < flatSlides.value.length
-    ? flatSlides.value[flatIndex.value]
-    : undefined,
-)
-
-function buildPresentationTheme(slide: FlatSlide): LivePresentationTheme | undefined {
-  const theme = resolvePresentationTheme(
-    service.value?.items[slide.itemIndex],
-    slide.themeTarget,
-    themesStore.themes,
-  )
-  if (!theme) return undefined
-  const branding = settingsStore.librarySettings?.branding
-  let backgroundColor = theme.backgroundColor ?? '#000000'
-  if (theme.backgroundId === 'brand-primary') backgroundColor = branding?.primaryColor ?? '#3B5BDB'
-  else if (theme.backgroundId === 'brand-secondary')
-    backgroundColor = branding?.secondaryColor ?? '#8A5BD6'
-
-  const backgroundMediaItem = theme.backgroundId
-    ? mediaById.value.get(theme.backgroundId)
-    : undefined
-  const backgroundMediaUrl = backgroundMediaItem
-    ? mediaUrlById.get(backgroundMediaItem.id)
-    : undefined
-  return {
-    fontFamily: resolvePresentationFontFamily(theme.font),
-    textColor: theme.textColor,
-    textEffect: presentationTextEffect(theme),
-    backgroundColor,
-    backgroundMedia:
-      backgroundMediaItem && backgroundMediaUrl
-        ? {
-            url: backgroundMediaUrl,
-            mediaId: backgroundMediaItem.id,
-            kind: backgroundMediaItem.kind,
-            fit: 'cover',
-          }
-        : undefined,
-  }
-}
-
-// Shared by the live payload (sent to the presentation window/remote) and the Previous/Next
-// preview thumbnails below — same slide data, same settings, just a different destination.
-function buildLiveContent(slide: FlatSlide | undefined): LiveSlideContent | undefined {
-  if (!slide) return undefined
-  const mediaUrl = slide.mediaId ? mediaUrlById.get(slide.mediaId) : undefined
-  return {
-    itemLabel: slide.itemLabel,
-    subLabel: slide.subLabel,
-    text: slide.text,
-    presentationTheme: buildPresentationTheme(slide),
-    scene: slide.scene,
-    wayfindingBooks: slide.wayfindingBooks,
-    bibleProgress: slide.bibleProgress,
-    media:
-      mediaUrl && slide.mediaId && slide.mediaKind && slide.mediaFit
-        ? { url: mediaUrl, mediaId: slide.mediaId, kind: slide.mediaKind, fit: slide.mediaFit }
-        : undefined,
-    countdown: slide.countdown,
-    fontRange: slide.fontRange,
-    lineWrap: slide.lineWrap,
-    headerFontSizePx: settingsStore.librarySettings?.slideHeaderFontSizePx,
-    footerFontSizePx: settingsStore.librarySettings?.slideFooterFontSizePx,
-    wayfindingMinFontSizePx: settingsStore.librarySettings?.wayfindingMinFontSizePx,
-    wayfindingMaxFontSizePx: settingsStore.librarySettings?.wayfindingMaxFontSizePx,
-  }
-}
-const liveContentPayload = computed<LiveSlideContent | undefined>(() => {
-  const content = buildLiveContent(liveSlide.value)
-  return content ? { ...content, backgroundOnly: backgroundOnly.value } : undefined
+const {
+  flatIndex,
+  liveSlide,
+  isBlankScreen,
+  backgroundOnly,
+  previousDisabled,
+  nextDisabled,
+  prevPreviewLabel,
+  nextPreviewLabel,
+  goLive,
+  next,
+  previous,
+  toggleBlankScreen,
+  toggleBackgroundOnly,
+  togglePresenting,
+  previewSlots,
+  currentSlideLabel,
+  slidePositionLabel,
+  liveContextSnippet,
+  audienceDisplayAvailable,
+  presentationDisplayDialogOpen,
+  presentationDisplays,
+  presentationDisplaysLoading,
+  selectedAudienceDisplayId,
+  presentationDisplayError,
+  loadPresentationSize,
+  refreshPresentationDisplays,
+  openPresentationDisplayDialog,
+  identifyPresentationDisplay,
+  useAudienceDisplayAndStart,
+  PREVIEW_VIRTUAL_SIZE,
+  previewPanelRef,
+  previewThumbWidth,
+  previewThumbHeight,
+  previewScale,
+  observePreviewPanel,
+} = useLiveTransport({
+  service,
+  selectedItemIndex,
+  flatSlides,
+  mediaById,
+  mediaUrlById,
+  themesStore,
+  settingsStore,
+  isPresenting,
+  readiness,
+  readinessDialogOpen,
+  tryForwardKeystroke: (direction) => tryForwardKeystroke(direction),
 })
 
-// Previous/current/next preview thumbnails (right-hand column) — relative to the live
-// position, i.e. exactly what Previous/Next in the footer would move to/from, not whatever's
-// merely selected in the left panel.
-const previousPreview = computed(() => buildLiveContent(flatSlides.value[flatIndex.value - 1]))
-const nextPreview = computed(() => buildLiveContent(flatSlides.value[flatIndex.value + 1]))
-const previewSlots = computed(() => [
-  { label: 'Previous', content: previousPreview.value, live: false },
-  { label: 'Current', content: liveContentPayload.value, live: true },
-  { label: 'Next', content: nextPreview.value, live: false },
-])
+const {
+  externalAppError,
+  verifiedExternalAppItemIds,
+  externalAppReadinessErrors,
+  externalAppVerificationAvailable,
+  retryExternalApp,
+  skipExternalAppError,
+  tryForwardKeystroke,
+} = useExternalAppHandoff(service, liveSlide, isPresenting, externalAppProfilesById)
 
-// The preview thumbnails render SlideContentRenderer at a fixed "virtual" size and visually
-// shrink the whole thing down via CSS transform, so the exact same auto-fit math that runs on
-// the real presentation window decides font sizes/wrapping here too — an absolute px font
-// range (e.g. scripture's 28-72px) would mean almost nothing if computed directly against a
-// box this small. On the booth computer the virtual size is the configured audience display's
-// exact logical size, matching live wrapping. A planning computer without an audience display
-// deliberately falls back to a stable 16:9 approximation; it cannot start presenting locally.
-const DEFAULT_PREVIEW_VIRTUAL_SIZE = { width: 1920, height: 1080 }
-const presentationSize = ref(DEFAULT_PREVIEW_VIRTUAL_SIZE)
-const audienceDisplayAvailable = ref(getAdapter().kind !== 'tauri')
-const presentationDisplayDialogOpen = ref(false)
-const presentationDisplays = ref<DisplayInfo[]>([])
-const presentationDisplaysLoading = ref(false)
-const selectedAudienceDisplayId = ref('')
-const presentationDisplayError = ref('')
-async function loadPresentationSize() {
-  try {
-    const measured = await getAdapter().live.getPresentationSize?.()
-    presentationSize.value = measured ?? DEFAULT_PREVIEW_VIRTUAL_SIZE
-    audienceDisplayAvailable.value = !!measured || getAdapter().kind !== 'tauri'
-  } catch (e) {
-    console.error('Failed to measure the presentation window size:', e)
-    presentationSize.value = DEFAULT_PREVIEW_VIRTUAL_SIZE
-    audienceDisplayAvailable.value = getAdapter().kind !== 'tauri'
-  }
-}
-
-async function refreshPresentationDisplays(clearError = true) {
-  presentationDisplaysLoading.value = true
-  if (clearError) presentationDisplayError.value = ''
-  try {
-    presentationDisplays.value = (await getAdapter().displays?.list()) ?? []
-    const selectable = presentationDisplays.value.filter((display) => display.role !== 'operator')
-    const configured = selectable.find((display) => display.role === 'audience')
-    if (configured) selectedAudienceDisplayId.value = configured.id
-    else if (selectable.length === 1) selectedAudienceDisplayId.value = selectable[0]!.id
-    else if (!selectable.some((display) => display.id === selectedAudienceDisplayId.value))
-      selectedAudienceDisplayId.value = ''
-  } catch (e) {
-    presentationDisplays.value = []
-    presentationDisplayError.value = errorMessage(e, 'Connected displays could not be detected.')
-  } finally {
-    presentationDisplaysLoading.value = false
-  }
-}
-
-async function openPresentationDisplayDialog(clearError = true) {
-  if (clearError) presentationDisplayError.value = ''
-  presentationDisplayDialogOpen.value = true
-  await refreshPresentationDisplays(clearError)
-}
-
-async function identifyPresentationDisplay(displayId: string) {
-  try {
-    await getAdapter().displays?.identify(displayId)
-  } catch (e) {
-    presentationDisplayError.value = errorMessage(e, 'The display could not be identified.')
-  }
-}
-
-async function useAudienceDisplayAndStart() {
-  const selected = presentationDisplays.value.find(
-    (display) => display.id === selectedAudienceDisplayId.value,
-  )
-  if (!selected || selected.role === 'operator' || presentationDisplaysLoading.value) return
-  presentationDisplaysLoading.value = true
-  presentationDisplayError.value = ''
-  try {
-    const roleMap = settingsStore.machineSettings?.displayRoles ?? {}
-    for (const [displayId, role] of Object.entries(roleMap)) {
-      if (role === 'audience' && displayId !== selected.id) {
-        await getAdapter().displays?.assignRole(displayId, 'not-used')
-        roleMap[displayId] = 'not-used'
-      }
-    }
-    await getAdapter().displays?.assignRole(selected.id, 'audience')
-    roleMap[selected.id] = 'audience'
-    await loadPresentationSize()
-    if (!audienceDisplayAvailable.value)
-      throw new Error('The selected display is no longer available.')
-    presentationDisplayDialogOpen.value = false
-    await nextTick()
-    if (readiness.value.blockers.length) {
-      readinessDialogOpen.value = true
-      return
-    }
-    await startPresentation()
-  } catch (e) {
-    presentationDisplayError.value = errorMessage(
-      e,
-      'The audience display could not be configured.',
-    )
-  } finally {
-    presentationDisplaysLoading.value = false
-  }
-}
-const PREVIEW_VIRTUAL_SIZE = computed(() => presentationSize.value)
-const previewPanelRef = ref<HTMLElement>()
-const previewThumbWidth = ref(340)
-let previewResizeObserver: ResizeObserver | undefined
-const previewScale = computed(() => previewThumbWidth.value / PREVIEW_VIRTUAL_SIZE.value.width)
-const previewThumbHeight = computed(() =>
-  Math.round(PREVIEW_VIRTUAL_SIZE.value.height * previewScale.value),
-)
-watch(liveContentPayload, (content) => {
-  if (isPresenting.value) {
-    // While an External App Hand-off item is live, Worship Studio's own presentation window
-    // deliberately shows nothing new — the external app's window is what's actually on the
-    // audience display now (see engageExternalAppIfNeeded below), covering ours by virtue of
-    // being brought to the foreground, positioned over that same monitor.
-    if (!liveSlide.value?.externalApp) getAdapter().live.setLiveContent(content)
-    getAdapter().remote?.pushLiveState(content, true)
-  }
-})
-
-// External App Hand-off (spec section 12): "on advance" launches/focuses the configured app;
-// "on advancing past it" restores Worship Studio to the foreground. Tracked by FlatSlide key
-// (not just profileId) so re-visiting the *same* slide (e.g. navigating back to it) re-engages
-// rather than being treated as a no-op from a stale previous engagement.
-const externalAppActiveKey = ref<string>()
-const externalAppError = ref<string>()
-
-async function engageExternalAppIfNeeded() {
-  const slide = liveSlide.value
-  if (!isPresenting.value || !slide?.externalApp) {
-    if (externalAppActiveKey.value) {
-      externalAppActiveKey.value = undefined
-      externalAppError.value = undefined
-      try {
-        await getAdapter().externalApps?.restoreSelf()
-      } catch (e) {
-        console.error('Failed to restore Worship Studio to the foreground:', e)
-      }
-    }
-    return
-  }
-  if (externalAppActiveKey.value === slide.key) return
-  externalAppActiveKey.value = slide.key
-  externalAppError.value = undefined
-  try {
-    await getAdapter().externalApps?.launch(slide.externalApp.profileId, slide.externalApp.file)
-  } catch (e) {
-    externalAppError.value = errorMessage(e, 'Failed to launch the external app.')
-  }
-}
-watch([liveSlide, isPresenting], engageExternalAppIfNeeded)
-
-async function retryExternalApp() {
-  externalAppActiveKey.value = undefined
-  await engageExternalAppIfNeeded()
-}
-function skipExternalAppError() {
-  // Deliberately doesn't force navigation — the operator moves on with Next/Prev whenever
-  // ready, same "clear failure, operator decides" pattern as section 13's video errors. The
-  // audience display stays on whatever was live before (untouched, since setLiveContent above
-  // is skipped for external-app slides either way).
-  externalAppError.value = undefined
-}
-const currentSlideLabel = computed(() => {
-  if (isBlankScreen.value) return 'Blank Screen'
-  if (!liveSlide.value) return 'No Slide Selected'
-  return `${liveSlide.value.itemLabel} — ${liveSlide.value.subLabel}`
-})
-const slidePositionLabel = computed(() => {
-  if (flatSlides.value.length === 0) return 'No Slides'
-  if (isBlankScreen.value) return 'Screen Blank'
-  if (flatIndex.value < 0) return `${flatSlides.value.length} Slides Ready`
-  return `Slide ${flatIndex.value + 1} of ${flatSlides.value.length}`
-})
-const liveContextSnippet = computed(() => {
-  const firstLine = liveSlide.value?.text.split('\n')[0]
-  return firstLine ? `"${firstLine}"` : ''
-})
-
-function onKeydown(event: KeyboardEvent) {
-  const target = event.target as HTMLElement
-  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable) return
-  if (!service.value) return
-  switch (event.key) {
-    case 'ArrowUp':
-      event.preventDefault()
-      selectedItemIndex.value = Math.max(0, selectedItemIndex.value - 1)
-      break
-    case 'ArrowDown':
-      event.preventDefault()
-      selectedItemIndex.value = Math.min(
-        service.value.items.length - 1,
-        selectedItemIndex.value + 1,
-      )
-      break
-    case 'ArrowLeft':
-      event.preventDefault()
-      previous()
-      break
-    case 'ArrowRight':
-      event.preventDefault()
-      next()
-      break
-    case 'b':
-    case 'B':
-      event.preventDefault()
-      toggleBlankScreen()
-      break
-    case 'g':
-    case 'G':
-      event.preventDefault()
-      toggleBackgroundOnly()
-      break
-  }
-}
-
-// The Add Item menu chooses the item type before opening its focused form. All forms still
-// share one dialog and reset path below, so selecting a type doesn't duplicate any of the
-// existing add behavior or draft state.
-type AddItemType =
-  | 'songs'
-  | 'scripture'
-  | 'slides'
-  | 'media'
-  | 'video'
-  | 'external-app'
-  | 'countdown'
-  | 'sermon'
-  | 'bulletin-note'
+// The Add Item menu chooses the item type before opening AddServiceItemDialog's focused form —
+// selecting a type doesn't duplicate any of the dialog's own add behavior or draft state.
 const addTab = ref<AddItemType>('songs')
 const addTabOptions = computed(() => {
   const options: { title: string; description: string; icon: string; value: AddItemType }[] = [
@@ -1348,422 +810,35 @@ const activeAddTypeTitle = computed(
   () => addTabOptions.value.find((option) => option.value === addTab.value)?.title ?? 'Item',
 )
 
+const addReplaceContext = ref<{ index: number; role?: string; label?: string; note?: string }>()
+
 function openAddDialog(type: AddItemType) {
+  addReplaceContext.value = undefined
   addTab.value = type
   addDialogOpen.value = true
 }
 
-// Set only while filling in a Service Template's placeholder (see beginReplacePlaceholder) —
-// makes every add*ToService function below splice the new item into the placeholder's own
-// slot instead of appending it, since there's no reordering for the top-level item list today.
-const replaceItemIndex = ref<number | null>(null)
-const replaceItemRole = ref<string>()
-const replaceItemLabel = ref<string>()
-const replaceItemNote = ref<string>()
-
-function insertItem(item: ServiceItem) {
-  if (!service.value) return
-  if (replaceItemIndex.value !== null) {
-    if (replaceItemRole.value && !item.role) item.role = replaceItemRole.value
-    if (replaceItemLabel.value && !item.bulletinLabel) item.bulletinLabel = replaceItemLabel.value
-    if (replaceItemNote.value && !item.bulletinNote) item.bulletinNote = replaceItemNote.value
-    service.value.items.splice(replaceItemIndex.value, 1, item)
-    // Deliberately NOT recomputed from length — it already points at the placeholder's slot,
-    // which is exactly where the replacement now lives.
-  } else {
-    service.value.items.push(item)
-    selectedItemIndex.value = service.value.items.length - 1
-  }
-}
-
 function beginReplacePlaceholder(item: ServiceItem, index: number) {
   if (item.type !== 'placeholder') return
-  replaceItemIndex.value = index
-  replaceItemRole.value = item.role
-  replaceItemLabel.value = item.bulletinLabel ?? item.label
-  replaceItemNote.value = item.bulletinNote
-  addTab.value = (item.suggestedTab as typeof addTab.value) ?? 'songs'
+  addReplaceContext.value = {
+    index,
+    role: item.role,
+    label: item.bulletinLabel ?? item.label,
+    note: item.bulletinNote,
+  }
+  addTab.value = (item.suggestedTab as AddItemType) ?? 'songs'
   addDialogOpen.value = true
 }
 
-const filteredSongsForAdd = computed(() => {
-  const q = addQuery.value.trim().toLowerCase()
-  return songsStore.songs.filter((song) => !q || song.title.toLowerCase().includes(q))
-})
-const addingSong = ref(false)
-async function addSongToService(song: Song) {
-  if (!service.value || addingSong.value) return
-  addingSong.value = true
-  try {
-    const item: ServiceItem = {
-      id: `item-${crypto.randomUUID()}`,
-      type: 'song',
-      songId: song.id,
-      arrangement: { sequence: [...song.defaultArrangement.sequence] },
-    }
-    insertItem(item)
-    closeAddDialog()
-  } finally {
-    addingSong.value = false
-  }
-}
-
-// Scripture sub-picker (spec section 2) — the actual entry-mode/fields/display-mode/preview UI
-// lives in ScriptureReferencePicker.vue (shared with the Sermon tab's passages list below,
-// which needs several independent instances of the same picker); this is just the draft value
-// plus the template ref used to read its exposed validity/resolved-passage on submit.
+// Seeded from the church's configured default translation at app load (see onMounted below) —
+// passed into AddServiceItemDialog as a v-model since the dialog both reads it (for the
+// Scripture tab's initial translation) and resets it on close.
 const scriptureDraft = ref<ScriptureReferenceValue>({
   reference: '',
   translation: '',
   displayMode: 'full',
 })
-const scripturePickerRef = ref<InstanceType<typeof ScriptureReferencePicker>>()
-const scripturePickerResetKey = ref(0)
 const scriptureTranslations = ref<ScriptureTranslation[]>([])
-const addingScripture = ref(false)
-
-async function addScriptureToService() {
-  const picker = scripturePickerRef.value
-  if (!service.value || !picker?.isValid || addingScripture.value) return
-  if (
-    scriptureDraft.value.displayMode === 'full' &&
-    (!scriptureDraft.value.translation || picker.hasError)
-  )
-    return
-  addingScripture.value = true
-  try {
-    const item: ServiceItem = {
-      id: `item-${crypto.randomUUID()}`,
-      type: 'scripture',
-      reference: scriptureDraft.value.reference,
-      translation: scriptureDraft.value.translation,
-      displayMode: scriptureDraft.value.displayMode,
-    }
-    insertItem(item)
-    if (picker.resolvedPassage && scriptureDraft.value.displayMode === 'full')
-      scriptureById.set(item.id, picker.resolvedPassage)
-    closeAddDialog()
-  } finally {
-    addingScripture.value = false
-  }
-}
-
-// Slides sub-picker (spec section 1/2): pick an existing library item (whole group
-// inserted in order), or quick-create service-only text slides — same card-based
-// label/text editing as the Slide Library editor, but the result belongs to this service
-// only, never saved as a shared library entry (mirrors a song's per-service arrangement
-// being separate from the library default).
-const slidesSubMode = ref<'pick' | 'new'>('pick')
-const slideQuery = ref('')
-const addingSlideRef = ref(false)
-const newTextSlideBlocks = ref<SongBlock[]>([])
-
-const filteredSlidesForAdd = computed(() => {
-  const q = slideQuery.value.trim().toLowerCase()
-  return slidesStore.slides.filter(
-    (item) =>
-      !q ||
-      item.label.toLowerCase().includes(q) ||
-      (item.tags ?? []).some((tag) => tag.toLowerCase().includes(q)),
-  )
-})
-
-async function addSlideRefToService(slideItem: SlideLibraryItem) {
-  if (!service.value || addingSlideRef.value) return
-  addingSlideRef.value = true
-  try {
-    const item: ServiceItem = {
-      id: `item-${crypto.randomUUID()}`,
-      type: 'slide-ref',
-      slideId: slideItem.id,
-    }
-    insertItem(item)
-    closeAddDialog()
-  } finally {
-    addingSlideRef.value = false
-  }
-}
-
-function addNewTextSlideBlock() {
-  newTextSlideBlocks.value.push({
-    id: `slide-part-${crypto.randomUUID()}`,
-    label: `Slide ${newTextSlideBlocks.value.length + 1}`,
-    text: '',
-  })
-}
-async function removeNewTextSlideBlock(index: number) {
-  const target = newTextSlideBlocks.value[index]
-  if (!target) return
-  if (!(await confirmDialog.confirm(`Remove "${target.label}"?`, 'Remove'))) return
-  newTextSlideBlocks.value.splice(index, 1)
-}
-function addTextSlideToService() {
-  if (!service.value || newTextSlideBlocks.value.length === 0) return
-  const item: ServiceItem = {
-    id: `item-${crypto.randomUUID()}`,
-    type: 'text-slide',
-    slides: newTextSlideBlocks.value.map((block) => ({ ...block })),
-  }
-  insertItem(item)
-  closeAddDialog()
-}
-
-// Media/Video sub-pickers (spec section 3): pick an existing Media Library item, filtered by
-// kind — 'image' backs the `media` item type (with a Cover/Contain fit choice, defaulting to
-// Cover per the live-presentation aspect-ratio spec), 'video' backs the `video` item type.
-const mediaQuery = ref('')
-const videoQuery = ref('')
-const mediaFit = ref<'cover' | 'contain'>('cover')
-const addingMedia = ref(false)
-
-const filteredMediaForAdd = computed(() => {
-  const q = mediaQuery.value.trim().toLowerCase()
-  return mediaStore.items.filter(
-    (item) => item.kind === 'image' && (!q || item.filename.toLowerCase().includes(q)),
-  )
-})
-const filteredVideoForAdd = computed(() => {
-  const q = videoQuery.value.trim().toLowerCase()
-  return mediaStore.items.filter(
-    (item) => item.kind === 'video' && (!q || item.filename.toLowerCase().includes(q)),
-  )
-})
-
-async function addMediaToService(mediaItem: MediaItem) {
-  if (!service.value || addingMedia.value) return
-  addingMedia.value = true
-  try {
-    const item: ServiceItem = {
-      id: `item-${crypto.randomUUID()}`,
-      type: 'media',
-      mediaId: mediaItem.id,
-      fit: mediaFit.value,
-    }
-    insertItem(item)
-    closeAddDialog()
-    await resolveMediaItem(mediaItem.id)
-  } finally {
-    addingMedia.value = false
-  }
-}
-async function addVideoToService(mediaItem: MediaItem) {
-  if (!service.value || addingMedia.value) return
-  addingMedia.value = true
-  try {
-    const item: ServiceItem = {
-      id: `item-${crypto.randomUUID()}`,
-      type: 'video',
-      mediaId: mediaItem.id,
-    }
-    insertItem(item)
-    closeAddDialog()
-    await resolveMediaItem(mediaItem.id)
-  } finally {
-    addingMedia.value = false
-  }
-}
-
-// External App Hand-off sub-picker (spec section 12): pick a configured profile and, if its
-// Parameter Format needs one, the file to hand it. Add-time verification (exe/file exist) —
-// "robustness priority over convenience" — runs before the item is actually added, so a
-// broken path is caught during prep rather than discovered mid-service.
-const externalAppProfileId = ref<string>()
-const externalAppFile = ref<string>()
-const addingExternalApp = ref(false)
-const externalAppAddError = ref<string>()
-const selectedExternalAppProfile = computed(() =>
-  externalAppProfilesById.value.get(externalAppProfileId.value ?? ''),
-)
-const externalAppNeedsFile = computed(
-  () => selectedExternalAppProfile.value?.parameterFormat?.includes('{file}') ?? false,
-)
-
-async function pickExternalAppFile() {
-  const path = await getAdapter().externalApps?.pickFile()
-  if (path) externalAppFile.value = path
-}
-async function addExternalAppToService() {
-  if (!service.value || addingExternalApp.value || !externalAppProfileId.value) return
-  addingExternalApp.value = true
-  externalAppAddError.value = undefined
-  try {
-    await getAdapter().externalApps?.verifyItem(externalAppProfileId.value, externalAppFile.value)
-    const item: ServiceItem = {
-      id: `item-${crypto.randomUUID()}`,
-      type: 'external-app',
-      profileId: externalAppProfileId.value,
-      file: externalAppFile.value,
-    }
-    insertItem(item)
-    closeAddDialog()
-  } catch (e) {
-    externalAppAddError.value = errorMessage(e, 'Failed to verify this app.')
-  } finally {
-    addingExternalApp.value = false
-  }
-}
-
-// Countdown sub-picker (spec section 1): custom text plus a target time, entered per-use (not
-// baked into a reusable library item — service times vary week to week). Service-specific
-// only, same as the Slides tab's "+ New Text Slides" quick-create — no Slide Library reuse.
-const countdownTargetTime = ref('')
-const countdownText = ref('')
-
-function addCountdownToService() {
-  if (!service.value || !countdownTargetTime.value) return
-  // <input type="datetime-local"> has no timezone of its own — treated as this computer's
-  // local time, same as every other date the app already collects this way.
-  const targetTime = new Date(countdownTargetTime.value).toISOString()
-  const item: ServiceItem = {
-    id: `item-${crypto.randomUUID()}`,
-    type: 'countdown',
-    targetTime,
-    text: countdownText.value.trim() || undefined,
-  }
-  insertItem(item)
-  closeAddDialog()
-}
-
-// Sermon sub-picker: a reorderable list of passages (each its own ScriptureReferencePicker,
-// same as the Scripture tab, just N instances), one marked "main" for the printed bulletin
-// line (see orderOfWorship.ts), then a presentable outline — same block-editor pattern as the
-// Slides tab's "+ New Text Slides".
-interface SermonPassageDraft {
-  id: string
-  value: ScriptureReferenceValue
-}
-const sermonTitleDraft = ref('')
-const sermonPassages = ref<SermonPassageDraft[]>([])
-const sermonMainPassageId = ref<string>()
-const sermonOutlineBlocks = ref<SongBlock[]>([])
-const sermonPassagePickerRefs = ref<
-  Record<string, InstanceType<typeof ScriptureReferencePicker> | null>
->({})
-const addingSermon = ref(false)
-
-function setSermonPassageRef(id: string, el: unknown) {
-  sermonPassagePickerRefs.value[id] = el as InstanceType<typeof ScriptureReferencePicker> | null
-}
-function addSermonPassage() {
-  const id = `passage-${crypto.randomUUID()}`
-  sermonPassages.value.push({
-    id,
-    value: { reference: '', translation: scriptureDraft.value.translation, displayMode: 'full' },
-  })
-  if (!sermonMainPassageId.value) sermonMainPassageId.value = id
-}
-async function removeSermonPassage(id: string) {
-  const index = sermonPassages.value.findIndex((p) => p.id === id)
-  if (index === -1) return
-  if (!(await confirmDialog.confirm('Remove this passage?', 'Remove'))) return
-  sermonPassages.value.splice(index, 1)
-  delete sermonPassagePickerRefs.value[id]
-  if (sermonMainPassageId.value === id) sermonMainPassageId.value = sermonPassages.value[0]?.id
-}
-function addSermonOutlineBlock() {
-  sermonOutlineBlocks.value.push({
-    id: `outline-${crypto.randomUUID()}`,
-    label: `Point ${sermonOutlineBlocks.value.length + 1}`,
-    text: '',
-  })
-}
-async function removeSermonOutlineBlock(index: number) {
-  const target = sermonOutlineBlocks.value[index]
-  if (!target) return
-  if (!(await confirmDialog.confirm(`Remove "${target.label}"?`, 'Remove'))) return
-  sermonOutlineBlocks.value.splice(index, 1)
-}
-const sermonPassagesValid = computed(() =>
-  sermonPassages.value.every((p) => sermonPassagePickerRefs.value[p.id]?.isValid),
-)
-
-async function addSermonToService() {
-  if (
-    !service.value ||
-    sermonPassages.value.length === 0 ||
-    !sermonMainPassageId.value ||
-    !sermonPassagesValid.value ||
-    addingSermon.value
-  ) {
-    return
-  }
-  addingSermon.value = true
-  try {
-    const passages: SermonPassage[] = sermonPassages.value.map((p) => ({
-      id: p.id,
-      reference: p.value.reference,
-      translation: p.value.translation,
-      displayMode: p.value.displayMode,
-    }))
-    const item: ServiceItem = {
-      id: `item-${crypto.randomUUID()}`,
-      type: 'sermon',
-      title: sermonTitleDraft.value.trim() || undefined,
-      passages,
-      mainPassageId: sermonMainPassageId.value,
-      outline: sermonOutlineBlocks.value.map((block) => ({ ...block })),
-    }
-    insertItem(item)
-    for (const passage of sermonPassages.value) {
-      const resolved = sermonPassagePickerRefs.value[passage.id]?.resolvedPassage
-      if (resolved && passage.value.displayMode === 'full')
-        scriptureById.set(`${item.id}:${passage.id}`, resolved)
-    }
-    closeAddDialog()
-  } finally {
-    addingSermon.value = false
-  }
-}
-
-// Bulletin Note sub-picker: a line that only ever appears in the printed Order of Worship (see
-// orderOfWorship.ts) — its heading/body are the shared bulletinLabel/bulletinNote fields
-// every item has, not fields of their own (see ServiceItemContent's BulletinNote variant).
-const bulletinNoteLabel = ref('')
-const bulletinNoteText = ref('')
-
-function addBulletinNoteToService() {
-  if (!service.value || !bulletinNoteLabel.value.trim()) return
-  const item: ServiceItem = {
-    id: `item-${crypto.randomUUID()}`,
-    type: 'bulletin-note',
-    bulletinLabel: bulletinNoteLabel.value.trim(),
-    bulletinNote: bulletinNoteText.value.trim() || undefined,
-  }
-  insertItem(item)
-  closeAddDialog()
-}
-
-function closeAddDialog() {
-  addDialogOpen.value = false
-  addQuery.value = ''
-  scriptureDraft.value = { reference: '', translation: '', displayMode: 'full' }
-  // Forces a fresh ScriptureReferencePicker instance next open — the component owns its own
-  // entry-mode/book/chapter/verse state internally, so remounting (rather than trying to push
-  // a reset into it via props) is what actually clears a half-typed reference between opens.
-  scripturePickerResetKey.value++
-  slideQuery.value = ''
-  slidesSubMode.value = 'pick'
-  newTextSlideBlocks.value = []
-  mediaQuery.value = ''
-  videoQuery.value = ''
-  mediaFit.value = 'cover'
-  externalAppProfileId.value = undefined
-  externalAppFile.value = undefined
-  externalAppAddError.value = undefined
-  countdownTargetTime.value = ''
-  countdownText.value = ''
-  sermonTitleDraft.value = ''
-  sermonPassages.value = []
-  sermonMainPassageId.value = undefined
-  sermonOutlineBlocks.value = []
-  sermonPassagePickerRefs.value = {}
-  bulletinNoteLabel.value = ''
-  bulletinNoteText.value = ''
-  replaceItemIndex.value = null
-  replaceItemRole.value = undefined
-  replaceItemLabel.value = undefined
-  replaceItemNote.value = undefined
-}
 
 function updatePresenterNote(itemId: string, note: string) {
   if (!service.value) return
@@ -1921,134 +996,15 @@ function updateRolePerson(role: string, personId: string | undefined) {
     </div>
 
     <div class="workspace-layout">
-      <div class="service-panel">
-        <div class="service-panel-header">
-          <div>
-            <div class="panel-title">Order of Service</div>
-            <div class="panel-subtitle">
-              {{ service.items.length }} item{{ service.items.length === 1 ? '' : 's' }}
-            </div>
-          </div>
-          <v-btn
-            :icon="reorderMode ? 'mdi-check' : 'mdi-swap-vertical'"
-            variant="text"
-            size="small"
-            :title="reorderMode ? 'Done reordering' : 'Reorder items'"
-            @click="reorderMode = !reorderMode"
-          />
-        </div>
-        <v-menu location="bottom" :close-on-content-click="true">
-          <template #activator="{ props }">
-            <button v-bind="props" type="button" class="add-service-button">
-              <span class="add-service-button-main">
-                <v-icon icon="mdi-plus" size="20" />
-                <span>Add Item</span>
-              </span>
-              <span class="add-service-button-chevron">
-                <v-icon icon="mdi-chevron-down" size="18" />
-              </span>
-            </button>
-          </template>
-          <v-list class="add-item-menu" density="compact">
-            <v-list-item
-              v-for="option in addTabOptions"
-              :key="option.value"
-              :title="option.title"
-              :subtitle="option.description"
-              :prepend-icon="option.icon"
-              @click="openAddDialog(option.value)"
-            />
-          </v-list>
-        </v-menu>
-        <div class="service-list flex-grow-1 overflow-y-auto">
-          <VueDraggable
-            v-if="reorderMode"
-            v-model="service.items"
-            handle=".service-item-drag-handle"
-            :animation="150"
-            :on-start="onReorderStart"
-            :on-end="onReorderEnd"
-          >
-            <div
-              v-for="(item, index) in service.items"
-              :key="item.id"
-              :data-service-item-id="item.id"
-              class="service-item"
-              :class="{
-                'service-item--selected': index === selectedItemIndex,
-                'service-item--live': itemHasLive(index),
-              }"
-              @click="selectedItemIndex = index"
-            >
-              <span class="service-item-index">{{ index + 1 }}</span>
-              <v-icon
-                icon="mdi-drag-vertical"
-                class="service-item-drag-handle"
-                size="small"
-                style="cursor: grab"
-              />
-              <div class="flex-grow-1" style="min-width: 0">
-                <div :class="{ 'font-italic': item.type === 'placeholder' }">
-                  {{ serviceOrderPrimaryLabel(item) }}
-                </div>
-                <div
-                  v-if="serviceOrderSecondaryLabel(item)"
-                  class="text-caption text-medium-emphasis"
-                >
-                  {{ serviceOrderSecondaryLabel(item) }}
-                </div>
-              </div>
-            </div>
-          </VueDraggable>
-          <template v-else>
-            <div
-              v-for="(item, index) in service.items"
-              :key="item.id"
-              :data-service-item-id="item.id"
-              class="service-item"
-              :class="{
-                'service-item--selected': index === selectedItemIndex,
-                'service-item--live': itemHasLive(index),
-              }"
-              @click="selectedItemIndex = index"
-            >
-              <span class="service-item-index">{{ index + 1 }}</span>
-              <span
-                class="service-item-icon"
-                :style="{ color: `rgb(var(--v-theme-${itemColor(item)}))` }"
-              >
-                <v-icon :icon="itemIcon(item)" size="17" />
-              </span>
-              <div class="flex-grow-1" style="min-width: 0">
-                <div
-                  class="service-item-title"
-                  :class="{ 'font-italic': item.type === 'placeholder' }"
-                >
-                  {{ serviceOrderPrimaryLabel(item) }}
-                </div>
-                <div
-                  v-if="serviceOrderSecondaryLabel(item)"
-                  class="text-caption text-medium-emphasis"
-                >
-                  {{ serviceOrderSecondaryLabel(item) }}
-                </div>
-              </div>
-              <v-btn
-                icon="mdi-trash-can-outline"
-                variant="text"
-                class="row-remove"
-                size="x-small"
-                title="Remove from service"
-                @click.stop="removeServiceItem(index)"
-              />
-            </div>
-          </template>
-        </div>
-        <div v-if="reorderMode" class="service-panel-footer">
-          <v-icon icon="mdi-drag-vertical" size="14" />
-          <span>Drag items into order</span>
-        </div>
-      </div>
+      <ServiceOrderList
+        :service="service"
+        v-model:selected-item-index="selectedItemIndex"
+        :add-tab-options="addTabOptions"
+        :item-label="itemLabel"
+        :item-color="itemColor"
+        :item-has-live="itemHasLive"
+        @open-add-dialog="openAddDialog"
+      />
 
       <div class="center-panel">
         <template v-if="selectedItem">
@@ -2470,116 +1426,18 @@ function updateRolePerson(role: string, personId: string | undefined) {
             </div>
           </template>
 
-          <div class="property-inspector">
-            <section v-if="selectedThemeTarget" class="property-section">
-              <div class="property-section-title">Presentation</div>
-              <label class="property-row property-row--top">
-                <span>
-                  Theme
-                  <small>{{ themeTargetLabels[selectedThemeTarget] }}</small>
-                </span>
-                <v-select
-                  :model-value="selectedItem.themeId ?? ''"
-                  :items="themeOverrideOptions"
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                  @update:model-value="
-                    (value: string) => (selectedItem!.themeId = value || undefined)
-                  "
-                />
-              </label>
-            </section>
-
-            <section class="property-section">
-              <div class="property-section-title">Order of Worship</div>
-              <label class="property-row">
-                <span>Label</span>
-                <v-text-field
-                  :model-value="selectedItem.bulletinLabel"
-                  variant="outlined"
-                  density="compact"
-                  clearable
-                  hide-details
-                  :placeholder="
-                    selectedItem.type === 'bulletin-note'
-                      ? 'Bulletin heading'
-                      : 'Use default heading'
-                  "
-                  @update:model-value="
-                    (value: string | undefined) =>
-                      (selectedItem!.bulletinLabel = value || undefined)
-                  "
-                />
-              </label>
-              <label class="property-row property-row--top">
-                <span>Note</span>
-                <v-textarea
-                  :model-value="selectedItem.bulletinNote"
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                  rows="2"
-                  placeholder="Optional printed note"
-                  @update:model-value="
-                    (value: string) => (selectedItem!.bulletinNote = value || undefined)
-                  "
-                />
-              </label>
-            </section>
-
-            <section class="property-section">
-              <div class="property-section-title">People</div>
-              <label class="property-row">
-                <span>Role</span>
-                <v-select
-                  :model-value="selectedItem.role"
-                  :items="itemRoleOptions"
-                  variant="outlined"
-                  density="compact"
-                  clearable
-                  hide-details
-                  placeholder="No role"
-                  @update:model-value="
-                    (value: string | undefined) => updateItemRole(selectedItem!.id, value)
-                  "
-                />
-              </label>
-              <label v-if="selectedItem.role" class="property-row">
-                <span>Assigned</span>
-                <v-select
-                  :model-value="assignedPersonId(selectedItem.role)"
-                  :items="rolePersonOptions"
-                  variant="outlined"
-                  density="compact"
-                  clearable
-                  hide-details
-                  placeholder="Not assigned"
-                  @update:model-value="
-                    (value: string | undefined) => updateRolePerson(selectedItem!.role!, value)
-                  "
-                />
-              </label>
-            </section>
-
-            <section class="property-section">
-              <div class="property-section-title">Operator</div>
-              <label class="property-row property-row--top">
-                <span>Notes</span>
-                <v-textarea
-                  :model-value="service.presenterNotes?.[selectedItem.id]"
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                  rows="2"
-                  placeholder="Only visible to the operator"
-                  @update:model-value="
-                    (value: string) => updatePresenterNote(selectedItem!.id, value)
-                  "
-                />
-              </label>
-            </section>
-          </div>
+          <PropertyInspector
+            :service="service"
+            :selected-item="selectedItem"
+            :theme-target-label="selectedThemeTarget ? themeTargetLabels[selectedThemeTarget] : undefined"
+            :theme-override-options="themeOverrideOptions"
+            :item-role-options="itemRoleOptions"
+            :role-person-options="rolePersonOptions"
+            :assigned-person-id="assignedPersonId"
+            :update-item-role="updateItemRole"
+            :update-role-person="updateRolePerson"
+            :update-presenter-note="updatePresenterNote"
+          />
         </template>
         <p v-else class="text-medium-emphasis">This service has no items yet.</p>
       </div>
@@ -2660,463 +1518,19 @@ function updateRolePerson(role: string, personId: string | undefined) {
 
     <ServiceDetailsDialog v-if="service" v-model="serviceDetailsDialogOpen" :service="service" />
 
-    <v-dialog v-model="addDialogOpen" max-width="560">
-      <!-- height must be the v-card PROP, not a height CSS class — Vuetify's own dialog
-           stylesheet applies `flex: 1 1 var(--v-card-height, 100%)` to any .v-card inside a
-           .v-dialog, and flex-basis overrides a plain `height` for sizing purposes regardless
-           of specificity. Only the height PROP populates that --v-card-height variable. -->
-      <v-card height="640" class="add-service-card">
-        <v-card-title>Add {{ activeAddTypeTitle }}</v-card-title>
-        <v-card-text>
-          <v-window v-model="addTab">
-            <v-window-item value="songs">
-              <v-text-field
-                v-model="addQuery"
-                label="Search songs…"
-                variant="outlined"
-                density="comfortable"
-                prepend-inner-icon="mdi-magnify"
-                autofocus
-              />
-              <v-list :disabled="addingSong">
-                <v-list-item
-                  v-for="song in filteredSongsForAdd"
-                  :key="song.id"
-                  :title="song.title"
-                  :subtitle="song.author"
-                  @click="addSongToService(song)"
-                />
-              </v-list>
-            </v-window-item>
-
-            <v-window-item value="scripture">
-              <ScriptureReferencePicker
-                :key="scripturePickerResetKey"
-                ref="scripturePickerRef"
-                v-model="scriptureDraft"
-                :translations="scriptureTranslations"
-              />
-
-              <v-btn
-                variant="flat"
-                color="primary"
-                block
-                :disabled="
-                  !scripturePickerRef?.isValid ||
-                  (scriptureDraft.displayMode === 'full' &&
-                    (!scriptureDraft.translation || scripturePickerRef?.hasError))
-                "
-                :loading="addingScripture"
-                @click="addScriptureToService"
-              >
-                Add Scripture
-              </v-btn>
-            </v-window-item>
-
-            <v-window-item value="slides">
-              <v-btn-toggle
-                v-model="slidesSubMode"
-                mandatory
-                density="compact"
-                divided
-                class="mb-4"
-              >
-                <v-btn value="pick" size="small">Pick from Library</v-btn>
-                <v-btn value="new" size="small">+ New Text Slides</v-btn>
-              </v-btn-toggle>
-
-              <template v-if="slidesSubMode === 'pick'">
-                <v-text-field
-                  v-model="slideQuery"
-                  label="Search slides…"
-                  variant="outlined"
-                  density="comfortable"
-                  prepend-inner-icon="mdi-magnify"
-                  autofocus
-                />
-                <v-list :disabled="addingSlideRef">
-                  <v-list-item
-                    v-for="slideItem in filteredSlidesForAdd"
-                    :key="slideItem.id"
-                    :title="slideItem.label"
-                    :subtitle="
-                      slideItem.slides.length === 1
-                        ? '1 slide'
-                        : `${slideItem.slides.length} slides`
-                    "
-                    @click="addSlideRefToService(slideItem)"
-                  />
-                </v-list>
-                <p
-                  v-if="filteredSlidesForAdd.length === 0"
-                  class="text-medium-emphasis text-body-2"
-                >
-                  No slides found.
-                </p>
-              </template>
-
-              <template v-else>
-                <p class="text-caption text-medium-emphasis mb-3">
-                  Saved with this service only — not added to the Slide Library.
-                </p>
-                <VueDraggable
-                  v-model="newTextSlideBlocks"
-                  handle=".drag-handle"
-                  :animation="150"
-                  class="d-flex flex-column ga-2 mb-3"
-                >
-                  <v-card
-                    v-for="(block, index) in newTextSlideBlocks"
-                    :key="block.id"
-                    variant="outlined"
-                    rounded="lg"
-                  >
-                    <div class="d-flex align-center ga-2 px-2 py-1 border-b">
-                      <v-icon
-                        icon="mdi-drag-vertical"
-                        class="drag-handle"
-                        size="small"
-                        style="cursor: grab"
-                      />
-                      <v-text-field
-                        v-model="block.label"
-                        variant="filled"
-                        density="compact"
-                        hide-details
-                        class="flex-grow-1"
-                      />
-                      <v-btn
-                        icon="mdi-trash-can-outline"
-                        variant="flat"
-                        color="error"
-                        size="small"
-                        @click="removeNewTextSlideBlock(index)"
-                      />
-                    </div>
-                    <v-textarea
-                      v-model="block.text"
-                      variant="filled"
-                      density="compact"
-                      rows="2"
-                      auto-grow
-                      hide-details
-                      class="px-2 py-1"
-                    />
-                  </v-card>
-                </VueDraggable>
-                <v-btn
-                  variant="flat"
-                  color="primary"
-                  class="mb-3"
-                  prepend-icon="mdi-plus"
-                  @click="addNewTextSlideBlock"
-                >
-                  Add Slide
-                </v-btn>
-                <v-btn
-                  variant="flat"
-                  color="primary"
-                  block
-                  :disabled="newTextSlideBlocks.length === 0"
-                  @click="addTextSlideToService"
-                >
-                  Add to Service
-                </v-btn>
-              </template>
-            </v-window-item>
-
-            <v-window-item value="media">
-              <v-btn-toggle v-model="mediaFit" mandatory density="compact" divided class="mb-4">
-                <v-btn value="cover" size="small">Cover (crop to fill)</v-btn>
-                <v-btn value="contain" size="small">Contain (show in full)</v-btn>
-              </v-btn-toggle>
-              <v-text-field
-                v-model="mediaQuery"
-                label="Search media…"
-                variant="outlined"
-                density="comfortable"
-                prepend-inner-icon="mdi-magnify"
-                autofocus
-              />
-              <v-list :disabled="addingMedia">
-                <v-list-item
-                  v-for="item in filteredMediaForAdd"
-                  :key="item.id"
-                  :title="item.filename"
-                  prepend-icon="mdi-image-outline"
-                  @click="addMediaToService(item)"
-                />
-              </v-list>
-              <p v-if="filteredMediaForAdd.length === 0" class="text-medium-emphasis text-body-2">
-                No images found in the Media Library.
-              </p>
-            </v-window-item>
-
-            <v-window-item value="video">
-              <v-text-field
-                v-model="videoQuery"
-                label="Search videos…"
-                variant="outlined"
-                density="comfortable"
-                prepend-inner-icon="mdi-magnify"
-                autofocus
-              />
-              <v-list :disabled="addingMedia">
-                <v-list-item
-                  v-for="item in filteredVideoForAdd"
-                  :key="item.id"
-                  :title="item.filename"
-                  prepend-icon="mdi-movie-open-outline"
-                  @click="addVideoToService(item)"
-                />
-              </v-list>
-              <p v-if="filteredVideoForAdd.length === 0" class="text-medium-emphasis text-body-2">
-                No videos found in the Media Library.
-              </p>
-            </v-window-item>
-
-            <v-window-item value="external-app">
-              <p
-                v-if="externalAppsStore.profiles.length === 0"
-                class="text-medium-emphasis text-body-2"
-              >
-                No profiles configured yet — add one in Settings &gt; External Apps.
-              </p>
-              <v-select
-                v-else
-                v-model="externalAppProfileId"
-                :items="externalAppsStore.profiles"
-                item-title="name"
-                item-value="id"
-                label="App Profile"
-                variant="outlined"
-                density="comfortable"
-                class="mb-3"
-              />
-              <template v-if="selectedExternalAppProfile">
-                <v-text-field
-                  v-if="externalAppNeedsFile"
-                  :model-value="externalAppFile"
-                  label="File"
-                  variant="outlined"
-                  density="comfortable"
-                  readonly
-                  class="mb-2"
-                >
-                  <template #append>
-                    <v-btn variant="outlined" @click="pickExternalAppFile">Browse…</v-btn>
-                  </template>
-                </v-text-field>
-                <v-alert
-                  v-if="externalAppAddError"
-                  type="error"
-                  variant="tonal"
-                  density="compact"
-                  class="mb-3"
-                >
-                  {{ externalAppAddError }}
-                </v-alert>
-                <v-btn
-                  variant="flat"
-                  color="primary"
-                  block
-                  :loading="addingExternalApp"
-                  :disabled="externalAppNeedsFile && !externalAppFile"
-                  @click="addExternalAppToService"
-                >
-                  Add to Service
-                </v-btn>
-              </template>
-            </v-window-item>
-
-            <v-window-item value="countdown">
-              <v-text-field
-                v-model="countdownTargetTime"
-                type="datetime-local"
-                label="Target Time"
-                variant="outlined"
-                density="comfortable"
-                class="mb-3"
-              />
-              <v-text-field
-                v-model="countdownText"
-                label="Custom Text (optional)"
-                placeholder="e.g. Join us at 10:15!"
-                variant="outlined"
-                density="comfortable"
-                class="mb-3"
-              />
-              <v-btn
-                variant="flat"
-                color="primary"
-                block
-                :disabled="!countdownTargetTime"
-                @click="addCountdownToService"
-              >
-                Add to Service
-              </v-btn>
-            </v-window-item>
-
-            <v-window-item value="sermon">
-              <v-text-field
-                v-model="sermonTitleDraft"
-                label="Sermon Title (optional)"
-                placeholder="e.g. Our Lord's Prayer"
-                variant="outlined"
-                class="mb-3"
-              />
-              <div class="text-overline text-medium-emphasis mb-2">Passages</div>
-              <v-card
-                v-for="passage in sermonPassages"
-                :key="passage.id"
-                variant="outlined"
-                rounded="lg"
-                class="pa-3 mb-3"
-              >
-                <div class="d-flex align-center justify-space-between mb-2">
-                  <v-btn
-                    :variant="sermonMainPassageId === passage.id ? 'flat' : 'outlined'"
-                    :color="sermonMainPassageId === passage.id ? 'primary' : undefined"
-                    size="small"
-                    prepend-icon="mdi-star"
-                    @click="sermonMainPassageId = passage.id"
-                  >
-                    {{ sermonMainPassageId === passage.id ? 'Main Passage' : 'Set as Main' }}
-                  </v-btn>
-                  <v-btn
-                    icon="mdi-delete-outline"
-                    variant="text"
-                    size="small"
-                    @click="removeSermonPassage(passage.id)"
-                  />
-                </div>
-                <ScriptureReferencePicker
-                  :ref="(el) => setSermonPassageRef(passage.id, el)"
-                  v-model="passage.value"
-                  :translations="scriptureTranslations"
-                />
-              </v-card>
-              <v-btn
-                variant="outlined"
-                class="mb-4"
-                prepend-icon="mdi-plus"
-                @click="addSermonPassage"
-                >Add Passage</v-btn
-              >
-
-              <div class="text-overline text-medium-emphasis mb-2">Outline</div>
-              <p class="text-caption text-medium-emphasis mb-3">
-                Presentable points for this sermon only — not added to the Slide Library.
-              </p>
-              <VueDraggable
-                v-model="sermonOutlineBlocks"
-                handle=".drag-handle"
-                :animation="150"
-                class="d-flex flex-column ga-2 mb-3"
-              >
-                <v-card
-                  v-for="(block, index) in sermonOutlineBlocks"
-                  :key="block.id"
-                  variant="outlined"
-                  rounded="lg"
-                >
-                  <div class="d-flex align-center ga-2 px-2 py-1 border-b">
-                    <v-icon
-                      icon="mdi-drag-vertical"
-                      class="drag-handle"
-                      size="small"
-                      style="cursor: grab"
-                    />
-                    <v-text-field
-                      v-model="block.label"
-                      variant="filled"
-                      density="compact"
-                      hide-details
-                      class="flex-grow-1"
-                    />
-                    <v-btn
-                      icon="mdi-trash-can-outline"
-                      variant="flat"
-                      color="error"
-                      size="small"
-                      @click="removeSermonOutlineBlock(index)"
-                    />
-                  </div>
-                  <v-textarea
-                    v-model="block.text"
-                    variant="filled"
-                    density="compact"
-                    rows="2"
-                    auto-grow
-                    hide-details
-                    class="px-2 py-1"
-                  />
-                </v-card>
-              </VueDraggable>
-              <v-btn
-                variant="flat"
-                color="primary"
-                class="mb-3"
-                prepend-icon="mdi-plus"
-                @click="addSermonOutlineBlock"
-              >
-                Add Outline Point
-              </v-btn>
-
-              <v-btn
-                variant="flat"
-                color="primary"
-                block
-                :disabled="
-                  sermonPassages.length === 0 || !sermonMainPassageId || !sermonPassagesValid
-                "
-                :loading="addingSermon"
-                @click="addSermonToService"
-              >
-                Add Sermon
-              </v-btn>
-            </v-window-item>
-
-            <v-window-item value="bulletin-note">
-              <v-text-field
-                v-model="bulletinNoteLabel"
-                label="Bulletin Label"
-                placeholder="e.g. Silent Preparation"
-                variant="outlined"
-                density="comfortable"
-                class="mb-3"
-              />
-              <v-textarea
-                v-model="bulletinNoteText"
-                label="Bulletin Note (optional)"
-                placeholder="e.g. (please spend the next few moments preparing your heart for corporate worship)"
-                variant="outlined"
-                density="comfortable"
-                rows="2"
-                auto-grow
-                class="mb-3"
-              />
-              <p class="text-caption text-medium-emphasis mb-3">
-                This item only appears in the printed Order of Worship — it never becomes a slide.
-              </p>
-              <v-btn
-                variant="flat"
-                color="primary"
-                block
-                :disabled="!bulletinNoteLabel.trim()"
-                @click="addBulletinNoteToService"
-              >
-                Add to Service
-              </v-btn>
-            </v-window-item>
-          </v-window>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="flat" color="secondary" @click="closeAddDialog">Cancel</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <AddServiceItemDialog
+      v-if="service"
+      v-model="addDialogOpen"
+      :service="service"
+      v-model:selected-item-index="selectedItemIndex"
+      v-model:scripture-draft="scriptureDraft"
+      :type-title="activeAddTypeTitle"
+      :initial-tab="addTab"
+      :replace-context="addReplaceContext"
+      :scripture-by-id="scriptureById"
+      :scripture-translations="scriptureTranslations"
+      :resolve-media-item="resolveMediaItem"
+    />
   </div>
 </template>
 
@@ -3322,14 +1736,6 @@ function updateRolePerson(role: string, personId: string | undefined) {
   min-height: 0;
   background: rgb(var(--v-theme-background));
 }
-.service-panel {
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  background: rgb(var(--v-theme-surface));
-  min-height: 0;
-}
-.service-panel-header,
 .preview-panel-header {
   display: flex;
   flex-shrink: 0;
@@ -3338,100 +1744,6 @@ function updateRolePerson(role: string, personId: string | undefined) {
   min-height: 62px;
   padding: 11px 16px;
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-}
-.panel-title {
-  color: rgba(var(--v-theme-on-surface), 0.92);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.055em;
-  text-transform: uppercase;
-}
-.panel-subtitle {
-  margin-top: 2px;
-  color: rgba(var(--v-theme-on-surface), 0.5);
-  font-size: 0.7rem;
-}
-.add-service-button {
-  display: flex;
-  flex-shrink: 0;
-  align-items: stretch;
-  width: calc(100% - 24px);
-  height: 42px;
-  margin: 12px 12px 5px;
-  padding: 0;
-  overflow: hidden;
-  border: 1px solid rgba(var(--v-theme-primary), 0.24);
-  border-radius: 7px;
-  background: rgba(var(--v-theme-surface-variant), 0.42);
-  color: rgb(var(--v-theme-primary));
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.82rem;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-align: left;
-  transition:
-    border-color var(--ws-transition-fast),
-    background-color var(--ws-transition-fast),
-    box-shadow var(--ws-transition-fast);
-}
-.add-service-button:hover,
-.add-service-button[aria-expanded='true'] {
-  border-color: rgba(var(--v-theme-primary), 0.48);
-  background: rgba(var(--v-theme-primary), 0.1);
-}
-.add-service-button:focus-visible {
-  outline: 2px solid rgba(var(--v-theme-primary), 0.72);
-  outline-offset: 2px;
-}
-.add-service-button-main {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 8px;
-  padding: 0 13px;
-}
-.add-service-button-chevron {
-  display: grid;
-  width: 40px;
-  flex: 0 0 40px;
-  place-items: center;
-  border-left: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  color: rgba(var(--v-theme-on-surface), 0.62);
-}
-.add-item-menu {
-  width: 330px;
-  max-height: min(620px, calc(100vh - 120px));
-  padding: 6px;
-  overflow-y: auto;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
-  background: rgb(var(--v-theme-surface));
-  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.28);
-}
-.add-item-menu :deep(.v-list-item) {
-  min-height: 52px;
-  margin-bottom: 2px;
-  border-radius: 7px;
-}
-.add-item-menu :deep(.v-list-item-subtitle) {
-  color: rgba(var(--v-theme-on-surface), 0.5);
-  font-size: 0.72rem;
-}
-.service-list {
-  padding: 7px 8px 10px;
-}
-.service-panel-footer {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  min-height: 38px;
-  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-  color: rgba(var(--v-theme-on-surface), 0.45);
-  font-size: 0.68rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 .preview-panel {
   display: flex;
@@ -3479,67 +1791,6 @@ function updateRolePerson(role: string, personId: string | undefined) {
   outline: 2px solid rgb(var(--v-theme-error));
   outline-offset: 3px;
   box-shadow: 0 8px 24px rgba(var(--v-theme-error), 0.13);
-}
-.service-item {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 53px;
-  padding: 7px 8px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.055);
-  border-radius: 7px;
-  background: rgba(var(--v-theme-surface-variant), 0.3);
-  cursor: pointer;
-  font-size: 0.84rem;
-  margin-bottom: 5px;
-  transition:
-    background-color 130ms ease,
-    border-color 130ms ease,
-    box-shadow 130ms ease,
-    transform 130ms ease;
-}
-.service-item:hover {
-  border-color: rgba(var(--v-theme-primary), 0.25);
-  background: rgba(var(--v-theme-primary), 0.08);
-}
-.service-item--selected {
-  border-color: rgba(var(--v-theme-primary), 0.42);
-  background: rgba(var(--v-theme-primary), 0.14);
-  box-shadow: inset 3px 0 rgb(var(--v-theme-primary));
-}
-.service-item--live {
-  box-shadow: inset 3px 0 rgb(var(--v-theme-error));
-}
-.service-item--selected.service-item--live {
-  box-shadow:
-    inset 3px 0 rgb(var(--v-theme-error)),
-    inset 0 0 0 1px rgba(var(--v-theme-primary), 0.2);
-}
-.service-item-index {
-  width: 16px;
-  flex: 0 0 16px;
-  color: rgba(var(--v-theme-on-surface), 0.42);
-  font-size: 0.7rem;
-  font-variant-numeric: tabular-nums;
-  text-align: center;
-}
-.service-item-icon {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
-  place-items: center;
-  border-radius: 6px;
-  background: color-mix(in srgb, currentColor 16%, transparent);
-}
-.service-item-title {
-  overflow: hidden;
-  color: rgba(var(--v-theme-on-surface), 0.94);
-  font-weight: 600;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .center-panel {
   padding: 0 24px 28px;
@@ -3623,8 +1874,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
     opacity 120ms ease,
     color 120ms ease;
 }
-.slide-row:hover .row-remove,
-.service-item:hover .row-remove {
+.slide-row:hover .row-remove {
   opacity: 1;
 }
 .row-remove:hover {
@@ -3650,64 +1900,6 @@ function updateRolePerson(role: string, personId: string | undefined) {
   background: rgba(var(--v-theme-secondary), 0.14);
   color: rgb(var(--v-theme-secondary));
 }
-.property-inspector {
-  max-width: 680px;
-  margin-top: 28px;
-  overflow: hidden;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  border-radius: 9px;
-  background: rgba(var(--v-theme-surface), 0.68);
-}
-.property-section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 15px 16px 17px;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-}
-.property-section:last-child {
-  border-bottom: 0;
-}
-.property-section-title {
-  margin-bottom: 3px;
-  color: rgba(var(--v-theme-on-surface), 0.58);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.085em;
-  text-transform: uppercase;
-}
-.property-row {
-  display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
-  align-items: center;
-  gap: 14px;
-}
-.property-row > span {
-  color: rgba(var(--v-theme-on-surface), 0.7);
-  font-size: 0.76rem;
-}
-.property-row > span small {
-  display: block;
-  margin-top: 2px;
-  color: rgba(var(--v-theme-on-surface), 0.42);
-  font-size: 0.61rem;
-}
-.property-row--top {
-  align-items: start;
-}
-.property-row--top > span {
-  padding-top: 9px;
-}
-.property-inspector :deep(.v-field) {
-  border-radius: 6px;
-  background: rgba(var(--v-theme-background), 0.55);
-  font-size: 0.8rem;
-}
-.property-inspector :deep(.v-field__input) {
-  min-height: 38px;
-  padding-top: 7px;
-  padding-bottom: 7px;
-}
 @media (max-width: 1500px) {
   .workspace-layout {
     grid-template-columns: 280px minmax(390px, 1fr) 320px;
@@ -3715,24 +1907,5 @@ function updateRolePerson(role: string, personId: string | undefined) {
   .editor-hint {
     display: none;
   }
-}
-/* Add-to-Service dialog: one fixed size regardless of which type is selected — a long song
-   library, several sermon passages, or the outline editor could otherwise each drive the card
-   to a different (and sometimes viewport-exceeding) height. An explicit height (via the v-card
-   height prop, see the template comment above) + flex column here, with only the content area
-   scrolling internally, keeps title/type-select/Cancel fixed and always visible no matter what's
-   selected. */
-.add-service-card {
-  display: flex;
-  flex-direction: column;
-}
-:deep(.v-card-title),
-:deep(.v-card-actions) {
-  flex-shrink: 0;
-}
-:deep(.v-card-text) {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
 }
 </style>
