@@ -34,6 +34,11 @@ interface UseLiveTransportOptions {
   readiness: ComputedRef<ServiceReadinessResult>
   readinessDialogOpen: Ref<boolean>
   tryForwardKeystroke: (direction: 'next' | 'previous') => Promise<boolean>
+  /** Remote Control (spec section 4/12): a Full Control device gets the same "Reopen App" /
+   *  "Close App" buttons the operator's own transport bar shows while an External App Hand-off
+   *  item is live — same underlying calls as those buttons, just triggered remotely. */
+  retryExternalApp: () => Promise<void>
+  closeExternalApp: () => Promise<void>
 }
 
 /**
@@ -60,6 +65,8 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     readiness,
     readinessDialogOpen,
     tryForwardKeystroke,
+    retryExternalApp,
+    closeExternalApp,
   } = options
 
   const liveSlideKey = ref<string>()
@@ -132,6 +139,26 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     if (!liveSlide.value) return
     backgroundOnly.value = !backgroundOnly.value
   }
+  // Bundles the fields every pushLiveState call site needs — the two that vary per call
+  // (content, isPresenting) stay explicit params; externalAppActive also varies (the stop
+  // branch deliberately forces it false rather than trusting liveSlide, which isn't cleared on
+  // stop) so it stays a param too, while isBlankScreen/backgroundOnly/displaySize are always
+  // read fresh off their own refs.
+  function pushRemoteLiveState(
+    content: LiveSlideContent | undefined,
+    presenting: boolean,
+    externalAppActive: boolean,
+  ) {
+    getAdapter().remote?.pushLiveState({
+      content,
+      isPresenting: presenting,
+      externalAppActive,
+      displaySize: presentationSize.value,
+      isBlankScreen: isBlankScreen.value,
+      backgroundOnly: backgroundOnly.value,
+    })
+  }
+
   async function togglePresenting() {
     if (!isPresenting.value) {
       await loadPresentationSize()
@@ -147,7 +174,7 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     } else {
       await getAdapter().live.stopPresenting()
       isPresenting.value = false
-      getAdapter().remote?.pushLiveState(undefined, false)
+      pushRemoteLiveState(undefined, false, false)
     }
   }
 
@@ -160,7 +187,7 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
       // (e.g. the operator had already clicked this slide before pressing Start Presenting),
       // the watch alone wouldn't fire since liveContentPayload wouldn't actually change.
       await getAdapter().live.setLiveContent(liveContentPayload.value)
-      getAdapter().remote?.pushLiveState(liveContentPayload.value, true)
+      pushRemoteLiveState(liveContentPayload.value, true, !!liveSlide.value?.externalApp)
     } catch (e) {
       console.error('Failed to start presentation:', e)
       audienceDisplayAvailable.value = false
@@ -241,6 +268,19 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     const content = buildLiveContent(liveSlide.value)
     return content ? { ...content, backgroundOnly: backgroundOnly.value } : undefined
   })
+  // Deliberately separate from liveContentPayload's watch below — this only needs to re-fire
+  // when the service's own slide list changes (load, edit, reorder), not on every single slide
+  // advance, unlike the moment-to-moment live-position push. `immediate` so a Full Control
+  // phone gets the outline as soon as a service is loaded, not only after its first edit.
+  watch(
+    flatSlides,
+    (slides) => {
+      getAdapter().remote?.pushServiceOutline(
+        slides.map((_, index) => ({ index, label: describeSlide(index) })),
+      )
+    },
+    { immediate: true },
+  )
   watch(liveContentPayload, (content) => {
     if (isPresenting.value) {
       // While an External App Hand-off item is live, Worship Studio's own presentation window
@@ -248,7 +288,7 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
       // audience display now, covering ours by virtue of being brought to the foreground,
       // positioned over that same monitor.
       if (!liveSlide.value?.externalApp) getAdapter().live.setLiveContent(content)
-      getAdapter().remote?.pushLiveState(content, true)
+      pushRemoteLiveState(content, true, !!liveSlide.value?.externalApp)
     }
   })
 
@@ -436,6 +476,11 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     window.addEventListener('keydown', onKeydown)
     window.addEventListener('focus', loadPresentationSize)
     await loadPresentationSize()
+    // This composable only exists while ServiceWorkspaceView has a service open — a remote
+    // device shouldn't see Start Presenting/Prev/Next/the slide picker before that's true, so
+    // mount/unmount is exactly the right signal (see SharedLiveState::service_open's own doc
+    // comment in remote_server.rs).
+    getAdapter().remote?.pushServiceOpen(true)
     // Remote Control (spec section 4): a paired phone's button press arrives here the same
     // way the presentation window receives slide changes — as a Tauri event, not a direct
     // function call, since the HTTP server lives entirely on the Rust side.
@@ -444,6 +489,10 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
       else if (command.action === 'previous') previous()
       else if (command.action === 'goto' && command.index !== undefined) goLive(command.index)
       else if (command.action === 'toggle-presenting') togglePresenting()
+      else if (command.action === 'toggle-blank-screen') toggleBlankScreen()
+      else if (command.action === 'toggle-background-only') toggleBackgroundOnly()
+      else if (command.action === 'external-app-relaunch') void retryExternalApp()
+      else if (command.action === 'external-app-close') void closeExternalApp()
     })
   })
   onUnmounted(() => {
@@ -455,6 +504,7 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     // open with nothing left able to close it.
     if (isPresenting.value) getAdapter().live.stopPresenting()
     isPresenting.value = false
+    getAdapter().remote?.pushServiceOpen(false)
     unlistenRemoteCommand?.()
     previewResizeObserver?.disconnect()
   })

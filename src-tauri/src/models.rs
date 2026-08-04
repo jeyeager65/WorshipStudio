@@ -355,7 +355,7 @@ pub struct RemoteDevice {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub person_id: Option<String>,
     pub name: String,
-    /// "view-only" | "advance-only" | "full-control"
+    /// "view-only" | "full-control"
     pub access_level: String,
     /// The pairing/session secret embedded in the QR code and stored as the phone's cookie —
     /// never sent back to the operator UI once provisioned (see RemoteDeviceSummary).
@@ -781,8 +781,8 @@ pub struct LiveMediaRef {
     /// A `convertFileSrc` URL — only meaningful inside this app's own webviews (the operator
     /// window's own live-content display), never reachable from a phone's browser.
     pub url: String,
-    /// The raw MediaItem id — what the confidence-monitor mirror (remote_page.html) actually
-    /// uses, via its own `/api/media/:id` endpoint, since a `convertFileSrc` URL means nothing
+    /// The raw MediaItem id — what the confidence-monitor mirror (src-remote/) actually uses,
+    /// via its own `/api/media/:id` endpoint, since a `convertFileSrc` URL means nothing
     /// off-device.
     pub media_id: String,
     /// "image" | "video"
@@ -800,6 +800,13 @@ pub struct LivePresentationTheme {
     pub background_color: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub background_media: Option<LiveMediaRef>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct FontRange {
+    pub min_px: f64,
+    pub max_px: f64,
 }
 
 /// Mirrors the frontend's LiveSlideContent (src/adapters/types.ts) — the operator window
@@ -823,12 +830,74 @@ pub struct LiveSlideContent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wayfinding_books: Option<Vec<WayfindingBook>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub bible_progress: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub media: Option<LiveMediaRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_range: Option<FontRange>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_wrap: Option<bool>,
+    /// Empty string is meaningful (hide the footer rather than fall back to the block label) —
+    /// distinct from `None` (no override at all) — do not treat "" as equivalent to absent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub footer_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repeat_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outline_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub header_font_size_px: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub footer_font_size_px: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wayfinding_min_font_size_px: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wayfinding_max_font_size_px: Option<f64>,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every field the frontend's LiveSlideContent (src/adapters/types.ts) can send must survive
+    /// the Tauri IPC → Rust struct boundary intact — this struct previously lacked several of
+    /// these fields entirely, silently dropping them before the remote HTTP server ever saw them.
+    #[test]
+    fn live_slide_content_round_trips_every_field_including_an_empty_footer_override() {
+        let content = LiveSlideContent {
+            item_label: "Amazing Grace".to_string(),
+            sub_label: "Chorus".to_string(),
+            text: "Amazing grace, how sweet the sound".to_string(),
+            font_range: Some(FontRange {
+                min_px: 28.0,
+                max_px: 72.0,
+            }),
+            line_wrap: Some(true),
+            // Empty string is meaningful (hide the footer), distinct from None — must survive
+            // round-trip as Some(""), not collapse to None.
+            footer_text: Some(String::new()),
+            repeat_label: Some("2/2".to_string()),
+            outline_title: Some("Point One".to_string()),
+            header_font_size_px: Some(48.0),
+            footer_font_size_px: Some(36.0),
+            wayfinding_min_font_size_px: Some(56.0),
+            wayfinding_max_font_size_px: Some(150.0),
+            bible_progress: Some(0.42),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&content).unwrap();
+        let round_tripped: LiveSlideContent = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_tripped.font_range.unwrap().min_px, 28.0);
+        assert_eq!(round_tripped.line_wrap, Some(true));
+        assert_eq!(round_tripped.footer_text, Some(String::new()));
+        assert_eq!(round_tripped.repeat_label.as_deref(), Some("2/2"));
+        assert_eq!(round_tripped.outline_title.as_deref(), Some("Point One"));
+        assert_eq!(round_tripped.header_font_size_px, Some(48.0));
+        assert_eq!(round_tripped.footer_font_size_px, Some(36.0));
+        assert_eq!(round_tripped.wayfinding_min_font_size_px, Some(56.0));
+        assert_eq!(round_tripped.wayfinding_max_font_size_px, Some(150.0));
+        assert_eq!(round_tripped.bible_progress, Some(0.42));
+    }
 
     /// A library-settings.json written before scriptureMin/MaxFontSizePx existed must still
     /// load, defaulting to the same range the old static CSS clamp used — this is a real,

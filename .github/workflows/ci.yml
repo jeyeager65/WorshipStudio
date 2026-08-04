@@ -28,6 +28,15 @@ jobs:
 
       - run: pnpm build
 
+      # The Remote Control mirror's own small Vue bundle (src-remote/) — a separate build
+      # target from the main app above, embedded into the Rust binary via rust-embed at
+      # `tauri build` time (see tauri.conf.json's beforeBuildCommand). Neither this job nor
+      # the rust job below actually runs a full `tauri build`, so without this step a broken
+      # build:remote (a bad tsconfig.remote.json include, a stray import outside its allowed
+      # scope, etc.) would pass CI on every PR and only surface when release.yml's
+      # tauri-action cuts an actual release.
+      - run: pnpm build:remote
+
   rust:
     runs-on: windows-latest
     steps:

@@ -378,12 +378,37 @@ export interface RemoteDevice {
   /** Owner in the people library. Missing only for legacy pairings created before ownership was required. */
   personId?: string
   name: string
-  accessLevel: 'view-only' | 'advance-only' | 'full-control'
+  accessLevel: 'view-only' | 'full-control'
 }
 
 export interface RemoteCommand {
-  action: 'next' | 'previous' | 'goto' | 'toggle-presenting'
+  action:
+    | 'next'
+    | 'previous'
+    | 'goto'
+    | 'toggle-presenting'
+    | 'select-service'
+    | 'toggle-blank-screen'
+    | 'toggle-background-only'
+    | 'external-app-relaunch'
+    | 'external-app-close'
   index?: number
+  serviceId?: string
+}
+
+export interface RemoteLiveStateUpdate {
+  content: LiveSlideContent | undefined
+  isPresenting: boolean
+  /** Tells the phone's mirror to show its own placeholder instead of `content` — see
+   *  remote_server.rs's `external_app_active` doc comment for why this can't just be inferred
+   *  from `content` being empty. */
+  externalAppActive: boolean
+  /** The real audience display's own logical resolution (same value as `PREVIEW_VIRTUAL_SIZE`)
+   *  so the phone can letterbox/pillarbox to the *real* display's aspect ratio instead of
+   *  stretching to fill its own screen's shape. */
+  displaySize: { width: number; height: number }
+  isBlankScreen: boolean
+  backgroundOnly: boolean
 }
 
 /** Tauri-only — needs the bundled local HTTP server; not meaningful in the static demo. */
@@ -398,8 +423,16 @@ export interface RemotePort {
   revokeDevice(id: string): Promise<void>
   /** Stable mDNS hostname plus the LAN IP/port fallback the server is actually using. */
   getServerInfo(): Promise<{ hostname?: string; lanIp?: string; port: number }>
-  /** Mirrors the live slide/presenting state into the Rust-side server so /api/state has something to report. */
-  pushLiveState(content: LiveSlideContent | undefined, isPresenting: boolean): Promise<void>
+  /** Mirrors the live slide/presenting state into the Rust-side server so /api/state has
+   *  something to report. */
+  pushLiveState(update: RemoteLiveStateUpdate): Promise<void>
+  /** Mirrors the current service's flattened slide list (short labels only, never full slide
+   *  text) into the Rust-side server for the phone's live slide picker (Full Control only). */
+  pushServiceOutline(slides: { index: number; label: string }[]): Promise<void>
+  /** Pushed once from ServiceWorkspaceView's own mount/unmount — a remote device shouldn't see
+   *  Start Presenting/Prev/Next/the slide picker until a service is actually open, regardless
+   *  of whether it's presenting yet. */
+  pushServiceOpen(open: boolean): Promise<void>
   /** A paired phone's button press, relayed back from the server — see remote_server.rs. */
   onCommand(callback: (command: RemoteCommand) => void): Promise<() => void>
 }

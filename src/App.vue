@@ -17,6 +17,7 @@ import { useSyncStore } from '@/stores/sync'
 import { useSettingsStore } from '@/stores/settings'
 import { useServicesStore } from '@/stores/services'
 import { useHistoryStore } from '@/stores/history'
+import { useRemoteServiceSelection } from '@/composables/useRemoteServiceSelection'
 
 const { blockedMessage } = storeToRefs(useLiveSessionStore())
 const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsavedChangesStore())
@@ -61,6 +62,8 @@ const isSplashWindow =
   typeof window !== 'undefined' &&
   !!window.__TAURI_INTERNALS__ &&
   getCurrentWindow().label === 'splash'
+
+useRemoteServiceSelection(!isPresentationWindow && !isIdentifyWindow && !isSplashWindow)
 
 // The router guard (router/index.ts) covers in-app navigation; this covers closing the
 // tab/window entirely, which a route guard can't intercept.

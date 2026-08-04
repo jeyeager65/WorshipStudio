@@ -1,0 +1,44 @@
+:root {
+  --ws-space-1: 4px;
+  --ws-space-2: 8px;
+  --ws-space-3: 12px;
+  --ws-space-4: 16px;
+  --ws-space-6: 24px;
+  --ws-radius-sm: 6px;
+  --ws-radius-md: 8px;
+  --ws-radius-lg: 12px;
+  --ws-transition-fast: 140ms ease;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+html {
+  font-size: 18px;
+}
+
+body {
+  margin: 0;
+  background: var(--ws-background);
+  color: var(--ws-text);
+  font-family:
+    'Segoe UI Variable Text',
+    'Segoe UI',
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: contain;
+}
+
+button {
+  font-family: inherit;
+}

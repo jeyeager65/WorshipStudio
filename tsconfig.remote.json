@@ -1,0 +1,20 @@
+{
+  "extends": "@vue/tsconfig/tsconfig.dom.json",
+  "include": [
+    "src-remote/**/*.ts",
+    "src-remote/**/*.vue",
+    "src/components/live/**/*.vue",
+    "src/components/slides/**/*.vue",
+    "src/utils/**/*.ts",
+    "src/models/**/*.ts",
+    "src/adapters/types.ts",
+    "src/plugins/themeTokens.ts"
+  ],
+  "exclude": ["src/**/__tests__/*"],
+  "compilerOptions": {
+    "paths": {
+      "@/adapters": ["./src-remote/adapters/remoteAdapter.ts"],
+      "@/*": ["./src/*"]
+    }
+  }
+}

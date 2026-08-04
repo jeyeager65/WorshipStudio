@@ -60,7 +60,7 @@ describe('Remote Control', () => {
       const nameInput = await dialog.$('.v-text-field*=Device Name').then((el) => el.$('input'))
       await nameInput.setValue('E2E Test Phone')
 
-      // Access level defaults to Advance Only — left as-is, no need to change it for this test.
+      // Access level defaults to View Only — left as-is, no need to change it for this test.
       const generateBtn = await $('button*=Generate QR Code')
       await generateBtn.waitForClickable({ timeout: 10000 })
       await generateBtn.click()

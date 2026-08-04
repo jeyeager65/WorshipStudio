@@ -20,11 +20,13 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use mdns_sd::{DaemonEvent, ServiceDaemon, ServiceInfo};
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::RwLock;
 
-use crate::domain::{media, people, remote};
+use crate::domain::{media, people, remote, services, win32};
 use crate::models::LiveSlideContent;
 use crate::paths::{
     default_canva_callback_port, is_portable, library_root, load_machine_settings,
@@ -37,10 +39,58 @@ use crate::paths::{
 pub const DEFAULT_REMOTE_SERVER_PORT: u16 = 47825;
 const AUTO_PORT_SCAN_COUNT: u16 = 20;
 
+/// A short, label-only entry for the live slide picker (Full Control only) — never the slide's
+/// own text/content, matching the phone's "short labels only" boundary (feature-spec.md
+/// section 4): "Verse 1", "Matthew 1:1-3", never the full lyrics or scripture text.
+#[derive(Clone, Serialize)]
+struct SlideSummary {
+    index: usize,
+    label: String,
+}
+
+/// The real audience display's own logical resolution (see useLiveTransport.ts's
+/// `presentationSize`, the same value its own Previous/Current/Next preview thumbnails use) —
+/// pushed so the phone's mirror can letterbox/pillarbox to the *real* display's aspect ratio
+/// instead of stretching to fill whatever shape the phone's own screen happens to be.
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DisplaySize {
+    width: u32,
+    height: u32,
+}
+
+/// Bundles `RemoteServerHandle::update()`'s params — grew past the point a positional arg list
+/// stayed readable (six and counting), and a struct also lets `commands::remote` build it
+/// straight from the Tauri command's own deserialized input without restating every field.
+pub struct LiveStateUpdate {
+    pub content: Option<LiveSlideContent>,
+    pub is_presenting: bool,
+    pub external_app_active: bool,
+    pub display_size: Option<(u32, u32)>,
+    pub is_blank_screen: bool,
+    pub background_only: bool,
+}
+
 #[derive(Default)]
 struct SharedLiveState {
     content: Option<LiveSlideContent>,
     is_presenting: bool,
+    slides: Vec<SlideSummary>,
+    /// Set when the live item is an External App Hand-off (spec section 12) — the real
+    /// Audience display shows the external app's own window in this case (nothing pushed to
+    /// it), but the phone has no such window to fall back on, so it needs an explicit signal
+    /// to show its own "an external app is on screen" placeholder instead of `content`, which
+    /// is still pushed (just an app-name label with no useful body) for callers that don't
+    /// check this flag.
+    external_app_active: bool,
+    display_size: Option<DisplaySize>,
+    is_blank_screen: bool,
+    background_only: bool,
+    /// True whenever ServiceWorkspaceView is mounted, regardless of `is_presenting` — a device
+    /// shouldn't see Start Presenting/Prev/Next/the slide picker until a service has actually
+    /// been opened on the operator side (there's nothing yet for those to act on). Set/cleared
+    /// from that view's own mount/unmount, not part of the content-push cycle above.
+    service_open: bool,
 }
 
 #[derive(Clone)]
@@ -112,10 +162,33 @@ impl RemoteServerHandle {
         }
     }
 
-    pub async fn update(&self, content: Option<LiveSlideContent>, is_presenting: bool) {
+    pub async fn update(&self, update: LiveStateUpdate) {
         let mut state = self.live.write().await;
-        state.content = content;
-        state.is_presenting = is_presenting;
+        state.content = update.content;
+        state.is_presenting = update.is_presenting;
+        state.external_app_active = update.external_app_active;
+        state.display_size = update
+            .display_size
+            .map(|(width, height)| DisplaySize { width, height });
+        state.is_blank_screen = update.is_blank_screen;
+        state.background_only = update.background_only;
+    }
+
+    /// Separate from `update()` above by design (see the plan/feature-spec.md section 4) — the
+    /// outline only changes when the service's own content changes (load, edit, reorder), not
+    /// on every single slide advance, so it's pushed from its own watcher rather than riding
+    /// along with the moment-to-moment live-slide push.
+    pub async fn update_slides(&self, slides: Vec<(usize, String)>) {
+        let mut state = self.live.write().await;
+        state.slides = slides
+            .into_iter()
+            .map(|(index, label)| SlideSummary { index, label })
+            .collect();
+    }
+
+    /// See `SharedLiveState::service_open`'s own doc comment.
+    pub async fn set_service_open(&self, open: bool) {
+        self.live.write().await.service_open = open;
     }
 
     pub async fn set_canva_oauth(&self, pending: CanvaOAuthPending) {
@@ -308,8 +381,34 @@ fn authorized_device_by_token(app: &AppHandle, token: &str) -> Option<crate::mod
     people::exists(&library_root(app), person_id).then_some(device)
 }
 
-async fn index_page() -> Html<&'static str> {
-    Html(include_str!("remote_page.html"))
+/// The standalone Remote Control Vue bundle (src-remote/, built by `pnpm build:remote`),
+/// embedded at compile time — the directory-scale generalization of the single-file
+/// `include_str!` this replaced. Always a fully self-contained binary either way, whether
+/// installed or portable, with no runtime dependency on files existing next to the executable.
+#[derive(RustEmbed)]
+#[folder = "../dist-remote/"]
+struct RemoteAssets;
+
+/// Serves the embedded remote bundle for any path the API routes below don't otherwise claim —
+/// `/` (and anything else without a matching embedded file, e.g. a stray trailing slash) falls
+/// back to `index.html` since this is a single-page bundle, not a multi-page site.
+async fn serve_remote_asset(uri: axum::http::Uri) -> Response {
+    let path = uri.path().trim_start_matches('/');
+    let (resolved_path, asset) = match RemoteAssets::get(path) {
+        Some(file) => (path, Some(file)),
+        None => ("index.html", RemoteAssets::get("index.html")),
+    };
+    match asset {
+        Some(file) => {
+            let content_type = guess_asset_content_type(resolved_path);
+            (
+                [(header::CONTENT_TYPE, content_type)],
+                file.data.into_owned(),
+            )
+                .into_response()
+        }
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 #[derive(Deserialize)]
@@ -383,6 +482,17 @@ struct StatePayload {
     is_presenting: bool,
     content: Option<LiveSlideContent>,
     access_level: String,
+    /// Only meaningful for `full-control` devices (the live slide picker) — sent to every
+    /// device regardless of access level for simplicity, the same way `content` already is;
+    /// view-only phones just have no UI that reads it.
+    slides: Vec<SlideSummary>,
+    external_app_active: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    display_size: Option<DisplaySize>,
+    is_blank_screen: bool,
+    background_only: bool,
+    /// See `SharedLiveState::service_open`'s own doc comment.
+    service_open: bool,
 }
 
 async fn get_state(State(handle): State<RemoteServerHandle>, headers: HeaderMap) -> Response {
@@ -395,27 +505,54 @@ async fn get_state(State(handle): State<RemoteServerHandle>, headers: HeaderMap)
         is_presenting: live.is_presenting,
         content: live.content.clone(),
         access_level: device.access_level,
+        slides: live.slides.clone(),
+        external_app_active: live.external_app_active,
+        display_size: live.display_size,
+        is_blank_screen: live.is_blank_screen,
+        background_only: live.background_only,
+        service_open: live.service_open,
     })
     .into_response()
 }
 
 #[derive(Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 struct ActionPayload {
     action: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     index: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    service_id: Option<String>,
 }
 
-/// Access-level gating (feature-spec.md section 4): View Only gets nothing, Advance Only
-/// adds Next/Prev, Full Control adds jump-to-item and Start/Stop Presenting. Enforced here
-/// server-side rather than trusted from the phone's own UI, since the UI is just what this
-/// same server served it — never assume a client only sends buttons it was shown.
+/// Access-level gating (feature-spec.md section 4): View Only gets nothing, Full Control adds
+/// Next/Prev, jump-to-item, Start/Stop Presenting, and starting one of today's services.
+/// Enforced here server-side rather than trusted from the phone's own UI, since the UI is just
+/// what this same server served it — never assume a client only sends buttons it was shown.
 fn action_allowed(access_level: &str, action: &str) -> bool {
     match access_level {
-        "advance-only" => matches!(action, "next" | "previous"),
-        "full-control" => matches!(action, "next" | "previous" | "goto" | "toggle-presenting"),
+        "full-control" => matches!(
+            action,
+            "next"
+                | "previous"
+                | "goto"
+                | "toggle-presenting"
+                | "select-service"
+                | "toggle-blank-screen"
+                | "toggle-background-only"
+                | "external-app-relaunch"
+                | "external-app-close"
+        ),
         _ => false,
     }
+}
+
+/// `select-service` is a *state* precondition, not a permission one — a device can be fully
+/// entitled to it and still be refused right now because something is already live. Kept as
+/// its own pure function (matching this file's `action_allowed` convention) so it's testable
+/// without spinning up a real `RemoteServerHandle`/`AppHandle`.
+fn select_service_allowed_now(is_presenting: bool) -> bool {
+    !is_presenting
 }
 
 async fn post_action(
@@ -429,8 +566,56 @@ async fn post_action(
     if !action_allowed(&device.access_level, &payload.action) {
         return StatusCode::FORBIDDEN;
     }
+    if payload.action == "select-service" {
+        let is_presenting = handle.live.read().await.is_presenting;
+        if !select_service_allowed_now(is_presenting) {
+            return StatusCode::CONFLICT;
+        }
+    }
     let _ = handle.app.emit("remote:command", &payload);
     StatusCode::OK
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TodayServiceSummary {
+    id: String,
+    date: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    time: Option<String>,
+    service_type: String,
+}
+
+/// Full-control-only, same as the button that acts on it — even just seeing today's schedule
+/// is part of Full Control's elevated visibility, not something every paired device gets.
+async fn get_todays_services(
+    State(handle): State<RemoteServerHandle>,
+    headers: HeaderMap,
+) -> Response {
+    let Some(device) = device_from_headers(&headers, &handle.app) else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    if device.access_level != "full-control" {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let today = chrono::Local::now()
+        .date_naive()
+        .format("%Y-%m-%d")
+        .to_string();
+    match services::list_upcoming(&library_root(&handle.app), &today, &today) {
+        Ok(list) => Json(
+            list.into_iter()
+                .map(|s| TodayServiceSummary {
+                    id: s.id,
+                    date: s.date,
+                    time: s.time,
+                    service_type: s.service_type,
+                })
+                .collect::<Vec<_>>(),
+        )
+        .into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
 }
 
 /// Best-effort by extension — good enough for the browser to know how to render/play what
@@ -455,11 +640,108 @@ fn guess_content_type(path: &Path) -> &'static str {
     }
 }
 
+/// Same best-effort-by-extension approach as `guess_content_type` above, but for the embedded
+/// Remote Control bundle's own asset types rather than media library files — kept as a separate
+/// function since the two serve genuinely different file sets or a merged match arm would read
+/// as covering things it doesn't (test suite fixtures below for each stay clearly matched to the
+/// function they're actually testing).
+fn guess_asset_content_type(path: &str) -> &'static str {
+    match Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase()
+        .as_str()
+    {
+        "html" => "text/html; charset=utf-8",
+        "js" => "application/javascript",
+        "css" => "text/css",
+        "json" => "application/json",
+        "webmanifest" => "application/manifest+json",
+        "woff2" => "font/woff2",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "ico" => "image/x-icon",
+        _ => "application/octet-stream",
+    }
+}
+
 /// Serves the actual media file bytes to a paired phone (spec section 4's confidence-monitor
 /// mirror) — a `convertFileSrc` URL only resolves inside this app's own webviews, so the
 /// mirror needs its own real, network-reachable way to fetch the same content. No Range/206
 /// support yet (a whole-file read per request) — fine for a confidence monitor watching along,
 /// not built for scrubbing/seeking.
+#[derive(Deserialize)]
+struct QrQuery {
+    text: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QrResponse {
+    data_url: String,
+}
+
+// QR codes have a real, version-dependent capacity ceiling — this cap is well under it, just
+// enough for the short strings the reused SlideSceneRenderer's QR scene elements actually pass
+// (a URL or a short label), so a caller can get a clean 400 instead of relying on the encoder's
+// own capacity error to fail closed.
+const MAX_QR_TEXT_LEN: usize = 500;
+
+/// Backs the reused SlideSceneRenderer's QR scene elements (see remoteAdapter.ts's
+/// `slides.generateQrCode` shim) — cookie-authenticated like `/api/media`, any paired device
+/// rather than full-control-only, since a QR scene element can appear on any slide type.
+async fn get_qr(
+    State(handle): State<RemoteServerHandle>,
+    headers: HeaderMap,
+    Query(query): Query<QrQuery>,
+) -> Response {
+    if device_from_headers(&headers, &handle.app).is_none() {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    if query.text.len() > MAX_QR_TEXT_LEN {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    match qr_data_url(&query.text) {
+        Ok(data_url) => Json(QrResponse { data_url }).into_response(),
+        Err(_) => StatusCode::BAD_REQUEST.into_response(),
+    }
+}
+
+/// Confidence-monitor-of-last-resort for External App Hand-off: the mirror's own placeholder
+/// (`externalAppActive`) is honest about there being nothing to render from `LiveSlideContent`,
+/// but a real screenshot of the actual presentation window closes that gap for whoever wants
+/// it. Any paired device, not just Full Control — this is read-only, same trust level as
+/// `/api/media`, not an elevated capability. Windows-only (see win32.rs's own doc comment on
+/// why External App Hand-off itself is Windows-only); the non-Windows build of
+/// `capture_window_png` always returns its own clear error, surfaced here as a 501.
+async fn get_screenshot(State(handle): State<RemoteServerHandle>, headers: HeaderMap) -> Response {
+    if device_from_headers(&headers, &handle.app).is_none() {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let Some(presentation) = handle.app.get_webview_window("presentation") else {
+        return (
+            StatusCode::NOT_FOUND,
+            "Nothing is currently being presented.",
+        )
+            .into_response();
+    };
+    let hwnd = match presentation.window_handle().map(|h| h.as_raw()) {
+        Ok(RawWindowHandle::Win32(raw)) => raw.hwnd.get(),
+        _ => {
+            return (
+                StatusCode::NOT_IMPLEMENTED,
+                "Screenshots are only supported on Windows.",
+            )
+                .into_response()
+        }
+    };
+    match win32::capture_window_png(hwnd) {
+        Ok(bytes) => ([(header::CONTENT_TYPE, "image/png")], bytes).into_response(),
+        Err(message) => (StatusCode::INTERNAL_SERVER_ERROR, message).into_response(),
+    }
+}
+
 async fn get_media(
     State(handle): State<RemoteServerHandle>,
     headers: HeaderMap,
@@ -481,11 +763,17 @@ async fn get_media(
 
 fn router(handle: RemoteServerHandle) -> Router {
     Router::new()
-        .route("/", get(index_page))
         .route("/pair", get(pair))
         .route("/api/state", get(get_state))
         .route("/api/action", post(post_action))
         .route("/api/media/{id}", get(get_media))
+        .route("/api/screenshot", get(get_screenshot))
+        .route("/api/qr", get(get_qr))
+        .route("/api/services/today", get(get_todays_services))
+        // Everything else (the embedded bundle: index.html, its JS/CSS, manifest, icons) — a
+        // fallback rather than named routes since the bundle's own asset filenames change on
+        // every build (Vite's content hashing).
+        .fallback(get(serve_remote_asset))
         .with_state(handle)
 }
 
@@ -666,14 +954,9 @@ mod tests {
         assert!(!action_allowed("view-only", "previous"));
         assert!(!action_allowed("view-only", "goto"));
         assert!(!action_allowed("view-only", "toggle-presenting"));
-    }
-
-    #[test]
-    fn action_allowed_advance_only_gets_next_and_previous_but_not_more() {
-        assert!(action_allowed("advance-only", "next"));
-        assert!(action_allowed("advance-only", "previous"));
-        assert!(!action_allowed("advance-only", "goto"));
-        assert!(!action_allowed("advance-only", "toggle-presenting"));
+        assert!(!action_allowed("view-only", "select-service"));
+        assert!(!action_allowed("view-only", "external-app-relaunch"));
+        assert!(!action_allowed("view-only", "external-app-close"));
     }
 
     #[test]
@@ -682,11 +965,22 @@ mod tests {
         assert!(action_allowed("full-control", "previous"));
         assert!(action_allowed("full-control", "goto"));
         assert!(action_allowed("full-control", "toggle-presenting"));
+        assert!(action_allowed("full-control", "select-service"));
+        assert!(action_allowed("full-control", "toggle-blank-screen"));
+        assert!(action_allowed("full-control", "toggle-background-only"));
+        assert!(action_allowed("full-control", "external-app-relaunch"));
+        assert!(action_allowed("full-control", "external-app-close"));
     }
 
     #[test]
     fn action_allowed_rejects_an_unknown_access_level() {
         assert!(!action_allowed("not-a-real-level", "next"));
+    }
+
+    #[test]
+    fn select_service_allowed_now_blocks_only_while_presenting() {
+        assert!(select_service_allowed_now(false));
+        assert!(!select_service_allowed_now(true));
     }
 
     #[test]
@@ -704,6 +998,16 @@ mod tests {
     }
 
     #[test]
+    fn qr_data_url_rejects_text_over_the_encoders_own_capacity() {
+        // Well past what any QR version can hold (2,953 bytes at the largest, lowest-error-
+        // correction version) — `get_qr`'s own MAX_QR_TEXT_LEN cap exists so a caller gets a
+        // clean 400 instead of relying on this to fail closed, but this confirms the encoder
+        // itself errors rather than panicking if that cap were ever bypassed.
+        let too_long = "x".repeat(4000);
+        assert!(qr_data_url(&too_long).is_err());
+    }
+
+    #[test]
     fn guess_content_type_recognizes_common_image_and_video_extensions() {
         assert_eq!(guess_content_type(Path::new("sunset.JPG")), "image/jpeg");
         assert_eq!(guess_content_type(Path::new("sunset.png")), "image/png");
@@ -715,6 +1019,35 @@ mod tests {
     fn guess_content_type_falls_back_for_an_unknown_extension() {
         assert_eq!(
             guess_content_type(Path::new("mystery.xyz")),
+            "application/octet-stream"
+        );
+    }
+
+    #[test]
+    fn guess_asset_content_type_recognizes_the_embedded_bundles_own_file_types() {
+        assert_eq!(
+            guess_asset_content_type("index.html"),
+            "text/html; charset=utf-8"
+        );
+        assert_eq!(
+            guess_asset_content_type("assets/index-abc123.js"),
+            "application/javascript"
+        );
+        assert_eq!(
+            guess_asset_content_type("assets/index-abc123.css"),
+            "text/css"
+        );
+        assert_eq!(
+            guess_asset_content_type("manifest.webmanifest"),
+            "application/manifest+json"
+        );
+        assert_eq!(guess_asset_content_type("sw.js"), "application/javascript");
+    }
+
+    #[test]
+    fn guess_asset_content_type_falls_back_for_an_unknown_extension() {
+        assert_eq!(
+            guess_asset_content_type("mystery.xyz"),
             "application/octet-stream"
         );
     }

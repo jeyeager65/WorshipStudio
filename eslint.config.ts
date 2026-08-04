@@ -10,7 +10,7 @@ const config: TSESLint.FlatConfig.Config[] = defineConfigWithVueTs(
   },
   {
     name: 'app/files-to-ignore',
-    ignores: ['**/dist/**', '**/dist-ssr/**', '**/coverage/**', '**/src-tauri/**'],
+    ignores: ['**/dist/**', '**/dist-ssr/**', '**/dist-remote/**', '**/coverage/**', '**/src-tauri/**'],
   },
   pluginVue.configs['flat/essential'],
   vueTsConfigs.recommended,

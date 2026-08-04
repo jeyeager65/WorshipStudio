@@ -623,7 +623,6 @@ async function disconnectThisComputerFromCanva() {
 }
 const accessLevelOptions: { title: string; value: RemoteDevice['accessLevel'] }[] = [
   { title: 'View Only', value: 'view-only' },
-  { title: 'Advance Only', value: 'advance-only' },
   { title: 'Full Control', value: 'full-control' },
 ]
 function accessLevelLabel(level: RemoteDevice['accessLevel']): string {
@@ -633,7 +632,7 @@ function accessLevelLabel(level: RemoteDevice['accessLevel']): string {
 const provisionDialogOpen = ref(false)
 const newDevicePersonId = ref('')
 const newDeviceName = ref('')
-const newDeviceAccessLevel = ref<RemoteDevice['accessLevel']>('advance-only')
+const newDeviceAccessLevel = ref<RemoteDevice['accessLevel']>('view-only')
 const provisioning = ref(false)
 const provisionResult = ref<{ qrDataUrl: string; pairingUrl: string }>()
 const repairingDeviceId = ref<string>()
@@ -651,7 +650,7 @@ function remoteDeviceOwner(device: RemoteDevice): string {
 function openProvisionDialog(personId = '') {
   newDevicePersonId.value = personId
   newDeviceName.value = ''
-  newDeviceAccessLevel.value = 'advance-only'
+  newDeviceAccessLevel.value = 'view-only'
   provisionResult.value = undefined
   provisionDialogOpen.value = true
 }
@@ -1805,10 +1804,9 @@ function translationSource(entry: AvailableTranslationEntry): string {
                   <div>
                     <strong>View Only</strong> — mirrors the presentation screen, no controls.
                   </div>
-                  <div><strong>Advance Only</strong> — mirror plus Previous/Next.</div>
                   <div>
-                    <strong>Full Control</strong> — mirror, Previous/Next, and Start/Stop
-                    Presenting.
+                    <strong>Full Control</strong> — mirror, Previous/Next, jump to any slide, and
+                    Start/Stop Presenting.
                   </div>
                 </div>
               </template>

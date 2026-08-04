@@ -34,7 +34,7 @@ const pairDialogOpen = ref(false)
 const pairing = ref(false)
 const pairingDeviceId = ref<string>()
 const newDeviceName = ref('')
-const newDeviceAccessLevel = ref<RemoteDevice['accessLevel']>('advance-only')
+const newDeviceAccessLevel = ref<RemoteDevice['accessLevel']>('view-only')
 const pairingResult = ref<{ qrDataUrl: string; pairingUrl: string }>()
 const categoryColors = [
   'primary',
@@ -76,7 +76,6 @@ const personRemoteDevices = computed(() =>
 )
 const accessLevelOptions: { title: string; value: RemoteDevice['accessLevel'] }[] = [
   { title: 'View Only', value: 'view-only' },
-  { title: 'Advance Only', value: 'advance-only' },
   { title: 'Full Control', value: 'full-control' },
 ]
 
@@ -148,7 +147,7 @@ async function savePerson() {
 
 function openPairDialog() {
   newDeviceName.value = ''
-  newDeviceAccessLevel.value = 'advance-only'
+  newDeviceAccessLevel.value = 'view-only'
   pairingResult.value = undefined
   pairDialogOpen.value = true
 }

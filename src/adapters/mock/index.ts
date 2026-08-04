@@ -396,6 +396,8 @@ export function createMockAdapter(): StudioAdapter {
       // commands from.
       getServerInfo: async () => ({ hostname: undefined, lanIp: undefined, port: 0 }),
       pushLiveState: async () => {},
+      pushServiceOutline: async () => {},
+      pushServiceOpen: async () => {},
       onCommand: async () => () => {},
     },
     sync: {

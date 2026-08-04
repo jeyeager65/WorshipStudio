@@ -128,11 +128,18 @@ describe('Remote Control confidence-monitor mirror', () => {
       const missingRes = await fetch(`http://127.0.0.1:${PORT}/api/media/not-a-real-id`, { headers: { Cookie: cookie } })
       expect(missingRes.status).toBe(404)
 
-      // The served index page is the real mirror UI, not the old plain-text banner.
-      const pageRes = await fetch(`http://127.0.0.1:${PORT}/`)
-      const html = await pageRes.text()
-      expect(html).toContain('mirror-wrap')
-      expect(html).toContain('renderMirror')
+      // The served bundle is the real Vue app (src-remote/), not the old hand-written vanilla
+      // page — index.html itself is now just a thin shell (Vue renders client-side, so there's
+      // no meaningful server-rendered markup left to string-match), so the "is this the new
+      // bundle" check is the PWA manifest it now also serves. Actually rendering the bundle in
+      // a real browser is covered separately (see remote-select-service.spec.js) rather than
+      // here, to preserve this file's own deliberate choice to never touch the WebDriver
+      // browser session (see this test's opening comment on why: multi-window risk).
+      const manifestRes = await fetch(`http://127.0.0.1:${PORT}/manifest.webmanifest`)
+      expect(manifestRes.status).toBe(200)
+      expect(manifestRes.headers.get('content-type')).toBe('application/manifest+json')
+      const manifest = await manifestRes.json()
+      expect(manifest.name).toBe('Worship Studio Remote')
     } finally {
       if (fs.existsSync(remoteDevicesPath)) fs.writeFileSync(remoteDevicesPath, '[]')
       if (fs.existsSync(personPath)) fs.unlinkSync(personPath)

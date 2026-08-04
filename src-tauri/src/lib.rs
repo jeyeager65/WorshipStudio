@@ -148,6 +148,8 @@ pub fn run() {
             commands::remote::revoke_remote_device,
             commands::remote::get_remote_server_info,
             commands::remote::update_remote_live_state,
+            commands::remote::update_remote_service_outline,
+            commands::remote::update_remote_service_open,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,33 +1,20 @@
 import 'vuetify/styles'
 import '@mdi/font/css/materialdesignicons.css'
 import { createVuetify } from 'vuetify'
+import {
+  worshipDarkColors,
+  worshipDarkVariables,
+  worshipLightColors,
+} from './themeTokens'
 
-// A restrained, professional palette rather than Vuetify's stock defaults — a blue
-// primary, a subdued brass/gold secondary, and a dark-neutral surface (not pure black) for
-// a dim-booth environment (spec section 16). This is a real, permanent preset theme, not a
-// placeholder waiting for church-branding colors — the plan going forward is a small set of
-// well-designed built-in theme options (light + dark) rather than deriving the operator UI's
-// palette from church branding; logo-based branding may still happen separately, lower
-// priority. A few extra named colors (teal/violet/rose/amber/slate/terracotta) round out the
-// palette so content can be color-coded by category (song block type, service item type)
-// without introducing anything loud — see src/utils/contentColors.ts.
-// Same accent hues in both themes (they're used as solid button fills with
-// auto-computed contrast text, so they read fine on either background) — only
-// background/surface actually flip between dark and light.
-const accentColors = {
-  primary: '#4C7FE8',
-  secondary: '#B08D3F',
-  error: '#C1554A',
-  success: '#4E9E75',
-  warning: '#C79A3D',
-  info: '#4C7FE8',
-  teal: '#4FAFA0',
-  violet: '#8B6FC9',
-  rose: '#D0708A',
-  amber: '#D0A23A',
-  slate: '#7A8699',
-  terracotta: '#D08B5B',
-}
+// This is a real, permanent preset theme, not a placeholder waiting for church-branding colors —
+// the plan going forward is a small set of well-designed built-in theme options (light + dark)
+// rather than deriving the operator UI's palette from church branding; logo-based branding may
+// still happen separately, lower priority. A few extra named colors (teal/violet/rose/amber/
+// slate/terracotta) round out the palette so content can be color-coded by category (song block
+// type, service item type) without introducing anything loud — see src/utils/contentColors.ts.
+// Color values themselves live in ./themeTokens.ts, shared with the standalone Remote Control
+// bundle (src-remote/) so its colors are the same source of truth, not a hand-matched copy.
 
 export default createVuetify({
   // WebView2 (Chromium) keeps its own per-field history of previously typed values and offers
@@ -59,18 +46,8 @@ export default createVuetify({
     themes: {
       worshipDark: {
         dark: true,
-        colors: {
-          background: '#0F141B',
-          surface: '#151B23',
-          'surface-variant': '#202833',
-          ...accentColors,
-        },
-        variables: {
-          'border-color': '#9BA8BA',
-          'border-opacity': 0.12,
-          'high-emphasis-opacity': 0.92,
-          'medium-emphasis-opacity': 0.65,
-        },
+        colors: worshipDarkColors,
+        variables: worshipDarkVariables,
       },
       // Settings → General's dark-mode toggle (spec section 17/M7) switches to this.
       // Newer than the dark theme and tuned less exhaustively — most screens use the
@@ -80,12 +57,7 @@ export default createVuetify({
       // look here later.
       worshipLight: {
         dark: false,
-        colors: {
-          background: '#f4f5f7',
-          surface: '#ffffff',
-          'surface-variant': '#e7e9ed',
-          ...accentColors,
-        },
+        colors: worshipLightColors,
       },
     },
   },

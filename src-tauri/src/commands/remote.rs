@@ -1,10 +1,10 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
 use crate::domain::{people, remote};
 use crate::models::{LiveSlideContent, RemoteDevice, RemoteDeviceSummary};
 use crate::paths::{library_root, now_iso, remote_devices_path, this_device_name};
-use crate::remote_server::{self, RemoteServerHandle};
+use crate::remote_server::{self, LiveStateUpdate, RemoteServerHandle};
 
 #[tauri::command]
 pub fn list_remote_devices(app: AppHandle) -> Result<Vec<RemoteDeviceSummary>, String> {
@@ -125,15 +125,62 @@ pub fn get_remote_server_info(
     })
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveStateUpdateInput {
+    pub content: Option<LiveSlideContent>,
+    pub is_presenting: bool,
+    pub external_app_active: bool,
+    pub display_width: Option<u32>,
+    pub display_height: Option<u32>,
+    pub is_blank_screen: bool,
+    pub background_only: bool,
+}
+
 /// Pushed from the operator window whenever the live slide or presenting state changes (see
-/// ServiceWorkspaceView's watchers) — the server has no other way to know what's live.
+/// ServiceWorkspaceView's watchers) — the server has no other way to know what's live. Takes
+/// one struct argument rather than a growing list of positional ones (matches
+/// `RemoteServerHandle::update`'s own `LiveStateUpdate` — see its doc comment).
 #[tauri::command]
-pub async fn update_remote_live_state(
-    app: AppHandle,
-    content: Option<LiveSlideContent>,
-    is_presenting: bool,
-) {
+pub async fn update_remote_live_state(app: AppHandle, payload: LiveStateUpdateInput) {
+    let display_size = match (payload.display_width, payload.display_height) {
+        (Some(width), Some(height)) => Some((width, height)),
+        _ => None,
+    };
     app.state::<RemoteServerHandle>()
-        .update(content, is_presenting)
+        .update(LiveStateUpdate {
+            content: payload.content,
+            is_presenting: payload.is_presenting,
+            external_app_active: payload.external_app_active,
+            display_size,
+            is_blank_screen: payload.is_blank_screen,
+            background_only: payload.background_only,
+        })
+        .await;
+}
+
+/// Pushed once from ServiceWorkspaceView's own mount/unmount (see `SharedLiveState::service_open`'s
+/// doc comment) — independent of the moment-to-moment content push above.
+#[tauri::command]
+pub async fn update_remote_service_open(app: AppHandle, open: bool) {
+    app.state::<RemoteServerHandle>()
+        .set_service_open(open)
+        .await;
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SlideSummaryInput {
+    pub index: usize,
+    pub label: String,
+}
+
+/// Pushed from the operator window's own `watch(flatSlides, ...)` (see useLiveTransport.ts)
+/// whenever the current service's slide list changes — load, edit, reorder — not on every
+/// slide advance (that's `update_remote_live_state` above).
+#[tauri::command]
+pub async fn update_remote_service_outline(app: AppHandle, slides: Vec<SlideSummaryInput>) {
+    app.state::<RemoteServerHandle>()
+        .update_slides(slides.into_iter().map(|s| (s.index, s.label)).collect())
         .await;
 }

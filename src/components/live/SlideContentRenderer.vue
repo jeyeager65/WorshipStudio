@@ -23,7 +23,10 @@ import SlideSceneRenderer from '@/components/slides/SlideSceneRenderer.vue'
  * 28-72px) would mean almost nothing at true thumbnail size: it'd just overflow a tiny box.
  * `videoAutoplay`/`videoControls` default to true for the real presentation window; the
  * preview thumbnails pass false for both so a video slide shows a static first frame instead
- * of three extra videos quietly playing at once.
+ * of three extra videos quietly playing at once. `videoMuted` defaults to false (the real
+ * presentation window plays media video audio through the room's own sound system) — the
+ * Remote Control mirror is the one caller that passes true, to avoid feedback/echo from a
+ * phone speaker near the platform (see RemoteMirror.vue's own tap-to-unmute affordance).
  */
 const props = withDefaults(
   defineProps<{
@@ -31,8 +34,9 @@ const props = withDefaults(
     fixedSize?: { width: number; height: number }
     videoAutoplay?: boolean
     videoControls?: boolean
+    videoMuted?: boolean
   }>(),
-  { videoAutoplay: true, videoControls: true },
+  { videoAutoplay: true, videoControls: true, videoMuted: false },
 )
 
 // Song/scripture/text-slide/slide-ref items — the ones rendered by the plain "slide-text"
@@ -207,13 +211,31 @@ watch(
   { flush: 'post' },
 )
 
+// A freshly opened presentation window hasn't necessarily finished loading the slide's actual
+// font yet (each @fontsource-variable family is only fetched/parsed once something first
+// requests it — see main.ts's imports) — both the canvas measurement (lineWrap path) and
+// scrollHeight (non-lineWrap path) above silently measure against the browser's fallback font
+// until the real one swaps in, which can pick a size that's wrong for the real font's actual
+// glyph metrics. Nothing else here re-runs the fit once that swap happens on its own (the
+// ResizeObserver only fires on the *root's* own box size, not a same-size text reflow), so
+// without this, the first slide of a fresh presentation window can render mis-sized until
+// something else (the next slide, or navigating back to this one) happens to re-trigger
+// fitAutoSizedText for an unrelated reason.
+function onFontsLoadingDone() {
+  fitAutoSizedText()
+}
+
 onMounted(() => {
   if (rootRef.value) {
     resizeObserver = new ResizeObserver(() => fitAutoSizedText())
     resizeObserver.observe(rootRef.value)
   }
+  document.fonts.addEventListener('loadingdone', onFontsLoadingDone)
 })
-onUnmounted(() => resizeObserver?.disconnect())
+onUnmounted(() => {
+  resizeObserver?.disconnect()
+  document.fonts.removeEventListener('loadingdone', onFontsLoadingDone)
+})
 
 // Wayfinding (reference-only scripture, spec section 1): books further from the current one
 // shrink and fade, one fade level per book regardless of length — mirrors flipping through a
@@ -361,6 +383,7 @@ const progressSegments = computed(() => {
       :style="{ objectFit: content.media.fit }"
       :autoplay="videoAutoplay"
       :controls="videoControls"
+      :muted="videoMuted"
     />
     <div
       v-else-if="content?.outlineTitle && !content.backgroundOnly"

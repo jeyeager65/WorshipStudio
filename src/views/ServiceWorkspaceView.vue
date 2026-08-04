@@ -840,6 +840,8 @@ const {
   readiness,
   readinessDialogOpen,
   tryForwardKeystroke: (direction) => tryForwardKeystroke(direction),
+  retryExternalApp: () => retryExternalApp(),
+  closeExternalApp: () => closeExternalApp(),
 })
 
 const {

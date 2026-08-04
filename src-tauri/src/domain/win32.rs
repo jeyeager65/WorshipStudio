@@ -15,6 +15,11 @@ mod imp {
 
     use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
     use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+    use windows::Win32::Graphics::Gdi::{
+        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
+        GetDIBits, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+        ROP_CODE, SRCCOPY,
+    };
     use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
@@ -22,9 +27,9 @@ mod imp {
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowRect, GetWindowTextLengthW, GetWindowThreadProcessId, IsWindow,
-        IsWindowVisible, PostMessageW, SetForegroundWindow, SetWindowPos, ShowWindow, HWND_NOTOPMOST,
-        HWND_TOP, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_MINIMIZE,
-        SW_RESTORE, WM_CLOSE,
+        IsWindowVisible, PostMessageW, SetForegroundWindow, SetWindowPos, ShowWindow,
+        HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        SWP_SHOWWINDOW, SW_MINIMIZE, SW_RESTORE, WM_CLOSE,
     };
 
     use super::*;
@@ -76,7 +81,10 @@ mod imp {
         }
         let mut set = HashSet::new();
         unsafe {
-            let _ = EnumWindows(Some(callback), LPARAM(&mut set as *mut HashSet<isize> as isize));
+            let _ = EnumWindows(
+                Some(callback),
+                LPARAM(&mut set as *mut HashSet<isize> as isize),
+            );
         }
         set
     }
@@ -117,7 +125,11 @@ mod imp {
         state.found
     }
 
-    fn wait_for_window(pid: u32, existing_windows: &HashSet<isize>, timeout: Duration) -> Option<HWND> {
+    fn wait_for_window(
+        pid: u32,
+        existing_windows: &HashSet<isize>,
+        timeout: Duration,
+    ) -> Option<HWND> {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
             if let Some(hwnd) = find_window_for_pid(pid) {
@@ -392,7 +404,6 @@ mod imp {
         }
     }
 
-
     fn key_name_to_vk(name: &str) -> Option<VIRTUAL_KEY> {
         // Covers the handful of keys the sketch's "Basic Remote Controls" fields realistically
         // need (arrow keys for Next/Prev) plus a few common extras — not a full keyboard map.
@@ -461,6 +472,117 @@ mod imp {
         let pid_field = line.split(',').nth(1)?;
         pid_field.trim_matches('"').parse().ok()
     }
+
+    /// Confidence-monitor-of-last-resort for the one case the remote's own mirror can't cover
+    /// itself: while an External App Hand-off item is live, the real audience display is
+    /// showing that app's window, not anything Worship Studio rendered, so there's no
+    /// `LiveSlideContent` to push. This captures whatever's actually visible on the monitor at
+    /// the presentation window's own position instead.
+    ///
+    /// Deliberately a screen capture (`BitBlt` from the desktop DC), not `PrintWindow` against
+    /// the presentation window's own handle — `PrintWindow` asks a *specific window* to paint
+    /// its own content into the destination regardless of what's currently covering it on
+    /// screen, so targeting the presentation window's handle just reliably captured Worship
+    /// Studio's own last-rendered frame (the previous slide) instead of the external app now
+    /// on top of it — the exact opposite of the point. DWM has already composited the real
+    /// desktop (GPU-accelerated windows included) before this ever reads from it, so a plain
+    /// `BitBlt` from the screen is both correct and simpler than fighting `PrintWindow`'s own
+    /// per-window semantics.
+    pub fn capture_window_png(hwnd_value: isize) -> Result<Vec<u8>, String> {
+        let hwnd = HWND(hwnd_value as *mut std::ffi::c_void);
+        unsafe {
+            // The presentation window is always borderless (no title bar/resize frame to
+            // exclude), so its full window rect *is* its on-screen content area — this also
+            // gives screen-relative coordinates directly, which GetClientRect doesn't (that's
+            // window-relative), and BitBlt's source position below needs screen coordinates.
+            let mut rect = RECT::default();
+            GetWindowRect(hwnd, &mut rect).map_err(|e| e.to_string())?;
+            let width = rect.right - rect.left;
+            let height = rect.bottom - rect.top;
+            if width <= 0 || height <= 0 {
+                return Err(
+                    "The presentation window has no visible content to capture.".to_string()
+                );
+            }
+
+            // A null HWND targets the entire virtual desktop, not any one window — this is the
+            // actual screen, whatever's currently topmost included.
+            let screen_dc = GetDC(None);
+            if screen_dc.is_invalid() {
+                return Err("Could not get a device context for the screen.".to_string());
+            }
+            let mem_dc = CreateCompatibleDC(Some(screen_dc));
+            let bitmap = CreateCompatibleBitmap(screen_dc, width, height);
+            let old_obj = SelectObject(mem_dc, bitmap.into());
+
+            // CAPTUREBLT includes layered/WS_EX_LAYERED windows in the copy — without it some
+            // overlay-style windows are silently skipped, showing whatever was behind them.
+            const CAPTUREBLT: ROP_CODE = ROP_CODE(SRCCOPY.0 | 0x4000_0000);
+            let captured = BitBlt(
+                mem_dc,
+                0,
+                0,
+                width,
+                height,
+                Some(screen_dc),
+                rect.left,
+                rect.top,
+                CAPTUREBLT,
+            )
+            .is_ok();
+            ReleaseDC(None, screen_dc);
+
+            let mut bitmap_info = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: width,
+                    // Negative height requests a top-down DIB — rows read out in the same
+                    // top-to-bottom order `image::RgbaImage` expects, no manual flip needed.
+                    biHeight: -height,
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+
+            let mut buffer = vec![0u8; (width * height * 4) as usize];
+            let lines_copied = GetDIBits(
+                mem_dc,
+                bitmap,
+                0,
+                height as u32,
+                Some(buffer.as_mut_ptr().cast()),
+                &mut bitmap_info,
+                DIB_RGB_COLORS,
+            );
+
+            SelectObject(mem_dc, old_obj);
+            let _ = DeleteObject(bitmap.into());
+            let _ = DeleteDC(mem_dc);
+
+            if !captured || lines_copied == 0 {
+                return Err("Failed to capture the presentation window.".to_string());
+            }
+
+            // Windows hands back BGRA; `image` wants RGBA.
+            for pixel in buffer.chunks_exact_mut(4) {
+                pixel.swap(0, 2);
+            }
+
+            let image_buffer = image::RgbaImage::from_raw(width as u32, height as u32, buffer)
+                .ok_or_else(|| "Captured image data didn't match the expected size.".to_string())?;
+            let mut png_bytes: Vec<u8> = Vec::new();
+            image::DynamicImage::ImageRgba8(image_buffer)
+                .write_to(
+                    &mut std::io::Cursor::new(&mut png_bytes),
+                    image::ImageFormat::Png,
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(png_bytes)
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -492,7 +614,10 @@ mod imp {
     pub fn is_window_alive(_hwnd_value: isize) -> bool {
         false
     }
-    pub fn reposition_existing(_hwnd_value: isize, _position: &WindowPosition) -> Result<(), String> {
+    pub fn reposition_existing(
+        _hwnd_value: isize,
+        _position: &WindowPosition,
+    ) -> Result<(), String> {
         Err(UNSUPPORTED.to_string())
     }
     pub fn close_window(_hwnd_value: isize) {}
@@ -507,6 +632,9 @@ mod imp {
     }
     pub fn find_running_process_id(_executable_name: &str) -> Option<u32> {
         None
+    }
+    pub fn capture_window_png(_hwnd_value: isize) -> Result<Vec<u8>, String> {
+        Err(UNSUPPORTED.to_string())
     }
 }
 

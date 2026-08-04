@@ -253,7 +253,11 @@ pub fn restore_self(
 pub fn close_current_external_app(engaged: tauri::State<EngagedExternalApp>) -> Result<(), String> {
     if let Some(hwnd) = engaged.current.lock().unwrap().take() {
         win32::close_window(hwnd);
-        engaged.known.lock().unwrap().retain(|_, known_hwnd| *known_hwnd != hwnd);
+        engaged
+            .known
+            .lock()
+            .unwrap()
+            .retain(|_, known_hwnd| *known_hwnd != hwnd);
     }
     Ok(())
 }
@@ -270,7 +274,13 @@ pub fn close_all_external_apps(
     engaged: tauri::State<EngagedExternalApp>,
 ) -> Result<(), String> {
     *engaged.current.lock().unwrap() = None;
-    let hwnds: Vec<isize> = engaged.known.lock().unwrap().drain().map(|(_, hwnd)| hwnd).collect();
+    let hwnds: Vec<isize> = engaged
+        .known
+        .lock()
+        .unwrap()
+        .drain()
+        .map(|(_, hwnd)| hwnd)
+        .collect();
     for hwnd in hwnds {
         win32::close_window(hwnd);
     }
@@ -279,4 +289,3 @@ pub fn close_all_external_apps(
     }
     win32::restore_self(hwnd_of(&window)?)
 }
-

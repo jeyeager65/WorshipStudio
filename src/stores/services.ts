@@ -29,5 +29,12 @@ export const useServicesStore = defineStore('services', () => {
     await load()
   }
 
-  return { services, ...asyncState, load, save, remove, draftService }
+  return {
+    services,
+    ...asyncState,
+    load,
+    save,
+    remove,
+    draftService,
+  }
 })

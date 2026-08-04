@@ -49,7 +49,7 @@ mod tests {
             id: id.to_string(),
             person_id: Some("person-1".to_string()),
             name: name.to_string(),
-            access_level: "advance-only".to_string(),
+            access_level: "full-control".to_string(),
             token: token.to_string(),
             updated_at: "now".to_string(),
             updated_by_device: "d".to_string(),

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <title>Worship Studio Remote</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon-192.png" />
+    <meta name="theme-color" content="#0f141b" />
+    <!-- iOS has no manifest.json support — these are its own separate "Add to Home Screen"
+         mechanism (see the plan's manual-verification note on real-device installability). -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="WS Remote" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <!-- Set synchronously so there's no default-white paint before Vue mounts, matching the
+         main app's index.html doing the same for its own splash background. -->
+    <style>
+      html,
+      body {
+        background: #0f141b;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>

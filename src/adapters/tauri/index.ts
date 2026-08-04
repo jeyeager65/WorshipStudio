@@ -426,8 +426,20 @@ export function createTauriAdapter(): StudioAdapter {
       revokeDevice: (id) => invoke('revoke_remote_device', { id }),
       getServerInfo: () =>
         invoke<{ hostname?: string; lanIp?: string; port: number }>('get_remote_server_info'),
-      pushLiveState: (content, isPresenting) =>
-        invoke('update_remote_live_state', { content: content ?? null, isPresenting }),
+      pushLiveState: (update) =>
+        invoke('update_remote_live_state', {
+          payload: {
+            content: update.content ?? null,
+            isPresenting: update.isPresenting,
+            externalAppActive: update.externalAppActive,
+            displayWidth: update.displaySize.width,
+            displayHeight: update.displaySize.height,
+            isBlankScreen: update.isBlankScreen,
+            backgroundOnly: update.backgroundOnly,
+          },
+        }),
+      pushServiceOutline: (slides) => invoke('update_remote_service_outline', { slides }),
+      pushServiceOpen: (open) => invoke('update_remote_service_open', { open }),
       onCommand: async (callback) => {
         const unlisten = await listen<RemoteCommand>('remote:command', (event) =>
           callback(event.payload),
