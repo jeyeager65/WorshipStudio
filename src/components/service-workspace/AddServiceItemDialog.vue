@@ -86,7 +86,11 @@ function insertItem(item: ServiceItem) {
 
 const filteredSongsForAdd = computed(() => {
   const q = addQuery.value.trim().toLowerCase()
-  return songsStore.songs.filter((song) => !q || song.title.toLowerCase().includes(q))
+  return songsStore.songs.filter(
+    (song) =>
+      !song.archived &&
+      (!q || [song.title, song.artist, song.author].some((field) => field?.toLowerCase().includes(q))),
+  )
 })
 const addingSong = ref(false)
 async function addSongToService(song: Song) {
@@ -454,7 +458,7 @@ function closeAddDialog() {
                 v-for="song in filteredSongsForAdd"
                 :key="song.id"
                 :title="song.title"
-                :subtitle="song.author"
+                :subtitle="song.artist || song.author"
                 @click="addSongToService(song)"
               />
             </v-list>

@@ -184,6 +184,7 @@ mod tests {
             title: title.to_string(),
             ccli: None,
             author: None,
+            artist: None,
             copyright: None,
             collections: vec![],
             tags: vec![],
@@ -196,6 +197,7 @@ mod tests {
                 last_used_at: None,
                 uses_past_year: 0,
             },
+            archived: false,
             updated_at: String::new(),
             updated_by_device: String::new(),
         }

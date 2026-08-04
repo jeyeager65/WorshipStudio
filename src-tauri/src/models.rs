@@ -50,6 +50,10 @@ pub struct Song {
     pub ccli: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
+    /// Who this is known for/performed by, when that differs from `author` — shown in place of
+    /// it wherever a song is being picked/browsed, but `author` stays what CCLI reporting uses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artist: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub copyright: Option<String>,
     #[serde(default)]
@@ -62,6 +66,11 @@ pub struct Song {
     pub blocks: Vec<SongBlock>,
     pub default_arrangement: Arrangement,
     pub usage: Usage,
+    /// Hidden from the library list and the Add-to-Service song picker, but otherwise untouched
+    /// — a past service that already references this song still resolves and renders it
+    /// normally, and usage/CCLI reporting is unaffected. Reversible, unlike deleting.
+    #[serde(default)]
+    pub archived: bool,
     pub updated_at: String,
     pub updated_by_device: String,
 }

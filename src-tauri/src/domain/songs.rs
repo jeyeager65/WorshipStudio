@@ -116,6 +116,7 @@ pub fn import_from_opensong_xml(
         title: parsed.title,
         ccli: parsed.ccli,
         author: parsed.author,
+        artist: None,
         copyright: parsed.copyright,
         collections: vec![],
         tags: vec![],
@@ -126,6 +127,7 @@ pub fn import_from_opensong_xml(
             last_used_at: None,
             uses_past_year: 0,
         },
+        archived: false,
         updated_at: now.to_string(),
         updated_by_device: device.to_string(),
     };
@@ -144,6 +146,7 @@ mod tests {
             title: "Amazing Grace".to_string(),
             ccli: None,
             author: Some("John Newton".to_string()),
+            artist: None,
             copyright: None,
             collections: vec![],
             tags: vec![],
@@ -154,6 +157,7 @@ mod tests {
                 last_used_at: None,
                 uses_past_year: 0,
             },
+            archived: false,
             updated_at: String::new(),
             updated_by_device: String::new(),
         }

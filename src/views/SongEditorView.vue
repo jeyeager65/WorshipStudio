@@ -208,6 +208,12 @@ async function removeFromArrangement(index: number) {
               class="title-detail-field"
             />
             <v-text-field v-model="song.author" label="Author" variant="outlined" hide-details />
+            <v-text-field
+              v-model="song.artist"
+              label="Artist (if different)"
+              variant="outlined"
+              hide-details
+            />
             <v-text-field v-model="song.ccli" label="CCLI Number" variant="outlined" hide-details />
             <v-combobox
               v-model="song.tags"
@@ -526,7 +532,7 @@ async function removeFromArrangement(index: number) {
 
 .details-grid {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 180px minmax(240px, 1.25fr);
+  grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) 150px minmax(220px, 1.1fr);
   gap: 14px;
 }
 
@@ -823,7 +829,7 @@ async function removeFromArrangement(index: number) {
   }
 
   .details-grid {
-    grid-template-columns: minmax(180px, 1fr) 160px;
+    grid-template-columns: minmax(180px, 1fr) minmax(160px, 1fr);
   }
 
   .tags-field {

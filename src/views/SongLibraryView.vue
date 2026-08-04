@@ -17,12 +17,20 @@ const query = ref('')
 const activeCollection = ref<string>()
 const activeTag = ref<string>()
 const importing = ref(false)
+const showArchived = ref(false)
 
 onMounted(async () => {
   await Promise.all([store.loaded ? Promise.resolve() : store.load(), settingsStore.load()])
 })
 
-const visibleSongs = computed(() => store.songs)
+// Archived songs are a separate mode from the active library, not blended into one list —
+// collection/tag filter counts, search, and the empty states below all scope to whichever one
+// is currently showing.
+const allSongs = computed(() => store.songs)
+const archivedCount = computed(() => allSongs.value.filter((song) => song.archived).length)
+const visibleSongs = computed(() =>
+  allSongs.value.filter((song) => !!song.archived === showArchived.value),
+)
 const collectionFilters = computed(() => {
   const names = new Set(settingsStore.librarySettings?.collections ?? [])
   for (const song of visibleSongs.value)
@@ -60,7 +68,8 @@ const filteredSongs = computed(() => {
       return false
     if (activeTag.value && !song.tags.includes(activeTag.value)) return false
     if (!q) return true
-    if ([song.title, song.author].some((field) => field?.toLowerCase().includes(q))) return true
+    if ([song.title, song.author, song.artist].some((field) => field?.toLowerCase().includes(q)))
+      return true
     if (song.tags.some((tag) => tag.toLowerCase().includes(q))) return true
     return song.collections.some((c) => c.collectionId.toLowerCase().includes(q))
   })
@@ -73,6 +82,14 @@ function clearFilters() {
   activeCollection.value = undefined
   activeTag.value = undefined
   query.value = ''
+}
+
+// Artist (who this is known for/performed by) is what's actually useful when browsing/picking a
+// song, so it takes priority here — Author stays the field of record for CCLI reporting, but
+// most songs don't have a distinct Artist set, so falling back to Author keeps this line from
+// going blank for them.
+function creditLabel(song: Song): string {
+  return song.artist || song.author || 'Unknown artist'
 }
 
 // A song's collections/hymnal number, e.g. "Hymns of Grace #184, Worship Hymnal #92" — omits
@@ -102,6 +119,30 @@ function lastUsedLabel(song: Song): string {
 
 function yearlyUsageLabel(song: Song): string {
   return `${song.usage.usesPastYear}x this year`
+}
+
+// A nudge, not a rule — surfaced only in the active view, since a song that's already archived
+// doesn't need to be told it's a candidate for the thing it already is. Deliberately NOT based
+// on usage.usesPastYear (a rolling 365-day window) — that would flag every once-a-year seasonal
+// song (Christmas, New Year's, etc.) the moment its normal annual gap ticks past 365 days,
+// dumping a cluster of false-alarm suggestions right as each one's anniversary rolls over. 18
+// months gives a genuine annual song several months of slack past a normal cycle before it's
+// suggested, while still catching songs that have truly fallen out of rotation.
+const ARCHIVE_CANDIDATE_DAYS = 548
+function isArchiveCandidate(song: Song): boolean {
+  if (!song.usage.lastUsedAt) return false
+  const daysSinceLastUse =
+    (Date.now() - new Date(`${song.usage.lastUsedAt}T00:00:00`).getTime()) / 86_400_000
+  return daysSinceLastUse > ARCHIVE_CANDIDATE_DAYS
+}
+
+// Reversible, unlike Delete — hides the song from this list and the Add-to-Service picker
+// without touching anything it's already used in (see the Song model's own doc comment).
+async function archiveSong(song: Song) {
+  await store.save({ ...song, archived: true })
+}
+async function unarchiveSong(song: Song) {
+  await store.save({ ...song, archived: false })
 }
 
 async function deleteSong(song: Song) {
@@ -183,6 +224,18 @@ async function importFromOpenSong() {
             class="song-search"
           />
           <v-btn
+            :variant="showArchived ? 'flat' : 'outlined'"
+            :color="showArchived ? 'secondary' : undefined"
+            prepend-icon="mdi-archive-outline"
+            @click="showArchived = !showArchived"
+          >
+            {{ showArchived ? 'Back to Active' : 'Archived' }}
+            <v-chip v-if="archivedCount && !showArchived" size="x-small" class="ml-2">{{
+              archivedCount
+            }}</v-chip>
+          </v-btn>
+          <v-btn
+            v-if="!showArchived"
             variant="outlined"
             color="secondary"
             prepend-icon="mdi-file-import"
@@ -191,7 +244,12 @@ async function importFromOpenSong() {
           >
             Import OpenSong
           </v-btn>
-          <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSong"
+          <v-btn
+            v-if="!showArchived"
+            variant="flat"
+            color="primary"
+            prepend-icon="mdi-plus"
+            @click="createSong"
             >New Song</v-btn
           >
         </div>
@@ -268,7 +326,7 @@ async function importFromOpenSong() {
             @retry="store.load"
           />
           <LibraryEmptyState
-            v-if="store.loaded && visibleSongs.length === 0"
+            v-if="store.loaded && allSongs.length === 0"
             icon="mdi-music-note-plus"
             title="No Songs Yet"
             message="Create a song or import an existing OpenSong library."
@@ -283,6 +341,16 @@ async function importFromOpenSong() {
               <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSong"
                 >New Song</v-btn
               >
+          </LibraryEmptyState>
+          <LibraryEmptyState
+            v-else-if="store.loaded && showArchived && visibleSongs.length === 0"
+            icon="mdi-archive-off-outline"
+            title="No Archived Songs"
+            message="Songs you archive from the active library will show up here."
+          >
+            <v-btn variant="text" color="primary" @click="showArchived = false"
+              >Back to Active Songs</v-btn
+            >
           </LibraryEmptyState>
           <LibraryEmptyState
             v-else-if="store.loaded && filteredSongs.length === 0"
@@ -306,7 +374,7 @@ async function importFromOpenSong() {
               <span class="song-icon"><v-icon icon="mdi-music-note" size="22" /></span>
               <div class="song-identity">
                 <h3>{{ song.title }}</h3>
-                <p>{{ song.author || 'Unknown author' }}</p>
+                <p>{{ creditLabel(song) }}</p>
               </div>
               <div class="song-metadata">
                 <div v-if="song.collections.length" class="song-collections">
@@ -328,6 +396,15 @@ async function importFromOpenSong() {
                   <strong>{{ lastUsedLabel(song) }}</strong>
                   <small>{{ yearlyUsageLabel(song) }}</small>
                 </span>
+                <v-chip
+                  v-if="!showArchived && isArchiveCandidate(song)"
+                  size="x-small"
+                  color="amber"
+                  variant="tonal"
+                  class="archive-hint"
+                >
+                  Not used in a while
+                </v-chip>
               </span>
               <v-menu>
                 <template #activator="{ props }">
@@ -345,6 +422,18 @@ async function importFromOpenSong() {
                     prepend-icon="mdi-pencil-outline"
                     title="Edit Song"
                     @click="openSong(song)"
+                  />
+                  <v-list-item
+                    v-if="!showArchived"
+                    prepend-icon="mdi-archive-outline"
+                    title="Archive Song"
+                    @click="archiveSong(song)"
+                  />
+                  <v-list-item
+                    v-else
+                    prepend-icon="mdi-archive-arrow-up-outline"
+                    title="Unarchive Song"
+                    @click="unarchiveSong(song)"
                   />
                   <v-list-item
                     prepend-icon="mdi-trash-can-outline"
@@ -736,6 +825,10 @@ async function importFromOpenSong() {
 .song-usage small {
   color: rgba(var(--v-theme-on-surface), 0.44);
   font-size: 0.7rem;
+  white-space: nowrap;
+}
+.archive-hint {
+  flex-shrink: 0;
   white-space: nowrap;
 }
 .songs-empty-state {
