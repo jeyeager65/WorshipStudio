@@ -42,6 +42,25 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # remote_server.rs embeds the Remote Control mirror's built Vue bundle via
+      # #[derive(RustEmbed)] — that macro requires dist-remote/ to physically exist on disk at
+      # *compile* time (not just at runtime), so every cargo command below, including plain
+      # `cargo fmt`/`clippy`/`test`, fails to even build the crate without it. A fresh checkout
+      # on this job's own runner never produces it otherwise (dist-remote/ is gitignored, and
+      # this job never runs the frontend build) — duplicated here rather than depending on the
+      # frontend job's own build:remote output via upload/download-artifact so the two jobs stay
+      # parallel instead of serializing rust behind frontend.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build:remote
+
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
