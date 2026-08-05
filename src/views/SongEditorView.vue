@@ -9,6 +9,7 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { colorForBlockLabel } from '@/utils/contentColors'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
+import EditorNotFoundState from '@/components/EditorNotFoundState.vue'
 import { errorMessage } from '@/composables/useAsyncStoreState'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import type { Song, SongBlock } from '@/models/song'
@@ -24,6 +25,7 @@ const song = ref<Song>()
 const librarySettings = ref<LibrarySettings>()
 const editorLoading = ref(true)
 const editorLoadError = ref('')
+const notFound = ref(false)
 const documentHistory = useDocumentHistory(song, 'song')
 
 // "New Song" (SongLibraryView) navigates straight here with id "new" rather than saving a
@@ -52,6 +54,7 @@ async function loadEditor() {
   documentHistory.stop()
   editorLoading.value = true
   editorLoadError.value = ''
+  notFound.value = false
   const isNew = route.params.id === 'new'
   try {
     const [loadedSong, settings] = await Promise.all([
@@ -60,7 +63,7 @@ async function loadEditor() {
     ])
     if (!loadedSong) {
       song.value = undefined
-      editorLoadError.value = 'That song could not be found. It may have been moved or deleted.'
+      notFound.value = true
       return
     }
     song.value = loadedSong
@@ -157,13 +160,21 @@ async function removeFromArrangement(index: number) {
 
 <template>
   <AsyncLoadState
-    v-if="!song"
+    v-if="editorLoading || editorLoadError"
     :loading="editorLoading"
     :error="editorLoadError"
     label="song"
     @retry="loadEditor"
   />
-  <main v-else class="song-editor-page">
+  <EditorNotFoundState
+    v-else-if="notFound"
+    icon="mdi-music-note-off"
+    title="Song Not Found"
+    message="This song may have been deleted or moved."
+    :back-to="{ path: '/library/songs' }"
+    back-label="Back to Songs"
+  />
+  <main v-else-if="song" class="song-editor-page">
     <header class="editor-header">
       <div class="header-content">
         <v-btn to="/library/songs" variant="text" prepend-icon="mdi-arrow-left" class="back-button">Songs</v-btn>

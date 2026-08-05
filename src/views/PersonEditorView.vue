@@ -8,6 +8,7 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { getAdapter } from '@/adapters'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
+import EditorNotFoundState from '@/components/EditorNotFoundState.vue'
 import { errorMessage } from '@/composables/useAsyncStoreState'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import type { RemoteDevice } from '@/adapters/types'
@@ -28,6 +29,7 @@ const newRangeEnd = ref('')
 const validationMessage = ref('')
 const editorLoading = ref(true)
 const editorLoadError = ref('')
+const notFound = ref(false)
 const documentHistory = useDocumentHistory(person, 'person')
 const remoteDevices = ref<RemoteDevice[]>([])
 const pairDialogOpen = ref(false)
@@ -93,6 +95,7 @@ async function loadEditor() {
   documentHistory.stop()
   editorLoading.value = true
   editorLoadError.value = ''
+  notFound.value = false
   try {
     const [peopleLoaded, settingsLoaded] = await Promise.all([
       peopleStore.load(),
@@ -106,7 +109,7 @@ async function loadEditor() {
     const existing = peopleStore.people.find((candidate) => candidate.id === route.params.id)
     if (!isNew && !existing) {
       person.value = undefined
-      editorLoadError.value = 'That person could not be found. They may have been moved or deleted.'
+      notFound.value = true
       return
     }
     person.value = isNew ? blankPerson() : structuredClone(toRaw(existing!))
@@ -237,13 +240,21 @@ function formatDateRange(range: UnavailableDateRange): string {
 
 <template>
   <AsyncLoadState
-    v-if="!person"
+    v-if="editorLoading || editorLoadError"
     :loading="editorLoading"
     :error="editorLoadError"
     label="person"
     @retry="loadEditor"
   />
-  <main v-else class="person-editor-page">
+  <EditorNotFoundState
+    v-else-if="notFound"
+    icon="mdi-account-question-outline"
+    title="Person Not Found"
+    message="This person may have been deleted or moved."
+    :back-to="{ path: '/people' }"
+    back-label="Back to People"
+  />
+  <main v-else-if="person" class="person-editor-page">
     <header class="editor-header">
       <div class="header-content">
         <v-btn to="/people" variant="text" prepend-icon="mdi-arrow-left" class="back-button"

@@ -11,6 +11,9 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import PersonEditorDialog from '@/components/people/PersonEditorDialog.vue'
 import RoleAssignmentBlock from '@/components/assignments/RoleAssignmentBlock.vue'
+import AsyncLoadState from '@/components/AsyncLoadState.vue'
+import EditorNotFoundState from '@/components/EditorNotFoundState.vue'
+import { errorMessage } from '@/composables/useAsyncStoreState'
 import { findRoleConflicts, isDateUnavailable } from '@/utils/rosterConflicts'
 import { defaultServiceTemplate, planAssignmentResetFromTemplate } from '@/utils/serviceTemplate'
 import type { RoleAssignment, Service } from '@/models/service'
@@ -34,22 +37,42 @@ const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsav
 const confirmDialog = useConfirmDialogStore()
 
 const service = ref<Service>()
+const editorLoading = ref(true)
+const editorLoadError = ref('')
+const notFound = ref(false)
 const documentHistory = useDocumentHistory(service, 'assignments')
 
-onMounted(async () => {
-  const [loaded] = await Promise.all([
-    getAdapter().services.get(route.params.id as string),
-    peopleStore.load(),
-    settingsStore.load(),
-  ])
-  if (loaded) {
+onMounted(loadAssignments)
+
+async function loadAssignments() {
+  editorLoading.value = true
+  editorLoadError.value = ''
+  notFound.value = false
+  try {
+    const [loaded, peopleLoaded, settingsLoaded] = await Promise.all([
+      getAdapter().services.get(route.params.id as string),
+      peopleStore.load(),
+      settingsStore.load(),
+    ])
+    if (!peopleLoaded || !settingsLoaded) {
+      editorLoadError.value = peopleStore.loadError || settingsStore.loadError
+      return
+    }
+    if (!loaded) {
+      notFound.value = true
+      return
+    }
     if (!loaded.assignments) loaded.assignments = []
     service.value = loaded
     documentHistory.start((dirty) => (isDirty.value = dirty))
     saveHandler.value = saveRoster
+  } catch (error) {
+    editorLoadError.value = errorMessage(error)
+  } finally {
+    isDirty.value = false
+    editorLoading.value = false
   }
-  isDirty.value = false
-})
+}
 onUnmounted(() => {
   documentHistory.stop()
   isDirty.value = false
@@ -380,7 +403,22 @@ async function copyEmailDraft() {
 </script>
 
 <template>
-  <main v-if="service" class="assignments-page">
+  <AsyncLoadState
+    v-if="editorLoading || editorLoadError"
+    :loading="editorLoading"
+    :error="editorLoadError"
+    label="assignments"
+    @retry="loadAssignments"
+  />
+  <EditorNotFoundState
+    v-else-if="notFound"
+    icon="mdi-calendar-remove-outline"
+    title="Service Not Found"
+    message="This service may have been deleted or moved."
+    :back-to="{ path: '/' }"
+    back-label="Back to Services"
+  />
+  <main v-else-if="service" class="assignments-page">
     <header class="assignments-hero">
       <div class="assignments-hero-toolbar">
         <v-btn variant="text" size="small" prepend-icon="mdi-chevron-left" :to="`/service/${service.id}`">
@@ -661,9 +699,6 @@ async function copyEmailDraft() {
       </v-card>
     </v-dialog>
   </main>
-  <v-container v-else class="py-8">
-    <p class="text-medium-emphasis">Service not found.</p>
-  </v-container>
 </template>
 
 <style scoped>

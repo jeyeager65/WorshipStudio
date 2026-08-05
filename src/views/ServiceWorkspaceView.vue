@@ -6,6 +6,7 @@ import { VueDraggable } from 'vue-draggable-plus'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import SlideContentRenderer from '@/components/live/SlideContentRenderer.vue'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
+import EditorNotFoundState from '@/components/EditorNotFoundState.vue'
 import ExternalAppFailureAlert from '@/components/service-workspace/ExternalAppFailureAlert.vue'
 import ServiceDetailsDialog from '@/components/service-workspace/ServiceDetailsDialog.vue'
 import ReadinessDialog from '@/components/service-workspace/ReadinessDialog.vue'
@@ -70,6 +71,7 @@ const confirmDialog = useConfirmDialogStore()
 const service = ref<Service>()
 const workspaceLoading = ref(true)
 const workspaceLoadError = ref('')
+const notFound = ref(false)
 const documentHistory = useDocumentHistory(service, 'service')
 const selectedItemIndex = ref(0)
 
@@ -248,7 +250,7 @@ onMounted(async () => {
     }
   }
   if (!service.value) {
-    workspaceLoadError.value = 'That service could not be found. It may have been moved or deleted.'
+    notFound.value = true
     workspaceLoading.value = false
     return
   }
@@ -1007,13 +1009,21 @@ function updateRolePerson(role: string, personId: string | undefined) {
 
 <template>
   <AsyncLoadState
-    v-if="!service"
+    v-if="workspaceLoading || workspaceLoadError"
     :loading="workspaceLoading"
     :error="workspaceLoadError"
     label="service workspace"
     @retry="reloadWorkspace"
   />
-  <div v-else class="workspace-root">
+  <EditorNotFoundState
+    v-else-if="notFound"
+    icon="mdi-calendar-remove-outline"
+    title="Service Not Found"
+    message="This service may have been deleted or moved."
+    :back-to="{ path: '/' }"
+    back-label="Back to Services"
+  />
+  <div v-else-if="service" class="workspace-root">
     <v-alert
       v-if="servicesStore.mutationError"
       type="error"

@@ -7,6 +7,7 @@ import Moveable from 'vue3-moveable'
 import SlideSceneRenderer from '@/components/slides/SlideSceneRenderer.vue'
 import MediaPickerDialog from '@/components/media/MediaPickerDialog.vue'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
+import EditorNotFoundState from '@/components/EditorNotFoundState.vue'
 import { getAdapter } from '@/adapters'
 import { errorMessage } from '@/composables/useAsyncStoreState'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
@@ -35,6 +36,7 @@ const confirmDialog = useConfirmDialogStore()
 const item = ref<SlideLibraryItem>()
 const editorLoading = ref(true)
 const editorLoadError = ref('')
+const notFound = ref(false)
 const documentHistory = useDocumentHistory(item, 'presentation')
 const selectedSlideId = ref('')
 const selectedElementId = ref('')
@@ -218,6 +220,7 @@ async function loadEditor() {
   documentHistory.stop()
   editorLoading.value = true
   editorLoadError.value = ''
+  notFound.value = false
   const isNew = route.params.id === 'new'
   try {
     const loadedItem = isNew
@@ -225,8 +228,7 @@ async function loadEditor() {
       : await getAdapter().slides.get(route.params.id as string)
     if (!loadedItem) {
       item.value = undefined
-      editorLoadError.value =
-        'That presentation could not be found. It may have been moved or deleted.'
+      notFound.value = true
       return
     }
     item.value = loadedItem
@@ -778,13 +780,21 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
 
 <template>
   <AsyncLoadState
-    v-if="!item || !scene"
+    v-if="editorLoading || editorLoadError"
     :loading="editorLoading"
     :error="editorLoadError"
     label="presentation"
     @retry="loadEditor"
   />
-  <div v-else class="editor">
+  <EditorNotFoundState
+    v-else-if="notFound"
+    icon="mdi-image-off-outline"
+    title="Presentation Not Found"
+    message="This presentation may have been deleted or moved."
+    :back-to="{ path: '/library/slides' }"
+    back-label="Back to Slides"
+  />
+  <div v-else-if="item && scene" class="editor">
     <header class="editor-header">
       <div class="editor-heading">
         <v-btn to="/library/slides" variant="text" prepend-icon="mdi-arrow-left" class="back-button"
