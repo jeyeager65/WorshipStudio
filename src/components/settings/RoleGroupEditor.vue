@@ -12,9 +12,6 @@ const selectedIndex = ref(0)
 const newGroupName = ref('')
 const newRoleName = ref('')
 const selectedGroup = computed(() => props.modelValue[selectedIndex.value])
-const totalRoles = computed(() =>
-  props.modelValue.reduce((total, group) => total + group.roles.length, 0),
-)
 
 watch(
   () => props.modelValue.length,
@@ -83,17 +80,6 @@ async function removeSelectedGroup() {
 <template>
   <div class="role-workspace">
     <aside class="role-directory">
-      <header class="directory-summary">
-        <div>
-          <strong>{{ modelValue.length }}</strong>
-          <span>Categories</span>
-        </div>
-        <div>
-          <strong>{{ totalRoles }}</strong>
-          <span>Roles</span>
-        </div>
-      </header>
-
       <div class="directory-add">
         <v-text-field
           v-model="newGroupName"
@@ -249,29 +235,6 @@ async function removeSelectedGroup() {
   flex-direction: column;
   border-right: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   background: rgba(var(--v-theme-background), 0.3);
-}
-.directory-summary {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-}
-.directory-summary div {
-  padding: 15px 17px;
-}
-.directory-summary div + div {
-  border-left: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-}
-.directory-summary strong,
-.directory-summary span {
-  display: block;
-}
-.directory-summary strong {
-  font-size: 1.15rem;
-}
-.directory-summary span {
-  color: rgba(var(--v-theme-on-surface), 0.46);
-  font-size: 0.65rem;
-  text-transform: uppercase;
 }
 .category-list {
   display: flex;
