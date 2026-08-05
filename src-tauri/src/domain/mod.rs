@@ -1,3 +1,4 @@
+pub mod announcements;
 pub mod external_apps;
 pub mod manifest;
 pub mod media;

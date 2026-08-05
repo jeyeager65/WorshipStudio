@@ -102,6 +102,12 @@ const router = createRouter({
       meta: { title: 'Roles' },
     },
     {
+      path: '/announcements',
+      name: 'announcements',
+      component: () => import('@/views/AnnouncementsView.vue'),
+      meta: { title: 'Announcements' },
+    },
+    {
       path: '/settings',
       name: 'settings',
       component: () => import('@/views/SettingsView.vue'),

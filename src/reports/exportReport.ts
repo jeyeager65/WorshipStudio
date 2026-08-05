@@ -30,6 +30,13 @@ export async function exportWorkbookReport(report: WorkbookReport): Promise<Expo
   return saveBytes(report.filenameBase, 'xlsx', bytes)
 }
 
+// For PDF-only builders (e.g. the "Modern" bulletin style) that render straight to bytes rather
+// than going through the shared DocumentReport/ReportBlock system — reuses the same save/open
+// behavior as exportDocumentReport instead of duplicating it.
+export async function exportRawPdf(filenameBase: string, bytes: Uint8Array): Promise<ExportResult> {
+  return saveBytes(filenameBase, 'pdf', bytes)
+}
+
 async function saveBytes(
   filenameBase: string,
   format: ReportFormat,

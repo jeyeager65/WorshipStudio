@@ -123,6 +123,11 @@ export interface Service {
   /** Operator-only notes, keyed by service item id. */
   presenterNotes?: Record<string, string>
   assignments?: RoleAssignment[]
+  /** This week's front-page (Order of Worship) bulletin footer quote — entered fresh each week;
+   *  the footer's title is a church-wide choice (LibrarySettings.bulletin.page1FooterTitle). */
+  bulletinPage1Footer?: string
+  /** This week's back-page (Announcements) bulletin footer quote. */
+  bulletinPage2Footer?: string
   updatedAt: string
   updatedByDevice: string
 }

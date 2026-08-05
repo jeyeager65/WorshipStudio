@@ -297,6 +297,8 @@ mod tests {
             items: vec![],
             presenter_notes: None,
             assignments: None,
+            bulletin_page1_footer: None,
+            bulletin_page2_footer: None,
             updated_at: String::new(),
             updated_by_device: String::new(),
         }

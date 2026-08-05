@@ -148,10 +148,59 @@ describe('buildOrderOfWorship', () => {
     })
   })
 
-  it('includes the service date and type in the date line', () => {
+  it('includes the service date but not the service type in the date line', () => {
     const doc = buildOrderOfWorship(baseService(), songs, slides, new Map())
     expect(doc.dateLine).toContain('2026')
-    expect(doc.dateLine).toContain('Sunday Morning Worship')
+    expect(doc.dateLine).not.toContain('Sunday Morning Worship')
+  })
+
+  it('excludes external-app items entirely rather than printing a "[External App]" placeholder', () => {
+    const service = baseService({
+      items: [
+        { id: 'item-1', type: 'external-app', profileId: 'profile-1' },
+        { id: 'item-2', type: 'song', songId: 'song-1', arrangement: { sequence: [] } },
+      ],
+    })
+    const doc = buildOrderOfWorship(service, songs, slides, new Map())
+    expect(doc.lines).toHaveLength(1)
+    expect(doc.lines[0]?.text).toContain('Come Behold the Wondrous Mystery')
+  })
+
+  it('defaults to "Order of Worship" when no bulletin title is configured, and honors one when it is', () => {
+    const withoutSettings = buildOrderOfWorship(baseService(), songs, slides, new Map())
+    expect(withoutSettings.title).toBe('Order of Worship')
+
+    const withSettings = buildOrderOfWorship(baseService(), songs, slides, new Map(), new Map(), {
+      page1Title: 'Liturgy',
+      page1FooterEnabled: true,
+      page1FooterTitle: 'Heart Preparation',
+    })
+    expect(withSettings.title).toBe('Liturgy')
+  })
+
+  it('includes the footer only when enabled and the service has text for it', () => {
+    const withFooter = buildOrderOfWorship(
+      baseService({ bulletinPage1Footer: 'Be still and know.' }),
+      songs,
+      slides,
+      new Map(),
+      new Map(),
+      { page1Title: 'Order of Worship', page1FooterEnabled: true, page1FooterTitle: 'Heart Preparation' },
+    )
+    expect(withFooter.footer).toEqual({ title: 'Heart Preparation', text: 'Be still and know.' })
+
+    const noText = buildOrderOfWorship(baseService(), songs, slides, new Map())
+    expect(noText.footer).toBeUndefined()
+
+    const disabled = buildOrderOfWorship(
+      baseService({ bulletinPage1Footer: 'Be still and know.' }),
+      songs,
+      slides,
+      new Map(),
+      new Map(),
+      { page1Title: 'Order of Worship', page1FooterEnabled: false, page1FooterTitle: 'Heart Preparation' },
+    )
+    expect(disabled.footer).toBeUndefined()
   })
 
   it('bulletinLabel overrides a type’s own default heading, and bulletinNote adds a second line', () => {
@@ -371,6 +420,16 @@ describe('toPlainText', () => {
     })
     expect(text).toContain('Song One\nSong Two\n\nMatthew 25:1-30')
   })
+
+  it('appends the footer title and text when present', () => {
+    const text = toPlainText({
+      title: 'Order of Worship',
+      dateLine: 'Sunday',
+      lines: [{ text: 'Amazing Grace' }],
+      footer: { title: 'Heart Preparation', text: 'Be still and know.' },
+    })
+    expect(text).toContain('Amazing Grace\n\nHeart Preparation\nBe still and know.')
+  })
 })
 
 describe('toHtml', () => {
@@ -406,6 +465,20 @@ describe('toHtml', () => {
     expect(html).not.toContain('<hr')
     expect(html).toContain('margin:2px 0')
     expect(html).toContain('margin:8px 0 2px 0')
+  })
+
+  it('renders and escapes the footer when present, and omits it otherwise', () => {
+    const withFooter = toHtml({
+      title: 'Order of Worship',
+      dateLine: 'Sunday',
+      lines: [],
+      footer: { title: 'Heart Preparation', text: '<i>Be still</i>' },
+    })
+    expect(withFooter).toContain('<strong>Heart Preparation</strong>')
+    expect(withFooter).toContain('&lt;i&gt;Be still&lt;/i&gt;')
+
+    const withoutFooter = toHtml({ title: 'Order of Worship', dateLine: 'Sunday', lines: [] })
+    expect(withoutFooter).not.toContain('Heart Preparation')
   })
 })
 

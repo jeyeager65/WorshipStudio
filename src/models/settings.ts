@@ -81,6 +81,27 @@ export interface LibrarySettings {
    */
   wayfindingMinFontSizePx: number
   wayfindingMaxFontSizePx: number
+  /** Bulletin/Order of Worship export customization — every label here is this church's own
+   *  choice, not a fixed English string (see utils/orderOfWorship.ts and utils/bulletinPage2.ts,
+   *  which read these rather than hardcoding "Order of Worship"/"Heart Preparation"/etc.). */
+  bulletin: BulletinSettings
+}
+
+export interface BulletinSettings {
+  page1Title: string
+  page2Title: string
+  page1FooterTitle: string
+  page1FooterEnabled: boolean
+  page2FooterTitle: string
+  page2FooterEnabled: boolean
+  /** Whole back page on/off — a church that only wants the front-page liturgy. */
+  page2Enabled: boolean
+  showAnnouncements: boolean
+  showServingSchedule: boolean
+  /** Which individual role names (drawn from LibrarySettings.roleGroups' own roles, e.g.
+   *  "Nursery", "Sound Booth") become columns in the serving schedule table — opt-in, since not
+   *  every role (e.g. Praise Team parts) belongs in it. */
+  servingScheduleRoles: string[]
 }
 
 /** Per-machine settings — Tauri app-data dir, never synced. */

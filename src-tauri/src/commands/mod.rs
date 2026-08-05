@@ -1,3 +1,4 @@
+pub mod announcements;
 pub mod canva;
 pub mod diagnostics;
 pub mod external_apps;

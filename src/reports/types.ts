@@ -10,7 +10,10 @@ export interface ReportRun {
   text: string
   bold?: boolean
   italics?: boolean
+  underline?: boolean
   color?: string
+  /** Points. Falls back to the containing block's own style-based default when unset. */
+  fontSize?: number
 }
 
 export interface ReportParagraph {
@@ -23,7 +26,11 @@ export interface ReportParagraph {
 }
 
 export interface ReportTableCell {
+  /** The cell's first (or only) line. */
   runs: ReportRun[]
+  /** Further lines below the first, each its own paragraph within the cell — for content that's
+   *  naturally a short list (e.g. one name per line) rather than one flowing, comma-joined line. */
+  extraLines?: ReportRun[][]
   alignment?: 'left' | 'center' | 'right'
 }
 
@@ -33,12 +40,23 @@ export interface ReportTable {
   rows: ReportTableCell[][]
   widths?: Array<number | '*'>
   headerRows?: number
+  /** Bold black-on-white header instead of the usual colored fill bar — for content meant to
+   *  print cleanly on a monochrome printer (e.g. the bulletin's serving schedule). */
+  plainHeader?: boolean
+  /** Points. Falls back to the renderer's own default header size when unset. */
+  headerFontSize?: number
 }
 
 export interface ReportList {
   kind: 'list'
   heading?: string
-  items: string[]
+  /** Points/color for `heading` specifically — falls back to the renderer's own defaults
+   *  (branding-primary-colored, a fixed size) when unset. */
+  headingFontSize?: number
+  headingColor?: string
+  /** A plain string renders as a single run at the list's default style — pass an array of runs
+   *  instead for a line that mixes styling (e.g. a bold date lead-in followed by plain text). */
+  items: (string | ReportRun[])[]
   ordered?: boolean
   emptyText?: string
 }
@@ -72,6 +90,11 @@ export interface DocumentReport {
   orientation?: 'portrait' | 'landscape'
   branding: ReportBranding
   blocks: ReportBlock[]
+  /** Rendered pinned to the bottom of every page via each renderer's own native page-footer
+   *  mechanism (Word's section Footer / pdfmake's footer callback) — unlike `blocks`, this stays
+   *  at the bottom regardless of how much content precedes it. Laid out as columns matching
+   *  `blocks`' own top-level column widths, so each footer lines up under its own column. */
+  pageFooterColumns?: { width?: number | '*'; blocks: ReportBlock[] }[]
 }
 
 export type WorkbookCellValue = string | number | boolean | Date | null

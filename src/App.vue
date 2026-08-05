@@ -393,6 +393,15 @@ onUnmounted(() => {
             ><v-icon icon="mdi-account-badge-outline" color="terracotta"
           /></template>
         </v-list-item>
+        <v-list-item
+          v-tooltip:end="navigationCollapsed ? 'Announcements' : false"
+          to="/announcements"
+          title="Announcements"
+          rounded="lg"
+          class="mx-2 mb-1 sidebar-item"
+        >
+          <template #prepend><v-icon icon="mdi-bullhorn-outline" color="teal" /></template>
+        </v-list-item>
         <v-divider class="mx-2 mt-2 mb-1" />
         <v-list-subheader v-if="!navigationCollapsed" class="design-nav-heading">
           Design
@@ -739,6 +748,10 @@ onUnmounted(() => {
   font-weight: 550;
 }
 .sidebar-item {
+  /* Vuetify defaults an icon prepend's gap to 32px (see VListItem.css's --v-list-prepend-gap) —
+     more room than these short nav labels need, and "Announcements" in particular doesn't fit
+     without it. */
+  --v-list-prepend-gap: 20px;
   transition:
     background-color 140ms ease,
     color 140ms ease;

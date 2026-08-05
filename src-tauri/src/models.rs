@@ -234,6 +234,33 @@ pub struct Person {
     pub updated_by_device: String,
 }
 
+/// A printed-bulletin announcement — deliberately separate from Slide Library announcement
+/// slides, whose content is punchy/visual for on-screen display rather than the more detailed,
+/// often forward-looking text a printed entry carries. Two visibility patterns (see the
+/// frontend's utils/announcementVisibility.ts, which is the actual source of truth for the
+/// display logic — this struct is pure storage): event-dated entries (`event_date` set) need no
+/// `show_until`, since the event date itself is the natural stop-showing point; ongoing/standing
+/// entries (no `event_date`) require an explicit `show_until`, enforced by the frontend's save
+/// validation rather than this struct, since a single optional field serves both patterns.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Announcement {
+    pub id: String,
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_end_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_time: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show_from: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show_until: Option<String>,
+    pub updated_at: String,
+    pub updated_by_device: String,
+}
+
 /// A named category of roles (e.g. "Praise Team" grouping Drums/Guitar/Piano/Vocals) — purely
 /// organizational, since a role itself is still just a plain string referenced by
 /// RoleAssignment::role/ServiceTemplateItem::role.
@@ -402,6 +429,13 @@ pub struct Service {
     pub presenter_notes: Option<std::collections::HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assignments: Option<Vec<RoleAssignment>>,
+    /// This week's front-page (Order of Worship) bulletin footer quote — entered fresh each
+    /// week; the footer's title is a church-wide choice (LibrarySettings::bulletin).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bulletin_page1_footer: Option<String>,
+    /// This week's back-page (Announcements) bulletin footer quote.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bulletin_page2_footer: Option<String>,
     pub updated_at: String,
     pub updated_by_device: String,
 }
@@ -601,6 +635,80 @@ pub struct LibrarySettings {
     pub wayfinding_min_font_size_px: u32,
     #[serde(default = "default_wayfinding_max_font_size_px")]
     pub wayfinding_max_font_size_px: u32,
+    /// Bulletin/Order of Worship export customization — every label here is this church's own
+    /// choice, not a fixed English string (see frontend's orderOfWorship.ts/hopeHappenings.ts,
+    /// which read these rather than hardcoding "Order of Worship"/"Heart Preparation"/etc.).
+    #[serde(default)]
+    pub bulletin: BulletinSettings,
+}
+
+/// See LibrarySettings::bulletin's own doc comment. `#[serde(default)]` per boolean field
+/// (rather than only on the whole struct) means an old library-settings.json missing this
+/// section entirely still gets these same "on" defaults via BulletinSettings::default() below —
+/// the per-field defaults exist for the narrower case of a *partially* present bulletin object
+/// (e.g. a future field added later that an older file predates).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BulletinSettings {
+    #[serde(default = "default_bulletin_page1_title")]
+    pub page1_title: String,
+    #[serde(default = "default_bulletin_page2_title")]
+    pub page2_title: String,
+    #[serde(default = "default_bulletin_page1_footer_title")]
+    pub page1_footer_title: String,
+    #[serde(default = "default_bulletin_true")]
+    pub page1_footer_enabled: bool,
+    #[serde(default = "default_bulletin_page2_footer_title")]
+    pub page2_footer_title: String,
+    #[serde(default = "default_bulletin_true")]
+    pub page2_footer_enabled: bool,
+    #[serde(default = "default_bulletin_true")]
+    pub page2_enabled: bool,
+    #[serde(default = "default_bulletin_true")]
+    pub show_announcements: bool,
+    #[serde(default = "default_bulletin_true")]
+    pub show_serving_schedule: bool,
+    /// Individual role names (drawn from LibrarySettings::role_groups' own roles, e.g.
+    /// "Nursery", "Sound Booth") that become columns in the serving schedule table.
+    #[serde(default)]
+    pub serving_schedule_roles: Vec<String>,
+}
+
+impl Default for BulletinSettings {
+    fn default() -> Self {
+        Self {
+            page1_title: default_bulletin_page1_title(),
+            page2_title: default_bulletin_page2_title(),
+            page1_footer_title: default_bulletin_page1_footer_title(),
+            page1_footer_enabled: true,
+            page2_footer_title: default_bulletin_page2_footer_title(),
+            page2_footer_enabled: true,
+            page2_enabled: true,
+            show_announcements: true,
+            show_serving_schedule: true,
+            serving_schedule_roles: Vec::new(),
+        }
+    }
+}
+
+fn default_bulletin_true() -> bool {
+    true
+}
+
+fn default_bulletin_page1_title() -> String {
+    "Order of Worship".to_string()
+}
+
+fn default_bulletin_page2_title() -> String {
+    "Announcements".to_string()
+}
+
+fn default_bulletin_page1_footer_title() -> String {
+    "Heart Preparation".to_string()
+}
+
+fn default_bulletin_page2_footer_title() -> String {
+    "Thought to Ponder".to_string()
 }
 
 fn default_scripture_min_font_size_px() -> u32 {

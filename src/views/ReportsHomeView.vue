@@ -1,18 +1,28 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useServicesStore } from '@/stores/services'
 import { useSongsStore } from '@/stores/songs'
 import { useSlidesStore } from '@/stores/slides'
 import { usePeopleStore } from '@/stores/people'
 import { useSettingsStore } from '@/stores/settings'
+import { useAnnouncementsStore } from '@/stores/announcements'
 import { personDisplayName, personFormalName } from '@/models/library'
 import { buildOrderOfWorship, toHtml, toPlainText } from '@/utils/orderOfWorship'
+import { buildBulletinPage2, findNextWeekService } from '@/utils/bulletinPage2'
 import { buildBulletinDocument } from '@/reports/builders/bulletin'
+import { renderModernBulletin } from '@/reports/modernBulletin'
 import { reportBranding } from '@/reports/branding'
-import { exportCompletionMessage, exportDocumentReport } from '@/reports/exportReport'
+import { exportCompletionMessage, exportDocumentReport, exportRawPdf } from '@/reports/exportReport'
 import type { ReportFormat } from '@/reports/types'
 import { localCalendarDate } from '@/utils/calendarDate'
+
+type BulletinStyle = 'classic' | 'modern'
+const bulletinStyleOptions: { title: string; value: BulletinStyle }[] = [
+  { title: 'Classic', value: 'classic' },
+  { title: 'Modern (PDF only)', value: 'modern' },
+]
+const bulletinStyle = ref<BulletinStyle>('classic')
 
 const route = useRoute()
 const servicesStore = useServicesStore()
@@ -20,6 +30,7 @@ const songsStore = useSongsStore()
 const slidesStore = useSlidesStore()
 const peopleStore = usePeopleStore()
 const settingsStore = useSettingsStore()
+const announcementsStore = useAnnouncementsStore()
 const selectedServiceId = ref<string>()
 const exportingFormat = ref<ReportFormat>()
 const statusMessage = ref('')
@@ -59,9 +70,59 @@ const bulletin = computed(() =>
         slidesStore.slides,
         personNames.value,
         formalPersonNames.value,
+        settingsStore.librarySettings?.bulletin,
       )
     : undefined,
 )
+
+// "Next Week" for the serving schedule — the *same recurring service type* dated exactly 7 days
+// later (see findNextWeekService's own doc comment), not just whatever's chronologically next.
+const nextWeekService = computed(() =>
+  selectedService.value
+    ? findNextWeekService(servicesStore.services, selectedService.value)
+    : undefined,
+)
+const bulletinPage2 = computed(() =>
+  selectedService.value && settingsStore.librarySettings?.bulletin.page2Enabled
+    ? buildBulletinPage2(
+        selectedService.value,
+        nextWeekService.value,
+        announcementsStore.announcements,
+        settingsStore.librarySettings.bulletin,
+        personNames.value,
+      )
+    : undefined,
+)
+
+// Local drafts for this week's two footer quotes — edited right here rather than in the service
+// workspace, since generating the bulletin is the only place this text is used. Kept as plain
+// refs (not a direct v-model on the store's own service object) so typing doesn't autosave on
+// every keystroke; saved explicitly on blur instead.
+const page1FooterDraft = ref('')
+const page2FooterDraft = ref('')
+watch(
+  selectedService,
+  (service) => {
+    page1FooterDraft.value = service?.bulletinPage1Footer ?? ''
+    page2FooterDraft.value = service?.bulletinPage2Footer ?? ''
+  },
+  { immediate: true },
+)
+async function saveFooterDrafts() {
+  const service = selectedService.value
+  if (!service) return
+  if (
+    (service.bulletinPage1Footer ?? '') === page1FooterDraft.value &&
+    (service.bulletinPage2Footer ?? '') === page2FooterDraft.value
+  ) {
+    return
+  }
+  await servicesStore.save({
+    ...service,
+    bulletinPage1Footer: page1FooterDraft.value || undefined,
+    bulletinPage2Footer: page2FooterDraft.value || undefined,
+  })
+}
 
 onMounted(async () => {
   await Promise.all([
@@ -70,6 +131,7 @@ onMounted(async () => {
     slidesStore.loaded ? Promise.resolve() : slidesStore.load(),
     peopleStore.loaded ? Promise.resolve() : peopleStore.load(),
     settingsStore.loaded ? Promise.resolve() : settingsStore.load(),
+    announcementsStore.loaded ? Promise.resolve() : announcementsStore.load(),
   ])
 
   const requestedServiceId = typeof route.query.service === 'string' ? route.query.service : ''
@@ -97,10 +159,23 @@ async function exportBulletin(format: 'docx' | 'pdf') {
   if (!bulletin.value || !selectedService.value) return
   exportingFormat.value = format
   try {
+    if (bulletinStyle.value === 'modern') {
+      // Modern is PDF-only (its icon badges, hairlines, and letter-spaced headings have no
+      // reasonable Word equivalent) — the "Open Word" button is disabled whenever it's selected.
+      const bytes = await renderModernBulletin(
+        bulletin.value,
+        bulletinPage2.value,
+        reportBranding(settingsStore.librarySettings),
+      )
+      const result = await exportRawPdf(`Bulletin - ${selectedService.value.date}`, bytes)
+      if (result !== 'cancelled') showStatus(exportCompletionMessage('pdf', result))
+      return
+    }
     const report = buildBulletinDocument(
       bulletin.value,
       reportBranding(settingsStore.librarySettings),
       selectedService.value.date,
+      bulletinPage2.value,
     )
     const result = await exportDocumentReport(report, format)
     if (result !== 'cancelled') showStatus(exportCompletionMessage(format, result))
@@ -196,13 +271,22 @@ const reports = [
             class="service-picker"
             :no-data-text="servicesStore.loaded ? 'No services available' : 'Loading services…'"
           />
+          <v-select
+            v-model="bulletinStyle"
+            :items="bulletinStyleOptions"
+            label="Style"
+            variant="outlined"
+            density="compact"
+            hide-details
+            class="style-picker"
+          />
           <div class="bulletin-actions">
             <v-btn
               color="primary"
               variant="flat"
               prepend-icon="mdi-file-word-outline"
               :loading="exportingFormat === 'docx'"
-              :disabled="!bulletin || !!exportingFormat"
+              :disabled="!bulletin || !!exportingFormat || bulletinStyle === 'modern'"
               @click="exportBulletin('docx')"
             >
               Open Word
@@ -220,10 +304,42 @@ const reports = [
               variant="text"
               icon="mdi-content-copy"
               aria-label="Copy formatted bulletin"
-              :disabled="!bulletin || !!exportingFormat"
+              :disabled="!bulletin || !!exportingFormat || bulletinStyle === 'modern'"
               @click="copyBulletin"
             />
           </div>
+        </div>
+
+        <div
+          v-if="
+            selectedService &&
+            (settingsStore.librarySettings?.bulletin.page1FooterEnabled ||
+              settingsStore.librarySettings?.bulletin.page2FooterEnabled)
+          "
+          class="bulletin-footers"
+        >
+          <v-textarea
+            v-if="settingsStore.librarySettings?.bulletin.page1FooterEnabled"
+            v-model="page1FooterDraft"
+            :label="`${settingsStore.librarySettings.bulletin.page1FooterTitle} (this week)`"
+            variant="outlined"
+            density="compact"
+            rows="2"
+            auto-grow
+            hide-details
+            @blur="saveFooterDrafts"
+          />
+          <v-textarea
+            v-if="settingsStore.librarySettings?.bulletin.page2FooterEnabled"
+            v-model="page2FooterDraft"
+            :label="`${settingsStore.librarySettings.bulletin.page2FooterTitle} (this week)`"
+            variant="outlined"
+            density="compact"
+            rows="2"
+            auto-grow
+            hide-details
+            @blur="saveFooterDrafts"
+          />
         </div>
       </div>
 
@@ -387,6 +503,17 @@ const reports = [
   align-items: center;
   gap: 8px;
 }
+.bulletin-footers {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 4px;
+}
+.bulletin-footers > * {
+  flex: 1;
+  min-width: 240px;
+}
 .report-icon--amber {
   background: rgba(var(--v-theme-amber), 0.12);
   color: rgb(var(--v-theme-amber));
@@ -409,10 +536,15 @@ const reports = [
   flex: 1 1 280px;
   min-width: 220px;
 }
-.service-picker :deep(.v-field) {
+.service-picker :deep(.v-field),
+.style-picker :deep(.v-field) {
   border-radius: 8px;
   background: rgba(var(--v-theme-background), 0.38);
   font-size: 0.75rem;
+}
+.style-picker {
+  flex: 0 1 170px;
+  min-width: 150px;
 }
 .range-heading {
   margin-top: 28px;

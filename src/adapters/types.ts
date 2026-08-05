@@ -9,6 +9,7 @@ import type {
   TextEffect,
 } from '@/models/library'
 import type { LibrarySettings, MachineSettings } from '@/models/settings'
+import type { Announcement } from '@/models/announcement'
 
 /**
  * Every screen must be able to run against either the real Tauri backend or a
@@ -160,6 +161,12 @@ export interface ThemePort {
 export interface PersonPort {
   list(): Promise<Person[]>
   save(person: Person): Promise<void>
+  delete(id: string): Promise<void>
+}
+
+export interface AnnouncementPort {
+  list(): Promise<Announcement[]>
+  save(announcement: Announcement): Promise<void>
   delete(id: string): Promise<void>
 }
 
@@ -542,6 +549,7 @@ export interface StudioAdapter {
   canva?: CanvaPort
   themes: ThemePort
   people: PersonPort
+  announcements: AnnouncementPort
   settings: SettingsPort
   scripture: ScripturePort
   live: LivePresentationPort

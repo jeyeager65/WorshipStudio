@@ -96,10 +96,47 @@ describe('report renderers', () => {
       showTitle: false,
       showHeaderFooter: false,
     })
+    // No page2 content passed (a church with the back page turned off, or an older caller) —
+    // a plain single-column document, not a column with nothing in it, and no pinned footer.
+    expect(report.blocks[0]).toMatchObject({
+      kind: 'columns',
+      columns: [{ width: '*' }],
+    })
+    expect(report.pageFooterColumns).toBeUndefined()
+    const bytes = await renderDocx(report)
+    expect(String.fromCharCode(...bytes.slice(0, 2))).toBe('PK')
+    const pdfBytes = await renderPdf(report)
+    expect(new TextDecoder().decode(pdfBytes.slice(0, 5))).toBe('%PDF-')
+  })
+
+  it('adds a real second column and pinned page footers when page2 content is passed', async () => {
+    const report = buildBulletinDocument(
+      {
+        title: 'Order of Worship',
+        dateLine: 'Sunday, August 2, 2026 · Morning Worship',
+        lines: [{ text: 'Amazing Grace', kind: 'song', separatorBefore: false }],
+        footer: { title: 'Heart Preparation', text: 'Be still.' },
+      },
+      branding,
+      '2026-08-02',
+      {
+        title: 'Announcements',
+        upcoming: [{ dateLabel: 'Aug 9', text: 'Church picnic' }],
+        general: [{ text: 'Nursery volunteers needed' }],
+        servingSchedule: {
+          headers: ['Role', 'This Week', 'Next Week'],
+          rows: [{ role: 'Nursery', thisWeek: ['Alex'], nextWeek: ['TBD'] }],
+        },
+        footer: { title: 'Thought to Ponder', text: 'Grace upon grace.' },
+      },
+    )
     expect(report.blocks[0]).toMatchObject({
       kind: 'columns',
       columns: [{ width: '*' }, { width: '*' }],
     })
+    // Footers are pinned to the page bottom via pageFooterColumns, not appended into the
+    // regular content columns above.
+    expect(report.pageFooterColumns).toHaveLength(2)
     const bytes = await renderDocx(report)
     expect(String.fromCharCode(...bytes.slice(0, 2))).toBe('PK')
     const pdfBytes = await renderPdf(report)

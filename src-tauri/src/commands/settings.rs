@@ -1,7 +1,9 @@
 use tauri::AppHandle;
 
 use crate::domain::{read_json_file, write_json_file};
-use crate::models::{Branding, CanvaIntegration, LibrarySettings, MachineSettings};
+use crate::models::{
+    Branding, BulletinSettings, CanvaIntegration, LibrarySettings, MachineSettings,
+};
 use crate::paths::{self, library_root, load_machine_settings};
 
 const LIBRARY_SETTINGS_FILE: &str = "library-settings.json";
@@ -42,6 +44,7 @@ fn default_library_settings() -> LibrarySettings {
         slide_footer_font_size_px: 48,
         wayfinding_min_font_size_px: 56,
         wayfinding_max_font_size_px: 150,
+        bulletin: BulletinSettings::default(),
     }
 }
 

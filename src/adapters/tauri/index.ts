@@ -30,6 +30,7 @@ import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
 import type { SlideLibraryItem, MediaItem, Theme, Person } from '@/models/library'
 import type { LibrarySettings, MachineSettings } from '@/models/settings'
+import type { Announcement } from '@/models/announcement'
 import { friendlyDisplayName } from '@/utils/displayName'
 
 /**
@@ -310,6 +311,11 @@ export function createTauriAdapter(): StudioAdapter {
       list: () => invoke<Person[]>('list_people'),
       save: (person) => invoke('save_person', { person }),
       delete: (id) => invoke('delete_person', { id }),
+    },
+    announcements: {
+      list: () => invoke<Announcement[]>('list_announcements'),
+      save: (announcement) => invoke('save_announcement', { announcement }),
+      delete: (id) => invoke('delete_announcement', { id }),
     },
     settings: {
       getLibrarySettings: () => invoke<LibrarySettings>('get_library_settings'),

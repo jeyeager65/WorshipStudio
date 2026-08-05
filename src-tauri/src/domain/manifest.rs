@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::models::ManifestEntry;
 
-use super::{media, people, services, slides, songs, themes, write_json_file};
+use super::{announcements, media, people, services, slides, songs, themes, write_json_file};
 
 const MANIFEST_FILE: &str = "manifest.json";
 
@@ -67,6 +67,15 @@ pub fn rebuild(root: &Path) -> std::io::Result<Vec<ManifestEntry>> {
                 .map(|name| format!("{} {}", name, person.last_name))
                 .unwrap_or_else(|| format!("{} {}", person.first_name, person.last_name)),
             updated_at: person.updated_at,
+        });
+    }
+
+    for announcement in announcements::list(root)? {
+        entries.push(ManifestEntry {
+            id: announcement.id,
+            kind: "announcement".to_string(),
+            label: announcement.text,
+            updated_at: announcement.updated_at,
         });
     }
 

@@ -20,6 +20,7 @@ import {
   seedMedia,
   seedThemes,
   seedPeople,
+  seedAnnouncements,
   seedLibrarySettings,
   seedMachineSettings,
 } from './fixtures'
@@ -93,6 +94,7 @@ export function createMockAdapter(): StudioAdapter {
   const media = new MockCollection('media', seedMedia)
   const themes = new MockCollection('themes', seedThemes)
   const people = new MockCollection('people', seedPeople)
+  const announcements = new MockCollection('announcements', seedAnnouncements)
 
   const librarySettingsStore = new MockSingleton('library-settings', seedLibrarySettings)
   const machineSettingsStore = new MockSingleton('machine-settings', seedMachineSettings)
@@ -309,6 +311,11 @@ export function createMockAdapter(): StudioAdapter {
           if (mockRemoteDevices[index]?.personId === id) mockRemoteDevices.splice(index, 1)
         }
       },
+    },
+    announcements: {
+      list: () => announcements.list(),
+      save: (announcement) => announcements.save({ ...announcement, ...nowStamp() }),
+      delete: (id) => announcements.delete(id),
     },
     settings: {
       getLibrarySettings: () => librarySettingsStore.get(),

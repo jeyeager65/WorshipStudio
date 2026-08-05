@@ -2,6 +2,7 @@ import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
 import type { SlideLibraryItem, MediaItem, Theme, Person } from '@/models/library'
 import type { LibrarySettings, MachineSettings } from '@/models/settings'
+import type { Announcement } from '@/models/announcement'
 
 const now = new Date().toISOString()
 const device = 'demo-machine'
@@ -104,6 +105,7 @@ export const seedMedia: MediaItem[] = [
   },
 ]
 export const seedThemes: Theme[] = []
+export const seedAnnouncements: Announcement[] = []
 export const seedPeople: Person[] = [
   {
     id: 'person-daniel-renno',
@@ -182,6 +184,18 @@ export const seedLibrarySettings: LibrarySettings = {
   slideFooterFontSizePx: 48,
   wayfindingMinFontSizePx: 56,
   wayfindingMaxFontSizePx: 150,
+  bulletin: {
+    page1Title: 'Order of Worship',
+    page2Title: 'Announcements',
+    page1FooterTitle: 'Heart Preparation',
+    page1FooterEnabled: true,
+    page2FooterTitle: 'Thought to Ponder',
+    page2FooterEnabled: true,
+    page2Enabled: true,
+    showAnnouncements: true,
+    showServingSchedule: true,
+    servingScheduleRoles: [],
+  },
 }
 
 export const seedMachineSettings: MachineSettings = {

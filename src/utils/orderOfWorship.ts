@@ -1,6 +1,7 @@
 import type { Service, ServiceItem, RoleAssignment } from '@/models/service'
 import type { Song } from '@/models/song'
 import type { SlideLibraryItem } from '@/models/library'
+import type { BulletinSettings } from '@/models/settings'
 import { buildBulletinDocument } from '@/reports/builders/bulletin'
 import { formatServiceTime } from '@/utils/serviceTime'
 
@@ -26,6 +27,10 @@ export interface OrderOfWorshipDoc {
   title: string
   dateLine: string
   lines: OrderOfWorshipLine[]
+  /** This week's front-page footer quote (Service.bulletinPage1Footer), with its
+   *  church-configured title — absent when the footer is disabled in Settings or nothing was
+   *  typed for this service. */
+  footer?: { title: string; text: string }
 }
 
 // An item's "who's doing this" is a role name, not a Person id directly — the actual person is
@@ -95,7 +100,12 @@ function buildLines(
   bulletinPersonNames: Map<string, string>,
 ): OrderOfWorshipLine[] {
   const assignments = service.assignments
-  const lines = service.items.map((item): OrderOfWorshipLine => {
+  // External App Hand-off items are a technical hand-off to another program (a slideshow, a
+  // video player) with nothing meaningful to print — a real bulletin has no "[External App]"
+  // line, so these are left out of the Order of Worship entirely rather than printed as a
+  // placeholder.
+  const printableItems = service.items.filter((item) => item.type !== 'external-app')
+  const lines = printableItems.map((item): OrderOfWorshipLine => {
     const line = lineFor(item, songs, slides, assignments, bulletinPersonNames)
     return { ...line, kind: item.type }
   })
@@ -155,6 +165,8 @@ function lineFor(
         note: item.bulletinNote,
       }
     case 'external-app':
+      // Unreachable in practice — buildLines filters these out before calling lineFor (see its
+      // own comment). Kept here so this switch stays exhaustive over ServiceItem's full type.
       return {
         role: roleFor(item, undefined),
         text: '[External App]',
@@ -197,6 +209,9 @@ export function buildOrderOfWorship(
   slideList: SlideLibraryItem[],
   personNames: Map<string, string>,
   formalPersonNames: Map<string, string> = personNames,
+  // Optional (defaults to the same church-chosen defaults Settings itself starts with) so every
+  // existing caller/test that predates Settings → Bulletin keeps working unchanged.
+  bulletin?: Pick<BulletinSettings, 'page1Title' | 'page1FooterEnabled' | 'page1FooterTitle'>,
 ): OrderOfWorshipDoc {
   const songs = new Map(songList.map((s) => [s.id, s]))
   const slides = new Map(slideList.map((s) => [s.id, s]))
@@ -207,15 +222,20 @@ export function buildOrderOfWorship(
     year: 'numeric',
   })
   const timeLabel = formatServiceTime(service.time)
-  const dateLine = `${dateLabel}${timeLabel ? ` · ${timeLabel}` : ''} · ${service.type}`
+  const dateLine = `${dateLabel}${timeLabel ? ` · ${timeLabel}` : ''}`
+  const footerEnabled = bulletin?.page1FooterEnabled ?? true
 
   return {
-    title: 'Order of Worship',
+    title: bulletin?.page1Title ?? 'Order of Worship',
     dateLine,
     // A bulletin is a formal document, so titles apply to every participant—not only the
     // preacher. The ordinary-name map remains the fallback for older callers that do not yet
     // provide a distinct formal-name map.
     lines: buildLines(service, songs, slides, formalPersonNames),
+    footer:
+      footerEnabled && service.bulletinPage1Footer
+        ? { title: bulletin?.page1FooterTitle ?? 'Heart Preparation', text: service.bulletinPage1Footer }
+        : undefined,
   }
 }
 
@@ -229,6 +249,9 @@ export function toPlainText(doc: OrderOfWorshipDoc): string {
     const person = line.person ? ` — ${line.person}` : ''
     parts.push(`${label}${line.text}${person}`.trim())
     if (line.note) parts.push(line.note)
+  }
+  if (doc.footer) {
+    parts.push('', doc.footer.title, doc.footer.text)
   }
   return parts.join('\n')
 }
@@ -257,11 +280,18 @@ export function toHtml(doc: OrderOfWorshipDoc): string {
       return `<p style="margin:${margin};">${label}${escapeHtml(line.text)}</p>${note}`
     })
     .join('\n')
+  const footerHtml = doc.footer
+    ? `<div style="margin-top:16px;padding-top:8px;border-top:1px solid #ddd;">` +
+      `<strong>${escapeHtml(doc.footer.title)}</strong>` +
+      `<p style="margin:2px 0 0;color:#555;">${escapeHtml(doc.footer.text)}</p>` +
+      `</div>`
+    : ''
   return (
     `<div style="font-family: Georgia, serif;">` +
     `<h2 style="text-align:center;margin-bottom:0;">${escapeHtml(doc.title)}</h2>` +
     `<p style="text-align:center;color:#555;margin-top:4px;">${escapeHtml(doc.dateLine)}</p>` +
     lineHtml +
+    footerHtml +
     `</div>`
   )
 }
