@@ -41,9 +41,14 @@ const router = createRouter({
       component: () => import('@/views/AssignmentsView.vue'),
     },
     {
+      path: '/service/:id/bulletin',
+      name: 'service-bulletin',
+      component: () => import('@/views/BulletinView.vue'),
+    },
+    {
       path: '/service/:id/order-of-worship',
       name: 'order-of-worship',
-      redirect: (to) => ({ name: 'reports-home', query: { service: to.params.id as string } }),
+      redirect: (to) => ({ name: 'service-bulletin', params: { id: to.params.id as string } }),
     },
     {
       path: '/library/songs',

@@ -588,6 +588,14 @@ async function removeSermonPassage(itemId: string, passageId: string) {
   scriptureErrors.delete(`${itemId}:${passageId}`)
   item.mainPassageId = item.passages[0]?.id ?? ''
 }
+// The sermon's own title — also settable from the "Edit Service Details" header dialog
+// (ServiceDetailsDialog.vue, via applySermonEdit), but that's a roundabout path when you're
+// already looking at the sermon item itself in the order of service.
+function updateSermonTitle(itemId: string, title: string) {
+  const item = service.value?.items.find((i) => i.id === itemId)
+  if (!item || item.type !== 'sermon') return
+  item.title = title || undefined
+}
 // Entering edit mode always expands the passage too (there's nowhere to show the edit fields
 // otherwise) — for the Main Passage this is a no-op read, since it's never gated by expansion.
 function toggleSermonPassageEdit(passageId: string) {
@@ -1064,7 +1072,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
         <v-btn
           variant="tonal"
           prepend-icon="mdi-file-document-outline"
-          :to="{ name: 'reports-home', query: { service: service.id } }"
+          :to="`/service/${service.id}/bulletin`"
         >
           Bulletin
         </v-btn>
@@ -1408,6 +1416,18 @@ function updateRolePerson(role: string, personId: string | undefined) {
           </template>
 
           <template v-else-if="selectedItem.type === 'sermon'">
+            <v-text-field
+              :model-value="selectedItem.title"
+              label="Sermon Title (optional)"
+              placeholder="e.g. From Chained to Commissioned"
+              variant="outlined"
+              density="compact"
+              clearable
+              hide-details
+              class="mb-4"
+              style="max-width: 460px"
+              @update:model-value="(value: string) => updateSermonTitle(selectedItem!.id, value)"
+            />
             <template v-if="mainSermonPassage">
               <div class="text-overline text-medium-emphasis mb-2">Main Passage</div>
               <div class="mb-3">

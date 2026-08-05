@@ -207,7 +207,7 @@ export function buildBulletinDocument(
     showTitle: false,
     showHeaderFooter: false,
     subject: 'Service bulletin and order of worship',
-    filenameBase: `Bulletin - ${serviceDate ?? filenameDate(doc.dateLine)}`,
+    filenameBase: `Bulletin - ${serviceDate ?? filenameDate(doc.dateLine)} (Classic)`,
     // Every run above is explicitly black already — this override only matters for the few
     // spots color still comes from the renderer itself (list headings default to the branding
     // primary color unless told otherwise, as here) rather than a run's own color.

@@ -96,7 +96,6 @@ type Section =
   | 'external-apps'
   | 'remote-control'
   | 'canva'
-  | 'bulletin'
   | 'about'
 const activeSection = ref<Section>('general')
 const sections: { key: Section; label: string; group: string }[] = [
@@ -130,7 +129,6 @@ const sections: { key: Section; label: string; group: string }[] = [
   // Service types are configuration used by the primary Service Templates feature. Roles have
   // their own core management page because they are also used by people and assignments.
   { key: 'service-types', label: 'Service Types', group: 'Service Planning' },
-  { key: 'bulletin', label: 'Bulletin', group: 'Service Planning' },
 ]
 const sectionIcons: Record<Section, string> = {
   general: 'mdi-laptop',
@@ -146,7 +144,6 @@ const sectionIcons: Record<Section, string> = {
   'bible-translations': 'mdi-book-cross',
   canva: 'mdi-palette-swatch-outline',
   'service-types': 'mdi-calendar-multiple',
-  bulletin: 'mdi-newspaper-variant-outline',
 }
 const sectionDescriptions: Record<Section, string> = {
   general: 'Identify this workstation and rerun the guided setup when its role changes.',
@@ -162,7 +159,6 @@ const sectionDescriptions: Record<Section, string> = {
   'bible-translations': 'Choose scripture editions and configure the services that provide them.',
   canva: 'Configure the church’s Canva integration and connect this computer to a Canva account.',
   'service-types': 'Manage the service-type choices offered when a service is created.',
-  bulletin: 'Choose which sections and titles appear on the printed bulletin export.',
 }
 const activeSectionInfo = computed(() => {
   const section =
@@ -189,22 +185,6 @@ const groupedSections = computed(() => {
 function selectSettingsSection(section: Section) {
   activeSection.value = section
 }
-
-// The bulletin's serving schedule picks individual roles (e.g. "Nursery", "Sound Booth"), not
-// whole categories — flattened and deduped across every role group, category-labeled so two
-// same-named roles in different groups (unlikely, but not prevented elsewhere) stay distinguishable.
-const bulletinRoleOptions = computed(() => {
-  const seen = new Set<string>()
-  const options: { title: string; value: string }[] = []
-  for (const group of librarySettings.value?.roleGroups ?? []) {
-    for (const role of group.roles) {
-      if (seen.has(role)) continue
-      seen.add(role)
-      options.push({ title: `${group.name} - ${role}`, value: role })
-    }
-  }
-  return options
-})
 
 // Registering `watch` after an `await` (inside onMounted's async callback) happens outside
 // Vue's synchronous component-setup tracking, so it isn't auto-stopped on unmount — it would
@@ -1881,118 +1861,6 @@ function translationSource(entry: AvailableTranslationEntry): string {
             v-model="librarySettings.serviceTypes"
             add-label="Add a service type…"
           />
-        </SettingsPanel>
-      </template>
-
-      <template v-else-if="activeSection === 'bulletin'">
-        <SettingsPanel
-          title="Page titles"
-          description="Shown at the top of each half of the printed bulletin — your church's own naming."
-          icon="mdi-format-title"
-        >
-          <v-text-field
-            v-model="librarySettings.bulletin.page1Title"
-            label="Order of Worship page title"
-            variant="outlined"
-            density="compact"
-            hide-details
-            class="settings-form-field mb-3"
-          />
-          <v-text-field
-            v-model="librarySettings.bulletin.page2Title"
-            label="Announcements page title"
-            variant="outlined"
-            density="compact"
-            hide-details
-            class="settings-form-field"
-          />
-        </SettingsPanel>
-
-        <SettingsPanel
-          title="Order of Worship footer"
-          description="A short quote or reflection at the bottom of the front page, entered fresh each week when generating the bulletin."
-          icon="mdi-format-quote-close"
-        >
-          <v-switch
-            v-model="librarySettings.bulletin.page1FooterEnabled"
-            label="Show this footer"
-            color="primary"
-            density="compact"
-            hide-details
-            class="mb-3"
-          />
-          <v-text-field
-            v-model="librarySettings.bulletin.page1FooterTitle"
-            label="Footer title"
-            variant="outlined"
-            density="compact"
-            hide-details
-            :disabled="!librarySettings.bulletin.page1FooterEnabled"
-            class="settings-form-field"
-          />
-        </SettingsPanel>
-
-        <SettingsPanel
-          title="Announcements page"
-          description="Turn the whole second page, and each of its sections, on or off."
-          icon="mdi-newspaper-variant-outline"
-        >
-          <v-switch
-            v-model="librarySettings.bulletin.page2Enabled"
-            label="Include this page in the bulletin export"
-            color="primary"
-            density="compact"
-            hide-details
-            class="mb-3"
-          />
-          <template v-if="librarySettings.bulletin.page2Enabled">
-            <v-switch
-              v-model="librarySettings.bulletin.showAnnouncements"
-              label="Show upcoming events and announcements"
-              color="primary"
-              density="compact"
-              hide-details
-              class="mb-3"
-            />
-            <v-switch
-              v-model="librarySettings.bulletin.showServingSchedule"
-              label="Show this week / next week serving schedule"
-              color="primary"
-              density="compact"
-              hide-details
-              class="mb-2"
-            />
-            <v-select
-              v-if="librarySettings.bulletin.showServingSchedule"
-              v-model="librarySettings.bulletin.servingScheduleRoles"
-              :items="bulletinRoleOptions"
-              label="Roles to show as columns"
-              variant="outlined"
-              density="compact"
-              multiple
-              chips
-              closable-chips
-              hide-details
-              class="settings-form-field mb-3"
-            />
-            <v-switch
-              v-model="librarySettings.bulletin.page2FooterEnabled"
-              label="Show a footer quote on this page"
-              color="primary"
-              density="compact"
-              hide-details
-              class="mb-3"
-            />
-            <v-text-field
-              v-if="librarySettings.bulletin.page2FooterEnabled"
-              v-model="librarySettings.bulletin.page2FooterTitle"
-              label="Footer title"
-              variant="outlined"
-              density="compact"
-              hide-details
-              class="settings-form-field"
-            />
-          </template>
         </SettingsPanel>
       </template>
 

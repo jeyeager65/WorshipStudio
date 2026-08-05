@@ -353,14 +353,11 @@ const sermonPassagesValid = computed(() =>
 )
 
 async function addSermonToService() {
-  if (
-    sermonPassages.value.length === 0 ||
-    !sermonMainPassageId.value ||
-    !sermonPassagesValid.value ||
-    addingSermon.value
-  ) {
-    return
-  }
+  // Title and passages are both optional — a sermon can be added as a bare placeholder and
+  // filled in later, same as CreateServiceView's own "Optional starting information" sermon
+  // section. Only an already-started-but-invalid passage (a reference typed in but not yet
+  // valid) blocks adding, not the absence of one entirely.
+  if (!sermonPassagesValid.value || addingSermon.value) return
   addingSermon.value = true
   try {
     const passages: SermonPassage[] = sermonPassages.value.map((p) => ({
@@ -374,7 +371,7 @@ async function addSermonToService() {
       type: 'sermon',
       title: sermonTitleDraft.value.trim() || undefined,
       passages,
-      mainPassageId: sermonMainPassageId.value,
+      mainPassageId: sermonMainPassageId.value ?? '',
       outline: sermonOutlineBlocks.value.map((block) => ({ ...block })),
     }
     insertItem(item)
@@ -790,7 +787,7 @@ function closeAddDialog() {
               variant="flat"
               color="primary"
               block
-              :disabled="sermonPassages.length === 0 || !sermonMainPassageId || !sermonPassagesValid"
+              :disabled="!sermonPassagesValid"
               :loading="addingSermon"
               @click="addSermonToService"
             >

@@ -293,6 +293,51 @@ describe('buildOrderOfWorship', () => {
     })
   })
 
+  it('a sermon with both a bulletinLabel and a title uses the label as the heading and moves the title (with the main passage) to the note', () => {
+    const service = baseService({
+      items: [
+        {
+          id: 'item-1',
+          type: 'sermon',
+          title: 'From Chained to Commissioned',
+          bulletinLabel: 'Worship Through the Word',
+          passages: [
+            { id: 'p1', reference: 'Mark 5:1-20', translation: 'ESV', displayMode: 'full' },
+          ],
+          mainPassageId: 'p1',
+          outline: [],
+        },
+      ],
+    })
+    const doc = buildOrderOfWorship(service, songs, slides, new Map())
+    expect(doc.lines[0]).toMatchObject({
+      role: 'Worship Through the Word',
+      note: 'From Chained to Commissioned · Mark 5:1-20',
+    })
+  })
+
+  it('a sermon with a bulletinLabel but no title still shows just the main passage as the note', () => {
+    const service = baseService({
+      items: [
+        {
+          id: 'item-1',
+          type: 'sermon',
+          bulletinLabel: 'Worship Through the Word',
+          passages: [
+            { id: 'p1', reference: 'Mark 5:1-20', translation: 'ESV', displayMode: 'full' },
+          ],
+          mainPassageId: 'p1',
+          outline: [],
+        },
+      ],
+    })
+    const doc = buildOrderOfWorship(service, songs, slides, new Map())
+    expect(doc.lines[0]).toMatchObject({
+      role: 'Worship Through the Word',
+      note: 'Mark 5:1-20',
+    })
+  })
+
   it('a bulletin-note item renders its label/note/role-resolved person and never a slide-worthy text', () => {
     const service = baseService({
       assignments: [{ role: 'Prayer', personId: 'person-elder', tentative: false }],

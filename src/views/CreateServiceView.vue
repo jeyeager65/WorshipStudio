@@ -188,7 +188,7 @@ function createService() {
             <div class="details-grid">
               <v-text-field
                 v-model="keyPassage"
-                label="Key Passage"
+                label="Main Passage"
                 placeholder="Matthew 6:9–13"
                 variant="outlined"
                 hide-details

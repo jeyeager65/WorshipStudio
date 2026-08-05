@@ -120,7 +120,7 @@ function save() {
           <v-col cols="6">
             <v-text-field
               v-model="editKeyPassage"
-              label="Key Passage (optional)"
+              label="Main Passage (optional)"
               placeholder="e.g. Matthew 6:9-13"
               variant="outlined"
             />

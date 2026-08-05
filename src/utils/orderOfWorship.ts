@@ -174,16 +174,22 @@ function lineFor(
         note: item.bulletinNote,
       }
     case 'sermon': {
-      // The sermon's own title (when set) is the heading — a real bulletin names the sermon,
-      // not a generic "Worship Through the Word" label — with the main passage reference as
-      // the line below it; an explicit bulletinNote (a deliberately typed note, distinct from
-      // the title) still wins that second-line slot when someone's set one.
+      // The sermon's own title (when set) is normally the heading — a real bulletin names the
+      // sermon, not a generic "Worship Through the Word" label. But a church can also set a
+      // bulletinLabel of its own (e.g. to keep a fixed "Worship Through the Word" heading every
+      // week); when both exist, the label wins the heading slot, so the title would otherwise
+      // just vanish — instead it moves down to the second line, alongside the main passage
+      // reference, the same slot an explicit bulletinNote would otherwise occupy.
       const mainPassage = item.passages.find((p) => p.id === item.mainPassageId) ?? item.passages[0]
+      const titleWithPassage =
+        item.bulletinLabel && item.title
+          ? [item.title, mainPassage?.reference].filter(Boolean).join(' · ')
+          : mainPassage?.reference
       return {
         role: roleFor(item, item.title ?? 'Worship Through the Word'),
         text: '',
         person: resolveRolePerson(item.role, assignments, personNames),
-        note: item.bulletinNote ?? mainPassage?.reference,
+        note: item.bulletinNote ?? titleWithPassage,
       }
     }
     case 'bulletin-note':
