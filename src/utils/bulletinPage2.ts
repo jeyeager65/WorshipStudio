@@ -5,8 +5,8 @@ import { splitForBulletin } from '@/utils/announcementVisibility'
 import { localCalendarDate } from '@/utils/calendarDate'
 
 export interface BulletinPage2Line {
-  /** Short date lead-in for an Upcoming entry (e.g. "Jun 7", "Jun 14–18", or "Starting Aug 24"
-   *  for a long-running window — see shortDateLabel), absent for a general/standing
+  /** Date lead-in for an Upcoming entry (e.g. "June 7", "June 14–18", or "Starting August 24"
+   *  for a long-running window — see announcementDateLabel), absent for a general/standing
    *  announcement. */
   dateLabel?: string
   text: string
@@ -37,8 +37,17 @@ export interface BulletinPage2Doc {
   footer?: { title: string; text: string }
 }
 
-function formatShortDate(date: string): string {
-  return new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+// The year is only worth printing when it isn't obvious from context — an event dated in some
+// other year than the service the bulletin is being printed for (never wall-clock "today": a
+// bulletin can be generated well ahead of or after the service itself, same reasoning as
+// isVisibleOn in announcementVisibility.ts).
+function formatDate(date: string, referenceYear: number): string {
+  const parsed = new Date(`${date}T00:00:00`)
+  const includeYear = parsed.getFullYear() !== referenceYear
+  return parsed.toLocaleDateString(
+    undefined,
+    includeYear ? { month: 'long', day: 'numeric', year: 'numeric' } : { month: 'long', day: 'numeric' },
+  )
 }
 
 function daysBetween(start: string, end: string): number {
@@ -47,13 +56,20 @@ function daysBetween(start: string, end: string): number {
   return Math.round((endMs - startMs) / (1000 * 60 * 60 * 24))
 }
 
-function shortDateLabel(date: string, endDate: string | undefined, time: string | undefined): string {
+function announcementDateLabel(
+  date: string,
+  endDate: string | undefined,
+  time: string | undefined,
+  referenceYear: number,
+): string {
   // A window longer than a week (e.g. a month of open registration) reads awkwardly as a full
-  // range ("Aug 24–Sep 30") — a real bulletin just names when it starts.
+  // range ("August 24–September 30") — a real bulletin just names when it starts.
   if (endDate && daysBetween(date, endDate) > 7) {
-    return `Starting ${formatShortDate(date)}`
+    return `Starting ${formatDate(date, referenceYear)}`
   }
-  const range = endDate ? `${formatShortDate(date)}–${formatShortDate(endDate)}` : formatShortDate(date)
+  const range = endDate
+    ? `${formatDate(date, referenceYear)}–${formatDate(endDate, referenceYear)}`
+    : formatDate(date, referenceYear)
   return time ? `${range} ${time}` : range
 }
 
@@ -124,11 +140,12 @@ export function buildBulletinPage2(
   const { upcoming, general } = bulletin.showAnnouncements
     ? splitForBulletin(announcements, service.date)
     : { upcoming: [], general: [] }
+  const referenceYear = new Date(`${service.date}T00:00:00`).getFullYear()
 
   return {
     title: bulletin.page2Title,
     upcoming: upcoming.map((a) => ({
-      dateLabel: shortDateLabel(a.eventDate!, a.eventEndDate, a.eventTime),
+      dateLabel: announcementDateLabel(a.eventDate!, a.eventEndDate, a.eventTime, referenceYear),
       text: a.text,
     })),
     general: general.map((a) => ({ text: a.text })),

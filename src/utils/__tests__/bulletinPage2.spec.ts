@@ -96,7 +96,7 @@ describe('buildBulletinPage2', () => {
       bulletinDefaults,
       personNames,
     )
-    expect(doc.upcoming).toEqual([{ dateLabel: 'Jun 14–Jun 18 1-6pm', text: 'Church picnic' }])
+    expect(doc.upcoming).toEqual([{ dateLabel: 'June 14–June 18 1-6pm', text: 'Church picnic' }])
     expect(doc.general).toEqual([{ text: 'Standing notice' }])
   })
 
@@ -118,7 +118,7 @@ describe('buildBulletinPage2', () => {
       bulletinDefaults,
       personNames,
     )
-    expect(doc.upcoming).toEqual([{ dateLabel: 'Starting Aug 24', text: 'VBS registration open' }])
+    expect(doc.upcoming).toEqual([{ dateLabel: 'Starting August 24', text: 'VBS registration open' }])
   })
 
   it('a range of exactly 7 days still prints as a range, not "Starting"', () => {
@@ -139,7 +139,69 @@ describe('buildBulletinPage2', () => {
       bulletinDefaults,
       personNames,
     )
-    expect(doc.upcoming).toEqual([{ dateLabel: 'Jun 14–Jun 21', text: 'VBS week' }])
+    expect(doc.upcoming).toEqual([{ dateLabel: 'June 14–June 21', text: 'VBS week' }])
+  })
+
+  it('includes the year when the event falls outside the bulletin service\'s own year', () => {
+    const announcements: Announcement[] = [
+      {
+        id: 'a1',
+        text: 'New Year\'s Eve Service',
+        eventDate: '2027-01-01',
+        updatedAt: '',
+        updatedByDevice: '',
+      },
+    ]
+    const doc = buildBulletinPage2(
+      service({ date: '2026-12-27' }),
+      undefined,
+      announcements,
+      bulletinDefaults,
+      personNames,
+    )
+    expect(doc.upcoming).toEqual([{ dateLabel: 'January 1, 2027', text: 'New Year\'s Eve Service' }])
+  })
+
+  it('omits the year (both ends) for a range fully within the bulletin service\'s own year', () => {
+    const announcements: Announcement[] = [
+      {
+        id: 'a1',
+        text: 'Church picnic',
+        eventDate: '2026-06-14',
+        eventEndDate: '2026-06-18',
+        updatedAt: '',
+        updatedByDevice: '',
+      },
+    ]
+    const doc = buildBulletinPage2(
+      service({ date: '2026-06-01' }),
+      undefined,
+      announcements,
+      bulletinDefaults,
+      personNames,
+    )
+    expect(doc.upcoming).toEqual([{ dateLabel: 'June 14–June 18', text: 'Church picnic' }])
+  })
+
+  it('includes the year on just the end date when a range crosses into a new year', () => {
+    const announcements: Announcement[] = [
+      {
+        id: 'a1',
+        text: "New Year's retreat",
+        eventDate: '2026-12-30',
+        eventEndDate: '2027-01-02',
+        updatedAt: '',
+        updatedByDevice: '',
+      },
+    ]
+    const doc = buildBulletinPage2(
+      service({ date: '2026-12-27' }),
+      undefined,
+      announcements,
+      bulletinDefaults,
+      personNames,
+    )
+    expect(doc.upcoming).toEqual([{ dateLabel: 'December 30–January 2, 2027', text: "New Year's retreat" }])
   })
 
   it('omits announcements entirely when showAnnouncements is off', () => {
