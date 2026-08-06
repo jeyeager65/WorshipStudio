@@ -207,6 +207,11 @@ pub struct MediaImportCommit {
     pub location: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duplicate_of_id: Option<String>,
+    /// A fixed id to assign instead of a fresh random one — absent for every real user import
+    /// (the frontend never sends this), used only by `stock_content::import` so re-running it
+    /// stays idempotent (check-then-skip against a known id) rather than creating duplicates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
 }
 
 fn unique_filename(dir: &Path, filename: &str) -> String {
@@ -259,7 +264,9 @@ pub fn commit_imports(
         let content_hash = hash_file(&dest_path)?;
 
         let item = MediaItem {
-            id: format!("media-{}", uuid::Uuid::new_v4()),
+            id: file
+                .id
+                .unwrap_or_else(|| format!("media-{}", uuid::Uuid::new_v4())),
             kind: guess_kind(&file.filename),
             filename: dest_filename,
             title: if file.title.trim().is_empty() {
@@ -471,6 +478,7 @@ mod tests {
                 tags: vec!["Worship".to_string()],
                 location: "synced".to_string(),
                 duplicate_of_id: None,
+                id: None,
             }],
             "d",
             "now",
@@ -509,6 +517,7 @@ mod tests {
                 tags: vec![],
                 location: "local".to_string(),
                 duplicate_of_id: None,
+                id: None,
             }],
             "d",
             "now",
@@ -540,6 +549,7 @@ mod tests {
             tags: vec![],
             location: "synced".to_string(),
             duplicate_of_id: None,
+            id: None,
         };
 
         commit_imports(
@@ -585,6 +595,7 @@ mod tests {
                 tags: vec![],
                 location: "synced".to_string(),
                 duplicate_of_id: None,
+                id: None,
             }],
             "d",
             "now",
@@ -674,6 +685,7 @@ mod tests {
                 tags: vec![],
                 location: "synced".to_string(),
                 duplicate_of_id: None,
+                id: None,
             }],
             "d",
             "now",

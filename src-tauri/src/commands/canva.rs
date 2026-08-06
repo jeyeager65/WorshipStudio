@@ -501,6 +501,7 @@ pub async fn import_canva_design(
                     tags,
                     location: "synced".to_string(),
                     duplicate_of_id: None,
+                    id: None,
                 }],
                 &device,
                 &imported_at,

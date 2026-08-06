@@ -1,171 +1,41 @@
-import type { Song } from '@/models/song'
-import type { Service } from '@/models/service'
-import type { SlideLibraryItem, MediaItem, Theme, Person } from '@/models/library'
+import type { SlideLibraryItem, MediaItem } from '@/models/library'
 import type { LibrarySettings, MachineSettings } from '@/models/settings'
 import type { Announcement } from '@/models/announcement'
+import {
+  sampleSongs,
+  samplePeople,
+  sampleThemes,
+  sampleCollections,
+  sampleRoleGroups,
+  sampleServiceTypes,
+  sampleServiceTemplates,
+  buildSampleServices,
+} from '@/utils/sampleData'
 
-const now = new Date().toISOString()
-const device = 'demo-machine'
-
-export const seedSongs: Song[] = [
-  {
-    id: 'song-amazing-grace',
-    title: 'Amazing Grace',
-    author: 'John Newton',
-    collections: [{ collectionId: 'Hymns of Grace', number: '184' }],
-    tags: ['hymn', 'grace'],
-    blocks: [
-      {
-        id: 'v1',
-        label: 'Verse 1',
-        text: 'Amazing grace, how sweet the sound\nThat saved a wretch like me.',
-      },
-      {
-        id: 'v2',
-        label: 'Verse 2',
-        text: "T'was grace that taught my heart to fear,\nand grace my fears relieved.",
-      },
-    ],
-    defaultArrangement: { sequence: ['v1', 'v2'] },
-    usage: { usesPastYear: 3, lastUsedAt: now },
-    updatedAt: now,
-    updatedByDevice: device,
-  },
-]
-
-export const seedServices: Service[] = [
-  {
-    id: 'service-2026-07-19',
-    date: '2026-07-19',
-    type: 'Sunday Morning Worship',
-    items: [
-      {
-        id: 'item-1',
-        type: 'song',
-        songId: 'song-amazing-grace',
-        arrangement: { sequence: ['v1', 'v2'] },
-      },
-      {
-        id: 'item-2',
-        type: 'scripture',
-        reference: 'John 3:16-17',
-        translation: 'ESV',
-        displayMode: 'full',
-      },
-      {
-        id: 'item-sermon',
-        type: 'sermon',
-        title: 'Sample Sermon',
-        passages: [
-          {
-            id: 'passage-sermon',
-            reference: 'Romans 8:28-30',
-            translation: 'ESV',
-            displayMode: 'full',
-          },
-        ],
-        mainPassageId: 'passage-sermon',
-        outline: [],
-        role: 'Preacher',
-      },
-    ],
-    assignments: [{ role: 'Preacher', personId: 'person-daniel-renno', tentative: false }],
-    updatedAt: now,
-    updatedByDevice: device,
-  },
-]
+// The public GitHub Pages demo shares its content with the in-app "Load Sample Data" feature
+// (src/utils/sampleData.ts) rather than maintaining a second hand-written dataset — both need
+// the same thing: public-domain songs (no CCLI/copyright entanglement) and fabricated people
+// (no real names). Services are built fresh (not a static array) so their dates stay relative
+// to "today" instead of drifting into the past as a hardcoded date would.
+export const seedSongs = sampleSongs
+export const seedPeople = samplePeople
+export const seedThemes = sampleThemes
+export const seedServices = buildSampleServices()
 
 export const seedSlides: SlideLibraryItem[] = []
-export const seedMedia: MediaItem[] = [
-  {
-    id: 'media-worship-hands-sunset',
-    filename: 'worship-hands-sunset.jpg',
-    title: 'Worship Hands at Sunset',
-    description: 'Raised hands silhouetted against a sunset — used for the opening worship set.',
-    kind: 'image',
-    tags: ['Worship'],
-    location: 'synced',
-    contentHash: 'seed-1',
-    usage: { usesPastYear: 8, lastUsedAt: now },
-    updatedAt: now,
-    updatedByDevice: device,
-  },
-  {
-    id: 'media-gentle-water-loop',
-    filename: 'gentle-water-loop.mp4',
-    title: 'Gentle Water Loop',
-    description: 'A slow-moving water background loop for quiet/reflective moments.',
-    kind: 'video',
-    tags: ['Nature'],
-    location: 'synced',
-    contentHash: 'seed-2',
-    usage: { usesPastYear: 5, lastUsedAt: now },
-    updatedAt: now,
-    updatedByDevice: device,
-  },
-]
-export const seedThemes: Theme[] = []
+// Empty by default, matching the desktop app's real "no reasonable default media" stance — the
+// 6 real stock backgrounds are offered (not seeded automatically) via Settings > Data tools'
+// "Add Stock Backgrounds" button, the same as the desktop app's Setup Wizard/Settings action.
+export const seedMedia: MediaItem[] = []
 export const seedAnnouncements: Announcement[] = []
-export const seedPeople: Person[] = [
-  {
-    id: 'person-daniel-renno',
-    firstName: 'Daniel',
-    lastName: 'Renno',
-    preferredName: 'Dan',
-    title: 'Pastor',
-    preferredRoles: ['Preacher'],
-    unavailableDateRanges: [],
-    updatedAt: now,
-    updatedByDevice: device,
-  },
-  {
-    id: 'person-marlene',
-    firstName: 'Marlene',
-    lastName: 'Diaz',
-    email: 'marlene.diaz@email.com',
-    preferredRoles: ['Piano'],
-    unavailableDateRanges: [],
-    updatedAt: now,
-    updatedByDevice: device,
-  },
-  {
-    id: 'person-mark',
-    firstName: 'Mark',
-    lastName: 'Ellison',
-    preferredRoles: ['Drums'],
-    unavailableDateRanges: [],
-    updatedAt: now,
-    updatedByDevice: device,
-  },
-]
 
 export const seedLibrarySettings: LibrarySettings = {
-  serviceTypes: ['Sunday Morning Worship', 'Wednesday Bible Study'],
-  collections: ['Hymns of Grace'],
-  roleGroups: [
-    { name: 'Praise Team', roles: ['Piano', 'Guitar', 'Drums', 'Vocals'] },
-    { name: 'Tech', roles: ['Sound Booth'] },
-    { name: 'Ministry', roles: ['Preacher'] },
-  ],
-  serviceTemplates: [
-    {
-      serviceType: 'Sunday Morning Worship',
-      description: 'The standard Sunday worship team and service structure.',
-      items: [
-        { id: 'tpl-piano', kind: 'role-only', label: 'Piano', role: 'Piano', count: 1 },
-        { id: 'tpl-vocals', kind: 'role-only', label: 'Vocals', role: 'Vocals', count: 2 },
-        {
-          id: 'tpl-sound-booth',
-          kind: 'role-only',
-          label: 'Sound Booth',
-          role: 'Sound Booth',
-          count: 1,
-        },
-      ],
-    },
-  ],
+  serviceTypes: [...sampleServiceTypes],
+  collections: [...sampleCollections],
+  roleGroups: structuredClone(sampleRoleGroups),
+  serviceTemplates: structuredClone(sampleServiceTemplates),
   branding: {
-    churchName: 'Sample Church',
+    churchName: 'Worship Studio Church',
     primaryColor: '#1F3A5F',
     secondaryColor: '#C9A227',
   },

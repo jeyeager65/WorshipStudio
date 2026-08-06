@@ -18,23 +18,23 @@ function person(overrides: Partial<Person> = {}): Person {
 describe('personOptionsForRole', () => {
   it('sorts people who prefer the role first, then everyone else, each group alphabetically, under section headers', () => {
     const people: Person[] = [
-      person({ id: 'garrett', firstName: 'Garrett', lastName: 'Varano' }),
-      person({ id: 'mely', firstName: 'Mely', lastName: 'Ziegert' }),
-      person({ id: 'val', firstName: 'Val', lastName: 'Ziegert', preferredRoles: ['Slides'] }),
-      person({ id: 'dan', firstName: 'Dan', lastName: 'Renno' }),
-      person({ id: 'janet', firstName: 'Janet', lastName: 'Ziegert', preferredRoles: ['Slides'] }),
-      person({ id: 'jason', firstName: 'Jason', lastName: 'Yeager' }),
+      person({ id: 'pete', firstName: 'Pete', lastName: 'Donovan' }),
+      person({ id: 'tina', firstName: 'Tina', lastName: 'Marsh' }),
+      person({ id: 'vera', firstName: 'Vera', lastName: 'Turner', preferredRoles: ['Slides'] }),
+      person({ id: 'owen', firstName: 'Owen', lastName: 'Castillo' }),
+      person({ id: 'jenna', firstName: 'Jenna', lastName: 'Turner', preferredRoles: ['Slides'] }),
+      person({ id: 'rosa', firstName: 'Rosa', lastName: 'Alvarado' }),
     ]
     const options = personOptionsForRole(people, 'Slides')
     expect(options.map((o) => o.title)).toEqual([
       'Preferred',
-      'Janet Ziegert',
-      'Val Ziegert',
+      'Jenna Turner',
+      'Vera Turner',
       'Everyone Else',
-      'Dan Renno',
-      'Garrett Varano',
-      'Jason Yeager',
-      'Mely Ziegert',
+      'Owen Castillo',
+      'Pete Donovan',
+      'Rosa Alvarado',
+      'Tina Marsh',
     ])
     expect(options.map((o) => o.type)).toEqual([
       'subheader',

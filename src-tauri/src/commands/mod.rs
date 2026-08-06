@@ -12,5 +12,6 @@ pub mod services;
 pub mod settings;
 pub mod slides;
 pub mod songs;
+pub mod stock_content;
 pub mod sync;
 pub mod themes;

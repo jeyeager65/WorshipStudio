@@ -291,6 +291,8 @@ export function createTauriAdapter(): StudioAdapter {
           return undefined
         }
       },
+      importStockBackgrounds: () =>
+        invoke<{ mediaAdded: number; themesAdded: number }>('import_stock_backgrounds'),
     },
     canva: {
       status: () => invoke<CanvaStatus>('get_canva_status'),

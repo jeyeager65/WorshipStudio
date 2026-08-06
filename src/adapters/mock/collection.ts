@@ -17,7 +17,12 @@ export class MockCollection<T extends { id: string }> {
   constructor(storageKey: string, seed: T[]) {
     this.key = `worship-studio:mock:${storageKey}`
     const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(this.key) : null
-    this.items = stored ? (JSON.parse(stored) as T[]) : seed
+    // Clone the seed too, not just what save() takes in — otherwise this.items would start out
+    // as a live reference to the caller's shared seed array (e.g. sampleData.ts's sampleThemes),
+    // and save()'s in-place push/splice would permanently mutate that shared array itself,
+    // silently leaking state into every later `new MockCollection(key, sameSeed)` for the rest
+    // of the process, including in a completely different test.
+    this.items = stored ? (JSON.parse(stored) as T[]) : clone(seed)
   }
 
   private persist() {
@@ -68,7 +73,9 @@ export class MockSingleton<T> {
   constructor(storageKey: string, seed: T) {
     this.key = `worship-studio:mock:${storageKey}`
     const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(this.key) : null
-    this.value = stored ? (JSON.parse(stored) as T) : seed
+    // Same reasoning as MockCollection above — clone the seed so this.value never starts as a
+    // live reference to a shared module-level object.
+    this.value = stored ? (JSON.parse(stored) as T) : clone(seed)
   }
 
   async get(): Promise<T> {

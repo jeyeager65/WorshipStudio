@@ -147,6 +147,21 @@ const pickingLibraryFolder = ref(false)
 const defaultServiceTypeForSets = computed(
   () => store.librarySettings?.serviceTypes[0] ?? 'Sunday Morning Worship',
 )
+const importingStockBackgrounds = ref(false)
+const stockBackgroundsSummary = ref<{ mediaAdded: number; themesAdded: number }>()
+
+async function importStockBackgrounds() {
+  importingStockBackgrounds.value = true
+  operationError.value = ''
+  try {
+    stockBackgroundsSummary.value = await adapter.media.importStockBackgrounds()
+  } catch (error) {
+    operationError.value =
+      error instanceof Error ? error.message : 'Stock backgrounds could not be added.'
+  } finally {
+    importingStockBackgrounds.value = false
+  }
+}
 
 async function importSongs() {
   importingSongs.value = true
@@ -659,6 +674,28 @@ async function skipSetup() {
                     >Portable</v-btn
                   >
                 </div>
+              </article>
+
+              <article class="import-card">
+                <span class="import-icon"><v-icon icon="mdi-image-multiple-outline" size="23" /></span>
+                <div class="import-copy">
+                  <strong>Stock background images</strong>
+                  <p>6 royalty-free backgrounds and 2 starter themes, ready to use right away.</p>
+                  <span v-if="stockBackgroundsSummary" class="success-note"
+                    ><v-icon icon="mdi-check-circle" size="16" />{{
+                      stockBackgroundsSummary.mediaAdded
+                    }}
+                    images, {{ stockBackgroundsSummary.themesAdded }} themes added</span
+                  >
+                </div>
+                <v-btn
+                  color="primary"
+                  variant="flat"
+                  prepend-icon="mdi-image-plus-outline"
+                  :loading="importingStockBackgrounds"
+                  @click="importStockBackgrounds"
+                  >Add Stock Backgrounds</v-btn
+                >
               </article>
             </div>
             <v-alert

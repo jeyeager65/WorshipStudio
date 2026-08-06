@@ -101,18 +101,17 @@ async function deleteTemplate(template: ServiceTemplate) {
   <main class="templates-page">
     <header class="templates-hero">
       <div>
-        <v-btn to="/settings" variant="text" prepend-icon="mdi-arrow-left" class="back-button"
-          >Settings</v-btn
-        >
         <div class="page-eyebrow">Service Planning</div>
         <h1>Service Templates</h1>
         <p>
           Build reusable starting points for service orders, staffing, and service-type defaults.
         </p>
       </div>
-      <div class="hero-count">
-        <strong>{{ templates.length }}</strong
-        ><span>Templates</span>
+      <div class="templates-summary" aria-label="Service template summary">
+        <div class="summary-stat">
+          <strong>{{ templates.length }}</strong>
+          <span>Templates</span>
+        </div>
       </div>
     </header>
 
@@ -249,53 +248,86 @@ async function deleteTemplate(template: ServiceTemplate) {
 
 <style scoped>
 .templates-page {
-  max-width: 1260px;
-  margin: 0 auto;
-  padding: 30px 34px 54px;
+  min-height: calc(100vh - 49px);
+  padding: 24px clamp(24px, 3vw, 48px) 56px;
+  background:
+    radial-gradient(circle at 24% 0, rgba(var(--v-theme-slate), 0.055), transparent 420px),
+    rgb(var(--v-theme-background));
+}
+.templates-hero,
+.template-directory {
+  max-width: 1240px;
+  margin-right: auto;
+  margin-left: auto;
 }
 .templates-hero {
   display: flex;
-  align-items: end;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 24px;
-}
-.back-button {
-  margin: 0 0 18px -12px;
+  gap: 36px;
+  margin-bottom: 18px;
+  padding: 25px 28px 27px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 11px;
+  background: rgba(var(--v-theme-surface), 0.76);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.08);
 }
 .page-eyebrow {
-  color: rgb(var(--v-theme-primary));
-  font-size: 0.68rem;
-  font-weight: 750;
+  margin-bottom: 4px;
+  color: rgb(var(--v-theme-slate));
+  font-size: 0.78rem;
+  font-weight: 700;
   letter-spacing: 0.09em;
   text-transform: uppercase;
 }
-h1 {
-  margin: 3px 0 5px;
-  font-size: 2rem;
-  line-height: 1.1;
+.templates-hero h1 {
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.95);
+  font-size: 1.75rem;
+  font-weight: 680;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
 }
 .templates-hero p {
-  max-width: 680px;
-  margin: 0;
+  max-width: 620px;
+  margin: 9px 0 0;
   color: rgba(var(--v-theme-on-surface), 0.58);
+  font-size: 0.84rem;
+  line-height: 1.5;
 }
-.hero-count {
+.templates-summary {
   display: flex;
-  min-width: 112px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 9px;
+  background: rgba(var(--v-theme-background), 0.42);
+}
+.summary-stat {
+  display: flex;
+  min-width: 105px;
   flex-direction: column;
-  padding: 14px 18px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.09);
-  border-radius: 12px;
-  background: rgba(var(--v-theme-surface), 0.72);
+  align-items: center;
+  padding: 11px 15px;
+  border-right: 1px solid rgba(var(--v-theme-on-surface), 0.07);
 }
-.hero-count strong {
-  color: rgb(var(--v-theme-primary));
-  font-size: 1.45rem;
+.summary-stat:last-child {
+  border-right: 0;
 }
-.hero-count span {
-  color: rgba(var(--v-theme-on-surface), 0.5);
-  font-size: 0.68rem;
+.summary-stat strong {
+  color: rgb(var(--v-theme-slate));
+  font-size: 1.12rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.summary-stat span {
+  margin-top: 4px;
+  color: rgba(var(--v-theme-on-surface), 0.52);
+  font-size: 0.74rem;
+  font-weight: 650;
+  letter-spacing: 0.035em;
+  text-align: center;
+  text-transform: uppercase;
 }
 .template-directory {
   overflow: hidden;
@@ -444,10 +476,11 @@ h1 {
     padding: 22px 18px 40px;
   }
   .templates-hero {
-    align-items: start;
+    align-items: stretch;
+    flex-direction: column;
   }
-  .hero-count {
-    display: none;
+  .templates-summary {
+    align-self: flex-start;
   }
   .directory-toolbar {
     align-items: stretch;

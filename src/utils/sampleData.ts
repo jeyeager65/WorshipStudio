@@ -19,7 +19,7 @@ export const sampleSongs: Song[] = [
     title: 'Amazing Grace',
     author: 'John Newton',
     collections: [{ collectionId: 'Hymns of Grace', number: '184' }],
-    tags: ['hymn'],
+    tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
         id: 'v1',
@@ -52,7 +52,7 @@ export const sampleSongs: Song[] = [
     title: 'Holy, Holy, Holy',
     author: 'Reginald Heber',
     collections: [{ collectionId: 'Hymns of Grace', number: '1' }],
-    tags: ['hymn'],
+    tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
         id: 'v1',
@@ -80,7 +80,7 @@ export const sampleSongs: Song[] = [
     title: 'It Is Well with My Soul',
     author: 'Horatio Spafford',
     collections: [{ collectionId: 'Worship Hymnal', number: '410' }],
-    tags: ['hymn'],
+    tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
         id: 'v1',
@@ -108,7 +108,7 @@ export const sampleSongs: Song[] = [
     title: 'Great Is Thy Faithfulness',
     author: 'Thomas Chisholm',
     collections: [{ collectionId: 'Worship Hymnal', number: '58' }],
-    tags: ['hymn'],
+    tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
         id: 'v1',
@@ -131,7 +131,7 @@ export const sampleSongs: Song[] = [
     title: 'Blessed Assurance',
     author: 'Fanny Crosby',
     collections: [{ collectionId: 'Hymns of Grace', number: '223' }],
-    tags: ['hymn'],
+    tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
         id: 'v1',
@@ -154,7 +154,7 @@ export const sampleSongs: Song[] = [
     title: 'Come Thou Fount of Every Blessing',
     author: 'Robert Robinson',
     collections: [{ collectionId: 'Hymns of Grace', number: '92' }],
-    tags: ['hymn'],
+    tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
         id: 'v1',
@@ -177,7 +177,7 @@ export const sampleSongs: Song[] = [
     title: 'How Firm a Foundation',
     author: 'John Rippon',
     collections: [{ collectionId: 'Worship Hymnal', number: '150' }],
-    tags: ['hymn'],
+    tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
         id: 'v1',
@@ -200,7 +200,7 @@ export const sampleSongs: Song[] = [
     title: 'What a Friend We Have in Jesus',
     author: 'Joseph Scriven',
     collections: [{ collectionId: 'Worship Hymnal', number: '345' }],
-    tags: ['hymn'],
+    tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
         id: 'v1',
@@ -222,12 +222,12 @@ export const sampleSongs: Song[] = [
 
 export const samplePeople: Person[] = [
   {
-    id: 'person-sample-daniel-renno',
-    firstName: 'Daniel',
-    lastName: 'Renno',
-    preferredName: 'Dan',
+    id: 'person-sample-james-caldwell',
+    firstName: 'James',
+    lastName: 'Caldwell',
+    preferredName: 'Jim',
     title: 'Pastor',
-    preferredRoles: ['Preacher'],
+    preferredRoles: ['Sermon'],
     unavailableDateRanges: [],
     updatedAt: now,
     updatedByDevice: device,
@@ -236,7 +236,7 @@ export const samplePeople: Person[] = [
     id: 'person-sample-sarah-mitchell',
     firstName: 'Sarah',
     lastName: 'Mitchell',
-    preferredRoles: ['Worship Leader', 'Vocals'],
+    preferredRoles: ['Vocals'],
     unavailableDateRanges: [],
     updatedAt: now,
     updatedByDevice: device,
@@ -245,7 +245,7 @@ export const samplePeople: Person[] = [
     id: 'person-sample-marcus-johnson',
     firstName: 'Marcus',
     lastName: 'Johnson',
-    preferredRoles: ['Piano', 'Slides'],
+    preferredRoles: ['Piano'],
     unavailableDateRanges: [],
     updatedAt: now,
     updatedByDevice: device,
@@ -281,7 +281,7 @@ export const samplePeople: Person[] = [
     id: 'person-sample-tom-alvarez',
     firstName: 'Tom',
     lastName: 'Alvarez',
-    preferredRoles: ['Slides'],
+    preferredRoles: ['Scripture Reading'],
     unavailableDateRanges: [],
     updatedAt: now,
     updatedByDevice: device,
@@ -322,78 +322,186 @@ export const sampleThemes: Theme[] = [
   },
 ]
 
+/** Collections sampleSongs use — merged into LibrarySettings.collections. */
+export const sampleCollections = ['Hymns of Grace', 'Worship Hymnal']
+
 /** Every role used by samplePeople/rosters below, organized into categories — merged into
  *  LibrarySettings.roleGroups. */
 export const sampleRoleGroups: RoleGroup[] = [
-  { name: 'Praise Team', roles: ['Worship Leader', 'Vocals', 'Piano', 'Guitar', 'Drums'] },
-  { name: 'Tech', roles: ['Sound Booth', 'Slides'] },
-  { name: 'Guest Care', roles: ['Greeter', 'Nursery'] },
-  { name: 'Ministry', roles: ['Preacher'] },
+  { name: 'Praise Team', roles: ['Drums', 'Guitar', 'Piano', 'Vocals'] },
+  { name: 'Building', roles: ['Open', 'Close'] },
+  {
+    name: 'Service Items',
+    roles: [
+      'Welcome and Announcements',
+      'Scripture Reading',
+      'Prayer of Praise and Confession',
+      'Sermon',
+      'Prayer of Thanksgiving and Petition',
+    ],
+  },
+  {
+    name: 'General',
+    roles: [
+      'Greeter',
+      'Sound Booth',
+      'Nursery',
+      "Children's Church K-2",
+      "Children's Church 3-4",
+    ],
+  },
 ]
 
 /** Every service type sampleServices uses — merged into LibrarySettings.serviceTypes. */
-export const sampleServiceTypes = ['Sunday Morning Worship', 'Wednesday Bible Study']
+export const sampleServiceTypes = ['Sunday Worship', 'Sunday Communion', 'Other']
 
-/** One example per service type — merged into LibrarySettings.serviceTemplates. The Sunday
- *  template mirrors a real printed bulletin's order (Welcome and Announcements through Closing
- *  Song), mixing real bulletin-note items, content placeholders, a sermon placeholder, and
- *  role-only entries for roles with no line of their own in the order of service. */
+/** One example per templated service type — merged into LibrarySettings.serviceTemplates. Each
+ *  mirrors a real printed bulletin's order (Welcome and Announcements through Closing Song),
+ *  mixing bulletin-note items, content placeholders, a sermon placeholder, and role-only entries
+ *  for roles with no line of their own in the order of service. 'Other' has no template — it's
+ *  the free-form catch-all for anything that doesn't fit the two structured types. */
 export const sampleServiceTemplates: ServiceTemplate[] = [
   {
-    serviceType: 'Sunday Morning Worship',
-    description:
-      'The complete weekly worship order, including music, readings, sermon, and the usual ministry team.',
+    serviceType: 'Sunday Worship',
+    description: 'The complete Sunday morning worship order, music through sermon to close.',
+    defaultForServiceTypes: ['Sunday Worship'],
     items: [
       {
         id: 'tpl-welcome',
         kind: 'bulletin-note',
         label: 'Welcome and Announcements',
-        role: 'Greeter',
+        role: 'Welcome and Announcements',
       },
-      { id: 'tpl-silent-prep', kind: 'bulletin-note', label: 'Silent Preparation' },
+      {
+        id: 'tpl-silent-prep',
+        kind: 'bulletin-note',
+        label: 'Silent Preparation',
+        note: '(please spend the next few moments preparing your heart for corporate worship)',
+      },
       { id: 'tpl-call-to-worship', kind: 'scripture', label: 'Scriptural Call to Worship' },
-      { id: 'tpl-opening-song', kind: 'song', label: 'Opening Song', role: 'Worship Leader' },
+      { id: 'tpl-song-1', kind: 'song', label: '' },
+      { id: 'tpl-song-2', kind: 'song', label: '' },
       {
         id: 'tpl-prayer-praise',
         kind: 'bulletin-note',
         label: 'Prayer of Praise and Confession',
-        role: 'Worship Leader',
+        role: 'Prayer of Praise and Confession',
       },
-      { id: 'tpl-scripture-reading', kind: 'scripture', label: 'Scripture Reading' },
+      { id: 'tpl-song-3', kind: 'song', label: '' },
+      { id: 'tpl-song-4', kind: 'song', label: '' },
+      {
+        id: 'tpl-scripture-reading',
+        kind: 'scripture',
+        label: 'Scripture Reading',
+        role: 'Scripture Reading',
+      },
       {
         id: 'tpl-prayer-thanksgiving',
         kind: 'bulletin-note',
         label: 'Prayer of Thanksgiving and Petition',
-        role: 'Worship Leader',
+        role: 'Prayer of Thanksgiving and Petition',
       },
-      { id: 'tpl-tithes-offering', kind: 'bulletin-note', label: 'Tithes and Offerings' },
-      { id: 'tpl-sermon', kind: 'sermon', label: 'Worship Through the Word', role: 'Preacher' },
-      { id: 'tpl-silent-reflection', kind: 'bulletin-note', label: 'Silent Reflection' },
-      { id: 'tpl-closing-song', kind: 'song', label: 'Closing Song' },
-      { id: 'tpl-piano', kind: 'role-only', label: 'Piano', role: 'Piano', count: 1 },
-      { id: 'tpl-guitar', kind: 'role-only', label: 'Guitar', role: 'Guitar', count: 1 },
-      { id: 'tpl-drums', kind: 'role-only', label: 'Drums', role: 'Drums', count: 1 },
+      { id: 'tpl-tithes-offering', kind: 'song', label: 'Tithes and Offerings' },
+      { id: 'tpl-sermon', kind: 'sermon', label: 'Worship Through the Word', role: 'Sermon' },
       {
-        id: 'tpl-sound-booth',
-        kind: 'role-only',
-        label: 'Sound Booth',
-        role: 'Sound Booth',
-        count: 1,
+        id: 'tpl-silent-reflection',
+        kind: 'bulletin-note',
+        label: 'Silent Reflection',
+        note: "(please spend the next few moments silently reflecting on today's service)",
       },
-      { id: 'tpl-slides', kind: 'role-only', label: 'Slides', role: 'Slides', count: 1 },
+      { id: 'tpl-closing-song', kind: 'song', label: 'Closing Song' },
+      { id: 'tpl-drums', kind: 'role-only', label: '', role: 'Drums' },
+      { id: 'tpl-guitar', kind: 'role-only', label: '', role: 'Guitar' },
+      { id: 'tpl-piano', kind: 'role-only', label: '', role: 'Piano' },
+      { id: 'tpl-vocals', kind: 'role-only', label: '', role: 'Vocals', count: 2 },
+      { id: 'tpl-greeter', kind: 'role-only', label: '', role: 'Greeter', count: 2 },
+      { id: 'tpl-sound-booth', kind: 'role-only', label: '', role: 'Sound Booth' },
+      { id: 'tpl-nursery', kind: 'role-only', label: '', role: 'Nursery', count: 2 },
+      { id: 'tpl-kids-k2', kind: 'role-only', label: '', role: "Children's Church K-2" },
+      { id: 'tpl-kids-34', kind: 'role-only', label: '', role: "Children's Church 3-4" },
+      { id: 'tpl-open', kind: 'role-only', label: '', role: 'Open' },
+      { id: 'tpl-close', kind: 'role-only', label: '', role: 'Close' },
     ],
   },
   {
-    serviceType: 'Wednesday Bible Study',
-    description: 'A lightweight midweek plan for Bible study and its technical support.',
+    serviceType: 'Sunday Communion',
+    description: "Communion Sunday's order, including the Lord's Supper before the close.",
+    defaultForServiceTypes: ['Sunday Communion'],
     items: [
       {
-        id: 'tpl-wed-sound-booth',
-        kind: 'role-only',
-        label: 'Sound Booth',
-        role: 'Sound Booth',
-        count: 1,
+        id: 'tpl-communion-welcome',
+        kind: 'bulletin-note',
+        label: 'Welcome and Announcements',
+        role: 'Welcome and Announcements',
       },
+      {
+        id: 'tpl-communion-silent-prep',
+        kind: 'bulletin-note',
+        label: 'Silent Preparation',
+        note: '(please spend the next few moments preparing your heart for corporate worship)',
+      },
+      {
+        id: 'tpl-communion-call-to-worship',
+        kind: 'scripture',
+        label: 'Scriptural Call to Worship',
+      },
+      { id: 'tpl-communion-song-1', kind: 'song', label: '' },
+      {
+        id: 'tpl-communion-prayer-praise',
+        kind: 'bulletin-note',
+        label: 'Prayer of Praise and Confession',
+        role: 'Prayer of Praise and Confession',
+      },
+      { id: 'tpl-communion-song-2', kind: 'song', label: '' },
+      { id: 'tpl-communion-song-3', kind: 'song', label: '' },
+      {
+        id: 'tpl-communion-scripture-reading',
+        kind: 'scripture',
+        label: 'Scripture Reading',
+        role: 'Scripture Reading',
+      },
+      {
+        id: 'tpl-communion-prayer-thanksgiving',
+        kind: 'bulletin-note',
+        label: 'Prayer of Thanksgiving and Petition',
+        role: 'Prayer of Thanksgiving and Petition',
+      },
+      { id: 'tpl-communion-tithes-offering', kind: 'song', label: 'Tithes and Offerings' },
+      {
+        id: 'tpl-communion-sermon',
+        kind: 'sermon',
+        label: 'Worship Through the Word',
+        role: 'Sermon',
+      },
+      { id: 'tpl-communion-song-4', kind: 'song', label: '' },
+      {
+        id: 'tpl-communion-lords-supper',
+        kind: 'song',
+        label: "The Lord's Supper",
+        note: '(we will sing during the serving of the cup)',
+      },
+      { id: 'tpl-communion-closing-song', kind: 'song', label: 'Closing Song' },
+      { id: 'tpl-communion-drums', kind: 'role-only', label: '', role: 'Drums' },
+      { id: 'tpl-communion-guitar', kind: 'role-only', label: '', role: 'Guitar' },
+      { id: 'tpl-communion-piano', kind: 'role-only', label: '', role: 'Piano' },
+      { id: 'tpl-communion-vocals', kind: 'role-only', label: '', role: 'Vocals', count: 2 },
+      { id: 'tpl-communion-greeter', kind: 'role-only', label: '', role: 'Greeter', count: 2 },
+      { id: 'tpl-communion-sound-booth', kind: 'role-only', label: '', role: 'Sound Booth' },
+      { id: 'tpl-communion-nursery', kind: 'role-only', label: '', role: 'Nursery', count: 2 },
+      {
+        id: 'tpl-communion-kids-k2',
+        kind: 'role-only',
+        label: '',
+        role: "Children's Church K-2",
+      },
+      {
+        id: 'tpl-communion-kids-34',
+        kind: 'role-only',
+        label: '',
+        role: "Children's Church 3-4",
+      },
+      { id: 'tpl-communion-open', kind: 'role-only', label: '', role: 'Open' },
+      { id: 'tpl-communion-close', kind: 'role-only', label: '', role: 'Close' },
     ],
   },
 ]
@@ -433,22 +541,22 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
   const future = nthSundayAfter(referenceDate, 3)
 
   const pastRoster: RoleAssignment[] = [
-    { role: 'Preacher', personId: 'person-sample-daniel-renno', tentative: false },
-    { role: 'Worship Leader', personId: 'person-sample-sarah-mitchell', tentative: false },
+    { role: 'Sermon', personId: 'person-sample-james-caldwell', tentative: false },
+    { role: 'Vocals', personId: 'person-sample-sarah-mitchell', tentative: false },
     { role: 'Piano', personId: 'person-sample-marcus-johnson', tentative: false },
     { role: 'Guitar', personId: 'person-sample-priya-patel', tentative: false },
     { role: 'Drums', personId: 'person-sample-daniel-kim', tentative: false },
     { role: 'Sound Booth', personId: 'person-sample-rachel-nguyen', tentative: false },
-    { role: 'Slides', personId: 'person-sample-tom-alvarez', tentative: false },
+    { role: 'Scripture Reading', personId: 'person-sample-tom-alvarez', tentative: false },
   ]
 
-  // Marcus is deliberately double-booked (Piano AND Slides) — exercises the roster's
+  // Marcus is deliberately double-booked (Piano AND Open) — exercises the roster's
   // same-week-two-roles conflict detection (see rosterConflicts.ts).
   const soonRoster: RoleAssignment[] = [
-    { role: 'Preacher', personId: 'person-sample-daniel-renno', tentative: false },
-    { role: 'Worship Leader', personId: 'person-sample-sarah-mitchell', tentative: false },
+    { role: 'Sermon', personId: 'person-sample-james-caldwell', tentative: false },
+    { role: 'Vocals', personId: 'person-sample-sarah-mitchell', tentative: false },
     { role: 'Piano', personId: 'person-sample-marcus-johnson', tentative: false },
-    { role: 'Slides', personId: 'person-sample-marcus-johnson', tentative: false },
+    { role: 'Open', personId: 'person-sample-marcus-johnson', tentative: false },
     { role: 'Guitar', personId: 'person-sample-priya-patel', tentative: true },
     { role: 'Sound Booth', personId: 'person-sample-rachel-nguyen', tentative: false },
     { role: 'Greeter', personId: 'person-sample-linda-brooks', tentative: false },
@@ -459,7 +567,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       id: 'service-sample-past-sunday',
       date: toIso(past),
       time: '10:30',
-      type: 'Sunday Morning Worship',
+      type: 'Sunday Worship',
       items: [
         {
           id: 'item-2',
@@ -512,7 +620,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
           ],
           mainPassageId: 'passage-sermon',
           outline: [],
-          role: 'Preacher',
+          role: 'Sermon',
         },
       ],
       assignments: pastRoster,
@@ -523,7 +631,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       id: 'service-sample-upcoming-sunday',
       date: toIso(soon),
       time: '10:30',
-      type: 'Sunday Morning Worship',
+      type: 'Sunday Worship',
       items: [
         {
           id: 'item-2',
@@ -575,7 +683,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
           ],
           mainPassageId: 'passage-sermon',
           outline: [],
-          role: 'Preacher',
+          role: 'Sermon',
         },
       ],
       assignments: soonRoster,
@@ -586,7 +694,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       id: 'service-sample-wednesday-study',
       date: toIso(wednesday),
       time: '19:00',
-      type: 'Wednesday Bible Study',
+      type: 'Other',
       items: [
         {
           id: 'item-1',
@@ -615,11 +723,11 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
           ],
           mainPassageId: 'passage-sermon',
           outline: [],
-          role: 'Preacher',
+          role: 'Sermon',
         },
       ],
       assignments: [
-        { role: 'Preacher', personId: 'person-sample-daniel-renno', tentative: false },
+        { role: 'Sermon', personId: 'person-sample-james-caldwell', tentative: false },
         { role: 'Sound Booth', personId: 'person-sample-rachel-nguyen', tentative: false },
       ],
       updatedAt: now,
@@ -631,7 +739,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       id: 'service-sample-future-sunday',
       date: toIso(future),
       time: '10:30',
-      type: 'Sunday Morning Worship',
+      type: 'Sunday Worship',
       items: [
         {
           id: 'item-1',
@@ -641,7 +749,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
         },
       ],
       assignments: [
-        { role: 'Worship Leader', personId: 'person-sample-sarah-mitchell', tentative: true },
+        { role: 'Vocals', personId: 'person-sample-sarah-mitchell', tentative: true },
       ],
       updatedAt: now,
       updatedByDevice: device,

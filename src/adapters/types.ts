@@ -115,6 +115,13 @@ export interface MediaPort {
    * real file behind them — so callers can fall back to a placeholder rather than show an error.
    */
   getPreviewUrl(id: string): Promise<string | undefined>
+  /**
+   * Copies whichever of the 6 bundled stock background images aren't already in the library
+   * into it as ordinary media (tagged Background/Stock), plus whichever of the 2 starter
+   * themes aren't already present. Idempotent — fixed ids mean re-running only adds what's
+   * still missing. Offered from the Setup Wizard's Library step and Settings → Data tools.
+   */
+  importStockBackgrounds(): Promise<{ mediaAdded: number; themesAdded: number }>
 }
 
 export interface CanvaStatus {

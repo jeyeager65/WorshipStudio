@@ -1,8 +1,17 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMockAdapter } from '@/adapters/mock'
+import { stockBackgrounds, stockThemes } from '@/data/stockContent'
 
 beforeEach(() => {
   localStorage.clear()
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response(new Blob(['fake pixels'], { type: 'image/webp' }))),
+  )
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 describe('mock adapter', () => {
@@ -11,6 +20,64 @@ describe('mock adapter', () => {
     const songs = await adapter.songs.list()
     expect(songs.length).toBeGreaterThan(0)
     expect(songs[0].title).toBe('Amazing Grace')
+  })
+
+  it('importStockBackgrounds adds every stock image and theme with a real resolvable preview', async () => {
+    const adapter = createMockAdapter()
+    const summary = await adapter.media.importStockBackgrounds()
+    expect(summary).toEqual({ mediaAdded: stockBackgrounds.length, themesAdded: stockThemes.length })
+
+    const media = await adapter.media.list()
+    for (const background of stockBackgrounds) {
+      const item = media.find((candidate) => candidate.id === background.id)
+      expect(item, background.id).toBeDefined()
+      expect(item?.tags).toEqual(['Background', 'Stock'])
+      expect(item?.location).toBe('synced')
+      await expect(adapter.media.getPreviewUrl(background.id)).resolves.toMatch(/^blob:/)
+    }
+
+    const themes = await adapter.themes.list()
+    for (const stockTheme of stockThemes) {
+      const theme = themes.find((candidate) => candidate.id === stockTheme.id)
+      expect(theme, stockTheme.id).toBeDefined()
+      expect(theme?.backgroundId).toBe(stockTheme.backgroundMediaId)
+      expect(theme?.useAsDefaultFor).toEqual(stockTheme.intendedDefaults)
+    }
+  })
+
+  it('importStockBackgrounds is idempotent — a second call adds nothing more', async () => {
+    const adapter = createMockAdapter()
+    await adapter.media.importStockBackgrounds()
+    const mediaCountAfterFirst = (await adapter.media.list()).length
+    const themeCountAfterFirst = (await adapter.themes.list()).length
+
+    const second = await adapter.media.importStockBackgrounds()
+
+    expect(second).toEqual({ mediaAdded: 0, themesAdded: 0 })
+    expect((await adapter.media.list()).length).toBe(mediaCountAfterFirst)
+    expect((await adapter.themes.list()).length).toBe(themeCountAfterFirst)
+  })
+
+  it('importStockBackgrounds never claims a content type an existing theme already defaults for', async () => {
+    const adapter = createMockAdapter()
+    await adapter.themes.save({
+      id: 'theme-church-own',
+      name: 'Church Theme',
+      font: 'Inter',
+      textColor: '#FFFFFF',
+      outline: false,
+      appliesTo: [],
+      useAsDefaultFor: ['songs'],
+      updatedAt: '',
+      updatedByDevice: '',
+    })
+
+    await adapter.media.importStockBackgrounds()
+
+    const goldenCross = (await adapter.themes.list()).find(
+      (theme) => theme.id === 'theme-stock-golden-cross',
+    )
+    expect(goldenCross?.useAsDefaultFor).toEqual(['scripture', 'sermon'])
   })
 
   it('saves and retrieves a new song', async () => {

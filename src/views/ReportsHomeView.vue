@@ -88,7 +88,7 @@ const reports = [
 }
 .reports-hero,
 .reports-directory {
-  max-width: 1080px;
+  max-width: 1240px;
   margin-right: auto;
   margin-left: auto;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);

@@ -11,8 +11,10 @@ import type {
 } from '@/adapters/types'
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
-import type { MediaItem } from '@/models/library'
+import type { MediaItem, Theme } from '@/models/library'
 import { MockCollection, MockSingleton } from './collection'
+import { stockBackgrounds, stockThemes } from '@/data/stockContent'
+import { presentationThemeDefaults } from '@/utils/presentationTheme'
 import {
   seedSongs,
   seedServices,
@@ -296,6 +298,55 @@ export function createMockAdapter(): StudioAdapter {
         await media.delete(id)
       },
       getPreviewUrl: async (id) => mediaPreviewUrls.get(id),
+      importStockBackgrounds: async () => {
+        const existingMedia = (await media.list()) as MediaItem[]
+        let mediaAdded = 0
+        for (const background of stockBackgrounds) {
+          if (existingMedia.some((item) => item.id === background.id)) continue
+          const blob = await (await fetch(`/stock-backgrounds/${background.filename}`)).blob()
+          const file = new File([blob], background.filename, { type: blob.type })
+          mediaPreviewUrls.set(background.id, URL.createObjectURL(blob))
+          const item: MediaItem = {
+            id: background.id,
+            filename: background.filename,
+            title: background.title,
+            kind: 'image',
+            tags: ['Background', 'Stock'],
+            location: 'synced',
+            contentHash: fakeContentHash(file),
+            usage: { usesPastYear: 0 },
+            ...nowStamp(),
+          }
+          await media.save(item)
+          mediaAdded++
+        }
+
+        // Snapshotted once before the loop (not updated as stock themes get saved below) — same
+        // "only fills gaps present before this run started" behavior as the Rust import command.
+        const existingThemes = (await themes.list()) as Theme[]
+        const claimedDefaults = new Set(existingThemes.flatMap(presentationThemeDefaults))
+        let themesAdded = 0
+        for (const stockTheme of stockThemes) {
+          if (existingThemes.some((theme) => theme.id === stockTheme.id)) continue
+          const theme: Theme = {
+            id: stockTheme.id,
+            name: stockTheme.name,
+            backgroundId: stockTheme.backgroundMediaId,
+            font: stockTheme.font,
+            textColor: stockTheme.textColor,
+            outline: true,
+            appliesTo: [],
+            useAsDefaultFor: stockTheme.intendedDefaults.filter(
+              (target) => !claimedDefaults.has(target),
+            ),
+            ...nowStamp(),
+          }
+          await themes.save(theme)
+          themesAdded++
+        }
+
+        return { mediaAdded, themesAdded }
+      },
     },
     themes: {
       list: () => themes.list(),

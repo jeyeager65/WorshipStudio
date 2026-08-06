@@ -140,11 +140,11 @@ describe('buildOrderOfWorship', () => {
       service,
       songs,
       slides,
-      new Map([['person-rob', 'Elder Rob Varano']]),
+      new Map([['person-rob', 'Elder Rob Delgado']]),
     )
     expect(doc.lines[0]).toMatchObject({
       role: 'Welcome and Announcements',
-      person: 'Elder Rob Varano',
+      person: 'Elder Rob Delgado',
     })
   })
 

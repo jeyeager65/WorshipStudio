@@ -10,6 +10,7 @@ pub mod scripture;
 pub mod services;
 pub mod slides;
 pub mod songs;
+pub mod stock_content;
 pub mod sync;
 pub mod themes;
 pub mod win32;

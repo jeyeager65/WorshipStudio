@@ -120,6 +120,7 @@ pub fn run() {
             commands::media::commit_media_import,
             commands::media::detect_media_duplicates,
             commands::media::get_media_file_path,
+            commands::stock_content::import_stock_backgrounds,
             commands::themes::list_themes,
             commands::themes::save_theme,
             commands::themes::delete_theme,

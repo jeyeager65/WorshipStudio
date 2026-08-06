@@ -5,8 +5,8 @@ import { isElder, personDisplayName, personFormalName } from '@/models/library'
 function person(overrides: Partial<Person> = {}): Person {
   return {
     id: 'person-1',
-    firstName: 'Daniel',
-    lastName: 'Renno',
+    firstName: 'Michael',
+    lastName: 'Sanders',
     preferredRoles: [],
     unavailableDateRanges: [],
     updatedAt: '',
@@ -17,12 +17,14 @@ function person(overrides: Partial<Person> = {}): Person {
 
 describe('person names', () => {
   it('uses the preferred name in ordinary contexts', () => {
-    expect(personDisplayName(person({ preferredName: 'Dan', title: 'Pastor' }))).toBe('Dan Renno')
+    expect(personDisplayName(person({ preferredName: 'Dan', title: 'Pastor' }))).toBe(
+      'Dan Sanders',
+    )
   })
 
   it('includes the title only in formal contexts', () => {
     expect(personFormalName(person({ preferredName: 'Dan', title: 'Pastor' }))).toBe(
-      'Pastor Dan Renno',
+      'Pastor Dan Sanders',
     )
   })
 

@@ -54,7 +54,7 @@ describe('sample data', () => {
     const conflicts = findRoleConflicts(soon.assignments ?? [])
     expect(conflicts).toHaveLength(1)
     expect(conflicts[0].personId).toBe('person-sample-marcus-johnson')
-    expect(conflicts[0].roles.sort()).toEqual(['Piano', 'Slides'])
+    expect(conflicts[0].roles.sort()).toEqual(['Open', 'Piano'])
   })
 
   it('no other service has an accidental conflict', () => {

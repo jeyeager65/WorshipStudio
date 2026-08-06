@@ -130,9 +130,11 @@ async function duplicateTheme(theme: Theme) {
         <h1>Presentation Themes</h1>
         <p>Choose reusable backgrounds and text styling for generated presentation content.</p>
       </div>
-      <div class="hero-summary">
-        <strong>{{ sortedThemes.length }}</strong>
-        <span>{{ sortedThemes.length === 1 ? 'Theme' : 'Themes' }}</span>
+      <div class="theme-summary" aria-label="Theme library summary">
+        <div class="summary-stat">
+          <strong>{{ sortedThemes.length }}</strong>
+          <span>{{ sortedThemes.length === 1 ? 'Theme' : 'Themes' }}</span>
+        </div>
       </div>
     </header>
 
@@ -274,52 +276,92 @@ async function duplicateTheme(theme: Theme) {
 
 <style scoped>
 .themes-library-page {
-  max-width: 1320px;
-  margin: 0 auto;
-  padding: 30px 34px 56px;
+  min-height: calc(100vh - 49px);
+  padding: 24px clamp(24px, 3vw, 48px) 56px;
+  background:
+    radial-gradient(circle at 24% 0, rgba(var(--v-theme-amber), 0.055), transparent 420px),
+    rgb(var(--v-theme-background));
+}
+.library-hero,
+.theme-directory {
+  max-width: 1240px;
+  margin-right: auto;
+  margin-left: auto;
 }
 .library-hero {
   display: flex;
-  align-items: end;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 23px;
+  gap: 36px;
+  margin-bottom: 18px;
+  padding: 25px 28px 27px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 11px;
+  background: rgba(var(--v-theme-surface), 0.76);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.08);
 }
 .page-eyebrow {
-  color: rgb(var(--v-theme-primary));
-  font-size: 0.68rem;
-  font-weight: 750;
+  margin-bottom: 4px;
+  color: rgb(var(--v-theme-amber));
+  font-size: 0.78rem;
+  font-weight: 700;
   letter-spacing: 0.09em;
   text-transform: uppercase;
 }
 .library-hero h1 {
-  margin: 3px 0 5px;
-  font-size: 2rem;
-  line-height: 1.1;
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.95);
+  font-size: 1.75rem;
+  font-weight: 680;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
 }
-.library-hero p,
+.library-hero p {
+  max-width: 620px;
+  margin: 9px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.58);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
 .directory-toolbar p,
 .theme-card-body p {
   margin: 0;
   color: rgba(var(--v-theme-on-surface), 0.52);
   font-size: 0.76rem;
 }
-.hero-summary {
+.theme-summary {
   display: flex;
-  min-width: 90px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 9px;
+  background: rgba(var(--v-theme-background), 0.42);
+}
+.summary-stat {
+  display: flex;
+  min-width: 105px;
   flex-direction: column;
   align-items: center;
-  padding: 10px 16px;
-  border: 1px solid rgba(var(--v-theme-primary), 0.16);
-  border-radius: 10px;
-  background: rgba(var(--v-theme-primary), 0.055);
+  padding: 11px 15px;
+  border-right: 1px solid rgba(var(--v-theme-on-surface), 0.07);
 }
-.hero-summary strong {
-  font-size: 1.25rem;
+.summary-stat:last-child {
+  border-right: 0;
 }
-.hero-summary span {
-  color: rgba(var(--v-theme-on-surface), 0.48);
-  font-size: 0.66rem;
+.summary-stat strong {
+  color: rgb(var(--v-theme-amber));
+  font-size: 1.12rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.summary-stat span {
+  margin-top: 4px;
+  color: rgba(var(--v-theme-on-surface), 0.52);
+  font-size: 0.74rem;
+  font-weight: 650;
+  letter-spacing: 0.035em;
+  text-align: center;
+  text-transform: uppercase;
 }
 .theme-directory {
   overflow: hidden;
@@ -480,8 +522,11 @@ async function duplicateTheme(theme: Theme) {
     padding: 22px 16px 42px;
   }
   .library-hero {
-    align-items: flex-start;
+    align-items: stretch;
     flex-direction: column;
+  }
+  .theme-summary {
+    align-self: flex-start;
   }
   .theme-grid {
     grid-template-columns: 1fr;

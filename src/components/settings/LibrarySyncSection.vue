@@ -14,6 +14,7 @@ import {
   sampleSongs,
   sampleThemes,
   samplePeople,
+  sampleCollections,
   sampleRoleGroups,
   sampleServiceTemplates,
   sampleServiceTypes,
@@ -43,6 +44,25 @@ const loadingSampleData = ref(false)
 const sampleDataLoaded = ref(false)
 const clearingData = ref(false)
 const dataCleared = ref(false)
+const addingStockBackgrounds = ref(false)
+const stockBackgroundsAdded = ref<{ mediaAdded: number; themesAdded: number }>()
+const stockBackgroundsError = ref('')
+
+// Non-destructive and re-runnable any time — unlike Load Sample Data/Clear Existing Data,
+// this only ever adds whichever of the 6 stock images/2 starter themes aren't already present
+// (fixed ids make it idempotent), so it needs no confirmation dialog.
+async function addStockBackgrounds() {
+  addingStockBackgrounds.value = true
+  stockBackgroundsError.value = ''
+  try {
+    stockBackgroundsAdded.value = await getAdapter().media.importStockBackgrounds()
+  } catch (error) {
+    stockBackgroundsError.value =
+      error instanceof Error ? error.message : 'Stock backgrounds could not be added.'
+  } finally {
+    addingStockBackgrounds.value = false
+  }
+}
 
 /** Deletes every existing song, service, person, and theme — shared by both destructive
  *  actions below (clearing outright, and loading sample data over the top of a clean slate). */
@@ -87,7 +107,7 @@ async function loadSampleData() {
       librarySettings.value.serviceTypes = [...sampleServiceTypes]
       librarySettings.value.roleGroups = structuredClone(sampleRoleGroups)
       librarySettings.value.serviceTemplates = structuredClone(sampleServiceTemplates)
-      librarySettings.value.collections = ['Hymns of Grace', 'Worship Hymnal']
+      librarySettings.value.collections = [...sampleCollections]
       await store.save()
     }
     sampleDataLoaded.value = true
@@ -98,11 +118,14 @@ async function loadSampleData() {
 
 // Deliberately separate from loadSampleData — a church wanting to wipe demo content (or start
 // over) before going live shouldn't have to load a fresh batch of sample data just to clear
-// the old one out.
+// the old one out. Also resets the library-wide settings lists (service types, collections,
+// role categories, service templates) — otherwise "delete everything" would leave stale
+// categories/roles/templates behind since those live on LibrarySettings, not as their own
+// deletable records like songs/services/people/themes.
 async function clearExistingData() {
   if (
     !(await confirmDialog.confirm(
-      'This permanently deletes ALL songs, services, people, and themes in this library. This cannot be undone — make sure this library is not currently in use before doing this.',
+      'This permanently deletes ALL songs, services, people, themes, service types, collections, role categories, and service templates in this library. This cannot be undone — make sure this library is not currently in use before doing this.',
       'Delete Everything',
     ))
   ) {
@@ -112,6 +135,13 @@ async function clearExistingData() {
   sampleDataLoaded.value = false
   try {
     await deleteAllLibraryContent()
+    if (librarySettings.value) {
+      librarySettings.value.serviceTypes = []
+      librarySettings.value.collections = []
+      librarySettings.value.roleGroups = []
+      librarySettings.value.serviceTemplates = []
+      await store.save()
+    }
     dataCleared.value = true
   } finally {
     clearingData.value = false
@@ -266,6 +296,15 @@ async function pickLibraryFolder() {
       </v-btn>
       <v-btn
         variant="outlined"
+        color="primary"
+        prepend-icon="mdi-image-plus-outline"
+        :loading="addingStockBackgrounds"
+        @click="addStockBackgrounds"
+      >
+        Add Stock Backgrounds
+      </v-btn>
+      <v-btn
+        variant="outlined"
         color="error"
         prepend-icon="mdi-delete-forever-outline"
         :loading="clearingData"
@@ -277,8 +316,29 @@ async function pickLibraryFolder() {
     <div v-if="sampleDataLoaded" class="text-caption text-medium-emphasis mt-2">
       Sample songs, services, people, and themes added — check Home to see them.
     </div>
+    <div v-if="stockBackgroundsAdded" class="text-caption text-medium-emphasis mt-2">
+      {{ stockBackgroundsAdded.mediaAdded }} background image{{
+        stockBackgroundsAdded.mediaAdded === 1 ? '' : 's'
+      }}
+      and {{ stockBackgroundsAdded.themesAdded }} theme{{
+        stockBackgroundsAdded.themesAdded === 1 ? '' : 's'
+      }}
+      added (already-present ones were skipped).
+    </div>
+    <v-alert
+      v-if="stockBackgroundsError"
+      type="error"
+      variant="tonal"
+      density="compact"
+      class="mt-2"
+      closable
+      @click:close="stockBackgroundsError = ''"
+    >
+      {{ stockBackgroundsError }}
+    </v-alert>
     <div v-if="dataCleared" class="text-caption text-medium-emphasis mt-2">
-      All songs, services, people, and themes have been deleted.
+      All songs, services, people, themes, service types, collections, role categories, and
+      service templates have been deleted.
     </div>
   </SettingsPanel>
   </div>
