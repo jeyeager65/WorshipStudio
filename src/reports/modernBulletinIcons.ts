@@ -13,7 +13,14 @@ import {
   mdiCrossOutline,
   mdiGiftOutline,
   mdiCandle,
-  mdiCircleOutline,
+  mdiThoughtBubbleOutline,
+  mdiBullhornVariantOutline,
+  mdiAsteriskCircleOutline,
+  mdiCalendarBlank,
+  mdiHumanGreetingVariant,
+  mdiVolumeHigh,
+  mdiCradleOutline,
+  mdiAccount,
 } from '@mdi/js'
 
 const SIZE = 40
@@ -49,5 +56,29 @@ export const iconCross = badge(mdiCrossOutline)
 export const iconGift = badge(mdiGiftOutline)
 /** Silent Reflection. */
 export const iconCandle = badge(mdiCandle)
+/** Footer sections whose title is a "Thought to Ponder"-style reflection. */
+export const iconThought = badge(mdiThoughtBubbleOutline)
+/** Announcement items. */
+export const iconAnnounce = badge(mdiBullhornVariantOutline)
 /** A generic fallback for any content type without a more specific icon above. */
-export const iconGeneric = badge(mdiCircleOutline)
+export const iconGeneric = badge(mdiAsteriskCircleOutline)
+
+// Bare (un-badged) icons for page 2's right-side design — section subtitles and per-role
+// markers in the serving schedule table sit beside small text, not a 40x40 line-item row, so a
+// plain path at the target size reads better than shrinking a whole circular badge down.
+function plainIcon(path: string): string {
+  return `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="${path}" fill="${INK}"/></svg>`
+}
+
+/** UPCOMING subtitle. */
+export const plainIconCalendar = plainIcon(mdiCalendarBlank)
+/** ANNOUNCEMENTS subtitle. */
+export const plainIconAnnounce = plainIcon(mdiBullhornVariantOutline)
+/** Serving-schedule role containing "greet". */
+export const plainIconGreeting = plainIcon(mdiHumanGreetingVariant)
+/** Serving-schedule role containing "sound". */
+export const plainIconVolume = plainIcon(mdiVolumeHigh)
+/** Serving-schedule role containing "nursery" or "baby". */
+export const plainIconCradle = plainIcon(mdiCradleOutline)
+/** Serving-schedule role fallback. */
+export const plainIconAccount = plainIcon(mdiAccount)

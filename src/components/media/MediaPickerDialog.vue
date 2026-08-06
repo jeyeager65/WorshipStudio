@@ -4,13 +4,18 @@ import { getAdapter } from '@/adapters'
 import { useMediaStore } from '@/stores/media'
 import ImportMediaDialog from '@/components/media/ImportMediaDialog.vue'
 
-const props = withDefaults(defineProps<{ purpose?: 'slide' | 'logo' | 'background' }>(), {
-  purpose: 'slide',
-})
+const props = withDefaults(
+  defineProps<{
+    purpose?: 'slide' | 'logo' | 'background' | 'service-image' | 'service-video'
+  }>(),
+  {
+    purpose: 'slide',
+  },
+)
 
 const open = defineModel<boolean>({ required: true })
 const emit = defineEmits<{
-  select: [mediaId: string, placement: 'element' | 'background']
+  select: [mediaId: string, placement: 'element' | 'background', fit?: 'cover' | 'contain']
 }>()
 
 const store = useMediaStore()
@@ -18,13 +23,30 @@ const query = ref('')
 const activeTag = ref<string>()
 const importDialogOpen = ref(false)
 const previewUrlById = reactive(new Map<string, string>())
+// Only meaningful for service-image (how the service item fills the audience display) — chosen
+// once here rather than per-card, since it's a property of the slot the image is going into,
+// not of the image itself. An optional model (rather than a plain local ref) so a caller
+// changing an *existing* item's image can seed this with that item's current fit instead of
+// always resetting to Cover — when nothing binds it (a brand-new "Add" flow has no current fit
+// to seed from), it just behaves as ordinary local state defaulting to Cover.
+const imageFit = defineModel<'cover' | 'contain'>('imageFit', { default: 'cover' })
 
+// Logo/Background are shared-church assets, so only content every library computer already has
+// (synced) makes sense there — Slide and the two Service pickers add media for this computer's
+// own presentation, where a local-only item is perfectly usable.
+const restrictedToSyncedOnly = computed(
+  () => props.purpose === 'logo' || props.purpose === 'background',
+)
 const mediaItems = computed(() =>
-  store.items.filter(
-    (item) =>
-      (props.purpose === 'background' ? true : item.kind === 'image') &&
-      (props.purpose === 'slide' || item.location === 'synced'),
-  ),
+  store.items.filter((item) => {
+    const kindMatches =
+      props.purpose === 'background'
+        ? true
+        : props.purpose === 'service-video'
+          ? item.kind === 'video'
+          : item.kind === 'image'
+    return kindMatches && (!restrictedToSyncedOnly.value || item.location === 'synced')
+  }),
 )
 const tagCounts = computed(() => {
   const counts = new Map<string, number>()
@@ -64,22 +86,29 @@ watch(open, async (isOpen) => {
 })
 
 function choose(mediaId: string, placement: 'element' | 'background') {
-  emit('select', mediaId, placement)
+  emit('select', mediaId, placement, props.purpose === 'service-image' ? imageFit.value : undefined)
   open.value = false
 }
 
 const pickerTitle = computed(() => {
   if (props.purpose === 'logo') return 'Choose a Logo'
   if (props.purpose === 'background') return 'Choose a Background'
+  if (props.purpose === 'service-video') return 'Choose a Video'
   return 'Choose an Image'
 })
 const pickerDescription = computed(() => {
   if (props.purpose === 'logo') return 'Select a synced image or import a new logo.'
   if (props.purpose === 'background')
     return 'Select a synced image or video so the theme works on every library computer.'
+  if (props.purpose === 'service-video')
+    return 'Select a video already in the library or import a new one.'
   return 'Select an image already in the library or import a new one.'
 })
-const itemNoun = computed(() => (props.purpose === 'background' ? 'media item' : 'image'))
+const itemNoun = computed(() => {
+  if (props.purpose === 'background') return 'media item'
+  if (props.purpose === 'service-video') return 'video'
+  return 'image'
+})
 </script>
 
 <template>
@@ -107,11 +136,28 @@ const itemNoun = computed(() => (props.purpose === 'background' ? 'media item' :
         </div>
       </header>
       <v-card-text class="picker-body">
+        <v-btn-toggle
+          v-if="purpose === 'service-image'"
+          v-model="imageFit"
+          mandatory
+          density="compact"
+          divided
+          class="mb-4"
+        >
+          <v-btn value="cover" size="small">Cover (crop to fill)</v-btn>
+          <v-btn value="contain" size="small">Contain (show in full)</v-btn>
+        </v-btn-toggle>
         <div class="picker-toolbar">
           <v-text-field
             v-model="query"
             prepend-inner-icon="mdi-magnify"
-            :label="purpose === 'background' ? 'Search backgrounds' : 'Search images'"
+            :label="
+              purpose === 'background'
+                ? 'Search backgrounds'
+                : purpose === 'service-video'
+                  ? 'Search videos'
+                  : 'Search images'
+            "
             variant="outlined"
             density="compact"
             hide-details
@@ -128,7 +174,13 @@ const itemNoun = computed(() => (props.purpose === 'background' ? 'media item' :
             <div class="tag-heading">Filter by tag</div>
             <v-list density="compact" nav class="pa-0">
               <v-list-item :active="!activeTag" rounded="lg" @click="activeTag = undefined">
-                {{ purpose === 'background' ? 'All Backgrounds' : 'All Images' }}
+                {{
+                  purpose === 'background'
+                    ? 'All Backgrounds'
+                    : purpose === 'service-video'
+                      ? 'All Videos'
+                      : 'All Images'
+                }}
                 <template #append>
                   <span class="text-caption text-medium-emphasis">{{ mediaItems.length }}</span>
                 </template>
@@ -150,7 +202,13 @@ const itemNoun = computed(() => (props.purpose === 'background' ? 'media item' :
 
           <div class="media-grid">
             <article v-for="item in filteredItems" :key="item.id" class="media-card">
-              <div class="media-thumb">
+              <div
+                class="media-thumb"
+                :class="{
+                  'media-thumb--cover': purpose === 'service-image' && imageFit === 'cover',
+                  'media-thumb--contain': purpose === 'service-image' && imageFit === 'contain',
+                }"
+              >
                 <img
                   v-if="previewUrlById.has(item.id) && item.kind === 'image'"
                   :src="previewUrlById.get(item.id)"
@@ -201,7 +259,9 @@ const itemNoun = computed(() => (props.purpose === 'background' ? 'media item' :
                       ? 'Use as Logo'
                       : purpose === 'background'
                         ? 'Use as Background'
-                        : 'Add to Slide'
+                        : purpose === 'service-image' || purpose === 'service-video'
+                          ? 'Add to Service'
+                          : 'Add to Slide'
                   }}
                 </v-btn>
                 <v-btn
@@ -215,7 +275,17 @@ const itemNoun = computed(() => (props.purpose === 'background' ? 'media item' :
             </article>
             <div v-if="filteredItems.length === 0" class="picker-empty">
               <v-icon icon="mdi-image-search-outline" size="30" />
-              <strong>No {{ purpose === 'background' ? 'backgrounds' : 'images' }} found</strong>
+              <strong
+                >No
+                {{
+                  purpose === 'background'
+                    ? 'backgrounds'
+                    : purpose === 'service-video'
+                      ? 'videos'
+                      : 'images'
+                }}
+                found</strong
+              >
               <span>Try another search or import new media.</span>
             </div>
           </div>
@@ -225,7 +295,7 @@ const itemNoun = computed(() => (props.purpose === 'background' ? 'media item' :
 
     <ImportMediaDialog
       v-model="importDialogOpen"
-      :synced-only="purpose !== 'slide'"
+      :synced-only="restrictedToSyncedOnly"
       @imported="store.load()"
     />
   </v-dialog>
@@ -354,6 +424,34 @@ const itemNoun = computed(() => (props.purpose === 'background' ? 'media item' :
   max-width: calc(100% - 14px);
   height: auto;
   max-height: calc(100% - 14px);
+  object-fit: contain;
+}
+/* Mirrors each fit choice's actual on-screen effect — filling/cropping for Cover, shrinking to
+   fit with no crop for Contain — so the toggle previews how the image will really look live
+   instead of only being a label the operator has to take on faith. `position: absolute; inset:
+   0` (against .media-thumb's own `position: relative`) is what actually makes width/height:100%
+   resolve reliably here — a plain (non-absolute) grid-item img's percentage height did NOT
+   reliably resolve against its grid cell in testing, so it kept sizing itself to its own
+   intrinsic aspect ratio instead of the thumbnail box, leaving object-fit nothing correctly
+   sized to crop against (the image just overflowed the box, top-aligned, cropped only at the
+   bottom) — this sidesteps that percentage-resolution ambiguity entirely. */
+.media-thumb--cover img,
+.media-thumb--cover video,
+.media-thumb--contain img,
+.media-thumb--contain video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+}
+.media-thumb--cover img,
+.media-thumb--cover video {
+  object-fit: cover;
+}
+.media-thumb--contain img,
+.media-thumb--contain video {
   object-fit: contain;
 }
 .media-picker-card--logo .media-thumb {

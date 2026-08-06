@@ -351,7 +351,7 @@ export function flattenService(
           passage.id,
         )
       }
-      item.outline.forEach((block, outlineIndex) => {
+      item.outline.forEach((block) => {
         flat.push({
           key: `${item.id}:outline:${block.id}`,
           itemIndex,
@@ -360,10 +360,10 @@ export function flattenService(
           subLabel: block.label,
           text: block.text,
           themeTarget: 'sermon',
-          // Numbered the same way the editor shows it (see ServiceWorkspaceView's outline
-          // list) — the point's position in the outline, not baked into the stored label
-          // itself, so reordering or deleting a point always renumbers correctly.
-          outlineTitle: `${outlineIndex + 1}. ${block.label}`,
+          // No auto-numbering — a preacher's own outline conventions (letters, roman numerals,
+          // no numbering at all) vary too much to force one scheme; type a number into the
+          // label itself if you want one.
+          outlineTitle: block.label,
           // The title now lives in the main slide area (see outlineTitle) rather than the
           // footer — an explicit override (not just leaving subLabel alone) so it can never
           // fall back to showing the same title twice.

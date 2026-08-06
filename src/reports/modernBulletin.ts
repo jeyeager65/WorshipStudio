@@ -1,4 +1,4 @@
-import type { Column, Content, TDocumentDefinitions } from 'pdfmake/interfaces'
+import type { Column, Content, ContentTable, TDocumentDefinitions } from 'pdfmake/interfaces'
 import type { OrderOfWorshipDoc, OrderOfWorshipLine } from '@/utils/orderOfWorship'
 import type { BulletinPage2Doc } from '@/utils/bulletinPage2'
 import type { ReportBranding } from './types'
@@ -11,7 +11,15 @@ import {
   iconCross,
   iconGift,
   iconCandle,
+  iconThought,
+  iconAnnounce,
   iconGeneric,
+  plainIconCalendar,
+  plainIconAnnounce,
+  plainIconGreeting,
+  plainIconVolume,
+  plainIconCradle,
+  plainIconAccount,
 } from './modernBulletinIcons'
 
 // Monochrome throughout (this prints on a black-and-white laser printer) — "ink" for the main
@@ -19,6 +27,9 @@ import {
 const INK = '#000000'
 const MUTED = '#555555'
 const HAIRLINE = '#B3B3B3'
+// A touch darker than HAIRLINE — used only for the serving-schedule table's between-row rules,
+// so they read as distinct from the rest of the page's own hairlines.
+const TABLE_RULE = '#999999'
 
 // Landscape LETTER (792x612pt) minus this style's own margins and the gap between the two
 // columns — the same single-sheet, two-column shape as the "Classic" bulletin (see
@@ -111,10 +122,10 @@ function hairlineColumn(width: number, marginTop: number): Column {
 
 const PLAIN_CROSS_SVG = `<svg width="12" height="14" viewBox="0 0 12 14"><g stroke="${MUTED}" stroke-width="1.4" stroke-linecap="round"><line x1="6" y1="0" x2="6" y2="14"/><line x1="0" y1="5" x2="12" y2="5"/></g></svg>`
 
-function hairline(width = COLUMN_WIDTH, marginLeft = 0): Content {
+function hairline(width = COLUMN_WIDTH, marginLeft = 0, marginBottom = 0): Content {
   return {
     canvas: [{ type: 'line', x1: 0, y1: 0, x2: width, y2: 0, lineWidth: 0.75, lineColor: HAIRLINE }],
-    margin: [marginLeft, 0, 0, 0],
+    margin: [marginLeft, 0, 0, marginBottom],
   }
 }
 
@@ -182,7 +193,8 @@ function iconForLine(line: OrderOfWorshipLine): string {
   const label = (line.role ?? '').toLowerCase()
   if (line.kind === 'song') return iconMusic
   if (line.kind === 'sermon') return iconCross
-  if (label.includes('welcome') || label.includes('announcement')) return iconPeople
+  if (label.includes('announce')) return iconAnnounce
+  if (label.includes('welcome')) return iconPeople
   if (label.includes('reflect')) return iconCandle
   if (label.includes('silent') || label.includes('prepar')) return iconHeart
   if (label.includes('prayer')) return iconPrayer
@@ -249,11 +261,20 @@ function renderGroup(group: LineGroup, isLast: boolean): Content[] {
     ],
   }
 
+  // A row with only its title line is shorter than the fixed 20pt icon beside it, so pdfmake's
+  // default top-aligned columns leave it sitting high with empty space below. Nudging just this
+  // single-line case down by half the icon/text height difference centers it against the icon;
+  // rows with extra song lines or a note are already taller than the icon on their own, so they
+  // stay top-aligned (unchanged) rather than getting pushed needlessly further down.
+  const isSingleLine = extraSongTexts.length === 0 && !first.note
+  const textColumnMarginTop = isSingleLine ? 4.5 : 0
+
   const row: Content = {
     columns: [
       { width: ICON_COLUMN_WIDTH, svg: group.icon, fit: [20, 20] },
       {
         width: '*',
+        margin: [0, textColumnMarginTop, 0, 0] as [number, number, number, number],
         stack: [
           titleLine,
           ...extraSongTexts.map((text): Content => ({ text, fontSize: 10, margin: [0, 1, 0, 0] })),
@@ -278,14 +299,22 @@ function renderGroup(group: LineGroup, isLast: boolean): Content[] {
 // noticeably above the icon's center instead of level with it).
 const FOOTER_HAIRLINE_MARGIN_TOP = 7
 
+function footerIcon(title: string): string {
+  const lower = title.toLowerCase()
+  if (lower.includes('heart')) return iconHeart
+  if (lower.includes('thought')) return iconThought
+  return iconGeneric
+}
+
 function footerBlock(footer: { title: string; text: string }): Content[] {
+  const icon = footerIcon(footer.title)
   return [
     {
       // Same blank-spacer centering trick as uppercaseDateLine — see its own comment.
       columns: [
         { width: '*', text: '' },
         hairlineColumn(60, FOOTER_HAIRLINE_MARGIN_TOP),
-        { width: 20, svg: iconHeart, fit: [16, 16] },
+        { width: 20, svg: icon, fit: [16, 16] },
         hairlineColumn(60, FOOTER_HAIRLINE_MARGIN_TOP),
         { width: '*', text: '' },
       ],
@@ -325,66 +354,141 @@ function buildFooter(
   }
 }
 
+// An icon-prefixed section subtitle, matching the bold/uppercase/letter-spaced treatment the
+// plain-text subtitles already used — just with a small MDI glyph in the same row instead of a
+// bare heading. marginTop=1 on the icon column nudges its 11pt glyph down to sit level with the
+// bold text's cap-height rather than its (taller) line-height box.
+function sectionHeading(icon: string, label: string, marginTop: number): Content {
+  return {
+    columns: [
+      { width: 13, svg: icon, fit: [11, 11], margin: [0, 1, 0, 0] },
+      { width: 'auto', text: label, bold: true, fontSize: 11, characterSpacing: 1 },
+    ],
+    columnGap: 5,
+    margin: [0, marginTop, 0, 4],
+  }
+}
+
+/** Which icon best matches a serving-schedule role name. */
+function iconForRole(role: string): string {
+  const lower = role.toLowerCase()
+  if (lower.includes('greet')) return plainIconGreeting
+  if (lower.includes('sound')) return plainIconVolume
+  if (lower.includes('nursery') || lower.includes('baby')) return plainIconCradle
+  return plainIconAccount
+}
+
+function roleCell(role: string): Content {
+  return {
+    columns: [
+      { width: 12, svg: iconForRole(role), fit: [11, 11] },
+      { width: '*', text: role.toUpperCase(), bold: true, fontSize: 9 },
+    ],
+    columnGap: 4,
+    margin: [0, 2, 0, 2],
+  }
+}
+
+// Deliberately drawn as a tiny SVG dot rather than pdfmake's built-in `ul` list type — `ul`'s
+// marker glyph scales with fontSize and reads as a fairly large disc even at 10pt, whereas these
+// upcoming/announcement items want a small, understated bullet. Sized to the same 13pt column +
+// 5pt gap as sectionHeading's own icon column, so item text lines up under the subtitle's text,
+// with the dot itself centered in that column (margin-left 4.5 = (13-4)/2). marginTop=4.5 centers
+// the 4pt dot against the first line of text beside it (confirmed against a rendered sample — a
+// plain top offset of 3 sat visibly high, above the text's own cap-height).
+const BULLET_SVG = `<svg width="4" height="4" viewBox="0 0 4 4" xmlns="http://www.w3.org/2000/svg"><circle cx="2" cy="2" r="2" fill="${MUTED}"/></svg>`
+const BULLET_COLUMN_WIDTH = 13
+const BULLET_COLUMN_GAP = 5
+
+function bulletLine(text: string | Content[]): Content {
+  return {
+    columns: [
+      { width: BULLET_COLUMN_WIDTH, svg: BULLET_SVG, fit: [4, 4], margin: [4.5, 4.5, 0, 0] },
+      { width: '*', text },
+    ],
+    columnGap: BULLET_COLUMN_GAP,
+    margin: [0, 0, 0, 6],
+  }
+}
+
+// Sits directly beneath each right-column subtitle (UPCOMING/ANNOUNCEMENTS/SERVING SCHEDULE),
+// separating the heading from its own content — same hairline as renderGroup's between-item
+// dividers, just full column width since there's no icon column here to inset past.
+function subtitleDivider(): Content {
+  return hairline(COLUMN_WIDTH, 0, 5)
+}
+
 function page2Content(page2: BulletinPage2Doc): Content[] {
   const blocks: Content[] = [...decorativeHeader(page2.title)]
 
   const hasUpcoming = page2.upcoming.length > 0
   if (hasUpcoming) {
-    blocks.push({ text: 'UPCOMING', bold: true, fontSize: 11, characterSpacing: 1, margin: [0, 8, 0, 4] })
+    blocks.push(sectionHeading(plainIconCalendar, 'UPCOMING', 8))
+    blocks.push(subtitleDivider())
     for (const line of page2.upcoming) {
-      blocks.push({
-        text: [
+      blocks.push(
+        bulletLine([
           ...(line.dateLabel ? [{ text: `${line.dateLabel}:  `, bold: true, fontSize: 10 }] : []),
           { text: line.text, fontSize: 10 },
-        ],
-        margin: [0, 0, 0, 3],
-      })
+        ]),
+      )
     }
   }
 
   if (page2.general.length > 0) {
-    blocks.push({
-      text: 'ANNOUNCEMENTS',
-      bold: true,
-      fontSize: 11,
-      characterSpacing: 1,
-      margin: [0, hasUpcoming ? 9 : 8, 0, 4],
-    })
+    blocks.push(sectionHeading(plainIconAnnounce, 'ANNOUNCEMENTS', hasUpcoming ? 12 : 8))
+    blocks.push(subtitleDivider())
     for (const line of page2.general) {
-      blocks.push({ text: line.text, fontSize: 10, margin: [0, 0, 0, 3] })
+      blocks.push(bulletLine([{ text: line.text, fontSize: 10 }]))
     }
   }
 
+  // Only gets the larger gap when UPCOMING actually ran above it — otherwise (Upcoming absent)
+  // this sits right under Announcements' own already-standard spacing, same as before.
   if (page2.servingSchedule) {
+    blocks.push(sectionHeading(plainIconAccount, 'SERVING SCHEDULE', hasUpcoming ? 12 : 9))
+    blocks.push(subtitleDivider())
     blocks.push({
-      text: 'SERVING SCHEDULE',
-      bold: true,
-      fontSize: 11,
-      characterSpacing: 1,
-      margin: [0, 9, 0, 5],
-    })
-    blocks.push({
+      margin: [6, 0, 0, 0],
       table: {
         headerRows: 1,
-        widths: [70, '*', '*'],
+        widths: [95, '*', '*'],
         body: [
-          page2.servingSchedule.headers.map((header) => ({
-            text: header,
+          // The "Role" label itself is dropped — the Role column's own icons (see roleCell)
+          // already make each row's meaning clear without a repeated column header.
+          page2.servingSchedule.headers.map((header, index) => ({
+            text: index === 0 ? '' : header.toUpperCase(),
             bold: true,
-            fontSize: 10,
+            fontSize: 9,
             margin: [0, 2, 0, 2] as [number, number, number, number],
           })),
+          // Same treatment as a left-column line's own assigned-person text (see renderGroup's
+          // titleLine) — italic and muted, since these cells are also just naming who's serving.
           ...page2.servingSchedule.rows.map((row) => [
-            { text: row.role, bold: true, fontSize: 10, margin: [0, 2, 0, 2] as [number, number, number, number] },
-            { text: row.thisWeek.join('\n'), fontSize: 10, margin: [0, 2, 0, 2] as [number, number, number, number] },
-            { text: row.nextWeek.join('\n'), fontSize: 10, margin: [0, 2, 0, 2] as [number, number, number, number] },
+            roleCell(row.role),
+            {
+              text: row.thisWeek.join('\n'),
+              italics: true,
+              fontSize: 9,
+              color: MUTED,
+              margin: [0, 2, 0, 2] as [number, number, number, number],
+            },
+            {
+              text: row.nextWeek.join('\n'),
+              italics: true,
+              fontSize: 9,
+              color: MUTED,
+              margin: [0, 2, 0, 2] as [number, number, number, number],
+            },
           ]),
         ],
       },
+      // No column borders, no shading — just a thin rule under the header and between each data
+      // row, stopping short of the table's own outer top/bottom edge.
       layout: {
-        hLineColor: () => HAIRLINE,
         vLineWidth: () => 0,
-        hLineWidth: (i: number) => (i === 1 ? 0.75 : 0),
+        hLineWidth: (i: number, node: ContentTable) => (i > 0 && i < node.table.body.length ? 0.5 : 0),
+        hLineColor: () => TABLE_RULE,
       },
     })
   }

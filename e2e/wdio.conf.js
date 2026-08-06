@@ -21,6 +21,31 @@ const tauriConf = JSON.parse(
 )
 const devUrl = new URL(tauriConf.build.devUrl)
 
+// build:app's own identifier override (see e2e/README.md) is what makes appDataDir an isolated
+// sandbox instead of the operator's real profile — but it only takes effect on a build that
+// actually passes `-c tauri.e2e.conf.json`. A later plain `cargo build`/`tauri dev` (e.g.
+// triggered by an editor's background rust-analyzer build, or just forgetting the right script)
+// silently recompiles this exact binary path back to the real identifier, with no error of any
+// kind — every spec below would then read and write the operator's actual production library
+// instead of the sandbox. Reading the identifier string straight out of the compiled binary
+// (rather than trusting the last build's *intent*) catches that before a single spec can touch
+// real data, the same way the app itself resolves its own app-data path at runtime.
+const e2eIdentifier = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, '../src-tauri/tauri.e2e.conf.json'), 'utf-8'),
+).identifier
+
+function verifyE2eBinaryIdentifier() {
+  const buffer = fs.readFileSync(appBinaryPath)
+  if (!buffer.includes(e2eIdentifier)) {
+    throw new Error(
+      `${appBinaryPath} was not built with the e2e identifier ("${e2eIdentifier}") — ` +
+        `it would read and write your real production library instead of the isolated e2e ` +
+        `sandbox. Rebuild it with "npm run build:app" (not a plain cargo/tauri build) before ` +
+        `running this suite.`,
+    )
+  }
+}
+
 function waitForPort(port, host, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   return new Promise((resolve, reject) => {
@@ -38,6 +63,53 @@ function waitForPort(port, host, timeoutMs) {
     }
     attempt()
   })
+}
+
+// A prior run's onComplete only fires on a normal exit — a hard interrupt (a rejected tool call,
+// a killed terminal, Ctrl+C) skips it entirely and leaves that run's own `pnpm dev`/vite server
+// orphaned, still bound to devUrl's port. The next run's vite then silently drifts to the next
+// free port (5174, 5175, ...) while the app keeps loading devUrl's hardcoded port and finds
+// nothing there ("localhost refused to connect") — or worse, the app loads content from a stale,
+// possibly-degraded leftover server instead of the fresh one this run just spawned. Reclaiming
+// the port before spawning (and again on the way out, as a second line of defense alongside the
+// PID-based kill below) makes every run self-healing regardless of how the previous one died.
+function killProcessOnPort(port) {
+  if (process.platform === 'win32') {
+    let output
+    try {
+      output = execFileSync('netstat', ['-ano'], { encoding: 'utf-8' })
+    } catch {
+      return
+    }
+    const pids = new Set()
+    for (const line of output.split('\n')) {
+      // Anchor on the local-address column specifically — a bare `:PORT` match anywhere in the
+      // line could false-positive on a remote address or a PID that happens to contain the port.
+      const match = line.match(/^\s*TCP\s+\S*:(\d+)\s+\S+\s+LISTENING\s+(\d+)/)
+      if (match && Number(match[1]) === port) pids.add(match[2])
+    }
+    for (const pid of pids) {
+      try {
+        execFileSync('taskkill', ['/F', '/T', '/PID', pid], { stdio: 'ignore' })
+      } catch {
+        // Already gone — fine.
+      }
+    }
+    return
+  }
+  let output
+  try {
+    output = execFileSync('lsof', ['-ti', `tcp:${port}`], { encoding: 'utf-8' })
+  } catch {
+    return
+  }
+  for (const pid of output.split('\n').filter(Boolean)) {
+    try {
+      process.kill(Number(pid), 'SIGKILL')
+    } catch {
+      // Already gone — fine.
+    }
+  }
 }
 
 let viteDevServer
@@ -62,6 +134,10 @@ export const config = {
   // spec, not just the ones that mean to test it. setup-wizard.spec.js reaches the wizard via
   // Settings' "Run First-Time Setup Wizard" regardless of this flag, so it's unaffected.
   onPrepare: async function () {
+    // First, before anything else — see verifyE2eBinaryIdentifier's own comment for why this
+    // has to be the very first thing that runs, ahead of even the appDataDir wipe below.
+    verifyE2eBinaryIdentifier()
+
     fs.rmSync(appDataDir, { recursive: true, force: true })
     fs.mkdirSync(appDataDir, { recursive: true })
     fs.writeFileSync(
@@ -80,11 +156,23 @@ export const config = {
       ),
     )
 
+    // Reclaim devUrl's port from any orphaned server a previous, hard-interrupted run left
+    // behind — see killProcessOnPort's own comment — before spawning this run's own instance.
+    killProcessOnPort(Number(devUrl.port))
+
     // The debug e2e binary needs `devUrl` actually serving — start it for the duration of the
     // suite rather than silently depending on some other dev server happening to already be
     // running (that was previously masking this exact dependency).
+    //
+    // VITE_E2E_TEST_MODE must be set here too, not just in build:app's `tauri build` step —
+    // App.vue reads it at runtime (import.meta.env.VITE_E2E_TEST_MODE) to skip the splash-window
+    // handshake and its MIN_SPLASH_MS/READY_DISPLAY_MS/MIN_STEP_MS floors, since the e2e Rust
+    // build deliberately creates no splash window for it to hear back from. Without it here, the
+    // frontend this dev server serves still waits on that dead handshake and those floors on
+    // every single fresh app launch the suite does — a real, compounding source of timeouts.
     viteDevServer = spawn('pnpm', ['dev'], {
       cwd: path.resolve(__dirname, '..'),
+      env: { ...process.env, VITE_E2E_TEST_MODE: 'true' },
       stdio: 'ignore',
       shell: true,
     })
@@ -165,6 +253,9 @@ export const config = {
         // Already gone — fine.
       }
     }
+    // Second line of defense alongside the PID-based kill above — catches anything the tree-kill
+    // missed (e.g. a grandchild vite spawned under pnpm's own `shell: true` wrapper).
+    killProcessOnPort(Number(devUrl.port))
 
     if (process.platform !== 'win32') return
     for (const image of ['tauri-driver.exe', 'msedgedriver.exe']) {

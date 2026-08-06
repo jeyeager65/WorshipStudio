@@ -4,6 +4,7 @@ import type { Service } from '@/models/service'
 import { findSermonItem, sermonMainReference } from '@/utils/sermonInfo'
 import { formatServiceTime } from '@/utils/serviceTime'
 import { localCalendarDate } from '@/utils/calendarDate'
+import { isServiceIncomplete } from '@/utils/serviceStatus'
 
 const props = defineProps<{
   service: Service
@@ -43,7 +44,11 @@ const subtitle = computed(() => {
 
 const songCount = computed(() => props.service.items.filter((item) => item.type === 'song').length)
 
-const statusLabel = computed(() => (props.service.items.length === 0 ? 'not yet started' : 'draft'))
+const statusLabel = computed(() => {
+  if (props.service.items.length === 0) return 'not yet started'
+  if (isServiceIncomplete(props.service)) return 'incomplete'
+  return 'planned'
+})
 
 // Distinct background per date bucket — today's service should stand out at a glance from the
 // pile of past/future ones on the same page (Home tab shows Today + Upcoming together).

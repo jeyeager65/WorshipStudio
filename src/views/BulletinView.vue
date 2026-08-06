@@ -35,9 +35,9 @@ const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsav
 type BulletinStyle = 'classic' | 'modern'
 const bulletinStyleOptions: { title: string; value: BulletinStyle }[] = [
   { title: 'Classic', value: 'classic' },
-  { title: 'Modern (PDF only)', value: 'modern' },
+  { title: 'Modern', value: 'modern' },
 ]
-const bulletinStyle = ref<BulletinStyle>('classic')
+const bulletinStyle = ref<BulletinStyle>('modern')
 const exportingFormat = ref<ReportFormat>()
 const statusMessage = ref('')
 const statusType = ref<'success' | 'error'>('success')
@@ -233,57 +233,73 @@ async function copyBulletin() {
             finished bulletin.
           </p>
         </div>
+        <div class="hero-side">
+          <v-select
+            v-model="bulletinStyle"
+            :items="bulletinStyleOptions"
+            label="Style"
+            variant="outlined"
+            density="compact"
+            hide-details
+            class="style-picker"
+          />
+          <div class="bulletin-buttons">
+            <v-btn
+              class="bulletin-btn"
+              color="primary"
+              variant="flat"
+              prepend-icon="mdi-file-pdf-box"
+              :loading="exportingFormat === 'pdf'"
+              :disabled="!bulletin || !!exportingFormat"
+              @click="exportBulletin('pdf')"
+            >
+              Open PDF
+            </v-btn>
+            <v-btn
+              class="bulletin-btn"
+              :class="{ 'bulletin-btn--inactive': bulletinStyle === 'modern' }"
+              variant="outlined"
+              prepend-icon="mdi-file-word-outline"
+              :loading="exportingFormat === 'docx'"
+              :disabled="!bulletin || !!exportingFormat || bulletinStyle === 'modern'"
+              @click="exportBulletin('docx')"
+            >
+              Open Word
+            </v-btn>
+            <v-btn
+              class="bulletin-btn"
+              :class="{ 'bulletin-btn--inactive': bulletinStyle === 'modern' }"
+              variant="outlined"
+              prepend-icon="mdi-content-copy"
+              :disabled="!bulletin || !!exportingFormat || bulletinStyle === 'modern'"
+              @click="copyBulletin"
+            >
+              Copy
+            </v-btn>
+          </div>
+        </div>
       </div>
     </header>
 
-    <section class="bulletin-actions-card">
-      <div class="bulletin-actions-row">
-        <v-select
-          v-model="bulletinStyle"
-          :items="bulletinStyleOptions"
-          label="Style"
-          variant="outlined"
-          density="compact"
-          hide-details
-          class="style-picker"
-        />
-        <div class="bulletin-buttons">
-          <v-btn
-            color="primary"
-            variant="flat"
-            prepend-icon="mdi-file-word-outline"
-            :loading="exportingFormat === 'docx'"
-            :disabled="!bulletin || !!exportingFormat || bulletinStyle === 'modern'"
-            @click="exportBulletin('docx')"
-          >
-            Open Word
-          </v-btn>
-          <v-btn
-            variant="outlined"
-            prepend-icon="mdi-file-pdf-box"
-            :loading="exportingFormat === 'pdf'"
-            :disabled="!bulletin || !!exportingFormat"
-            @click="exportBulletin('pdf')"
-          >
-            Open PDF
-          </v-btn>
-          <v-btn
-            variant="text"
-            icon="mdi-content-copy"
-            aria-label="Copy formatted bulletin"
-            :disabled="!bulletin || !!exportingFormat || bulletinStyle === 'modern'"
-            @click="copyBulletin"
-          />
-        </div>
-      </div>
+    <v-alert
+      v-if="statusMessage"
+      :type="statusType"
+      variant="tonal"
+      density="compact"
+      class="bulletin-status-alert"
+    >
+      {{ statusMessage }}
+    </v-alert>
 
-      <div
-        v-if="
-          settingsStore.librarySettings?.bulletin.page1FooterEnabled ||
-          settingsStore.librarySettings?.bulletin.page2FooterEnabled
-        "
-        class="bulletin-footers"
-      >
+    <section
+      v-if="
+        settingsStore.librarySettings?.bulletin.page1FooterEnabled ||
+        settingsStore.librarySettings?.bulletin.page2FooterEnabled
+      "
+      class="bulletin-footer-card"
+    >
+      <h2 class="footer-card-heading">Footer Content</h2>
+      <div class="bulletin-footers">
         <v-textarea
           v-if="settingsStore.librarySettings?.bulletin.page1FooterEnabled"
           v-model="service.bulletinPage1Footer"
@@ -305,16 +321,6 @@ async function copyBulletin() {
           hide-details
         />
       </div>
-
-      <v-alert
-        v-if="statusMessage"
-        :type="statusType"
-        variant="tonal"
-        density="compact"
-        class="mt-3"
-      >
-        {{ statusMessage }}
-      </v-alert>
     </section>
 
     <section v-if="bulletin" class="bulletin-content-card">
@@ -396,7 +402,7 @@ async function copyBulletin() {
     rgb(var(--v-theme-background));
 }
 .bulletin-hero,
-.bulletin-actions-card,
+.bulletin-footer-card,
 .bulletin-content-card {
   max-width: 1080px;
   margin: 0 auto 18px;
@@ -417,7 +423,17 @@ async function copyBulletin() {
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
 }
 .bulletin-hero-content {
-  padding: 24px 28px 27px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px 16px 27px 28px;
+}
+.hero-side {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  gap: 12px;
 }
 .page-eyebrow {
   margin-bottom: 4px;
@@ -451,19 +467,27 @@ async function copyBulletin() {
   color: rgba(var(--v-theme-on-surface), 0.58);
   font-size: 0.84rem;
 }
-.bulletin-actions-card,
+.bulletin-footer-card,
 .bulletin-content-card {
   padding: 20px 24px;
 }
-.bulletin-actions-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 14px;
+.footer-card-heading {
+  margin: 0 0 14px;
+  color: rgba(var(--v-theme-on-surface), 0.95);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.bulletin-status-alert {
+  max-width: 1080px;
+  margin: 0 auto 18px;
 }
 .style-picker {
   flex: 0 1 170px;
   min-width: 150px;
+  /* The outlined variant's notched label sits partly above its own field box, so a plain
+     flex-start against the button column leaves the field itself a touch high — nudge it down
+     to line up the two boxes' actual top edges. */
+  margin-top: -2px;
 }
 .style-picker :deep(.v-field) {
   border-radius: 8px;
@@ -472,14 +496,20 @@ async function copyBulletin() {
 }
 .bulletin-buttons {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
+}
+/* visibility (not display/v-if) so a style toggle that shows/hides Open Word or Copy never
+   changes the button column's height or width — Modern just can't offer a Word export or a
+   plain-text copy (see exportBulletin/copyBulletin), so their slot stays reserved but blank. */
+.bulletin-btn--inactive {
+  visibility: hidden;
 }
 .bulletin-footers {
   display: flex;
   flex-wrap: wrap;
   gap: 14px;
-  margin-top: 16px;
 }
 .bulletin-footers > * {
   flex: 1;
@@ -563,11 +593,12 @@ async function copyBulletin() {
   border-radius: 8px;
 }
 @media (max-width: 720px) {
-  .bulletin-actions-row {
+  .bulletin-hero-content {
+    align-items: flex-start;
     flex-direction: column;
-    align-items: stretch;
   }
-  .bulletin-buttons {
+  .hero-side {
+    width: 100%;
     justify-content: flex-end;
   }
 }
@@ -576,9 +607,16 @@ async function copyBulletin() {
     padding: 16px 12px 36px;
   }
   .bulletin-hero-content,
-  .bulletin-actions-card,
+  .bulletin-footer-card,
   .bulletin-content-card {
     padding: 20px;
+  }
+  .hero-side {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .style-picker {
+    flex: none;
   }
 }
 </style>

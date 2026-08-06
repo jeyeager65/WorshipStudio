@@ -38,7 +38,19 @@ describe('ServiceCard', () => {
     expect(text).toContain('July 19')
     expect(text).toContain('Our Lord’s Prayer')
     expect(text).toContain('1 song')
-    expect(text).toContain('draft')
+    expect(text).toContain('planned')
+  })
+
+  it('shows "incomplete" when a role has no one assigned', () => {
+    const wrapper = mount(ServiceCard, {
+      props: {
+        service: sampleService({
+          assignments: [{ role: 'Worship Leader', personId: undefined, tentative: false }],
+        }),
+      },
+      global: { plugins: [vuetify, router] },
+    })
+    expect(wrapper.text()).toContain('incomplete')
   })
 
   it('shows a plural song count and "not yet started" when empty', () => {

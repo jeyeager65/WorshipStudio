@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { RoleAssignment } from '@/models/service'
+import type { PersonOption } from '@/utils/personOptions'
 
 // One role's worth of assignment rows (e.g. "Vocals ×2") — the role name is shown once here
 // rather than repeated per row, which is what made the previous layout feel bulky. `assignment`
@@ -9,7 +10,7 @@ import type { RoleAssignment } from '@/models/service'
 defineProps<{
   label: string
   assignments: RoleAssignment[]
-  personOptions: { title: string; value: string }[]
+  personOptions: PersonOption[]
   color?: string
   isConflicted: (assignment: RoleAssignment) => boolean
   isUnavailable: (assignment: RoleAssignment) => boolean
@@ -20,7 +21,6 @@ defineEmits<{ add: []; remove: [RoleAssignment] }>()
 <template>
   <article class="role-block" :style="{ '--role-color': color ? `rgb(var(--v-theme-${color}))` : 'rgb(var(--v-theme-primary))' }">
     <header class="role-header">
-      <span class="role-accent" />
       <div>
         <div class="role-title">{{ label }}</div>
         <div class="role-count">
@@ -99,13 +99,6 @@ defineEmits<{ add: []; remove: [RoleAssignment] }>()
   padding: 7px 10px 7px 12px;
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
   background: color-mix(in srgb, var(--role-color) 5%, transparent);
-}
-.role-accent {
-  width: 3px;
-  height: 28px;
-  flex: 0 0 3px;
-  border-radius: 3px;
-  background: var(--role-color);
 }
 .role-title {
   color: rgba(var(--v-theme-on-surface), 0.92);

@@ -70,9 +70,11 @@ describe('Real media rendering in the operator preview', () => {
       await mediaOption.waitForClickable({ timeout: 10000 })
       await mediaOption.click()
 
-      const photoEntry = await $('.v-list-item*=e2e-live-render-fixture')
-      await photoEntry.waitForClickable({ timeout: 10000 })
-      await photoEntry.click()
+      const photoCard = await $('.media-card*=e2e-live-render-fixture')
+      await photoCard.waitForExist({ timeout: 10000 })
+      const addPhotoBtn = await photoCard.$('button*=Add to Service')
+      await addPhotoBtn.waitForClickable({ timeout: 10000 })
+      await addPhotoBtn.click()
 
       // Adding closes the dialog and selects the new item — its preview should now show a
       // real <img>, resolved through get_media_file_path + convertFileSrc, not the old

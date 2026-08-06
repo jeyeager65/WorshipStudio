@@ -103,8 +103,15 @@ function buildLines(
   // External App Hand-off items are a technical hand-off to another program (a slideshow, a
   // video player) with nothing meaningful to print — a real bulletin has no "[External App]"
   // line, so these are left out of the Order of Worship entirely rather than printed as a
-  // placeholder.
-  const printableItems = service.items.filter((item) => item.type !== 'external-app')
+  // placeholder. A media/video item has nothing printable of its own either (unlike a song or
+  // scripture reference) — it only belongs in the bulletin when the operator has explicitly
+  // given it a bulletinLabel to print (e.g. "Offering Video"); with none set, it's left out
+  // rather than printed as a meaningless "[Media]"/"[Video]" placeholder.
+  const printableItems = service.items.filter((item) => {
+    if (item.type === 'external-app') return false
+    if ((item.type === 'media' || item.type === 'video') && !item.bulletinLabel) return false
+    return true
+  })
   const lines = printableItems.map((item): OrderOfWorshipLine => {
     const line = lineFor(item, songs, slides, assignments, bulletinPersonNames)
     return { ...line, kind: item.type }
@@ -144,16 +151,18 @@ function lineFor(
         note: item.bulletinNote,
       }
     case 'media':
+      // buildLines already filters out a media item with no bulletinLabel, so roleFor always
+      // resolves to that label here — same "the label is the whole line" shape as slide-ref.
       return {
         role: roleFor(item, undefined),
-        text: '[Media]',
+        text: '',
         person: resolveRolePerson(item.role, assignments, personNames),
         note: item.bulletinNote,
       }
     case 'video':
       return {
         role: roleFor(item, undefined),
-        text: '[Video]',
+        text: '',
         person: resolveRolePerson(item.role, assignments, personNames),
         note: item.bulletinNote,
       }

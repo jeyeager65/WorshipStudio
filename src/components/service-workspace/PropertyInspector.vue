@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Service, ServiceItem } from '@/models/service'
+import type { PersonOption } from '@/utils/personOptions'
 
 const props = defineProps<{
   service: Service
@@ -7,7 +8,7 @@ const props = defineProps<{
   themeTargetLabel?: string
   themeOverrideOptions: { title: string; value: string }[]
   itemRoleOptions: Array<{ type?: 'subheader'; title: string; value?: string }>
-  rolePersonOptions: { title: string; value: string }[]
+  rolePersonOptions: PersonOption[]
   assignedPersonId: (role: string | undefined) => string | undefined
   updateItemRole: (itemId: string, role: string | undefined) => void
   updateRolePerson: (role: string, personId: string | undefined) => void

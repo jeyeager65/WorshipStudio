@@ -549,10 +549,11 @@ describe('flattenService — sermon', () => {
     })
     const flat = flattenService(service, new Map())
     // outlineTitle drives the large title in the main slide area (see
-    // SlideContentRenderer.vue), numbered by position same as the editor shows it; footerText
-    // is explicitly '' so the title never also shows in the footer via a subLabel fallback.
-    expect(flat[0]).toMatchObject({ outlineTitle: '1. The Setup', text: 'Point one', footerText: '' })
-    expect(flat[1]).toMatchObject({ outlineTitle: '2. The Turn', text: '', footerText: '' })
+    // SlideContentRenderer.vue) — the label as typed, with no auto-numbering prepended;
+    // footerText is explicitly '' so the title never also shows in the footer via a subLabel
+    // fallback.
+    expect(flat[0]).toMatchObject({ outlineTitle: 'The Setup', text: 'Point one', footerText: '' })
+    expect(flat[1]).toMatchObject({ outlineTitle: 'The Turn', text: '', footerText: '' })
   })
 
   it("keeps a passage's key stable when another passage is added, so a live slide can never silently reassign to unrelated content", () => {

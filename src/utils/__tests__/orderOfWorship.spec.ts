@@ -166,6 +166,33 @@ describe('buildOrderOfWorship', () => {
     expect(doc.lines[0]?.text).toContain('Come Behold the Wondrous Mystery')
   })
 
+  it('excludes a media/video item with no bulletinLabel rather than printing a "[Media]"/"[Video]" placeholder', () => {
+    const service = baseService({
+      items: [
+        { id: 'item-1', type: 'media', mediaId: 'media-1', fit: 'cover' },
+        { id: 'item-2', type: 'video', mediaId: 'media-2' },
+        { id: 'item-3', type: 'song', songId: 'song-1', arrangement: { sequence: [] } },
+      ],
+    })
+    const doc = buildOrderOfWorship(service, songs, slides, new Map())
+    expect(doc.lines).toHaveLength(1)
+    expect(doc.lines[0]?.text).toContain('Come Behold the Wondrous Mystery')
+  })
+
+  it('includes a media/video item once it has a bulletinLabel, with the label as the line and no placeholder text', () => {
+    const service = baseService({
+      items: [
+        { id: 'item-1', type: 'media', mediaId: 'media-1', fit: 'cover', bulletinLabel: 'Offering Video' },
+        { id: 'item-2', type: 'video', mediaId: 'media-2', bulletinLabel: 'Baptism Video' },
+      ],
+    })
+    const doc = buildOrderOfWorship(service, songs, slides, new Map())
+    expect(doc.lines).toMatchObject([
+      { role: 'Offering Video', text: '' },
+      { role: 'Baptism Video', text: '' },
+    ])
+  })
+
   it('defaults to "Order of Worship" when no bulletin title is configured, and honors one when it is', () => {
     const withoutSettings = buildOrderOfWorship(baseService(), songs, slides, new Map())
     expect(withoutSettings.title).toBe('Order of Worship')

@@ -15,6 +15,7 @@ import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import EditorNotFoundState from '@/components/EditorNotFoundState.vue'
 import { errorMessage } from '@/composables/useAsyncStoreState'
 import { findRoleConflicts, isDateUnavailable } from '@/utils/rosterConflicts'
+import { personOptionsForRole as personOptionsForRoleShared } from '@/utils/personOptions'
 import { defaultServiceTemplate, planAssignmentResetFromTemplate } from '@/utils/serviceTemplate'
 import type { RoleAssignment, Service } from '@/models/service'
 import type { Person } from '@/models/library'
@@ -267,7 +268,9 @@ function applyReset() {
   resetDialogOpen.value = false
 }
 
-const personOptions = computed(() => peopleStore.people.map((p) => ({ title: personDisplayName(p), value: p.id })))
+function personOptionsForRole(role: string) {
+  return personOptionsForRoleShared(peopleStore.people, role)
+}
 function personName(id: string | undefined): string {
   const person = peopleStore.people.find((p) => p.id === id)
   return person ? personDisplayName(person) : ''
@@ -493,7 +496,7 @@ async function copyEmailDraft() {
               :key="role"
               :label="role"
               :assignments="assignmentsForRole(role)"
-              :person-options="personOptions"
+              :person-options="personOptionsForRole(role)"
               :is-conflicted="isConflicted"
               :is-unavailable="isUnavailable"
               :color="group.color"
@@ -527,7 +530,7 @@ async function copyEmailDraft() {
               :key="role"
               :label="role"
               :assignments="assignmentsForRole(role)"
-              :person-options="personOptions"
+              :person-options="personOptionsForRole(role)"
               :is-conflicted="isConflicted"
               :is-unavailable="isUnavailable"
               :color="group.color"

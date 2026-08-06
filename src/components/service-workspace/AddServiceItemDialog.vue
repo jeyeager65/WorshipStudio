@@ -4,15 +4,15 @@ import { VueDraggable } from 'vue-draggable-plus'
 import ScriptureReferencePicker, {
   type ScriptureReferenceValue,
 } from '@/components/ScriptureReferencePicker.vue'
+import MediaPickerDialog from '@/components/media/MediaPickerDialog.vue'
 import { getAdapter } from '@/adapters'
 import { useSongsStore } from '@/stores/songs'
 import { useSlidesStore } from '@/stores/slides'
-import { useMediaStore } from '@/stores/media'
 import { useExternalAppsStore } from '@/stores/externalApps'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import type { Service, ServiceItem, SermonPassage } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
-import type { SlideLibraryItem, MediaItem } from '@/models/library'
+import type { SlideLibraryItem } from '@/models/library'
 import type { ScripturePassage, ScriptureTranslation } from '@/adapters/types'
 
 // The Add Item menu (still owned by the parent's Service Order list section, at least until
@@ -57,7 +57,6 @@ const scriptureDraft = defineModel<ScriptureReferenceValue>('scriptureDraft', { 
 
 const songsStore = useSongsStore()
 const slidesStore = useSlidesStore()
-const mediaStore = useMediaStore()
 const externalAppsStore = useExternalAppsStore()
 const confirmDialog = useConfirmDialogStore()
 
@@ -204,56 +203,68 @@ function addTextSlideToService() {
   closeAddDialog()
 }
 
-// Media/Video sub-pickers (spec section 3): pick an existing Media Library item, filtered by
-// kind — 'image' backs the `media` item type (with a Cover/Contain fit choice, defaulting to
-// Cover per the live-presentation aspect-ratio spec), 'video' backs the `video` item type.
-const mediaQuery = ref('')
-const videoQuery = ref('')
-const mediaFit = ref<'cover' | 'contain'>('cover')
+// Media/Video (spec section 3): the same MediaPickerDialog used for the Settings > Branding
+// logo picker, filtered to images (with a Cover/Contain fit choice, defaulting to Cover per the
+// live-presentation aspect-ratio spec — the picker itself owns that toggle) for the `media` item
+// type, or videos only for the `video` item type. Rather than showing this dialog's own shell
+// with a "Browse Media Library" button inside it (an extra click to get to the actual picker),
+// picking "Media" or "Video" from the Add Item menu opens the relevant MediaPickerDialog
+// directly — see the `open` watcher below.
 const addingMedia = ref(false)
+const mediaPickerOpen = ref(false)
+const videoPickerOpen = ref(false)
 
-const filteredMediaForAdd = computed(() => {
-  const q = mediaQuery.value.trim().toLowerCase()
-  return mediaStore.items.filter(
-    (item) => item.kind === 'image' && (!q || item.filename.toLowerCase().includes(q)),
-  )
+// This dialog's own shell only ever applies to the other item types — Media/Video bypass it
+// entirely in favor of the picker opened directly below.
+const showMainDialog = computed(
+  () => open.value && addTab.value !== 'media' && addTab.value !== 'video',
+)
+
+watch(open, (isOpen) => {
+  if (!isOpen) return
+  if (addTab.value === 'media') mediaPickerOpen.value = true
+  else if (addTab.value === 'video') videoPickerOpen.value = true
 })
-const filteredVideoForAdd = computed(() => {
-  const q = videoQuery.value.trim().toLowerCase()
-  return mediaStore.items.filter(
-    (item) => item.kind === 'video' && (!q || item.filename.toLowerCase().includes(q)),
-  )
+// Whether picking succeeded or the picker was simply closed/cancelled, closing it always ends
+// this whole Add flow — there's no separate outer shell left open behind it to return to.
+watch(mediaPickerOpen, (isOpen) => {
+  if (!isOpen && open.value && addTab.value === 'media') closeAddDialog()
+})
+watch(videoPickerOpen, (isOpen) => {
+  if (!isOpen && open.value && addTab.value === 'video') closeAddDialog()
 })
 
-async function addMediaToService(mediaItem: MediaItem) {
+async function addMediaToService(
+  mediaId: string,
+  _placement: 'element' | 'background',
+  fit: 'cover' | 'contain' = 'cover',
+) {
   if (addingMedia.value) return
   addingMedia.value = true
   try {
     const item: ServiceItem = {
       id: `item-${crypto.randomUUID()}`,
       type: 'media',
-      mediaId: mediaItem.id,
-      fit: mediaFit.value,
+      mediaId,
+      fit,
     }
     insertItem(item)
-    closeAddDialog()
-    await props.resolveMediaItem(mediaItem.id)
+    await props.resolveMediaItem(mediaId)
   } finally {
     addingMedia.value = false
   }
 }
-async function addVideoToService(mediaItem: MediaItem) {
+async function addVideoToService(mediaId: string) {
   if (addingMedia.value) return
   addingMedia.value = true
   try {
     const item: ServiceItem = {
       id: `item-${crypto.randomUUID()}`,
       type: 'video',
-      mediaId: mediaItem.id,
+      mediaId,
     }
     insertItem(item)
-    closeAddDialog()
-    await props.resolveMediaItem(mediaItem.id)
+    await props.resolveMediaItem(mediaId)
   } finally {
     addingMedia.value = false
   }
@@ -415,9 +426,6 @@ function closeAddDialog() {
   slideQuery.value = ''
   slidesSubMode.value = 'pick'
   newTextSlideBlocks.value = []
-  mediaQuery.value = ''
-  videoQuery.value = ''
-  mediaFit.value = 'cover'
   externalAppProfileId.value = undefined
   externalAppFile.value = undefined
   externalAppAddError.value = undefined
@@ -432,7 +440,11 @@ function closeAddDialog() {
 </script>
 
 <template>
-  <v-dialog v-model="open" max-width="560">
+  <v-dialog
+    :model-value="showMainDialog"
+    max-width="560"
+    @update:model-value="(isOpen) => !isOpen && closeAddDialog()"
+  >
     <!-- height must be the v-card PROP, not a height CSS class — Vuetify's own dialog
          stylesheet applies `flex: 1 1 var(--v-card-height, 100%)` to any .v-card inside a
          .v-dialog, and flex-basis overrides a plain `height` for sizing purposes regardless
@@ -584,56 +596,6 @@ function closeAddDialog() {
                 Add to Service
               </v-btn>
             </template>
-          </v-window-item>
-
-          <v-window-item value="media">
-            <v-btn-toggle v-model="mediaFit" mandatory density="compact" divided class="mb-4">
-              <v-btn value="cover" size="small">Cover (crop to fill)</v-btn>
-              <v-btn value="contain" size="small">Contain (show in full)</v-btn>
-            </v-btn-toggle>
-            <v-text-field
-              v-model="mediaQuery"
-              label="Search media…"
-              variant="outlined"
-              density="comfortable"
-              prepend-inner-icon="mdi-magnify"
-              autofocus
-            />
-            <v-list :disabled="addingMedia">
-              <v-list-item
-                v-for="item in filteredMediaForAdd"
-                :key="item.id"
-                :title="item.filename"
-                prepend-icon="mdi-image-outline"
-                @click="addMediaToService(item)"
-              />
-            </v-list>
-            <p v-if="filteredMediaForAdd.length === 0" class="text-medium-emphasis text-body-2">
-              No images found in the Media Library.
-            </p>
-          </v-window-item>
-
-          <v-window-item value="video">
-            <v-text-field
-              v-model="videoQuery"
-              label="Search videos…"
-              variant="outlined"
-              density="comfortable"
-              prepend-inner-icon="mdi-magnify"
-              autofocus
-            />
-            <v-list :disabled="addingMedia">
-              <v-list-item
-                v-for="item in filteredVideoForAdd"
-                :key="item.id"
-                :title="item.filename"
-                prepend-icon="mdi-movie-open-outline"
-                @click="addVideoToService(item)"
-              />
-            </v-list>
-            <p v-if="filteredVideoForAdd.length === 0" class="text-medium-emphasis text-body-2">
-              No videos found in the Media Library.
-            </p>
           </v-window-item>
 
           <v-window-item value="external-app">
@@ -835,6 +797,17 @@ function closeAddDialog() {
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <MediaPickerDialog
+    v-model="mediaPickerOpen"
+    purpose="service-image"
+    @select="addMediaToService"
+  />
+  <MediaPickerDialog
+    v-model="videoPickerOpen"
+    purpose="service-video"
+    @select="addVideoToService"
+  />
 </template>
 
 <style scoped>

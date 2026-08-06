@@ -17,6 +17,7 @@ import AddServiceItemDialog, {
 } from '@/components/service-workspace/AddServiceItemDialog.vue'
 import ServiceOrderList from '@/components/service-workspace/ServiceOrderList.vue'
 import PropertyInspector from '@/components/service-workspace/PropertyInspector.vue'
+import MediaPickerDialog from '@/components/media/MediaPickerDialog.vue'
 import type { ScriptureReferenceValue } from '@/components/ScriptureReferencePicker.vue'
 import { getAdapter } from '@/adapters'
 import { useServicesStore } from '@/stores/services'
@@ -40,10 +41,11 @@ import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import { useExternalAppHandoff } from '@/composables/useExternalAppHandoff'
 import { useLiveTransport } from '@/composables/useLiveTransport'
 import { evaluateServiceReadiness, type ReadinessIssue } from '@/utils/serviceReadiness'
+import { personOptionsForRole } from '@/utils/personOptions'
 import type { SermonPassage, Service, ServiceItem } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
 import type { LibrarySlide, PresentationThemeTarget } from '@/models/library'
-import { personDisplayName, personFormalName } from '@/models/library'
+import { personFormalName } from '@/models/library'
 import { scenePlainText } from '@/utils/slideScene'
 import {
   isPresentationThemeAvailableFor,
@@ -631,9 +633,6 @@ function addSermonOutlineBlock(itemId: string) {
   const item = service.value?.items.find((i) => i.id === itemId)
   if (!item || item.type !== 'sermon') return
   const id = `outline-${crypto.randomUUID()}`
-  // No default label text — the point's number is shown automatically from its position in the
-  // list (see the outline template), so there's nothing to fill in beyond the number until the
-  // operator actually titles it.
   item.outline.push({ id, label: '', text: '' })
   // Straight into edit mode — a freshly added point is still an empty placeholder, so there's
   // nothing useful to look at until it's actually been titled and filled in.
@@ -716,6 +715,49 @@ const selectedMediaError = computed(() => {
   const mediaId = item?.type === 'media' || item?.type === 'video' ? item.mediaId : undefined
   return mediaId ? mediaErrors.get(mediaId) : undefined
 })
+
+// Swapping the image/video (or, for an image, its fill) on an already-added item reuses the
+// same MediaPickerDialog rather than making the operator remove the item and add a new one —
+// mutating the existing item's own fields keeps its position in the order and any role/label
+// already set on it.
+const changeMediaPickerOpen = ref(false)
+const changeVideoPickerOpen = ref(false)
+// Seeds the "Change Image" picker's own fit toggle with the item's current fit (rather than
+// always reopening on Cover) — and, since it's a two-way binding, adjusting the toggle inside
+// the picker itself updates the very same item live, same as the inline toggle above it.
+const changeMediaPickerFit = computed<'cover' | 'contain'>({
+  get: () => (selectedItem.value?.type === 'media' ? selectedItem.value.fit : 'cover'),
+  set: (value) => {
+    if (selectedItem.value?.type === 'media') selectedItem.value.fit = value
+  },
+})
+
+async function changeSelectedMedia(
+  mediaId: string,
+  _placement: 'element' | 'background',
+  fit: 'cover' | 'contain' = 'cover',
+) {
+  const item = selectedItem.value
+  if (!item || item.type !== 'media') return
+  item.mediaId = mediaId
+  item.fit = fit
+  await resolveMediaItem(mediaId)
+}
+async function changeSelectedVideo(mediaId: string) {
+  const item = selectedItem.value
+  if (!item || item.type !== 'video') return
+  item.mediaId = mediaId
+  await resolveMediaItem(mediaId)
+}
+function updateSelectedMediaFit(fit: 'cover' | 'contain') {
+  const item = selectedItem.value
+  if (item?.type === 'media') item.fit = fit
+}
+function openChangeMediaPicker() {
+  const item = selectedItem.value
+  if (item?.type === 'media') changeMediaPickerOpen.value = true
+  else if (item?.type === 'video') changeVideoPickerOpen.value = true
+}
 const selectedScripturePassage = computed<ScripturePassage | undefined>(() => {
   const item = selectedItem.value
   return item?.type === 'scripture' ? scriptureById.get(item.id) : undefined
@@ -744,8 +786,14 @@ function itemLabel(item: ServiceItem): string {
   if (item.type === 'scripture') return item.reference
   if (item.type === 'text-slide') return 'Text Slide'
   if (item.type === 'slide-ref') return slidesById.value.get(item.slideId)?.label ?? 'Unknown Slide'
-  if (item.type === 'media') return mediaById.value.get(item.mediaId)?.filename ?? 'Unknown Media'
-  if (item.type === 'video') return mediaById.value.get(item.mediaId)?.filename ?? 'Unknown Video'
+  if (item.type === 'media') {
+    const media = mediaById.value.get(item.mediaId)
+    return media?.title || media?.filename || 'Unknown Media'
+  }
+  if (item.type === 'video') {
+    const media = mediaById.value.get(item.mediaId)
+    return media?.title || media?.filename || 'Unknown Video'
+  }
   if (item.type === 'external-app')
     return externalAppProfilesById.value.get(item.profileId)?.name ?? 'Unknown App'
   if (item.type === 'sermon') return item.bulletinLabel || item.title || 'Worship Through the Word'
@@ -782,12 +830,12 @@ function itemHasLive(index: number): boolean {
 }
 
 // In-workspace arrangement editing — edits only this service item's own copy of the
-// arrangement (spec section 3), never the library song's defaultArrangement.
-async function removeFromArrangement(index: number) {
+// arrangement (spec section 3), never the library song's defaultArrangement. No confirmation —
+// this only removes the block's appearance in the sequence, not the block itself, and undo/redo
+// already covers it.
+function removeFromArrangement(index: number) {
   const item = selectedItem.value
   if (item?.type !== 'song') return
-  const label = blockLabelFor(item.arrangement.sequence[index])
-  if (!(await confirmDialog.confirm(`Remove "${label}" from the arrangement?`, 'Remove'))) return
   item.arrangement.sequence.splice(index, 1)
 }
 function addToArrangement(blockId: string) {
@@ -990,7 +1038,7 @@ function updateItemRole(itemId: string, role: string | undefined) {
   if (item) item.role = role
 }
 const rolePersonOptions = computed(() =>
-  peopleStore.people.map((p) => ({ title: personDisplayName(p), value: p.id })),
+  personOptionsForRole(peopleStore.people, selectedItem.value?.role),
 )
 function assignedPersonId(role: string | undefined): string | undefined {
   return service.value?.assignments?.find((a) => a.role === role)?.personId
@@ -1390,6 +1438,28 @@ function updateRolePerson(role: string, personId: string | undefined) {
           </template>
 
           <template v-else-if="selectedItem.type === 'media' || selectedItem.type === 'video'">
+            <div class="media-item-controls">
+              <v-btn-toggle
+                v-if="selectedItem.type === 'media'"
+                :model-value="selectedItem.fit"
+                mandatory
+                density="compact"
+                divided
+                @update:model-value="updateSelectedMediaFit"
+              >
+                <v-btn value="cover" size="small">Cover (crop to fill)</v-btn>
+                <v-btn value="contain" size="small">Contain (show in full)</v-btn>
+              </v-btn-toggle>
+              <v-btn
+                variant="outlined"
+                color="primary"
+                :prepend-icon="selectedItem.type === 'media' ? 'mdi-image-search-outline' : 'mdi-movie-open-outline'"
+                size="small"
+                @click="openChangeMediaPicker"
+              >
+                {{ selectedItem.type === 'media' ? 'Change Image' : 'Change Video' }}
+              </v-btn>
+            </div>
             <div
               class="slide-row"
               :class="{ 'slide-row--live': itemHasLive(selectedItemIndex) }"
@@ -1895,7 +1965,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
                   <div class="flex-grow-1" style="min-width: 0">
                     <div class="slide-row-title-row">
                       <span class="text-body-2 font-weight-bold text-truncate">
-                        {{ index + 1 }}. {{ block.label || 'Untitled point' }}
+                        {{ block.label || 'Untitled point' }}
                       </span>
                       <span
                         v-if="flatIndex === sermonOutlineFlatIndex(selectedItem, index)"
@@ -2187,6 +2257,18 @@ function updateRolePerson(role: string, personId: string | undefined) {
       :scripture-by-id="scriptureById"
       :scripture-translations="scriptureTranslations"
       :resolve-media-item="resolveMediaItem"
+    />
+
+    <MediaPickerDialog
+      v-model="changeMediaPickerOpen"
+      v-model:image-fit="changeMediaPickerFit"
+      purpose="service-image"
+      @select="changeSelectedMedia"
+    />
+    <MediaPickerDialog
+      v-model="changeVideoPickerOpen"
+      purpose="service-video"
+      @select="changeSelectedVideo"
     />
   </div>
 </template>
@@ -2518,6 +2600,14 @@ function updateRolePerson(role: string, personId: string | undefined) {
   max-width: 100%;
   max-height: 220px;
   border-radius: 4px;
+}
+.media-item-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  max-width: 460px;
+  margin-bottom: 12px;
 }
 .slide-row--live {
   background: rgba(var(--v-theme-error), 0.1);

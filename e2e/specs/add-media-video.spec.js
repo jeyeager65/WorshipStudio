@@ -78,12 +78,16 @@ describe('Add-to-Service Media/Video tabs', () => {
       await mediaOption.waitForClickable({ timeout: 10000 })
       await mediaOption.click()
 
+      // Picking "Media" opens the same MediaPickerDialog used by Settings > Branding's logo
+      // picker, filtered to images, directly — no intermediate "Browse" step.
       // Matched without the file extension — WebdriverIO treats a selector string ending in
       // a recognized image extension (.jpg/.png/etc.) as an image-comparison selector rather
       // than plain text, which fails outright since there's no such image file to load.
-      const imageEntry = await $('.v-list-item*=e2e-add-photo')
-      await imageEntry.waitForClickable({ timeout: 10000 })
-      await imageEntry.click()
+      const imageCard = await $('.media-card*=e2e-add-photo')
+      await imageCard.waitForExist({ timeout: 10000 })
+      const addImageBtn = await imageCard.$('button*=Add to Service')
+      await addImageBtn.waitForClickable({ timeout: 10000 })
+      await addImageBtn.click()
 
       // Adding closes the dialog and selects the new item in the service order list.
       const mediaRow = await $('.service-item-title*=e2e-add-photo')
@@ -96,9 +100,11 @@ describe('Add-to-Service Media/Video tabs', () => {
       await videoOption.waitForClickable({ timeout: 10000 })
       await videoOption.click()
 
-      const videoEntry = await $('.v-list-item*=e2e-add-clip')
-      await videoEntry.waitForClickable({ timeout: 10000 })
-      await videoEntry.click()
+      const videoCard = await $('.media-card*=e2e-add-clip')
+      await videoCard.waitForExist({ timeout: 10000 })
+      const addVideoBtn = await videoCard.$('button*=Add to Service')
+      await addVideoBtn.waitForClickable({ timeout: 10000 })
+      await addVideoBtn.click()
 
       const videoRow = await $('.service-item-title*=e2e-add-clip')
       await videoRow.waitForExist({ timeout: 10000 })

@@ -147,14 +147,11 @@ function blockLabel(id: string): string {
 function addToArrangement(block: SongBlock) {
   song.value?.defaultArrangement.sequence.push(block.id)
 }
-async function removeFromArrangement(index: number) {
+function removeFromArrangement(index: number) {
   if (!song.value) return
-  const sequence = song.value.defaultArrangement.sequence
-  const removed = sequence[index]
-  if (removed === undefined) return
-  const label = blockLabel(removed)
-  if (!(await confirmDialog.confirm(`Remove "${label}" from the Default Arrangement?`, 'Remove'))) return
-  sequence.splice(index, 1)
+  // No confirmation — this only removes the block's appearance in the sequence, not the block
+  // itself (still available to add back from the block list), and undo/redo already covers it.
+  song.value.defaultArrangement.sequence.splice(index, 1)
 }
 </script>
 
@@ -221,7 +218,7 @@ async function removeFromArrangement(index: number) {
             <v-text-field v-model="song.author" label="Author" variant="outlined" hide-details />
             <v-text-field
               v-model="song.artist"
-              label="Artist (if different)"
+              label="Artist"
               variant="outlined"
               hide-details
             />
