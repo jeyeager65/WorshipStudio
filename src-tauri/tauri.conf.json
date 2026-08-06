@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Worship Studio",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "identifier": "dev.yeager.worshipstudio",
   "build": {
     "frontendDist": "../dist",
@@ -42,6 +42,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": ["resources/stock-backgrounds/*"],
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }

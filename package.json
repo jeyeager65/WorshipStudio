@@ -1,6 +1,6 @@
 {
   "name": "worship-studio",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -16,7 +16,8 @@
     "lint": "eslint . --fix",
     "format": "prettier --write src/",
     "test:unit": "vitest run",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "optimize:stock-backgrounds": "node scripts/optimize-stock-backgrounds.mjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
@@ -57,6 +58,7 @@
     "jiti": "^2.7.0",
     "jsdom": "^29.1.1",
     "prettier": "^3.9.6",
+    "sharp": "^0.35.3",
     "typescript": "^6.0.3",
     "vite": "^8.1.5",
     "vite-plugin-vuetify": "^2.1.3",
