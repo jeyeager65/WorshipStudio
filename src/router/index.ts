@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
@@ -12,7 +12,13 @@ declare module 'vue-router' {
 }
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  // Hash-based, not real browser history — the GitHub Pages static demo has no server-side
+  // rewrite for a client-routed path, so a direct/shared/refreshed link like
+  // /service/xxx/bulletin 404s at the host before Vue Router ever gets a chance to handle it.
+  // Everything after the `#` never reaches the server as part of the request, so this works on
+  // any static host with zero server config, at the cost of a `#` in the URL — a no-op for the
+  // desktop app itself, which has no use for clean URLs (no SEO, no external links).
+  history: createWebHashHistory(import.meta.env.BASE_URL),
   routes: [
     {
       path: '/',
