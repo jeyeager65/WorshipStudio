@@ -22,6 +22,31 @@ describe('mock adapter', () => {
     expect(songs[0].title).toBe('Amazing Grace')
   })
 
+  it('importStockBackgrounds fetches from the configured base path, not a hardcoded root path', async () => {
+    // Regression: the GitHub Pages demo build sets a subpath base (VITE_BASE_PATH, see
+    // vite.config.ts) — a hardcoded `/stock-backgrounds/...` fetch 404s there, and since
+    // fetch() doesn't throw on a 404, that used to silently create a media record backed by
+    // the 404 page's bytes instead of a real image.
+    const adapter = createMockAdapter()
+    await adapter.media.importStockBackgrounds()
+    const fetchMock = vi.mocked(fetch)
+    for (const call of fetchMock.mock.calls) {
+      expect(String(call[0])).toMatch(
+        new RegExp(`^${import.meta.env.BASE_URL}stock-backgrounds/`),
+      )
+    }
+  })
+
+  it('importStockBackgrounds throws rather than silently saving a 404 as an image', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('not found', { status: 404 })),
+    )
+    const adapter = createMockAdapter()
+    await expect(adapter.media.importStockBackgrounds()).rejects.toThrow()
+    expect(await adapter.media.list()).toHaveLength(0)
+  })
+
   it('importStockBackgrounds adds every stock image and theme with a real resolvable preview', async () => {
     const adapter = createMockAdapter()
     const summary = await adapter.media.importStockBackgrounds()

@@ -303,7 +303,19 @@ export function createMockAdapter(): StudioAdapter {
         let mediaAdded = 0
         for (const background of stockBackgrounds) {
           if (existingMedia.some((item) => item.id === background.id)) continue
-          const blob = await (await fetch(`/stock-backgrounds/${background.filename}`)).blob()
+          // import.meta.env.BASE_URL (always trailing-slash-terminated), not a hardcoded leading
+          // slash — the GitHub Pages demo build sets VITE_BASE_PATH to a subpath (/WorshipStudio/,
+          // see vite.config.ts), and fetch() doesn't throw on a 404, so a hardcoded root path would
+          // silently "succeed" with the 404 page's bytes as the image instead of failing loudly.
+          const response = await fetch(
+            `${import.meta.env.BASE_URL}stock-backgrounds/${background.filename}`,
+          )
+          if (!response.ok) {
+            throw new Error(
+              `Could not load stock background ${background.filename}: ${response.status}`,
+            )
+          }
+          const blob = await response.blob()
           const file = new File([blob], background.filename, { type: blob.type })
           mediaPreviewUrls.set(background.id, URL.createObjectURL(blob))
           const item: MediaItem = {
