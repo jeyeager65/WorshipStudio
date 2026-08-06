@@ -21,6 +21,21 @@ export const useSettingsStore = defineStore('settings', () => {
         // Canva integration block. Normalize once at the store boundary so every view can rely
         // on the current shape.
         canvaIntegration: library.canvaIntegration ?? { clientId: '', clientSecret: '' },
+        // Same story for the bulletin block — browser-demo localStorage saved before it existed
+        // has no `bulletin` key at all, which crashed BulletinView's render (every field access
+        // assumes librarySettings.bulletin itself, not just librarySettings, is always present).
+        bulletin: library.bulletin ?? {
+          page1Title: 'Order of Worship',
+          page2Title: 'Announcements',
+          page1FooterTitle: 'Heart Preparation',
+          page1FooterEnabled: true,
+          page2FooterTitle: 'Thought to Ponder',
+          page2FooterEnabled: true,
+          page2Enabled: true,
+          showAnnouncements: true,
+          showServingSchedule: true,
+          servingScheduleRoles: [],
+        },
       }
       machineSettings.value = machine
     })
