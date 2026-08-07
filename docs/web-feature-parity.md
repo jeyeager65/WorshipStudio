@@ -129,6 +129,47 @@ This is probably the single most promising option in this whole document — mor
 
 **The big picture**: combined with the Window Management API (§2), File System Access would let a plain Chrome tab reconstruct nearly the entire architecture Tauri provides — real local file storage plus real second-screen fullscreen output — without shipping a native binary at all. What's left genuinely unclosable by any browser API: External App Hand-off (a sandboxing boundary, §4) and the local network Remote Control server (no listening sockets or LAN discovery from a web page).
 
+### Sizing the storage-shaped remainder: the full `StudioAdapter` surface
+
+Everything above treats "no backend" as one gap. It isn't — `src/adapters/types.ts`'s `StudioAdapter` interface has roughly 15 ports, and they don't all fail the same way in a browser:
+
+- **Fundamentally impossible, in any browser, regardless of storage backend**: `RemotePort` (no listening HTTP server in the sandbox), `ExternalAppPort` (no launching/controlling other OS processes), `DisplayPort` and real second-window `LivePresentationPort.startPresenting`/`stopPresenting` (no native OS window the way Tauri's `WebviewWindow` gets one — the Window Management API in §2 is a *partial*, Chromium-only approximation of the last one, not an equivalent). All three are already `?`-optional on `StudioAdapter` and already absent from the mock/browser demo today, so this isn't new — it's confirming the ceiling is where §7 already assumed it was.
+- **Storage-shaped, and realizable against IndexedDB or File System Access with no fundamental blocker**: `SongPort`, `ServicePort`, `SlideLibraryPort`, `MediaPort`, `ThemePort`, `PersonPort`, `AnnouncementPort`, `SettingsPort`, `ScripturePort`, `ExportPort`. This is the actual size of "add a real backend" — ten ports, not one vague gap.
+- **Needs redesign, not a straight port**: `CanvaPort` (Tauri's OAuth flow uses a local loopback callback server; a real web deployment would need a different callback mechanism entirely) and `SyncPort` (its "sync client running"/Dropbox-conflict-file heuristics are meaningless against IndexedDB, and mean something different — permission/consistency state, not a third-party sync client — against File System Access).
+
+### Two storage backends, not one
+
+The File System Access discussion above frames it as *the* answer to "no backend." Worth widening that: a real web build could offer **two selectable storage backends**, not pick one —
+
+- **IndexedDB** — works in every browser (not just Chromium), no folder-permission dance, no dependency on Dropbox/OneDrive/etc. being installed locally. The tradeoff: browser-local only — no cross-device sync, no interop with the desktop app's synced folder. The natural default/fallback.
+- **File System Access** (above) — Chromium-only, but reads/writes the *same* real synced folder the desktop app uses, so a church running both gets genuine interop rather than two disconnected libraries.
+
+The reason this is barely more design work than picking one: both backends only need to implement the same small storage abstraction — `list()`/`get(id)`/`save(item)`/`delete(id)` per collection, which is almost exactly `MockCollection`'s existing shape (`src/adapters/mock/collection.ts`) already. The *implementation* effort differs a lot between the two (IndexedDB is a self-contained browser API; File System Access needs the real folder-layout/manifest compatibility work described above), but the *shape* they'd both plug into is the same one either way — so designing for both from the start, even if only one is built first, isn't a wasted decision.
+
+### What's reusable vs. what gets rewritten
+
+Checked against the mock adapter (`src/adapters/mock/index.ts`) specifically, since it's the only existing browser-side implementation to learn from:
+
+- **Reusable as-is**: `opensongParser.ts`'s `parseOpenSongXml` is fully pure (string in, parsed song out, no I/O, no storage coupling at all). The scripture-resolution utilities (`scriptureFixtures.ts`'s `loadKjv`/`availableTranslations`, `scriptureReference.ts`'s `parseReference`/`formatReference`/`getBookNames`/`isValidReference`) are equally storage-agnostic — a bundled JSON asset and pure string parsing, nothing localStorage-specific.
+- **Reusable if the new backend's collections expose the same shape**: `recomputeSongUsage` (mirrors the Rust backend's `songs::recompute_usage`) only ever calls `list()`/`save()` on the two collections passed to it — never reaches into `MockCollection` internals — so it carries over unchanged against any backend exposing that same tiny async interface.
+- **Gets rewritten per backend, not reused**: everything else in `mock/index.ts` — the CRUD wiring itself, staged-media/preview-URL maps, settings/diagnostics assembly — is written directly against `MockCollection`/localStorage/in-memory `Map`s. `MockCollection` also clones via a JSON round-trip rather than `structuredClone`, specifically to tolerate Vue-reactive-proxy inputs (see its own comments) — an incidental decision a new backend would need to make independently, not inherit.
+
+### Real file-format compatibility (the File System Access path specifically)
+
+For genuine interop with the desktop app — a church using both the desktop app *and* a web build against the same synced folder — the on-disk format constraint turns out to be smaller than it sounds. Confirmed via `src-tauri/src/models.rs` (`#[serde(rename_all = "camelCase")]` on every model struct) and `design/feature-spec.md`'s folder layout: the JSON already serializes in the exact camelCase shape the TS models already use (`Song`, `Service`, etc. — the same interfaces both the mock and Tauri adapters already share). So byte-compatible interop isn't a field-mapping problem — it's replicating the **folder layout** (`songs/<id>.json`, `services/<year>/<date>.json`, `slides/`, `themes/`, `media/`) and the **manifest behavior**: `src-tauri/src/domain/manifest.rs` rebuilds `manifest.json` from scratch on every save/delete rather than patching it, which a File System Access backend would need to match rather than trying to diff/patch entries itself.
+
+One more thing this surfaces: per-machine data (display-role assignments, paired Remote Control devices, External App profiles) already lives *outside* the synced folder on desktop, in Tauri's local app-data dir — deliberately never synced. A browser build needs the equivalent split: something non-synced for browser-profile-local state. IndexedDB is a natural fit for that *regardless* of which backend ends up holding the actual library content, since it's already going to exist as a dependency either way.
+
+### Adapter selection, cheaply
+
+Today `getAdapter()` (`src/adapters/index.ts`) is a binary check: `window.__TAURI_INTERNALS__` truthy → Tauri adapter, else → mock/demo adapter. A real web-storage adapter needs a third branch, and there's already a free signal to key it off: `VITE_BASE_PATH` (`vite.config.ts`) is set *only* by the GitHub Pages demo's build step (`.github/workflows/release.yml`'s `deploy-demo` job) and never in a normal build — so "is this the public demo" is already answerable without inventing a new flag, just by checking whether that variable is set.
+
+Widening `StudioAdapter['kind']` from `'tauri' | 'mock'` to include a third value has a real but bounded blast radius: it's checked at roughly 70 call sites across 23 files (mostly `adapter.kind === 'tauri'` gates hiding native-only UI — Setup Wizard's import cards, Media Library's file-path-dependent features, sync/external-app views). Because the existing checks are `=== 'tauri'` rather than `!== 'mock'`, a new third kind should fall through those gates correctly by construction (i.e., "not tauri" already correctly describes both mock and the new web adapter) — but that's a hypothesis to spot-check per call site, not something to assume blindly across all 70.
+
+### Effort, sized honestly
+
+A new adapter covering the ten storage-shaped ports above is, roughly, the size of the existing mock and Tauri adapters combined — `mock/index.ts` alone is already a substantial file, and a real backend adds genuine persistence logic mock doesn't need at all. If this is ever actually built, the sane starting point is a walking skeleton — the storage abstraction plus the two simplest ports (Settings, Songs), proven end-to-end — before mechanically repeating that same pattern across the remaining eight. That's a scoping note for whenever implementation is picked up, not a plan for right now.
+
 ---
 
 ## 6. Feature parity matrix
