@@ -1,17 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { createMockAdapter } from '@/adapters/mock'
 import { stockBackgrounds, stockThemes } from '@/data/stockContent'
 
 beforeEach(() => {
   localStorage.clear()
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async () => new Response(new Blob(['fake pixels'], { type: 'image/webp' }))),
-  )
-})
-
-afterEach(() => {
-  vi.unstubAllGlobals()
 })
 
 describe('mock adapter', () => {
@@ -20,31 +12,6 @@ describe('mock adapter', () => {
     const songs = await adapter.songs.list()
     expect(songs.length).toBeGreaterThan(0)
     expect(songs[0].title).toBe('Amazing Grace')
-  })
-
-  it('importStockBackgrounds fetches from the configured base path, not a hardcoded root path', async () => {
-    // Regression: the GitHub Pages demo build sets a subpath base (VITE_BASE_PATH, see
-    // vite.config.ts) — a hardcoded `/stock-backgrounds/...` fetch 404s there, and since
-    // fetch() doesn't throw on a 404, that used to silently create a media record backed by
-    // the 404 page's bytes instead of a real image.
-    const adapter = createMockAdapter()
-    await adapter.media.importStockBackgrounds()
-    const fetchMock = vi.mocked(fetch)
-    for (const call of fetchMock.mock.calls) {
-      expect(String(call[0])).toMatch(
-        new RegExp(`^${import.meta.env.BASE_URL}stock-backgrounds/`),
-      )
-    }
-  })
-
-  it('importStockBackgrounds throws rather than silently saving a 404 as an image', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response('not found', { status: 404 })),
-    )
-    const adapter = createMockAdapter()
-    await expect(adapter.media.importStockBackgrounds()).rejects.toThrow()
-    expect(await adapter.media.list()).toHaveLength(0)
   })
 
   it('importStockBackgrounds adds every stock image and theme with a real resolvable preview', async () => {
@@ -58,7 +25,9 @@ describe('mock adapter', () => {
       expect(item, background.id).toBeDefined()
       expect(item?.tags).toEqual(['Background', 'Stock'])
       expect(item?.location).toBe('synced')
-      await expect(adapter.media.getPreviewUrl(background.id)).resolves.toMatch(/^blob:/)
+      await expect(adapter.media.getPreviewUrl(background.id)).resolves.toBe(
+        `${import.meta.env.BASE_URL}stock-backgrounds/${background.filename}`,
+      )
     }
 
     const themes = await adapter.themes.list()
@@ -68,6 +37,29 @@ describe('mock adapter', () => {
       expect(theme?.backgroundId).toBe(stockTheme.backgroundMediaId)
       expect(theme?.useAsDefaultFor).toEqual(stockTheme.intendedDefaults)
     }
+  })
+
+  it('importStockBackgrounds previews survive a fresh adapter instance (simulating a page reload)', async () => {
+    const first = createMockAdapter()
+    await first.media.importStockBackgrounds()
+
+    // A real reload discards all in-memory state (blob: URLs included) and re-runs
+    // createMockAdapter() from scratch — MockCollection's localStorage-backed persistence is
+    // the only thing that survives, so this is the fresh-instance equivalent of a reload.
+    const reloaded = createMockAdapter()
+    for (const background of stockBackgrounds) {
+      await expect(reloaded.media.getPreviewUrl(background.id)).resolves.toBe(
+        `${import.meta.env.BASE_URL}stock-backgrounds/${background.filename}`,
+      )
+    }
+  })
+
+  it('getPreviewUrl stops resolving a stock background once it has been deleted', async () => {
+    const adapter = createMockAdapter()
+    await adapter.media.importStockBackgrounds()
+    const [first] = stockBackgrounds
+    await adapter.media.delete(first!.id)
+    await expect(adapter.media.getPreviewUrl(first!.id)).resolves.toBeUndefined()
   })
 
   it('importStockBackgrounds is idempotent — a second call adds nothing more', async () => {

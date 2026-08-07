@@ -297,27 +297,24 @@ export function createMockAdapter(): StudioAdapter {
         }
         await media.delete(id)
       },
-      getPreviewUrl: async (id) => mediaPreviewUrls.get(id),
+      getPreviewUrl: async (id) => {
+        // Resolved fresh from the static path every call, not cached in the in-session-only
+        // mediaPreviewUrls map below — a blob: URL never survives a page reload, but these are
+        // permanently bundled static files, so there's no need to depend on session memory at
+        // all (matches the Tauri adapter, which also resolves fresh on every call rather than
+        // caching). Still gated on the record actually existing, so a deleted stock item
+        // correctly stops resolving instead of resurrecting its old preview.
+        const stock = stockBackgrounds.find((background) => background.id === id)
+        if (stock && (await media.get(id))) {
+          return `${import.meta.env.BASE_URL}stock-backgrounds/${stock.filename}`
+        }
+        return mediaPreviewUrls.get(id)
+      },
       importStockBackgrounds: async () => {
         const existingMedia = (await media.list()) as MediaItem[]
         let mediaAdded = 0
         for (const background of stockBackgrounds) {
           if (existingMedia.some((item) => item.id === background.id)) continue
-          // import.meta.env.BASE_URL (always trailing-slash-terminated), not a hardcoded leading
-          // slash — the GitHub Pages demo build sets VITE_BASE_PATH to a subpath (/WorshipStudio/,
-          // see vite.config.ts), and fetch() doesn't throw on a 404, so a hardcoded root path would
-          // silently "succeed" with the 404 page's bytes as the image instead of failing loudly.
-          const response = await fetch(
-            `${import.meta.env.BASE_URL}stock-backgrounds/${background.filename}`,
-          )
-          if (!response.ok) {
-            throw new Error(
-              `Could not load stock background ${background.filename}: ${response.status}`,
-            )
-          }
-          const blob = await response.blob()
-          const file = new File([blob], background.filename, { type: blob.type })
-          mediaPreviewUrls.set(background.id, URL.createObjectURL(blob))
           const item: MediaItem = {
             id: background.id,
             filename: background.filename,
@@ -325,7 +322,10 @@ export function createMockAdapter(): StudioAdapter {
             kind: 'image',
             tags: ['Background', 'Stock'],
             location: 'synced',
-            contentHash: fakeContentHash(file),
+            // No real file to hash — this never goes through the fetch/File import path (see
+            // getPreviewUrl above), so this is just a stable per-id placeholder, distinct
+            // enough that it won't collide with a real import's hash.
+            contentHash: `stock:${background.id}`,
             usage: { usesPastYear: 0 },
             ...nowStamp(),
           }
