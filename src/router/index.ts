@@ -8,6 +8,12 @@ declare module 'vue-router' {
     /** Shown in the app-bar (see App.vue) for top-level pages reachable from the sidebar —
      *  deeper/detail pages render their own in-content heading instead and leave this unset. */
     title?: string
+    /** Resolves the app-bar Help button (see App.vue's openHelp) to a page of the VitePress
+     *  help site (docs/, topic list in docs/.vitepress/config.ts) — every named route below
+     *  gets one, even ones without a sidebar `title`. May carry a `#fragment` (e.g.
+     *  'services#assignments') to deep-link a sub-heading once real content exists; none do
+     *  yet since every topic page is still a content-free stub. */
+    helpTopic?: string
   }
 }
 
@@ -24,32 +30,37 @@ const router = createRouter({
       path: '/',
       name: 'landing',
       component: () => import('@/views/LandingView.vue'),
-      meta: { title: 'Services' },
+      meta: { title: 'Services', helpTopic: 'services' },
     },
     {
       path: '/setup',
       name: 'setup-wizard',
       component: () => import('@/views/SetupWizardView.vue'),
+      meta: { helpTopic: 'getting-started' },
     },
     {
       path: '/create-service',
       name: 'create-service',
       component: () => import('@/views/CreateServiceView.vue'),
+      meta: { helpTopic: 'services' },
     },
     {
       path: '/service/:id',
       name: 'service-workspace',
       component: () => import('@/views/ServiceWorkspaceView.vue'),
+      meta: { helpTopic: 'services' },
     },
     {
       path: '/service/:id/assignments',
       name: 'service-assignments',
       component: () => import('@/views/AssignmentsView.vue'),
+      meta: { helpTopic: 'assignments' },
     },
     {
       path: '/service/:id/bulletin',
       name: 'service-bulletin',
       component: () => import('@/views/BulletinView.vue'),
+      meta: { helpTopic: 'bulletin' },
     },
     {
       path: '/service/:id/order-of-worship',
@@ -60,113 +71,122 @@ const router = createRouter({
       path: '/library/songs',
       name: 'song-library',
       component: () => import('@/views/SongLibraryView.vue'),
-      meta: { title: 'Songs' },
+      meta: { title: 'Songs', helpTopic: 'songs' },
     },
     {
       path: '/library/songs/:id',
       name: 'song-editor',
       component: () => import('@/views/SongEditorView.vue'),
+      meta: { helpTopic: 'songs' },
     },
     {
       path: '/library/slides',
       name: 'slide-library',
       component: () => import('@/views/SlideLibraryView.vue'),
-      meta: { title: 'Slides' },
+      meta: { title: 'Slides', helpTopic: 'slides' },
     },
     {
       path: '/library/slides/:id',
       name: 'slide-editor',
       component: () => import('@/views/SlideEditorView.vue'),
+      meta: { helpTopic: 'slides' },
     },
     {
       path: '/library/media',
       name: 'media-library',
       component: () => import('@/views/MediaLibraryView.vue'),
-      meta: { title: 'Media' },
+      meta: { title: 'Media', helpTopic: 'media' },
     },
     {
       path: '/library/themes',
       name: 'theme-library',
       component: () => import('@/views/ThemeLibraryView.vue'),
-      meta: { title: 'Presentation Themes' },
+      meta: { title: 'Presentation Themes', helpTopic: 'themes' },
     },
     {
       path: '/library/themes/:id',
       name: 'theme-editor',
       component: () => import('@/views/ThemeEditorView.vue'),
+      meta: { helpTopic: 'themes' },
     },
     {
       path: '/people',
       name: 'people',
       component: () => import('@/views/PeopleView.vue'),
-      meta: { title: 'People' },
+      meta: { title: 'People', helpTopic: 'people' },
     },
     {
       path: '/people/:id',
       name: 'person-editor',
       component: () => import('@/views/PersonEditorView.vue'),
+      meta: { helpTopic: 'people' },
     },
     {
       path: '/roles',
       name: 'roles',
       component: () => import('@/views/RolesView.vue'),
-      meta: { title: 'Roles' },
+      meta: { title: 'Roles', helpTopic: 'roles' },
     },
     {
       path: '/announcements',
       name: 'announcements',
       component: () => import('@/views/AnnouncementsView.vue'),
-      meta: { title: 'Announcements' },
+      meta: { title: 'Announcements', helpTopic: 'announcements' },
     },
     {
       path: '/settings',
       name: 'settings',
       component: () => import('@/views/SettingsView.vue'),
-      meta: { title: 'Settings' },
+      meta: { title: 'Settings', helpTopic: 'settings' },
     },
     {
       path: '/library/service-templates',
       name: 'service-template-library',
       component: () => import('@/views/ServiceTemplateLibraryView.vue'),
-      meta: { title: 'Service Templates' },
+      meta: { title: 'Service Templates', helpTopic: 'service-templates' },
     },
     {
       path: '/library/service-templates/new',
       name: 'service-template-new',
       component: () => import('@/views/ServiceTemplateEditorView.vue'),
+      meta: { helpTopic: 'service-templates' },
     },
     {
       path: '/library/service-templates/edit/:templateName',
       name: 'service-template-editor',
       component: () => import('@/views/ServiceTemplateEditorView.vue'),
+      meta: { helpTopic: 'service-templates' },
     },
     {
       path: '/sync-conflicts',
       name: 'sync-conflicts',
       component: () => import('@/views/SyncConflictsView.vue'),
-      meta: { title: 'Library Health' },
+      meta: { title: 'Library Health', helpTopic: 'library-health' },
     },
     {
       path: '/reports',
       name: 'reports-home',
       component: () => import('@/views/ReportsHomeView.vue'),
-      meta: { title: 'Reports' },
+      meta: { title: 'Reports', helpTopic: 'reports' },
     },
     {
       path: '/reports/song-usage',
       name: 'song-usage-report',
       component: () => import('@/views/CcliReportView.vue'),
+      meta: { helpTopic: 'reports' },
     },
     { path: '/reports/ccli', redirect: '/reports/song-usage' },
     {
       path: '/reports/planning',
       name: 'planning-report',
       component: () => import('@/views/PlanningReportView.vue'),
+      meta: { helpTopic: 'reports' },
     },
     {
       path: '/service/:id/plan',
       name: 'service-plan',
       component: () => import('@/views/ServicePlanView.vue'),
+      meta: { helpTopic: 'services' },
     },
     { path: '/planning-ahead', redirect: '/' },
     {

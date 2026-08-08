@@ -1,0 +1,74 @@
+[
+  {
+    "id": "01-intro",
+    "text": "This is Worship Studio — a complete planning and presentation tool built for church production and worship teams, from first draft to the moment you're live on stage."
+  },
+  {
+    "id": "02-intro2",
+    "text": "Everything a service needs — songs, slides, media, and the people serving — lives in one place, synced across your whole team so everyone's always looking at the same plan."
+  },
+  {
+    "id": "03-plan-ahead",
+    "text": "The Services page shows what's coming up and what's already happened, and Plan Ahead lets you look weeks or months down the road."
+  },
+  {
+    "id": "04-schedule",
+    "text": "Every service can start from a template or a blank page, and takes just a few clicks to set up."
+  },
+  {
+    "id": "05-songs",
+    "text": "Every song your team uses lives in a searchable library — lyrics, chord charts, and CCLI details, all in one place you build once."
+  },
+  {
+    "id": "06-slides",
+    "text": "Slides work the same way — build a deck from scripture, announcements, or custom content, and reuse it in any service."
+  },
+  {
+    "id": "07-media",
+    "text": "Add background images and video to your Media Library, and they're available to every slide and every service."
+  },
+  {
+    "id": "08-themes",
+    "text": "Presentation Themes control how lyrics and media actually look on screen — fonts, colors, and layout — so everything matches your church's style."
+  },
+  {
+    "id": "09-people",
+    "text": "Keep track of everyone who serves, with contact info and the roles each person can fill."
+  },
+  {
+    "id": "10-roles",
+    "text": "Roles group your team by what they do, which keeps scheduling and assignments organized week after week."
+  },
+  {
+    "id": "11-announcements",
+    "text": "Announcements you want printed in the bulletin or shown on screen live in their own library too."
+  },
+  {
+    "id": "12-templates",
+    "text": "Service Templates capture your typical order of worship, so next week's service starts from a running head start, not a blank page."
+  },
+  {
+    "id": "13-reports",
+    "text": "Reports cover CCLI song-usage and multi-week planning, generated straight from your real service data."
+  },
+  {
+    "id": "14-settings",
+    "text": "Settings covers your library location and sync — your whole library lives as plain files in a folder you can sync with Dropbox, no server required — plus display setup and every other preference, all in one place."
+  },
+  {
+    "id": "15-open-service",
+    "text": "Opening a service shows the full order of worship — drag in songs, slides, media, and announcements to build out the week."
+  },
+  {
+    "id": "16-live-preview",
+    "text": "Selecting any item previews exactly how it'll look live — full-screen lyrics and media, right here before you ever go on stage."
+  },
+  {
+    "id": "17-assignments",
+    "text": "Assignments ties directly into People and Roles — see who's serving this week, and fill any open spot in seconds."
+  },
+  {
+    "id": "18-outro",
+    "text": "That's Worship Studio, start to finish — plan the service, build the library, and present it live, all from one app."
+  }
+]

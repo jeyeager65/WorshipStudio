@@ -1,5 +1,5 @@
 describe('Planning Ahead', () => {
-  it('lists a future service, flagging a missing sermon title and preacher', async () => {
+  it('lists a future service under Plan Ahead and opens it from the card', async () => {
     // First launch on a fresh (or pre-existing-but-never-flagged) profile redirects to the
     // setup wizard (App.vue) — see smoke.spec.js's identical guard.
     const skipLink = await $('button*=Skip setup')
@@ -9,8 +9,8 @@ describe('Planning Ahead', () => {
     await createLink.waitForExist({ timeout: 15000 })
     await createLink.click()
 
-    // Leaving Sermon Title and Preacher blank on purpose — Planning Ahead's whole point is
-    // surfacing that gap before it becomes a last-minute problem.
+    // Leaving Sermon Title and Preacher blank on purpose — confirms ServiceCard's "No sermon
+    // details yet" placeholder (src/components/ServiceCard.vue) shows up for it.
     //
     // Native <input type="date"> fields don't behave like text inputs under setValue() —
     // WebdriverIO's keystrokes land in whichever date *segment* (month/day/year) currently
@@ -25,7 +25,7 @@ describe('Planning Ahead', () => {
       el.dispatchEvent(new Event('change', { bubbles: true }))
     }, dateField, '2026-09-15')
 
-    const submit = await $('button*=Create and Open Service')
+    const submit = await $('button*=Create & Open Service')
     await submit.waitForClickable({ timeout: 10000 })
     await submit.click()
 
@@ -37,32 +37,23 @@ describe('Planning Ahead', () => {
     await homeLink.waitForClickable({ timeout: 10000 })
     await homeLink.click()
 
-    const planningAheadLink = await $('a*=Planning Ahead')
+    const planningAheadLink = await $('.v-tab*=Plan Ahead')
     await planningAheadLink.waitForExist({ timeout: 10000 })
     await planningAheadLink.click()
 
-    // Every month with an upcoming service gets its own entry in the month sidebar (no
-    // placeholder "empty" months in between) — click September 2026's directly rather than
-    // paging through a prev/next control.
-    const monthOption = await $('.month-option*=September 2026')
-    await monthOption.waitForExist({ timeout: 10000 })
-    await monthOption.click()
-    const monthHeading = await $('.month-toolbar h2')
-    await expect(monthHeading).toHaveText(expect.stringContaining('September 2026'))
+    // Plan Ahead groups every upcoming service by month directly (LandingView.vue's
+    // futureServiceGroups) — no separate month sidebar/toolbar to navigate through first.
+    const monthHeading = await $('h3*=September 2026')
+    await monthHeading.waitForExist({ timeout: 10000 })
+    await expect(monthHeading).toBeExisting()
 
-    const titleNotDecided = await $('span*=Title Not Decided')
-    await expect(titleNotDecided).toBeExisting()
+    const emptySermon = await $('.service-sermon--empty*=No sermon details yet')
+    await expect(emptySermon).toBeExisting()
 
-    const needsPreacher = await $('span*=Needs Preacher')
-    await expect(needsPreacher).toBeExisting()
-
-    const notStarted = await $('.planning-state*=Not Started')
-    await expect(notStarted).toBeExisting()
-
-    // Clicking the row opens the service directly (feature-spec.md's row-click behavior),
-    // not just a link within it.
-    const row = await $('.planning-row')
-    await row.click()
+    // Clicking the card opens the service workspace directly (ServiceCard.vue's
+    // openWorkspace), not just a link within it.
+    const card = await $('.service-card')
+    await card.click()
     const saveBtn = await $('button*=Save')
     await saveBtn.waitForExist({ timeout: 10000 })
     await expect(saveBtn).toBeExisting()

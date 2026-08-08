@@ -145,6 +145,21 @@ function handleSaveShortcut(event: KeyboardEvent) {
   void runSave()
 }
 
+// Resolves to whatever the current route declared (router/index.ts's meta.helpTopic), falling
+// back to the help site's own homepage for the rare route that doesn't have one yet.
+const helpTopic = computed(() => route.meta.helpTopic ?? 'index')
+function openHelp() {
+  if (!hasDesktopBackend) return
+  getAdapter()
+    .help.open?.(helpTopic.value)
+    .catch((error) => console.error('Failed to open help window:', error))
+}
+function handleHelpShortcut(event: KeyboardEvent) {
+  if (event.key !== 'F1') return
+  event.preventDefault()
+  openHelp()
+}
+
 // Splash screen (feature-spec.md section "Splash screen") — see the `isSplashWindow` comment
 // above for why this now lives in its own window instead of an overlay here. This ref only
 // matters for the splash window's own render below; the main window never shows it.
@@ -241,6 +256,7 @@ onMounted(async () => {
 
   document.addEventListener('keydown', handleSaveShortcut)
   document.addEventListener('keydown', handleHistoryShortcut)
+  document.addEventListener('keydown', handleHelpShortcut)
 
   if (!hasDesktopBackend) {
     updateBrowserFullscreen()
@@ -316,6 +332,7 @@ onUnmounted(() => {
   document.removeEventListener('fullscreenchange', updateBrowserFullscreen)
   document.removeEventListener('keydown', handleSaveShortcut)
   document.removeEventListener('keydown', handleHistoryShortcut)
+  document.removeEventListener('keydown', handleHelpShortcut)
   if (savedConfirmationTimer) clearTimeout(savedConfirmationTimer)
 })
 </script>
@@ -585,6 +602,17 @@ onUnmounted(() => {
           }}
         </v-btn>
       </template>
+      <v-btn
+        v-if="hasDesktopBackend"
+        icon="mdi-help-circle-outline"
+        variant="text"
+        size="small"
+        class="mr-1"
+        title="Help (F1)"
+        aria-label="Help"
+        aria-keyshortcuts="F1"
+        @click="openHelp"
+      />
       <template v-if="hasDesktopBackend">
         <v-btn
           icon="mdi-window-minimize"
@@ -649,6 +677,17 @@ onUnmounted(() => {
   background: rgb(var(--v-theme-surface));
   border-right-color: rgba(var(--v-theme-on-surface), 0.08);
 }
+/* worshipLight's own `surface` (near-white) sits only ~4% off the page `background` behind it —
+ * barely perceptible, so nav/app-bar read as flat white rather than a distinct chrome region
+ * (worshipDark's surface/background pairing has enough contrast for this not to be an issue,
+ * so it's left alone). Tried a primary-blue tint here first (matching the .app-bar rule below)
+ * but it competed with the nav items' own already-colorful icons rather than complementing
+ * them — settled on the same neutral surface-variant gray as .app-bar instead, so the two
+ * chrome regions read as one cohesive frame and the color story stays with the icons/selection
+ * state rather than the panel backgrounds. */
+.v-theme--worshipLight .app-nav {
+  background: rgb(var(--v-theme-surface-variant));
+}
 .sidebar-item :deep(.v-list-item-title) {
   font-size: 0.875rem;
   line-height: 1.25rem;
@@ -672,6 +711,14 @@ onUnmounted(() => {
 .app-bar {
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.09);
   background: rgba(var(--v-theme-surface), 0.97);
+}
+/* Light mode only, same as .app-nav above, but the neutral surface-variant gray rather than the
+ * primary tint the sidebar uses (swapped per feedback) — the two chrome regions still read as
+ * distinct from the white content area and from each other, without both competing for
+ * attention as "the colored one." `surface-variant` is already a real token in the light
+ * palette (src/plugins/themeTokens.ts) for exactly this. */
+.v-theme--worshipLight .app-bar {
+  background: rgb(var(--v-theme-surface-variant));
 }
 .app-save-wrap {
   display: inline-flex;

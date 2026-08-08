@@ -1,7 +1,7 @@
 name: Release
 
 # Cutting a release: bump the version in package.json/src-tauri/tauri.conf.json/Cargo.toml,
-# commit, then `git tag vX.Y.Z && git push origin vX.Y.Z` — see docs/release-process.md.
+# commit, then `git tag vX.Y.Z && git push origin vX.Y.Z` — see notes/release-process.md.
 on:
   push:
     tags:
@@ -40,7 +40,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # Windows builds are signed with the self-signed certificate documented in
-      # docs/release-process.md — imported here from secrets, never committed. macOS builds
+      # notes/release-process.md — imported here from secrets, never committed. macOS builds
       # are intentionally unsigned for now (see the same doc); no equivalent step runs there.
       - name: Import Windows code-signing certificate
         if: matrix.platform == 'windows-latest'
@@ -76,7 +76,7 @@ jobs:
           releaseName: 'Worship Studio ${{ github.ref_name }}'
           releaseBody: |
             See the commit history for what changed. Windows builds are signed — see the
-            "install-trust-windows.ps1" note in docs/release-process.md if this is the first
+            "install-trust-windows.ps1" note in notes/release-process.md if this is the first
             install on a given machine. macOS builds are unsigned; see the same doc for the
             one-time Gatekeeper bypass.
           releaseDraft: true
@@ -84,8 +84,10 @@ jobs:
           args: ${{ matrix.platform == 'windows-latest' && '--config windows-signing.json' || '' }}
 
   deploy-demo:
-    # The web-only static demo (mock adapter, no Tauri backend) republished on every
-    # release — see README's "static demo" note and docs/release-process.md.
+    # The project's public GitHub Pages site, republished on every release: the VitePress help
+    # site (docs/) as the landing page at the root, and the web-only static demo (mock adapter,
+    # no Tauri backend) nested at /app/ underneath it — see README's "static demo" note,
+    # notes/release-process.md, and notes/help-system-plan.md.
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -107,13 +109,24 @@ jobs:
 
       - run: pnpm build
         env:
-          VITE_BASE_PATH: /WorshipStudio/
+          VITE_BASE_PATH: /WorshipStudio/app/
+
+      - run: pnpm docs:build
+        env:
+          VITEPRESS_BASE_PATH: /WorshipStudio/
+
+      - name: Assemble combined Pages site (help site at root, demo nested at /app/)
+        run: |
+          mkdir -p pages
+          cp -r src-tauri/resources/help/. pages/
+          mkdir -p pages/app
+          cp -r dist/. pages/app/
 
       - uses: actions/configure-pages@v6
 
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: dist
+          path: pages
 
       - uses: actions/deploy-pages@v5
         id: deployment

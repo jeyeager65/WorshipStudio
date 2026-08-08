@@ -1,9 +1,10 @@
 # Release process
 
 Covers M9 from [architecture-plan.md](architecture-plan.md): cutting a versioned release,
-signing the Windows build, and republishing the static browser demo. Read this once before
-the first release — after the one-time setup below, cutting a release is just a version bump
-and a tag push.
+signing the Windows build, and republishing the GitHub Pages site (help site + demo — see
+"Static browser demo" below and [help-system-plan.md](help-system-plan.md)). Read this once
+before the first release — after the one-time setup below, cutting a release is just a version
+bump and a tag push.
 
 ## Why self-signed (not a paid certificate)
 
@@ -76,9 +77,9 @@ already-trusted church machine needs to re-run `install-trust-windows.ps1` with 
    git push origin v0.2.0
    ```
 4. `release.yml` builds a signed Windows installer, an unsigned macOS build, and republishes
-   the static demo to GitHub Pages. The Windows/macOS builds land as a **draft** GitHub
-   Release — review it and hit Publish when ready; the Pages demo goes live immediately with
-   no review step.
+   the GitHub Pages site (help site + demo, see "Static browser demo" below). The Windows/macOS
+   builds land as a **draft** GitHub Release — review it and hit Publish when ready; the Pages
+   site goes live immediately with no review step.
 
 ## First install on a given machine
 
@@ -97,7 +98,25 @@ the first time). This is only needed once per machine per app version.
 
 `pnpm build` produces the same `dist/` output whether or not it's running inside Tauri — the
 adapter layer (`src/adapters/index.ts`) picks the mock (browser/localStorage) backend
-automatically when `window.__TAURI_INTERNALS__` isn't present. The Pages deploy just builds
-that same output with `VITE_BASE_PATH=/WorshipStudio/` (a project repo's Pages site is served
-from `/<repo-name>/`, not the domain root) and publishes it — no separate demo-specific code
-path to maintain.
+automatically when `window.__TAURI_INTERNALS__` isn't present. The Pages deploy builds that
+same output with `VITE_BASE_PATH=/WorshipStudio/app/` (a project repo's Pages site is served
+from `/<repo-name>/`, not the domain root, and the demo is nested one level further down, under
+the help site that owns the root — see next section) — no separate demo-specific code path to
+maintain.
+
+## GitHub Pages site structure
+
+`release.yml`'s `deploy-demo` job builds two things and combines them into one artifact before
+`actions/upload-pages-artifact`/`actions/deploy-pages`, since Pages only takes one artifact per
+deploy:
+
+- **`/`** (the Pages root) — the VitePress help site (`docs/`, see
+  [help-system-plan.md](help-system-plan.md)), doubling as the project's public landing page.
+  Built with `VITEPRESS_BASE_PATH=/WorshipStudio/`.
+- **`/app/`** — the static browser demo above, copied into the assembled artifact under an
+  `app/` subfolder. Linked from the landing page's "Try the Web Demo" hero button
+  (`docs/index.md`).
+
+Both env vars default to `/` (root) when unset, which is what local dev, `docs:preview`, and
+the Tauri bundle (served through its own `help://` URI scheme, unrelated to Pages) all use —
+only this one CI job overrides them.

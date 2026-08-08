@@ -163,7 +163,8 @@ worship-studio/
     ci.yml                  # lint, typecheck, unit tests, e2e (fast mode)
     release.yml             # tauri-action build for Windows + macOS, signed artifacts
     demo.yml                 # static build → GitHub Pages on release
-  docs/                     # this plan; later, generated docs site output config
+  notes/                    # this plan and other internal engineering docs
+  docs/                     # VitePress help site (in-app + GitHub Pages), see help-system-plan.md
 ```
 
 ## 5. Phased build order

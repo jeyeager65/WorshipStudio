@@ -282,7 +282,7 @@ struct EsvPassageResponse {
     passages: Vec<String>,
 }
 
-/// Real ESV API fetch (https://api.esv.org/docs/passage-text/) — see docs/release-process.md
+/// Real ESV API fetch (https://api.esv.org/docs/passage-text/) — see notes/release-process.md
 /// sibling note in Settings (Bible Translations) for the attribution this requires. Verse
 /// numbers are requested so the flat text can be split back into the same
 /// `Vec<ScripturePassageVerse>` shape the local KJV sample and the rest of the app already
@@ -740,7 +740,7 @@ mod tests {
         assert!(resolve("Not A Book 1:1", "KJV").is_err());
     }
 
-    /// Hits the real ESV API — needs ESV_API_KEY set (see docs/release-process.md and the
+    /// Hits the real ESV API — needs ESV_API_KEY set (see notes/release-process.md and the
     /// .env this crate's lib.rs loads at startup). Not run by default in CI or a normal
     /// `cargo test`; run explicitly with `cargo test -- --ignored` when verifying the
     /// integration itself, e.g. after changing the request/response handling.
@@ -781,7 +781,7 @@ mod tests {
         }
     }
 
-    /// Hits the real api.bible API — needs API_BIBLE_KEY set (see docs/release-process.md).
+    /// Hits the real api.bible API — needs API_BIBLE_KEY set (see notes/release-process.md).
     /// Not run by default; run explicitly with `cargo test -- --ignored` when verifying the
     /// integration itself. The bible_id is NIV's real api.bible catalog id, confirmed live
     /// against GET /v1/bibles?language=eng.

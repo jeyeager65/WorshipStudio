@@ -4,11 +4,25 @@ mod models;
 mod paths;
 mod remote_server;
 
+use rust_embed::RustEmbed;
 use tauri::Manager;
+
+/// The built VitePress help site (docs/, output straight here by docs/.vitepress/config.ts's
+/// outDir), embedded at compile time — same pattern as remote_server.rs's `RemoteAssets`.
+/// Served through the `help` URI scheme registered below rather than the generic Tauri asset
+/// protocol: `convertFileSrc`/the asset protocol percent-encode a whole absolute file path as
+/// one opaque blob (confirmed live — every one of the site's own relative CSS/JS/font
+/// references 404'd, landing back at the origin root instead of their real subpath), which
+/// only works for single-file references, not a multi-file site with internal relative links.
+/// A dedicated scheme sidesteps that entirely: requests arrive as ordinary `/`-delimited paths
+/// the browser resolves relative links against completely normally.
+#[derive(RustEmbed)]
+#[folder = "resources/help/"]
+struct HelpAssets;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Local-dev convenience only (e.g. ESV_API_KEY — see docs/release-process.md and
+    // Local-dev convenience only (e.g. ESV_API_KEY — see notes/release-process.md and
     // commands::scripture) — silently no-ops if missing, which is the normal case for a
     // packaged build. CWD differs between `cargo run` (src-tauri/) and other invocations, so
     // both the repo root and one level up are tried; whichever exists wins, and dotenvy never
@@ -19,6 +33,23 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(commands::external_apps::EngagedExternalApp::default())
+        .register_uri_scheme_protocol("help", |_ctx, request| {
+            let path = request.uri().path().trim_start_matches('/');
+            let path = if path.is_empty() { "index.html" } else { path };
+            match HelpAssets::get(path) {
+                Some(file) => tauri::http::Response::builder()
+                    .header(
+                        tauri::http::header::CONTENT_TYPE,
+                        remote_server::guess_asset_content_type(path),
+                    )
+                    .body(file.data.into_owned())
+                    .unwrap(),
+                None => tauri::http::Response::builder()
+                    .status(tauri::http::StatusCode::NOT_FOUND)
+                    .body(Vec::new())
+                    .unwrap(),
+            }
+        })
         .setup(|app| {
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()
@@ -81,6 +112,7 @@ pub fn run() {
             commands::diagnostics::get_diagnostic_summary,
             commands::diagnostics::create_diagnostic_bundle,
             commands::diagnostics::open_logs_folder,
+            commands::help::navigate_help_window,
             commands::songs::list_songs,
             commands::songs::get_song,
             commands::songs::save_song,

@@ -9,7 +9,7 @@ fn esv_api_key(app: &AppHandle) -> Option<String> {
     load_machine_settings(app)
         .esv_api_key
         .filter(|k| !k.is_empty())
-        // Local-dev convenience only (see docs/release-process.md) — never overrides a real
+        // Local-dev convenience only (see notes/release-process.md) — never overrides a real
         // per-machine key configured in Settings.
         .or_else(|| std::env::var("ESV_API_KEY").ok().filter(|k| !k.is_empty()))
 }

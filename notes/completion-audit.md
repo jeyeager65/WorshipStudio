@@ -69,7 +69,7 @@ Review findings and safeguards:
 - An OS credential store remains unnecessary under the accepted trusted-church-computer/private-library threat model. Revisit that decision if the distribution or threat model expands.
 - Canva rotation and reconnection procedures are documented, including the additional physical-security implications of portable storage.
 
-Relevant implementation: `src-tauri/src/models.rs`, `src-tauri/src/commands/settings.rs`, and `src-tauri/src/commands/canva.rs`. See `docs/canva-setup.md` for the operational model.
+Relevant implementation: `src-tauri/src/models.rs`, `src-tauri/src/commands/settings.rs`, and `src-tauri/src/commands/canva.rs`. See `notes/canva-setup.md` for the operational model.
 
 ### 4. Reconcile the email workflow
 
@@ -350,8 +350,8 @@ The README and architecture plan contain historical statements that no longer ma
 Update:
 
 - `README.md`
-- `docs/architecture-plan.md`
-- `docs/release-process.md`
+- `notes/architecture-plan.md`
+- `notes/release-process.md`
 - Feature-support and platform-support matrix
 - Installed versus portable behavior
 - Remote-control discovery and port behavior

@@ -16,7 +16,7 @@ describe('Worship Studio (native)', () => {
     await createLink.waitForExist({ timeout: 10000 })
     await createLink.click()
 
-    const submit = await $('button*=Create and Open Service')
+    const submit = await $('button*=Create & Open Service')
     await submit.waitForExist({ timeout: 10000 })
     await submit.waitForClickable({ timeout: 10000 })
     await submit.click()

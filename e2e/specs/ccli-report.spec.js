@@ -5,7 +5,7 @@ describe('CCLI Reporting', () => {
     const skipLink = await $('button*=Skip setup')
     if (await skipLink.isExisting()) await skipLink.click()
 
-    const reportsNav = await $('a[href="/reports"]')
+    const reportsNav = await $('a[href="#/reports"]')
     await reportsNav.waitForExist({ timeout: 15000 })
     await reportsNav.click()
 

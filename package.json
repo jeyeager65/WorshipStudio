@@ -16,6 +16,9 @@
     "lint": "eslint . --fix",
     "format": "prettier --write src/",
     "test:unit": "vitest run",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs",
     "tauri": "tauri",
     "optimize:stock-backgrounds": "node scripts/optimize-stock-backgrounds.mjs"
   },
@@ -62,6 +65,7 @@
     "typescript": "^6.0.3",
     "vite": "^8.1.5",
     "vite-plugin-vuetify": "^2.1.3",
+    "vitepress": "^1.6.4",
     "vitest": "^4.1.10",
     "vue-tsc": "^3.3.8"
   }

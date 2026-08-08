@@ -314,7 +314,7 @@ pub fn resolve_conflict(conflict_file_path: &str, keep: &str) -> std::io::Result
 
 /// Best-effort: genuinely detecting whether the sync client is running is inherently
 /// OS-specific and only implemented for Windows (this app's primary target so far — see
-/// docs/architecture-plan.md's macOS-build note); other platforms can't currently verify
+/// notes/architecture-plan.md's macOS-build note); other platforms can't currently verify
 /// this, so it optimistically assumes yes rather than showing a false warning.
 #[cfg(target_os = "windows")]
 fn dropbox_process_running() -> bool {

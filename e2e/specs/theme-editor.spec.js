@@ -6,7 +6,7 @@ describe('Theme Editor', () => {
     if (await skipLink.isExisting()) await skipLink.click()
 
     // Themes moved out of Settings into its own top-level "Design" sidebar section.
-    const themesNav = await $('a[href="/library/themes"]')
+    const themesNav = await $('a[href="#/library/themes"]')
     await themesNav.waitForExist({ timeout: 15000 })
     await themesNav.click()
 

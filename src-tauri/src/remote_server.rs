@@ -640,12 +640,13 @@ fn guess_content_type(path: &Path) -> &'static str {
     }
 }
 
-/// Same best-effort-by-extension approach as `guess_content_type` above, but for the embedded
-/// Remote Control bundle's own asset types rather than media library files — kept as a separate
-/// function since the two serve genuinely different file sets or a merged match arm would read
-/// as covering things it doesn't (test suite fixtures below for each stay clearly matched to the
-/// function they're actually testing).
-fn guess_asset_content_type(path: &str) -> &'static str {
+/// Same best-effort-by-extension approach as `guess_content_type` above, but for embedded static
+/// bundles' own asset types rather than media library files — kept as a separate function since
+/// the two serve genuinely different file sets or a merged match arm would read as covering
+/// things it doesn't (test suite fixtures below for each stay clearly matched to the function
+/// they're actually testing). `pub(crate)` since lib.rs's `help` URI scheme handler (serving the
+/// embedded VitePress help site) reuses this too, not just the Remote Control bundle below.
+pub(crate) fn guess_asset_content_type(path: &str) -> &'static str {
     match Path::new(path)
         .extension()
         .and_then(|e| e.to_str())

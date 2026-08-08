@@ -37,7 +37,7 @@ import { friendlyDisplayName } from '@/utils/displayName'
  * Real adapter — thin wrapper over Rust commands (src-tauri/src/commands).
  * songs/services/slides/settings are wired to real file-backed commands (M1).
  * Everything else below is still a placeholder command name, to be implemented
- * as its milestone lands (see docs/architecture-plan.md) — every method exists
+ * as its milestone lands (see notes/architecture-plan.md) — every method exists
  * now so the frontend can be built against the full interface today.
  */
 export function createTauriAdapter(): StudioAdapter {
@@ -48,6 +48,7 @@ export function createTauriAdapter(): StudioAdapter {
   let lastLiveContent: LiveSlideContent | null = null
   let unlistenPresentationReady: UnlistenFn | undefined
   let identifyWindow: WebviewWindow | undefined
+  let helpWindow: WebviewWindow | undefined
 
   // The OS doesn't hand back a stable per-monitor id, so the one thing that actually stays
   // the same across launches (Tauri's reported `name`, e.g. "\\.\DISPLAY1" on Windows) is
@@ -192,10 +193,10 @@ export function createTauriAdapter(): StudioAdapter {
     }
     const label = friendlyDisplayName(monitor.name, index)
     const thisWindow = new WebviewWindow('identify', {
-      // A real query string, not a `#/...` hash fragment — the app uses createWebHistory
-      // (path-based) routing, so a hash here would be inert. Read the same way the
-      // presentation window is detected (its Tauri window label), not through vue-router —
-      // this window never gets routed at all, same reasoning as PresentationView.
+      // A real query string, not appended after the router's own `#/...` hash fragment, which
+      // would just become part of vue-router's route instead of reaching here. Read the same
+      // way the presentation window is detected (its Tauri window label), not through
+      // vue-router — this window never gets routed at all, same reasoning as PresentationView.
       url: `index.html?identify=${encodeURIComponent(label)}`,
       x,
       y,
@@ -212,6 +213,67 @@ export function createTauriAdapter(): StudioAdapter {
       if (identifyWindow === thisWindow) identifyWindow = undefined
       void thisWindow.close()
     }, 2500)
+  }
+
+  // Opens the bundled VitePress help site at the given topic — or, if it's already open,
+  // navigates that same window to the new topic instead of closing and recreating it.
+  // Window *creation* stays here in the frontend, same as presentation/identify — a Rust-side
+  // attempt at creating it too (so the whole thing could go through one code path) turned out
+  // unreliable in practice, confirmed live, repeatedly: a window built from a `#[tauri::command]`
+  // never finished loading (`about:blank` forever, independent of which URL-scheme variant or
+  // thread it ran on), which was also what made it unresponsive to close. Real navigation of an
+  // *already-open* window still needs Rust (`commands::help::navigate_help_window`) — there's no
+  // `WebviewWindow.navigate` on the JS side — but only ever runs against a window this same
+  // frontend code already created and confirmed loads real content.
+  //
+  // Existence is tracked via this closure variable (same pattern as presentation/identify
+  // above), updated only by a `tauri://destroyed` listener on the window this code itself
+  // created — not by asking Tauri's backend "does a window labeled 'help' exist right now"
+  // (`WebviewWindow.getByLabel`/`get_webview_window` on the Rust side). That backend registry
+  // check is provably unreliable here: after closing the window programmatically in an
+  // automated test, the backend kept reporting the window as present and successfully
+  // navigable — no visible window, no error, just a live reference to nothing — which the
+  // event-driven approach below never observed.
+  //
+  // The site itself is embedded at compile time and served through the `help` URI scheme
+  // registered in lib.rs, not the generic Tauri asset protocol — the asset protocol
+  // percent-encodes a whole absolute file path as one opaque blob (confirmed live: every one
+  // of the site's own relative CSS/JS/font references 404'd against it), which only works for
+  // single-file references, not a multi-file site with internal relative links.
+  async function openHelp(topic: string) {
+    const [slug, anchor] = topic.split('#')
+    const url = convertFileSrc(`${slug}.html`, 'help') + (anchor ? `#${anchor}` : '')
+
+    if (helpWindow) {
+      const navigated = await invoke<boolean>('navigate_help_window', { url })
+      if (navigated) return
+      helpWindow = undefined
+    }
+
+    const thisWindow = new WebviewWindow('help', {
+      url,
+      title: 'Worship Studio Help',
+      width: 1000,
+      height: 800,
+      minWidth: 640,
+      minHeight: 480,
+      focus: true,
+      // Unlike main/presentation/identify, this window loads a plain static site with no
+      // Tauri-aware drag-region/window-controls of its own — needs real OS chrome to be
+      // movable/closable at all.
+    })
+    helpWindow = thisWindow
+    await thisWindow.once('tauri://destroyed', () => {
+      if (helpWindow === thisWindow) helpWindow = undefined
+    })
+    // `focus: true` above isn't enough on its own — verified live that a freshly created
+    // window can still land behind the already-focused main window without an explicit
+    // setFocus() call once it's actually ready (same two-step handoff App.vue's own
+    // splash-to-main handoff uses at startup).
+    await thisWindow.once('tauri://created', () => {
+      void thisWindow.show()
+      void thisWindow.setFocus()
+    })
   }
 
   return {
@@ -355,7 +417,7 @@ export function createTauriAdapter(): StudioAdapter {
     // displays/externalApps are Windows-only in practice (live-presentation role
     // assignment, Win32 window hand-off). They're wired up unconditionally here for now;
     // hiding them on the macOS build is a platform check to add once that build exists
-    // (docs/architecture-plan.md M7+), not a reason to omit the ports today.
+    // (notes/architecture-plan.md M7+), not a reason to omit the ports today.
     displays: {
       // Real OS monitor enumeration (no Rust command needed — Tauri's window API already
       // exposes this) combined with the persisted role map in MachineSettings, which is the
@@ -494,6 +556,9 @@ export function createTauriAdapter(): StudioAdapter {
         }
         return 'saved'
       },
+    },
+    help: {
+      open: openHelp,
     },
   }
 }

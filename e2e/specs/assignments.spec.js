@@ -13,7 +13,7 @@ describe('Assignments', () => {
     if (await skipLink.isExisting()) await skipLink.click()
 
     // Make sure at least two roles exist to assign against, under a fresh category.
-    const settingsNav = await $('a[href="/settings"]')
+    const settingsNav = await $('a[href="#/settings"]')
     await settingsNav.waitForExist({ timeout: 15000 })
     await settingsNav.click()
 
@@ -44,7 +44,7 @@ describe('Assignments', () => {
     await savedText.waitForExist({ timeout: 10000 })
 
     // Create a fresh service to open its assignments from.
-    const homeNav = await $('a[href="/"]')
+    const homeNav = await $('a[href="#/"]')
     await homeNav.click()
     const createLink = await $('a*=Create New Service')
     await createLink.waitForExist({ timeout: 10000 })

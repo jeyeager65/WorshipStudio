@@ -517,5 +517,9 @@ export function createMockAdapter(): StudioAdapter {
         return 'saved'
       },
     },
+    // No `open` — there's no bundled help site to open in a browser demo yet (deploying the
+    // VitePress site to GitHub Pages is a separate, still-open item; see
+    // notes/help-system-plan.md). The Help button checks for this and hides itself.
+    help: {},
   }
 }

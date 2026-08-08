@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "pnpm build:remote && pnpm dev",
-    "beforeBuildCommand": "pnpm build && pnpm build:remote"
+    "beforeDevCommand": "pnpm build:remote && pnpm docs:build && pnpm dev",
+    "beforeBuildCommand": "pnpm build && pnpm build:remote && pnpm docs:build"
   },
   "app": {
     "windows": [

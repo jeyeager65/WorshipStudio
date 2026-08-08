@@ -531,6 +531,14 @@ export interface DiagnosticsPort {
   openLogsFolder?(): Promise<void>
 }
 
+export interface HelpPort {
+  /** Opens (or re-opens at a new topic) the in-app help window at the given topic slug —
+   *  see src/router/index.ts's `meta.helpTopic` for where topic strings come from. Native
+   *  builds only; the mock/browser demo has no bundled help site to open yet (see
+   *  notes/help-system-plan.md). */
+  open?(topic: string): Promise<void>
+}
+
 export interface GeneratedFile {
   suggestedName: string
   mimeType: string
@@ -566,4 +574,5 @@ export interface StudioAdapter {
   sync: SyncPort
   diagnostics: DiagnosticsPort
   exports: ExportPort
+  help: HelpPort
 }

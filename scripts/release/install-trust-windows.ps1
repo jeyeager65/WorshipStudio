@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   Worship Studio releases are signed with a self-signed certificate (not one from a paid
-  certificate authority — see docs/release-process.md for why). Windows doesn't trust a
+  certificate authority — see notes/release-process.md for why). Windows doesn't trust a
   self-signed certificate by default, so the first install would otherwise show an
   "unrecognized publisher" warning.
 

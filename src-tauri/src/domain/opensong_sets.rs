@@ -23,7 +23,7 @@ pub struct ImportSetsSummary {
 /// (announcements, "BAPTISMS", a blank "Untitled" intro slide, etc.) are real content in
 /// OpenSong's own sets but are out of scope here — this import exists to seed services and
 /// song usage stats from history, not to faithfully recreate every custom slide (see
-/// docs/architecture-plan.md's OpenSong migration note).
+/// notes/architecture-plan.md's OpenSong migration note).
 static SLIDE_GROUP_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"<slide_group\s+name="([^"]*)"\s+type="([^"]*)""#).expect("pattern must compile")
 });

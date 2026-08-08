@@ -1,0 +1,103 @@
+/* Landing-page hero logo, larger than the default theme's built-in 192/256/320px sizing at
+ * the two narrower (stacked-layout) breakpoints, where the heading text otherwise dwarfs it.
+ * No CSS custom property exposes this in the default theme, so this duplicates its own
+ * breakpoints with bigger numbers; each selector below has one more class in the chain than
+ * the rule it overrides, so it wins on specificity alone — no !important needed.
+ *
+ * The >=960px tier deliberately stays at the stock 320px rather than growing further: that's
+ * where VitePress's own `.container` switches to a side-by-side row layout (text column
+ * max-width 592px, image gets whatever's left of a max-1152px, 64px-padded container) — and
+ * this same hero doubles as the in-app help window's home page (src/adapters/tauri/index.ts's
+ * openHelp), which opens at a fixed 1000px wide. At that width the image column is only
+ * ~280px, so anything bigger than stock overlaps the text (confirmed live). The bump instead
+ * waits for >=1280px, comfortably wide enough that only a real desktop browser viewing the
+ * public GitHub Pages landing page ever hits it.
+ */
+.VPHero.has-image .image .image-bg {
+  width: 240px;
+  height: 240px;
+}
+
+.VPHero.has-image .image .image-src {
+  max-width: 240px;
+  max-height: 240px;
+}
+
+@media (min-width: 640px) {
+  .VPHero.has-image .image .image-bg {
+    width: 320px;
+    height: 320px;
+  }
+
+  .VPHero.has-image .image .image-src {
+    max-width: 320px;
+    max-height: 320px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .VPHero.has-image .image .image-bg {
+    width: 400px;
+    height: 400px;
+  }
+
+  .VPHero.has-image .image .image-src {
+    max-width: 400px;
+    max-height: 400px;
+  }
+}
+
+/* Palette matched to the real app's own Vuetify theme (src/plugins/themeTokens.ts's
+ * worshipLightColors/worshipDarkColors/accentColors) in both modes — the help site's stock
+ * VitePress indigo/gray palette read as a different product next to the app it documents.
+ * Background/surface swap between light and dark (mirroring App.vue's own `.app-nav`, styled
+ * with the theme's `surface` token, sitting on the app-wide `background` token — bg-alt/-soft
+ * below play that same "surface" role, bg-elv plays `surface-variant`'s role).
+ *
+ * --vp-c-brand-2 and -3 reuse the app's one accent hex (#4C7FE8) and a darkened variant of it
+ * in both modes, rather than inventing a separate scale per mode — only brand-1 (body text/
+ * links/hero name, which needs real contrast against its own background) differs: lightened
+ * for dark mode, darkened for light mode, following the same light-tint-on-dark /
+ * dark-tint-on-light pattern VitePress's own default indigo scale uses. Values picked so
+ * brand-1 (against this page's background) and brand-3 (against solid-button white text) both
+ * clear WCAG AA contrast in whichever mode they apply.
+ *
+ * `:root` (this block) supplies the light-mode values; `.dark` below overrides the ones that
+ * differ. Both selectors match the same `<html>` element at equal specificity, so source order
+ * is what makes dark mode win when active — this block must stay first.
+ */
+:root {
+  --vp-c-bg: #f4f5f7;
+  --vp-c-bg-alt: #ffffff;
+  --vp-c-bg-elv: #e7e9ed;
+  --vp-c-bg-soft: #ffffff;
+
+  --vp-c-brand-1: #2e4c8b;
+  --vp-c-brand-2: #4c7fe8;
+  --vp-c-brand-3: #3d66ba;
+  --vp-c-brand-soft: rgba(76, 127, 232, 0.12);
+
+  /* App.vue's light theme ended up giving its top app-bar *and* its sidebar the same neutral
+   * surface-variant gray — tried a colored tint on one of the two first, but it read as a
+   * mismatched extra panel next to the other; one shared chrome tone reads as a cohesive frame
+   * instead, leaving color to the nav icons/selection state. Mirrored here: VitePress's own nav
+   * bar and sidebar default to two *different* vars (--vp-c-bg and --vp-c-bg-alt respectively,
+   * both plain content-area tones), so both are pointed at --vp-c-bg-elv (this file's
+   * surface-variant stand-in) explicitly rather than left on their defaults. Dark mode isn't
+   * touched here — App.vue's own dark chrome already reused one shared color (`surface`)
+   * without needing this kind of override, and this site's .dark block already mirrors that. */
+  --vp-nav-bg-color: var(--vp-c-bg-elv);
+  --vp-sidebar-bg-color: var(--vp-c-bg-elv);
+}
+
+.dark {
+  --vp-c-bg: #0f141b;
+  --vp-c-bg-alt: #151b23;
+  --vp-c-bg-elv: #202833;
+  --vp-c-bg-soft: #151b23;
+
+  --vp-c-brand-1: #8fadf0;
+  --vp-c-brand-2: #4c7fe8;
+  --vp-c-brand-3: #3d66ba;
+  --vp-c-brand-soft: rgba(76, 127, 232, 0.16);
+}

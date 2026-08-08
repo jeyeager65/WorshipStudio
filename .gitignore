@@ -42,10 +42,15 @@ OpenSong/
 
 # Local MCP server config (e.g. Playwright, set up ad hoc for debugging) — a personal dev
 # convenience, not a deliberate part of the project's testing toolchain (that's
-# WebdriverIO + tauri-driver, see docs/architecture-plan.md). Revisit intentionally if we
+# WebdriverIO + tauri-driver, see notes/architecture-plan.md). Revisit intentionally if we
 # ever want this shared with every Claude Code session on the repo.
 .mcp.json
 
-# Windows code-signing private key (see docs/release-process.md) — the .pfx contains the
+# Windows code-signing private key (see notes/release-process.md) — the .pfx contains the
 # private key and must never be committed; only the .cer (public certificate) is tracked.
 scripts/release/*.pfx
+
+# VitePress help site (docs/) build output/cache — see notes/help-system-plan.md. Build output
+# goes straight to src-tauri/resources/help (docs/.vitepress/config.ts's outDir), not dist/.
+docs/.vitepress/cache
+src-tauri/resources/help/

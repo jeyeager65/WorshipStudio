@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
   One-time step: generates the self-signed Authenticode code-signing certificate used to
-  sign Windows release builds (see docs/release-process.md).
+  sign Windows release builds (see notes/release-process.md).
 
 .DESCRIPTION
   Run this once, not per-release. CI reuses the same certificate on every release (via the

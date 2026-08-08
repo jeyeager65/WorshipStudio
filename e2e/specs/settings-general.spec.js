@@ -5,7 +5,7 @@ describe('Settings — This Computer', () => {
     const skipLink = await $('button*=Skip setup')
     if (await skipLink.isExisting()) await skipLink.click()
 
-    const settingsNav = await $('a[href="/settings"]')
+    const settingsNav = await $('a[href="#/settings"]')
     await settingsNav.waitForExist({ timeout: 15000 })
     await settingsNav.click()
 
@@ -32,7 +32,7 @@ describe('Settings — This Computer', () => {
 
     // Navigate away and back within the SPA (same "did it really persist" check
     // theme-editor.spec.js uses) rather than a hard reload.
-    const servicesNav = await $('a[href="/"]')
+    const servicesNav = await $('a[href="#/"]')
     await servicesNav.waitForClickable({ timeout: 10000 })
     await servicesNav.click()
     await settingsNav.waitForClickable({ timeout: 10000 })
@@ -49,7 +49,7 @@ describe('Settings — This Computer', () => {
     const skipLink = await $('button*=Skip setup')
     if (await skipLink.isExisting()) await skipLink.click()
 
-    const settingsNav = await $('a[href="/settings"]')
+    const settingsNav = await $('a[href="#/settings"]')
     await settingsNav.waitForExist({ timeout: 15000 })
     await settingsNav.click()
 

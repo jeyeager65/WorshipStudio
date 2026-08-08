@@ -2,7 +2,7 @@
 // first-launch redirect) — deterministic regardless of what earlier specs already did to this
 // profile's machine-settings.json (see SettingsView's "Run First-Time Setup Wizard").
 async function openWizardFromSettings() {
-  const settingsBtn = await $('a[href="/settings"]')
+  const settingsBtn = await $('a[href="#/settings"]')
   await settingsBtn.waitForExist({ timeout: 15000 })
   await settingsBtn.click()
 
@@ -33,7 +33,7 @@ describe('First-Time Setup Wizard', () => {
 
     // The regular app-bar (Home/Library/Slides/Settings) must not be reachable mid-wizard —
     // see App.vue's isSetupWizard check — or the operator could wander off before finishing.
-    const settingsNav = await $('a[href="/settings"]')
+    const settingsNav = await $('a[href="#/settings"]')
     await expect(settingsNav).not.toBeExisting()
 
     // Leave the app back on the landing page so later specs (and the next `it` in this file)

@@ -5,7 +5,7 @@ describe('Announcements (bulletin)', () => {
     const skipLink = await $('button*=Skip setup')
     if (await skipLink.isExisting()) await skipLink.click()
 
-    const navLink = await $('a[href="/announcements"]')
+    const navLink = await $('a[href="#/announcements"]')
     await navLink.waitForExist({ timeout: 15000 })
     await navLink.click()
 

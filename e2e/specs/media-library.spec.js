@@ -5,7 +5,7 @@ describe('Media Library', () => {
     const skipLink = await $('button*=Skip setup')
     if (await skipLink.isExisting()) await skipLink.click()
 
-    const mediaNav = await $('a[href="/library/media"]')
+    const mediaNav = await $('a[href="#/library/media"]')
     await mediaNav.waitForExist({ timeout: 15000 })
     await mediaNav.click()
 

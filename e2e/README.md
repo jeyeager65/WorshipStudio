@@ -38,7 +38,7 @@ is unnecessary overhead when the app itself hasn't changed since the last build.
 every `findElement`/`$`/`$$`/`getTitle` call. It calls Tauri commands
 (`plugin:wdio|get_window_states`, etc.) that only exist when `tauri-plugin-wdio-webdriver` is
 installed in the target app — i.e. only under `driverProvider: 'embedded'`. Under `'external'`
-(the provider this project uses, matching `docs/architecture-plan.md`'s plain `tauri-driver`
+(the provider this project uses, matching `notes/architecture-plan.md`'s plain `tauri-driver`
 choice, so no test-only plugin needs to ship in the app's own `Cargo.toml`), those commands
 don't exist, and the resulting failure path hangs every `findElement`-family call after the
 first, rather than failing fast — this took a long debugging session to actually pin down; the

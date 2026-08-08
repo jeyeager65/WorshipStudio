@@ -5,7 +5,7 @@ describe('External App Hand-off', () => {
     const skipLink = await $('button*=Skip setup')
     if (await skipLink.isExisting()) await skipLink.click()
 
-    const settingsNav = await $('a[href="/settings"]')
+    const settingsNav = await $('a[href="#/settings"]')
     await settingsNav.waitForExist({ timeout: 15000 })
     await settingsNav.click()
 

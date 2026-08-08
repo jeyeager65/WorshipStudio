@@ -45,7 +45,7 @@ describe('Add-to-Service External App tab', () => {
       const createLink = await $('a*=Create Service')
       await createLink.waitForExist({ timeout: 15000 })
       await createLink.click()
-      const submit = await $('button*=Create and Open Service')
+      const submit = await $('button*=Create & Open Service')
       await submit.waitForClickable({ timeout: 10000 })
       await submit.click()
 

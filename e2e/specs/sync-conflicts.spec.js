@@ -52,7 +52,7 @@ describe('Sync Conflict Resolution', () => {
       // badge only loads once at app startup (see App.vue), which would race this test's own
       // fixture-file creation above depending on exactly when that one-time load happens.
       // "Check Now" is a deliberate, on-demand re-check with no such race.
-      const settingsNav = await $('a[href="/settings"]')
+      const settingsNav = await $('a[href="#/settings"]')
       await settingsNav.waitForExist({ timeout: 15000 })
       await settingsNav.click()
 

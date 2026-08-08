@@ -9,7 +9,7 @@ describe('Settings — Library & Sync data tools', () => {
     const skipLink = await $('button*=Skip setup')
     if (await skipLink.isExisting()) await skipLink.click()
 
-    const settingsNav = await $('a[href="/settings"]')
+    const settingsNav = await $('a[href="#/settings"]')
     await settingsNav.waitForExist({ timeout: 15000 })
     await settingsNav.click()
 
@@ -36,7 +36,7 @@ describe('Settings — Library & Sync data tools', () => {
     // (the service types/role groups/templates/collections fields it overwrites are part of the
     // same document, even though this action already persisted them itself), so navigating away
     // triggers the app's own unsaved-changes guard — handle it if it shows up.
-    const servicesNav = await $('a[href="/"]')
+    const servicesNav = await $('a[href="#/"]')
     await servicesNav.waitForClickable({ timeout: 10000 })
     await servicesNav.click()
 
