@@ -24,6 +24,9 @@ import type {
   CanvaStatus,
   CanvaDesign,
   CanvaImportResult,
+  CanvaExportPreview,
+  CanvaVideoExportResult,
+  CanvaVideoPreview,
   DiagnosticSummary,
 } from '@/adapters/types'
 import type { Song } from '@/models/song'
@@ -363,8 +366,14 @@ export function createTauriAdapter(): StudioAdapter {
       listDesigns: () => invoke<CanvaDesign[]>('list_canva_designs'),
       createDesign: (title) => invoke<CanvaDesign>('create_canva_design', { title }),
       openDesign: (designId) => invoke('open_canva_design', { designId }),
-      importDesign: (designId, existingPages = []) =>
-        invoke<CanvaImportResult>('import_canva_design', { designId, existingPages }),
+      previewExport: (designId) =>
+        invoke<CanvaExportPreview>('preview_canva_design_export', { designId }),
+      importPages: (designId, pages) =>
+        invoke<CanvaImportResult>('import_canva_pages', { designId, pages }),
+      previewVideoExport: (designId) =>
+        invoke<CanvaVideoPreview>('preview_canva_video_export', { designId }),
+      importVideo: (designId, tempPath, location) =>
+        invoke<CanvaVideoExportResult>('import_canva_video', { designId, tempPath, location }),
     },
     themes: {
       list: () => invoke<Theme[]>('list_themes'),

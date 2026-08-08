@@ -157,6 +157,14 @@ export interface MediaItem {
   tags: string[]
   location: 'synced' | 'local'
   duplicateOfId?: string
+  /** Where this file came from, if not a plain import — lets a later Canva re-import (from
+   *  either the Slide Editor or the Media Library) recognize "this is already design X page Y"
+   *  (or, for a whole-design video export, just "this is already design X") and update this
+   *  same item in place instead of creating a duplicate. Distinct from `LibrarySlide.source`,
+   *  which is about what renders a slide, not where a file came from. */
+  origin?:
+    | { type: 'canva'; designId: string; pageNumber: number }
+    | { type: 'canva-video'; designId: string }
   /** Non-cryptographic content hash used only to notice accidental duplicate imports. */
   contentHash: string
   usage: {

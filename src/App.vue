@@ -245,7 +245,19 @@ function updateBrowserFullscreen() {
   isBrowserFullscreen.value = !!document.fullscreenElement
 }
 
+// Feels more like a native desktop app without the browser's own right-click menu (Inspect,
+// Reload, etc.) showing up over it.
+function handleContextMenu(event: MouseEvent) {
+  event.preventDefault()
+}
+
 onMounted(async () => {
+  // Registered before any of the window-type branching below (splash/presentation/identify all
+  // return early out of the rest of this function) so every window this component renders in
+  // gets it, not just the main operator window. Tauri-only — the browser/mock demo keeps the
+  // default context menu, which is genuinely useful there (e.g. Inspect while debugging it).
+  if (hasDesktopBackend) document.addEventListener('contextmenu', handleContextMenu)
+
   // The splash and main windows are two separate native windows, each running its own
   // independent copy of this same app bundle — a ref set in one has no effect on the other,
   // so real progress has to cross via a Tauri event (same pattern as live:slide-changed for
@@ -339,6 +351,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  document.removeEventListener('contextmenu', handleContextMenu)
   document.removeEventListener('fullscreenchange', updateBrowserFullscreen)
   document.removeEventListener('keydown', handleSaveShortcut)
   document.removeEventListener('keydown', handleHistoryShortcut)

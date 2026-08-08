@@ -146,6 +146,30 @@ export interface CanvaImportResult {
   pages: Array<{ pageNumber: number; media: MediaItem }>
 }
 
+export interface CanvaExportedPage {
+  pageNumber: number
+  exportUrl: string
+}
+
+export interface CanvaExportPreview {
+  design: CanvaDesign
+  pages: CanvaExportedPage[]
+}
+
+export interface CanvaVideoExportResult {
+  design: CanvaDesign
+  media: MediaItem
+}
+
+export interface CanvaVideoPreview {
+  design: CanvaDesign
+  /** Opaque handle for `importVideo` — a real filesystem path in Tauri, already downloaded (not
+   *  just an export URL), since the operator needs the real byte size to choose synced vs.
+   *  local before anything commits. */
+  tempPath: string
+  sizeBytes: number
+}
+
 export interface CanvaPort {
   status(): Promise<CanvaStatus>
   connect(): Promise<void>
@@ -153,10 +177,28 @@ export interface CanvaPort {
   listDesigns(): Promise<CanvaDesign[]>
   createDesign(title: string): Promise<CanvaDesign>
   openDesign(designId: string): Promise<void>
-  importDesign(
+  /** Starts a Canva export and waits for it to finish, returning each page's image URL without
+   *  downloading/importing anything yet — lets the caller show a page picker before committing. */
+  previewExport(designId: string): Promise<CanvaExportPreview>
+  /** Downloads and imports only the given pages. Dedup against a page already imported through
+   *  any prior Canva import (this design/page, any presentation, any entry point) happens on
+   *  the backend — callers don't need to track or pass which pages already exist. */
+  importPages(
     designId: string,
-    existingPages?: Array<{ pageNumber: number; mediaId: string }>,
+    pages: Array<{ pageNumber: number; exportUrl: string }>,
   ): Promise<CanvaImportResult>
+  /** Exports the whole design as one MP4 (fixed 1080p/horizontal quality, no page subset — see
+   *  CanvaImportDialog.vue) and downloads it, without importing it yet — a video can be large
+   *  enough that synced-vs-local genuinely matters, so the caller shows the real size and lets
+   *  the operator choose before `importVideo` actually commits it. */
+  previewVideoExport(designId: string): Promise<CanvaVideoPreview>
+  /** Commits an already-downloaded video from `previewVideoExport` at the chosen location,
+   *  updating a prior video export of the same design in place rather than duplicating it. */
+  importVideo(
+    designId: string,
+    tempPath: string,
+    location: 'synced' | 'local',
+  ): Promise<CanvaVideoExportResult>
 }
 
 export interface ThemePort {

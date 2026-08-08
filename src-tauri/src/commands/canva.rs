@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::fs;
+use std::path::Path;
 use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -12,7 +12,7 @@ use tauri::{AppHandle, State};
 
 use crate::domain::media::MediaImportCommit;
 use crate::domain::{delete_file_if_exists, manifest, media, read_json_file, write_json_file};
-use crate::models::MediaItem;
+use crate::models::{MediaItem, MediaOrigin};
 use crate::paths::{
     app_data_dir, canva_auth_path, library_root, local_media_root, now_iso, this_device_name,
 };
@@ -70,11 +70,44 @@ pub struct CanvaImportedPage {
     media: MediaItem,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanvaExportedPage {
+    page_number: usize,
+    export_url: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanvaExportPreview {
+    design: CanvaDesign,
+    pages: Vec<CanvaExportedPage>,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CanvaExistingPage {
+pub struct CanvaPageToImport {
     page_number: usize,
-    media_id: String,
+    export_url: String,
+}
+
+/// No `pages` field, unlike CanvaImportResult — a video export is always the whole design, one
+/// output file, not a set of per-page results.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanvaVideoExportResult {
+    design: CanvaDesign,
+    media: MediaItem,
+}
+
+/// `temp_path` is an opaque handle the frontend hands back unmodified to `import_canva_video`
+/// once the operator has picked synced vs. local — same pattern as `StagedMediaFile.path`.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanvaVideoPreview {
+    design: CanvaDesign,
+    temp_path: String,
+    size_bytes: u64,
 }
 
 fn credentials(app: &AppHandle) -> Result<(String, String), String> {
@@ -387,21 +420,21 @@ pub async fn open_canva_design(app: AppHandle, design_id: String) -> Result<(), 
     open_browser(&design.edit_url)
 }
 
-#[tauri::command]
-pub async fn import_canva_design(
-    app: AppHandle,
-    design_id: String,
-    existing_pages: Vec<CanvaExistingPage>,
-) -> Result<CanvaImportResult, String> {
-    let design_value = api_get(&app, &format!("/designs/{design_id}")).await?;
+/// Starts a Canva export job for `design_id` in the given `format` and polls until it finishes,
+/// returning the design metadata plus every resulting file URL. Shared by the image-preview and
+/// video-export commands below — the job-creation/polling mechanics are identical, only the
+/// `format` body and what's done with the URLs afterward differ.
+async fn start_and_poll_export(
+    app: &AppHandle,
+    design_id: &str,
+    format: Value,
+) -> Result<(CanvaDesign, Vec<String>), String> {
+    let design_value = api_get(app, &format!("/designs/{design_id}")).await?;
     let design = parse_design(&design_value["design"])?;
     let created = api_post(
-        &app,
+        app,
         "/exports",
-        json!({
-            "design_id": design_id,
-            "format": { "type": "png", "lossless": true }
-        }),
+        json!({ "design_id": design_id, "format": format }),
     )
     .await?;
     let job_id = created["job"]["id"]
@@ -411,15 +444,13 @@ pub async fn import_canva_design(
 
     let mut urls = None;
     for _ in 0..120 {
-        let job = api_get(&app, &format!("/exports/{job_id}")).await?;
+        let job = api_get(app, &format!("/exports/{job_id}")).await?;
         match job["job"]["status"].as_str() {
             Some("success") => {
                 urls = Some(
                     job["job"]["urls"]
                         .as_array()
-                        .ok_or_else(|| {
-                            "Canva export completed without any page images.".to_string()
-                        })?
+                        .ok_or_else(|| "Canva export completed without any files.".to_string())?
                         .iter()
                         .filter_map(|url| url.as_str().map(str::to_string))
                         .collect::<Vec<_>>(),
@@ -437,78 +468,260 @@ pub async fn import_canva_design(
     }
     let urls = urls.ok_or_else(|| "Canva took too long to export this design.".to_string())?;
     if urls.is_empty() {
-        return Err("Canva export completed without any page images.".to_string());
+        return Err("Canva export completed without any files.".to_string());
+    }
+    Ok((design, urls))
+}
+
+/// Starts a Canva export job and waits for it to finish, returning each page's (temporary,
+/// presigned) image URL without downloading or writing anything — lets the frontend show a page
+/// picker before committing to actually importing any of them. `import_canva_pages` re-fetches
+/// the design itself rather than trusting a client-supplied copy of it back.
+#[tauri::command]
+pub async fn preview_canva_design_export(
+    app: AppHandle,
+    design_id: String,
+) -> Result<CanvaExportPreview, String> {
+    let (design, urls) =
+        start_and_poll_export(&app, &design_id, json!({ "type": "png", "lossless": true })).await?;
+    Ok(CanvaExportPreview {
+        design,
+        pages: urls
+            .into_iter()
+            .enumerate()
+            .map(|(index, export_url)| CanvaExportedPage {
+                page_number: index + 1,
+                export_url,
+            })
+            .collect(),
+    })
+}
+
+/// Exports the whole design as one MP4 and downloads it to a temp file — deliberately no page
+/// picker for this, unlike the per-page image flow: a video export has no natural "subset," it
+/// either carries the design's real transitions/timing as one file or it doesn't. Omitting
+/// `pages` from the export request exports every page; quality is a fixed 1080p/horizontal
+/// default rather than a picker, since every design this app creates starts at that same 16:9
+/// shape (`create_canva_design`). Requires the job to return exactly one file — Canva only
+/// combines same-dimension pages into a single video, so a design with mismatched page sizes
+/// surfaces as a clear error here instead of silently importing several untracked clips.
+///
+/// Stops short of importing it, unlike `import_canva_pages` for images: a video can be large
+/// enough that which folder it lands in (synced vs. local-only) genuinely matters — put it in
+/// the wrong one and a church computer that didn't make the export might never receive it over
+/// sync — so the operator needs to see the real downloaded size and choose, the same way the
+/// ordinary Import Media dialog already lets them override its own large-file default. This
+/// returns that size plus an opaque `temp_path` (same "handle the frontend hands back at commit
+/// time" pattern as `StagedMediaFile.path`) for `import_canva_video` to actually commit.
+#[tauri::command]
+pub async fn preview_canva_video_export(
+    app: AppHandle,
+    design_id: String,
+) -> Result<CanvaVideoPreview, String> {
+    let (design, urls) = start_and_poll_export(
+        &app,
+        &design_id,
+        json!({ "type": "mp4", "quality": "horizontal_1080p", "export_quality": "regular" }),
+    )
+    .await?;
+    if urls.len() > 1 {
+        return Err(
+            "This design's pages aren't all the same size, so Canva can't combine them into one video."
+                .to_string(),
+        );
     }
 
     let temp_dir = app_data_dir(&app).join("canva-import");
     fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
-    let client = Client::new();
-    let existing_media_by_page: HashMap<usize, String> = existing_pages
-        .into_iter()
-        .map(|page| (page.page_number, page.media_id))
-        .collect();
+    let bytes = Client::new()
+        .get(&urls[0])
+        .send()
+        .await
+        .map_err(|e| format!("Could not download the exported video: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("Could not download the exported video: {e}"))?
+        .bytes()
+        .await
+        .map_err(|e| format!("Could not read the exported video: {e}"))?;
+    let size_bytes = bytes.len() as u64;
+    let temp_path = temp_dir.join(format!("{}.mp4", uuid::Uuid::new_v4()));
+    fs::write(&temp_path, bytes).map_err(|e| e.to_string())?;
+
+    Ok(CanvaVideoPreview {
+        design,
+        temp_path: temp_path.to_string_lossy().to_string(),
+        size_bytes,
+    })
+}
+
+/// Commits an already-downloaded video from `preview_canva_video_export` at the operator's
+/// chosen `location` ("synced" | "local"). Re-fetches the design for its title rather than
+/// trusting a client-supplied copy back, same reasoning as `import_canva_pages`. Only removes
+/// its own `temp_path` on cleanup, not the whole shared `canva-import` temp dir — unlike the
+/// single-shot image/video-preview commands, there can be a real gap (however long the operator
+/// takes to choose synced vs. local) between this file landing on disk and this command running,
+/// during which another in-flight preview's own temp file could exist alongside it.
+#[tauri::command]
+pub async fn import_canva_video(
+    app: AppHandle,
+    design_id: String,
+    temp_path: String,
+    location: String,
+) -> Result<CanvaVideoExportResult, String> {
+    let design_value = api_get(&app, &format!("/designs/{design_id}")).await?;
+    let design = parse_design(&design_value["design"])?;
+
     let root = library_root(&app);
     let local_root = local_media_root(&app);
     let device = this_device_name(&app);
     let imported_at = now_iso();
-    let mut media_items = Vec::new();
-    for (index, url) in urls.iter().enumerate() {
-        let bytes = client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| format!("Could not download Canva page {}: {e}", index + 1))?
-            .error_for_status()
-            .map_err(|e| format!("Could not download Canva page {}: {e}", index + 1))?
-            .bytes()
-            .await
-            .map_err(|e| format!("Could not read Canva page {}: {e}", index + 1))?;
-        let filename = format!("{} - Page {}.png", design.title, index + 1);
-        let temp_path = temp_dir.join(format!("{}-{index}.png", uuid::Uuid::new_v4()));
-        fs::write(&temp_path, bytes).map_err(|e| e.to_string())?;
-        let page_number = index + 1;
-        let title = format!("{} - Page {page_number}", design.title);
-        let description = Some(format!("Imported from Canva design {}", design.id));
-        let tags = vec!["Canva".to_string()];
-        let replaced = match existing_media_by_page.get(&page_number) {
-            Some(media_id) => media::replace_from_file(
-                &root,
-                &local_root,
-                media::MediaReplacement {
-                    id: media_id,
-                    source: &temp_path,
-                    title: title.clone(),
-                    description: description.clone(),
-                    tags: tags.clone(),
-                },
-                &device,
-                &imported_at,
-            )
-            .map_err(|e| e.to_string())?,
-            None => None,
-        };
-        if let Some(item) = replaced {
-            media_items.push(item);
-        } else {
+    let filename = format!("{}.mp4", design.title);
+    let title = design.title.clone();
+    let description = Some(format!("Imported from Canva design {}", design.id));
+    let tags = vec!["Canva".to_string()];
+
+    let existing =
+        media::find_by_canva_video_origin(&root, &design.id).map_err(|e| e.to_string())?;
+    let item = match existing {
+        // Keeps whatever location the existing item already has — same as the per-page image
+        // refresh path, which also never reconsiders location on a later re-import.
+        Some(existing) => media::replace_from_file(
+            &root,
+            &local_root,
+            media::MediaReplacement {
+                id: &existing.id,
+                source: Path::new(&temp_path),
+                title,
+                description,
+                tags,
+            },
+            &device,
+            &imported_at,
+        )
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "The existing media item for this video was removed.".to_string())?,
+        None => {
             let mut created = media::commit_imports(
                 &root,
                 &local_root,
                 vec![MediaImportCommit {
-                    path: temp_path.to_string_lossy().to_string(),
+                    path: temp_path.clone(),
                     filename,
                     title,
                     description,
                     tags,
-                    location: "synced".to_string(),
+                    location,
                     duplicate_of_id: None,
                     id: None,
+                    origin: Some(MediaOrigin::CanvaVideo {
+                        design_id: design.id.clone(),
+                    }),
                 }],
                 &device,
                 &imported_at,
             )
             .map_err(|e| e.to_string())?;
-            media_items.append(&mut created);
+            created
+                .pop()
+                .ok_or_else(|| "Canva export did not create a media record.".to_string())?
         }
+    };
+    manifest::rebuild(&root).map_err(|e| e.to_string())?;
+    let _ = fs::remove_file(&temp_path);
+    Ok(CanvaVideoExportResult {
+        design,
+        media: item,
+    })
+}
+
+/// Downloads and imports only the requested pages (already-exported URLs from
+/// `preview_canva_design_export` — no new export job here). Each page is looked up by its Canva
+/// origin (`media::find_by_canva_origin`) *across the whole media library*, not just whatever
+/// slides the caller happens to know about — so re-importing a page already pulled in via a
+/// different slide presentation, or via the Media Library's own "Import from Canva" entry
+/// point, updates that same MediaItem instead of creating a duplicate, regardless of which UI
+/// triggered either import.
+#[tauri::command]
+pub async fn import_canva_pages(
+    app: AppHandle,
+    design_id: String,
+    pages: Vec<CanvaPageToImport>,
+) -> Result<CanvaImportResult, String> {
+    let design_value = api_get(&app, &format!("/designs/{design_id}")).await?;
+    let design = parse_design(&design_value["design"])?;
+
+    let temp_dir = app_data_dir(&app).join("canva-import");
+    fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
+    let client = Client::new();
+    let root = library_root(&app);
+    let local_root = local_media_root(&app);
+    let device = this_device_name(&app);
+    let imported_at = now_iso();
+    let mut media_items = Vec::new();
+    for page in &pages {
+        let bytes = client
+            .get(&page.export_url)
+            .send()
+            .await
+            .map_err(|e| format!("Could not download Canva page {}: {e}", page.page_number))?
+            .error_for_status()
+            .map_err(|e| format!("Could not download Canva page {}: {e}", page.page_number))?
+            .bytes()
+            .await
+            .map_err(|e| format!("Could not read Canva page {}: {e}", page.page_number))?;
+        let filename = format!("{} - Page {}.png", design.title, page.page_number);
+        let temp_path = temp_dir.join(format!("{}-{}.png", uuid::Uuid::new_v4(), page.page_number));
+        fs::write(&temp_path, bytes).map_err(|e| e.to_string())?;
+        let title = format!("{} - Page {}", design.title, page.page_number);
+        let description = Some(format!("Imported from Canva design {}", design.id));
+        let tags = vec!["Canva".to_string()];
+
+        let existing = media::find_by_canva_origin(&root, &design.id, page.page_number)
+            .map_err(|e| e.to_string())?;
+        let item = match existing {
+            Some(existing) => media::replace_from_file(
+                &root,
+                &local_root,
+                media::MediaReplacement {
+                    id: &existing.id,
+                    source: &temp_path,
+                    title,
+                    description,
+                    tags,
+                },
+                &device,
+                &imported_at,
+            )
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "The existing media item for this page was removed.".to_string())?,
+            None => {
+                let mut created = media::commit_imports(
+                    &root,
+                    &local_root,
+                    vec![MediaImportCommit {
+                        path: temp_path.to_string_lossy().to_string(),
+                        filename,
+                        title,
+                        description,
+                        tags,
+                        location: "synced".to_string(),
+                        duplicate_of_id: None,
+                        id: None,
+                        origin: Some(MediaOrigin::Canva {
+                            design_id: design.id.clone(),
+                            page_number: page.page_number,
+                        }),
+                    }],
+                    &device,
+                    &imported_at,
+                )
+                .map_err(|e| e.to_string())?;
+                created
+                    .pop()
+                    .ok_or_else(|| "Canva import did not create a media record.".to_string())?
+            }
+        };
+        media_items.push((page.page_number, item));
     }
     manifest::rebuild(&root).map_err(|e| e.to_string())?;
     let _ = fs::remove_dir_all(&temp_dir);
@@ -516,11 +729,7 @@ pub async fn import_canva_design(
         design,
         pages: media_items
             .into_iter()
-            .enumerate()
-            .map(|(index, media)| CanvaImportedPage {
-                page_number: index + 1,
-                media,
-            })
+            .map(|(page_number, media)| CanvaImportedPage { page_number, media })
             .collect(),
     })
 }

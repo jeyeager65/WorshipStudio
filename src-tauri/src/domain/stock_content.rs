@@ -126,6 +126,7 @@ pub fn import(
             location: "synced".to_string(),
             duplicate_of_id: None,
             id: Some(background.id.to_string()),
+            origin: None,
         })
         .collect();
     let media_added = to_import.len() as u32;

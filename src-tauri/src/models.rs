@@ -500,6 +500,26 @@ pub struct SlideLibraryItem {
     pub updated_by_device: String,
 }
 
+/// Where a MediaItem's file came from, if not a plain import — currently only Canva, but a real
+/// tagged enum (not `serde_json::Value`, unlike `LibrarySlide.source`) because domain::media
+/// needs to actually query this field (find_by_canva_origin), not just persist it losslessly.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(
+    tag = "type",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
+pub enum MediaOrigin {
+    Canva {
+        design_id: String,
+        page_number: usize,
+    },
+    /// A whole-design MP4 export (find_by_canva_video_origin) — deliberately has no page_number:
+    /// unlike the per-page image case, a video export is never a subset of pages, so there's
+    /// nothing to disambiguate beyond which design it came from.
+    CanvaVideo { design_id: String },
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaItem {
@@ -525,6 +545,8 @@ pub struct MediaItem {
     /// Non-cryptographic content hash (see domain::media::hash_file) used only to notice
     /// accidental duplicate imports, not for integrity/security.
     pub content_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<MediaOrigin>,
     pub usage: Usage,
     pub updated_at: String,
     pub updated_by_device: String,

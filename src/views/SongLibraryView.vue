@@ -27,7 +27,6 @@ const confirmDialog = useConfirmDialogStore()
 const query = ref('')
 const activeCollection = ref<string>()
 const activeTag = ref<string>()
-const importing = ref(false)
 const showArchived = ref(false)
 const selectingSongId = ref<string>()
 
@@ -65,6 +64,11 @@ onMounted(async () => {
 // is currently showing.
 const allSongs = computed(() => store.songs)
 const archivedCount = computed(() => allSongs.value.filter((song) => song.archived).length)
+// The "All Songs" filter's own count — deliberately not visibleSongs.length, which already
+// reflects whichever of the two the operator has selected. This one stays fixed so the sidebar
+// reads the same regardless of which of the two is currently active, same as Media Library's
+// "All Media"/"Images"/"Videos" filter counts.
+const activeSongsCount = computed(() => allSongs.value.filter((song) => !song.archived).length)
 const visibleSongs = computed(() =>
   allSongs.value.filter((song) => !!song.archived === showArchived.value),
 )
@@ -114,13 +118,23 @@ const filteredSongs = computed(() => {
   })
 })
 const activeFilterCount = computed(
-  () => Number(!!activeCollection.value) + Number(!!activeTag.value),
+  () => Number(!!activeCollection.value) + Number(!!activeTag.value) + Number(showArchived.value),
 )
 
 function clearFilters() {
   activeCollection.value = undefined
   activeTag.value = undefined
   query.value = ''
+  showArchived.value = false
+}
+
+// Archived is exclusive with the collection/tag filters, same as "All Songs" — they scope to a
+// different underlying set (visibleSongs), so leaving a collection/tag selected while switching
+// would silently carry over a filter that may not even apply to the new set.
+function toggleArchivedFilter() {
+  showArchived.value = !showArchived.value
+  activeCollection.value = undefined
+  activeTag.value = undefined
 }
 
 // Artist (who this is known for/performed by) is what's actually useful when browsing/picking a
@@ -279,15 +293,6 @@ function finishSelection() {
   const destination = typeof route.query.returnTo === 'string' ? route.query.returnTo : '/'
   router.push(destination)
 }
-
-async function importFromOpenSong() {
-  importing.value = true
-  try {
-    await store.importFromOpenSong()
-  } finally {
-    importing.value = false
-  }
-}
 </script>
 
 <template>
@@ -365,28 +370,6 @@ async function importFromOpenSong() {
             class="song-search"
           />
           <v-btn
-            v-if="!selectionMode"
-            :variant="showArchived ? 'flat' : 'outlined'"
-            :color="showArchived ? 'secondary' : undefined"
-            prepend-icon="mdi-archive-outline"
-            @click="showArchived = !showArchived"
-          >
-            {{ showArchived ? 'Back to Active' : 'Archived' }}
-            <v-chip v-if="archivedCount && !showArchived" size="x-small" class="ml-2">{{
-              archivedCount
-            }}</v-chip>
-          </v-btn>
-          <v-btn
-            v-if="!selectionMode && !showArchived"
-            variant="outlined"
-            color="secondary"
-            prepend-icon="mdi-file-import"
-            :loading="importing"
-            @click="importFromOpenSong"
-          >
-            Import OpenSong
-          </v-btn>
-          <v-btn
             v-if="!selectionMode && !showArchived"
             variant="flat"
             color="primary"
@@ -399,18 +382,32 @@ async function importFromOpenSong() {
 
       <div
         class="songs-directory-body"
-        :class="{ 'songs-directory-body--empty': visibleSongs.length === 0 }"
+        :class="{ 'songs-directory-body--empty': allSongs.length === 0 }"
       >
-        <aside v-if="visibleSongs.length" class="song-filters" aria-label="Filter songs">
+        <!-- Gated on allSongs, not visibleSongs — a library that's all-archived (or, before any
+             songs exist yet, all-active-and-empty) still needs the Archived filter reachable,
+             not hidden along with the rest of the sidebar just because the *current* mode has
+             nothing to show. -->
+        <aside v-if="allSongs.length" class="song-filters" aria-label="Filter songs">
           <button
             type="button"
             class="song-filter song-filter--all"
-            :class="{ 'song-filter--active': !activeCollection && !activeTag }"
+            :class="{ 'song-filter--active': !activeCollection && !activeTag && !showArchived }"
             @click="clearFilters"
           >
             <span class="song-filter-icon"><v-icon icon="mdi-music-note" size="18" /></span>
             <span>All Songs</span>
-            <strong>{{ visibleSongs.length }}</strong>
+            <strong>{{ activeSongsCount }}</strong>
+          </button>
+          <button
+            type="button"
+            class="song-filter song-filter--archived"
+            :class="{ 'song-filter--active': showArchived }"
+            @click="toggleArchivedFilter"
+          >
+            <span class="song-filter-icon"><v-icon icon="mdi-archive-outline" size="17" /></span>
+            <span>Archived</span>
+            <strong>{{ archivedCount }}</strong>
           </button>
 
           <div class="filter-section">
@@ -471,15 +468,8 @@ async function importFromOpenSong() {
             v-if="store.loaded && allSongs.length === 0"
             icon="mdi-music-note-plus"
             title="No Songs Yet"
-            message="Create a song or import an existing OpenSong library."
+            message="Create a song, or import an existing OpenSong library from Settings → Library & Sync."
           >
-              <v-btn
-                variant="outlined"
-                color="secondary"
-                prepend-icon="mdi-file-import"
-                @click="importFromOpenSong"
-                >Import OpenSong</v-btn
-              >
               <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSong"
                 >New Song</v-btn
               >

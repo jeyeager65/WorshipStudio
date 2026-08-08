@@ -244,7 +244,6 @@ async function saveSettings() {
       <section v-for="group in groupedSections" :key="group.name" class="settings-nav-group">
         <div class="settings-nav-group-heading">
           <span>{{ group.name }}</span>
-          <small>{{ group.items.length }}</small>
         </div>
         <v-list density="compact" nav class="settings-nav-list">
           <v-list-item
@@ -390,25 +389,12 @@ async function saveSettings() {
   margin-top: 17px;
 }
 .settings-nav-group-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   margin: 0 9px 5px;
   color: rgba(var(--v-theme-on-surface), 0.43);
   font-size: 0.61rem;
   font-weight: 720;
   letter-spacing: 0.075em;
   text-transform: uppercase;
-}
-.settings-nav-group-heading small {
-  display: grid;
-  min-width: 19px;
-  height: 19px;
-  place-items: center;
-  border-radius: 999px;
-  background: rgba(var(--v-theme-on-surface), 0.055);
-  font-size: 0.57rem;
-  letter-spacing: 0;
 }
 .settings-nav-list {
   padding: 0;

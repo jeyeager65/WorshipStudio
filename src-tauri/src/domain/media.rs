@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::models::{MediaItem, Usage};
+use crate::models::{MediaItem, MediaOrigin, Usage};
 
 use super::{delete_file_if_exists, read_json_dir, read_json_file, write_json_file};
 
@@ -64,6 +64,38 @@ pub fn file_path(root: &Path, local_media_root: &Path, item: &MediaItem) -> Path
 
 pub fn get(root: &Path, id: &str) -> std::io::Result<Option<MediaItem>> {
     Ok(read_json_file(&media_item_path(root, id))?.map(normalize_title))
+}
+
+/// Finds the MediaItem already carrying this Canva design/page as its origin, if any — lets a
+/// re-import (from the Slide Editor, the Media Library, or a different slide presentation
+/// entirely) update the same item in place instead of creating a duplicate, regardless of which
+/// UI triggered the original import.
+pub fn find_by_canva_origin(
+    root: &Path,
+    design_id: &str,
+    page_number: usize,
+) -> std::io::Result<Option<MediaItem>> {
+    Ok(list(root)?.into_iter().find(|item| {
+        matches!(
+            &item.origin,
+            Some(MediaOrigin::Canva { design_id: d, page_number: p })
+                if d == design_id && *p == page_number
+        )
+    }))
+}
+
+/// Same idea as `find_by_canva_origin`, for the whole-design video export instead of a single
+/// page — re-exporting the video for a design already imported updates that same MediaItem.
+pub fn find_by_canva_video_origin(
+    root: &Path,
+    design_id: &str,
+) -> std::io::Result<Option<MediaItem>> {
+    Ok(list(root)?.into_iter().find(|item| {
+        matches!(
+            &item.origin,
+            Some(MediaOrigin::CanvaVideo { design_id: d }) if d == design_id
+        )
+    }))
 }
 
 pub fn save(
@@ -212,6 +244,11 @@ pub struct MediaImportCommit {
     /// stays idempotent (check-then-skip against a known id) rather than creating duplicates.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    /// Set only by the Canva import command, on the newly-created record for a page with no
+    /// prior MediaItem — see `find_by_canva_origin`. Never set by the ordinary Import Media
+    /// dialog's commit path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<MediaOrigin>,
 }
 
 fn unique_filename(dir: &Path, filename: &str) -> String {
@@ -279,6 +316,7 @@ pub fn commit_imports(
             location: file.location,
             duplicate_of_id: file.duplicate_of_id,
             content_hash,
+            origin: file.origin,
             usage: Usage {
                 last_used_at: None,
                 uses_past_year: 0,
@@ -317,6 +355,7 @@ mod tests {
             location: location.to_string(),
             duplicate_of_id: None,
             content_hash: content_hash.to_string(),
+            origin: None,
             usage: Usage {
                 last_used_at: None,
                 uses_past_year: 0,
@@ -479,6 +518,7 @@ mod tests {
                 location: "synced".to_string(),
                 duplicate_of_id: None,
                 id: None,
+                origin: None,
             }],
             "d",
             "now",
@@ -518,6 +558,7 @@ mod tests {
                 location: "local".to_string(),
                 duplicate_of_id: None,
                 id: None,
+                origin: None,
             }],
             "d",
             "now",
@@ -550,6 +591,7 @@ mod tests {
             location: "synced".to_string(),
             duplicate_of_id: None,
             id: None,
+            origin: None,
         };
 
         commit_imports(
@@ -596,6 +638,7 @@ mod tests {
                 location: "synced".to_string(),
                 duplicate_of_id: None,
                 id: None,
+                origin: None,
             }],
             "d",
             "now",
@@ -637,6 +680,75 @@ mod tests {
         let duplicates = detect_duplicates(dir.path(), &a).unwrap();
         assert_eq!(duplicates.len(), 1);
         assert_eq!(duplicates[0].id, "media-b");
+    }
+
+    #[test]
+    fn find_by_canva_origin_matches_the_same_design_and_page_regardless_of_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut page_one = sample("media-a", "a.png", "synced", "hash-a");
+        page_one.origin = Some(MediaOrigin::Canva {
+            design_id: "DESIGN1".to_string(),
+            page_number: 1,
+        });
+        let mut page_two = sample("media-b", "b.png", "synced", "hash-b");
+        page_two.origin = Some(MediaOrigin::Canva {
+            design_id: "DESIGN1".to_string(),
+            page_number: 2,
+        });
+        let mut other_design = sample("media-c", "c.png", "synced", "hash-c");
+        other_design.origin = Some(MediaOrigin::Canva {
+            design_id: "DESIGN2".to_string(),
+            page_number: 1,
+        });
+        save(dir.path(), page_one, "d", "now").unwrap();
+        save(dir.path(), page_two, "d", "now").unwrap();
+        save(dir.path(), other_design, "d", "now").unwrap();
+
+        let found = find_by_canva_origin(dir.path(), "DESIGN1", 2).unwrap();
+        assert_eq!(found.unwrap().id, "media-b");
+    }
+
+    #[test]
+    fn find_by_canva_origin_ignores_plain_imports_and_unmatched_pages() {
+        let dir = tempfile::tempdir().unwrap();
+        save(
+            dir.path(),
+            sample("media-plain", "plain.jpg", "synced", "hash"),
+            "d",
+            "now",
+        )
+        .unwrap();
+
+        assert!(find_by_canva_origin(dir.path(), "DESIGN1", 1)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn find_by_canva_video_origin_matches_the_design_and_ignores_page_scoped_origins() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut video = sample("media-video", "video.mp4", "synced", "hash-video");
+        video.origin = Some(MediaOrigin::CanvaVideo {
+            design_id: "DESIGN1".to_string(),
+        });
+        let mut page = sample("media-page", "page.png", "synced", "hash-page");
+        page.origin = Some(MediaOrigin::Canva {
+            design_id: "DESIGN1".to_string(),
+            page_number: 1,
+        });
+        let mut other_design_video = sample("media-video-2", "video2.mp4", "synced", "hash-2");
+        other_design_video.origin = Some(MediaOrigin::CanvaVideo {
+            design_id: "DESIGN2".to_string(),
+        });
+        save(dir.path(), video, "d", "now").unwrap();
+        save(dir.path(), page, "d", "now").unwrap();
+        save(dir.path(), other_design_video, "d", "now").unwrap();
+
+        let found = find_by_canva_video_origin(dir.path(), "DESIGN1").unwrap();
+        assert_eq!(found.unwrap().id, "media-video");
+        assert!(find_by_canva_video_origin(dir.path(), "DESIGN3")
+            .unwrap()
+            .is_none());
     }
 
     #[test]
@@ -686,6 +798,7 @@ mod tests {
                 location: "synced".to_string(),
                 duplicate_of_id: None,
                 id: None,
+                origin: None,
             }],
             "d",
             "now",

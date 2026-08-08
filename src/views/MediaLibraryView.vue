@@ -6,15 +6,27 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import LibraryEmptyState from '@/components/LibraryEmptyState.vue'
 import ImportMediaDialog from '@/components/media/ImportMediaDialog.vue'
+import CanvaImportDialog from '@/components/canva/CanvaImportDialog.vue'
 import type { MediaItem } from '@/models/library'
 
 const store = useMediaStore()
 const confirmDialog = useConfirmDialogStore()
 
+// Tauri-only, same optional-port pattern as DiagnosticsPort.openLogsFolder — no browser/mock
+// equivalent, so the button simply doesn't render there rather than opening a dialog that can
+// only fail.
+const canvaAvailable = !!getAdapter().canva
+
 const query = ref('')
 const typeFilter = ref<'all' | 'image' | 'video'>('all')
 const activeTag = ref<string>()
 const importDialogOpen = ref(false)
+const canvaImportOpen = ref(false)
+// Set only when opening the Canva dialog to refresh a specific already-imported item (from the
+// media-details popup below) — left undefined for the toolbar's own "Import from Canva", which
+// should always start at the design list.
+const canvaRefreshDesignId = ref<string>()
+const canvaRefreshMode = ref<'pages' | 'video'>('pages')
 const editingItem = ref<MediaItem>()
 const editTitleInput = ref('')
 const editDescriptionInput = ref('')
@@ -146,6 +158,19 @@ async function deleteEditingItem() {
   if (item && (await deleteItem(item))) editingItem.value = undefined
 }
 
+function refreshFromCanva(item: MediaItem) {
+  if (!item.origin) return
+  canvaRefreshDesignId.value = item.origin.designId
+  canvaRefreshMode.value = item.origin.type === 'canva-video' ? 'video' : 'pages'
+  editingItem.value = undefined
+  canvaImportOpen.value = true
+}
+
+function openCanvaImport() {
+  canvaRefreshDesignId.value = undefined
+  canvaImportOpen.value = true
+}
+
 async function saveEdits() {
   if (!editingItem.value || editTitleInvalid.value) return
   await store.save({
@@ -228,6 +253,13 @@ async function saveEdits() {
             prepend-icon="mdi-plus"
             @click="importDialogOpen = true"
             >Import Media</v-btn
+          >
+          <v-btn
+            v-if="canvaAvailable"
+            variant="tonal"
+            prepend-icon="mdi-palette-outline"
+            @click="openCanvaImport"
+            >Import from Canva</v-btn
           >
         </div>
       </div>
@@ -440,6 +472,14 @@ async function saveEdits() {
     </section>
 
     <ImportMediaDialog v-model="importDialogOpen" @imported="store.load()" />
+    <CanvaImportDialog
+      v-model="canvaImportOpen"
+      allow-video-export
+      :initial-design-id="canvaRefreshDesignId"
+      :initial-mode="canvaRefreshMode"
+      @imported="() => store.load()"
+      @video-imported="() => store.load()"
+    />
 
     <v-dialog
       :model-value="!!editingItem"
@@ -561,6 +601,14 @@ async function saveEdits() {
             prepend-icon="mdi-trash-can-outline"
             @click="deleteEditingItem"
             >Delete Media</v-btn
+          >
+          <v-btn
+            v-if="canvaAvailable && editingItem.origin"
+            variant="text"
+            color="primary"
+            prepend-icon="mdi-cloud-refresh-outline"
+            @click="refreshFromCanva(editingItem)"
+            >Refresh from Canva</v-btn
           >
           <v-spacer />
           <v-btn variant="outlined" @click="editingItem = undefined">Cancel</v-btn>

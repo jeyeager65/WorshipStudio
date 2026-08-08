@@ -47,6 +47,22 @@ const dataCleared = ref(false)
 const addingStockBackgrounds = ref(false)
 const stockBackgroundsAdded = ref<{ mediaAdded: number; themesAdded: number }>()
 const stockBackgroundsError = ref('')
+const importingOpenSong = ref(false)
+const openSongImportedCount = ref<number>()
+
+// Moved here from the Song Library page itself — this is a one-time (or occasional) bulk
+// library action, same category as Load Sample Data/Add Stock Backgrounds, not something that
+// needs its own permanent toolbar button on the page operators use every week.
+async function importOpenSong() {
+  importingOpenSong.value = true
+  openSongImportedCount.value = undefined
+  try {
+    const imported = await songsStore.importFromOpenSong()
+    openSongImportedCount.value = imported.length
+  } finally {
+    importingOpenSong.value = false
+  }
+}
 
 // Non-destructive and re-runnable any time — unlike Load Sample Data/Clear Existing Data,
 // this only ever adds whichever of the 6 stock images/2 starter themes aren't already present
@@ -287,7 +303,7 @@ async function pickLibraryFolder() {
     icon="mdi-database-cog-outline"
     tone="danger"
   >
-    <div class="d-flex flex-wrap ga-2">
+    <div class="data-tools-group">
       <v-btn
         variant="outlined"
         color="primary"
@@ -306,6 +322,18 @@ async function pickLibraryFolder() {
       >
         Add Stock Backgrounds
       </v-btn>
+      <v-btn
+        variant="outlined"
+        color="primary"
+        prepend-icon="mdi-file-import"
+        :loading="importingOpenSong"
+        @click="importOpenSong"
+      >
+        Import OpenSong
+      </v-btn>
+    </div>
+    <v-divider class="my-4" />
+    <div class="data-tools-group">
       <v-btn
         variant="outlined"
         color="error"
@@ -328,6 +356,10 @@ async function pickLibraryFolder() {
       }}
       added (already-present ones were skipped).
     </div>
+    <div v-if="openSongImportedCount !== undefined" class="text-caption text-medium-emphasis mt-2">
+      {{ openSongImportedCount }} song{{ openSongImportedCount === 1 ? '' : 's' }} imported from
+      OpenSong.
+    </div>
     <v-alert
       v-if="stockBackgroundsError"
       type="error"
@@ -348,6 +380,11 @@ async function pickLibraryFolder() {
 </template>
 
 <style scoped>
+.data-tools-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .path-setting {
   display: grid;
   max-width: 760px;
