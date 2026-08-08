@@ -61,6 +61,15 @@ jobs:
 
       - run: pnpm build:remote
 
+      # Same story as build:remote above, for a second RustEmbed target: lib.rs's HelpAssets
+      # embeds the built VitePress help site from src-tauri/resources/help/ (also gitignored,
+      # also produced by a pnpm script tauri.conf.json's beforeDevCommand/beforeBuildCommand
+      # already run — just not on this job's own fresh checkout). Missing this doesn't fail
+      # fmt/clippy the way a real formatting/lint issue would — it fails to compile the crate
+      # at all, so every cargo step below reports as a clippy/test failure with no obvious
+      # connection to the actual cause.
+      - run: pnpm docs:build
+
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
