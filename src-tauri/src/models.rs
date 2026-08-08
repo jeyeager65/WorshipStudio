@@ -104,7 +104,11 @@ pub struct SermonPassage {
 /// One ordered, presentable step after a sermon's main passage. It refers to the canonical
 /// passage or outline record instead of copying its scripture/display or slide content.
 #[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(tag = "type", rename_all = "kebab-case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
 pub enum SermonFlowItem {
     Passage { passage_id: String },
     Outline { outline_id: String },
