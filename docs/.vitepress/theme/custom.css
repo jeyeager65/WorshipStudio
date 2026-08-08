@@ -83,9 +83,12 @@
    * instead, leaving color to the nav icons/selection state. Mirrored here: VitePress's own nav
    * bar and sidebar default to two *different* vars (--vp-c-bg and --vp-c-bg-alt respectively,
    * both plain content-area tones), so both are pointed at --vp-c-bg-elv (this file's
-   * surface-variant stand-in) explicitly rather than left on their defaults. Dark mode isn't
-   * touched here — App.vue's own dark chrome already reused one shared color (`surface`)
-   * without needing this kind of override, and this site's .dark block already mirrors that. */
+   * surface-variant stand-in) explicitly rather than left on their defaults.
+   *
+   * Light mode only, deliberately: `:root` still matches `<html class="dark">` (it's just "the
+   * root element," dark or not), so without the `.dark` overrides below these two would leak
+   * into dark mode too — confirmed live, it made the top nav strip a visibly lighter band than
+   * the page content behind it, which wasn't wanted there. */
   --vp-nav-bg-color: var(--vp-c-bg-elv);
   --vp-sidebar-bg-color: var(--vp-c-bg-elv);
 }
@@ -100,4 +103,12 @@
   --vp-c-brand-2: #4c7fe8;
   --vp-c-brand-3: #3d66ba;
   --vp-c-brand-soft: rgba(76, 127, 232, 0.16);
+
+  /* Undo the :root block's nav/sidebar override above for dark mode, back to VitePress's own
+   * stock behavior: nav bar matches the page (no separate band), sidebar gets --vp-c-bg-alt
+   * (this file's `surface` stand-in) — which happens to already match how App.vue's own dark
+   * chrome looks (`.app-nav`/`.app-bar` both use the theme's `surface` token there too), so no
+   * further tuning needed for this mode. */
+  --vp-nav-bg-color: var(--vp-c-bg);
+  --vp-sidebar-bg-color: var(--vp-c-bg-alt);
 }

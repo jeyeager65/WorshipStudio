@@ -149,10 +149,20 @@ function handleSaveShortcut(event: KeyboardEvent) {
 // back to the help site's own homepage for the rare route that doesn't have one yet.
 const helpTopic = computed(() => route.meta.helpTopic ?? 'index')
 function openHelp() {
-  if (!hasDesktopBackend) return
-  getAdapter()
-    .help.open?.(helpTopic.value)
-    .catch((error) => console.error('Failed to open help window:', error))
+  const [slug, anchor] = helpTopic.value.split('#')
+  if (hasDesktopBackend) {
+    getAdapter()
+      .help.open?.(helpTopic.value)
+      .catch((error) => console.error('Failed to open help window:', error))
+    return
+  }
+  // No native help window in the browser build — the help site isn't bundled here the way it
+  // is in the Tauri app. On the real GitHub Pages deploy the demo is served one level under the
+  // help site's own root (see release.yml's deploy-demo job), so a relative `../<topic>.html`
+  // reaches it correctly in a new tab; in plain local `pnpm dev` there's no sibling help build
+  // to reach at all, so this just 404s there (same accepted gap as the help site's own "Try the
+  // Web Demo" button, which only resolves for real once actually deployed).
+  window.open(`../${slug}.html${anchor ? `#${anchor}` : ''}`, '_blank', 'noopener')
 }
 function handleHelpShortcut(event: KeyboardEvent) {
   if (event.key !== 'F1') return
@@ -603,7 +613,6 @@ onUnmounted(() => {
         </v-btn>
       </template>
       <v-btn
-        v-if="hasDesktopBackend"
         icon="mdi-help-circle-outline"
         variant="text"
         size="small"
