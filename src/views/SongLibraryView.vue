@@ -10,6 +10,12 @@ import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import LibraryEmptyState from '@/components/LibraryEmptyState.vue'
 import type { Song } from '@/models/song'
 import type { ServiceItem } from '@/models/service'
+import {
+  compactPlanningSongSlots,
+  emptyPlanningSongSlot,
+  fillPlanningSongSlot,
+  isPlanningSongSlot,
+} from '@/utils/planningSongs'
 
 const router = useRouter()
 const route = useRoute()
@@ -206,9 +212,32 @@ async function togglePlanSong(song: Song) {
   selectingSongId.value = song.id
   try {
     const alreadySelected = selectedSongIds.value.has(song.id)
-    const items: ServiceItem[] = alreadySelected
-      ? service.items.filter((item) => item.type !== 'song' || item.songId !== song.id)
-      : [...service.items, { id: `item-${crypto.randomUUID()}`, type: 'song', songId: song.id, arrangement: { sequence: [...song.defaultArrangement.sequence] } }]
+    let items: ServiceItem[]
+    if (alreadySelected) {
+      items = compactPlanningSongSlots(
+        service.items.map((item) =>
+          item.type === 'song' && item.songId === song.id ? emptyPlanningSongSlot(item) : item,
+        ),
+      )
+    } else {
+      const openSlotIndex = service.items.findIndex(
+        (item) => isPlanningSongSlot(item) && item.type === 'placeholder',
+      )
+      if (openSlotIndex === -1) {
+        items = [
+          ...service.items,
+          {
+            id: `item-${crypto.randomUUID()}`,
+            type: 'song',
+            songId: song.id,
+            arrangement: { sequence: [...song.defaultArrangement.sequence] },
+          },
+        ]
+      } else {
+        items = [...service.items]
+        items[openSlotIndex] = fillPlanningSongSlot(items[openSlotIndex]!, song)
+      }
+    }
     await servicesStore.save({ ...service, items })
   } finally {
     selectingSongId.value = undefined
@@ -247,7 +276,7 @@ function handleSongCard(song: Song) {
 }
 
 function finishSelection() {
-  const destination = typeof route.query.returnTo === 'string' ? route.query.returnTo : '/planning-ahead'
+  const destination = typeof route.query.returnTo === 'string' ? route.query.returnTo : '/'
   router.push(destination)
 }
 

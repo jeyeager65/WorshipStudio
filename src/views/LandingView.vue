@@ -40,7 +40,8 @@ function preacherName(service: Service): string | undefined {
   return person ? personFormalName(person) : undefined
 }
 
-const tab = ref<'home' | 'browse'>('home')
+const tab = ref<'home' | 'planning' | 'browse'>('home')
+const browseScope = ref<'recent' | 'all'>('recent')
 const browseQuery = ref('')
 const browseType = ref<string | null>(null)
 const browsePreacher = ref<string | null>(null)
@@ -61,7 +62,31 @@ const allUpcomingServices = computed(() =>
     .filter((service) => service.date > todayIso())
     .sort((a, b) => serviceDateTimeSortKey(a).localeCompare(serviceDateTimeSortKey(b))),
 )
-const upcomingServices = computed(() => allUpcomingServices.value.slice(0, 5))
+const scheduleEndIso = computed(() => {
+  const end = new Date(`${todayIso()}T12:00:00`)
+  end.setDate(end.getDate() + 14)
+  return localCalendarDate(end)
+})
+const upcomingServices = computed(() =>
+  allUpcomingServices.value.filter((service) => service.date <= scheduleEndIso.value),
+)
+const futureServiceGroups = computed(() => {
+  const groups = new Map<string, Service[]>()
+  for (const service of allUpcomingServices.value) {
+    const key = service.date.slice(0, 7)
+    const services = groups.get(key) ?? []
+    services.push(service)
+    groups.set(key, services)
+  }
+  return [...groups.entries()].map(([key, services]) => ({
+    key,
+    label: new Date(`${key}-01T00:00:00`).toLocaleDateString(undefined, {
+      month: 'long',
+      year: 'numeric',
+    }),
+    services,
+  }))
+})
 
 const pastServices = computed(() =>
   visibleServices.value
@@ -92,6 +117,15 @@ function serviceBibleBooks(service: Service): string[] {
   ]
 }
 
+const allBrowseServices = computed(() =>
+  [...visibleServices.value].sort((a, b) =>
+    serviceDateTimeSortKey(b).localeCompare(serviceDateTimeSortKey(a)),
+  ),
+)
+const recentServices = computed(() => pastServices.value.slice(0, 10))
+const browseScopeServices = computed(() =>
+  browseScope.value === 'recent' ? recentServices.value : allBrowseServices.value,
+)
 const serviceTypeOptions = computed(() =>
   [...new Set(visibleServices.value.map((service) => service.type))].sort(),
 )
@@ -107,11 +141,13 @@ const preacherOptions = computed(() =>
 const bibleBookOptions = computed(() =>
   [...new Set(visibleServices.value.flatMap(serviceBibleBooks))].sort(),
 )
-const hasBrowseFilters = computed(
+const hasBrowseCriteria = computed(
   () => !!(browseQuery.value || browseType.value || browsePreacher.value || browseBibleBook.value),
 )
+const hasBrowseFilters = computed(() => browseScope.value !== 'recent' || hasBrowseCriteria.value)
 
 function clearBrowseFilters() {
+  browseScope.value = 'recent'
   browseQuery.value = ''
   browseType.value = null
   browsePreacher.value = null
@@ -122,10 +158,7 @@ const browseResults = computed(() => {
   // Vuetify's clearable button sets the model to null, not '' — clearing without this guard
   // throws mid-computed (.trim() on null), which is what silently broke the clear button.
   const query = (browseQuery.value ?? '').trim().toLowerCase()
-  const candidates = hasBrowseFilters.value
-    ? visibleServices.value
-    : pastServices.value.slice(0, 10)
-  return candidates.filter((service) => {
+  return browseScopeServices.value.filter((service) => {
     if (browseType.value && service.type !== browseType.value) return false
     if (browsePreacher.value && preacherName(service) !== browsePreacher.value) return false
     if (browseBibleBook.value && !serviceBibleBooks(service).includes(browseBibleBook.value))
@@ -151,8 +184,8 @@ const browseResults = computed(() => {
         <div class="page-eyebrow">Service Planning</div>
         <h1>Services</h1>
         <p>
-          Prepare upcoming worship services, review past plans, and open today’s presentation
-          workspace.
+          Prepare upcoming worship services, review past plans, and open today’s service for
+          presentation.
         </p>
       </div>
       <div class="hero-side">
@@ -175,18 +208,27 @@ const browseResults = computed(() => {
     <section class="services-directory">
       <div class="services-toolbar">
         <div class="directory-title">
-          <h2>{{ tab === 'home' ? 'Service Schedule' : 'Browse Services' }}</h2>
+          <h2>
+            {{
+              tab === 'home'
+                ? 'Service Schedule'
+                : tab === 'planning'
+                  ? 'Plan Ahead'
+                  : 'Browse Services'
+            }}
+          </h2>
           <p>
             {{
               tab === 'home'
-                ? 'Today and the next services on your calendar'
-                : 'Search current and previous service plans'
+                ? 'Today and services within the next two weeks'
+                : tab === 'planning'
+                  ? 'Plan every future service on your calendar'
+                  : 'Search current and previous service plans'
             }}
           </p>
         </div>
-        <div class="toolbar-actions">
+        <div v-if="tab === 'browse'" class="toolbar-actions">
           <v-text-field
-            v-if="tab === 'browse'"
             v-model="browseQuery"
             prepend-inner-icon="mdi-magnify"
             placeholder="Search service, sermon, passage, or preacher"
@@ -197,19 +239,12 @@ const browseResults = computed(() => {
             clearable
             class="service-search"
           />
-          <v-btn
-            variant="tonal"
-            color="primary"
-            prepend-icon="mdi-calendar-month-outline"
-            to="/planning-ahead"
-          >
-            Planning Ahead
-          </v-btn>
         </div>
       </div>
 
       <v-tabs v-model="tab" class="service-tabs">
         <v-tab value="home" prepend-icon="mdi-calendar-today-outline">Schedule</v-tab>
+        <v-tab value="planning" prepend-icon="mdi-calendar-clock-outline">Plan Ahead</v-tab>
         <v-tab value="browse" prepend-icon="mdi-archive-search-outline">Browse</v-tab>
       </v-tabs>
 
@@ -258,9 +293,9 @@ const browseResults = computed(() => {
             <div class="group-heading">
               <div>
                 <span class="group-kicker">Coming Up</span>
-                <h3>Upcoming Services</h3>
+                <h3>Next Two Weeks</h3>
               </div>
-              <span class="group-count">{{ allUpcomingServices.length }} scheduled</span>
+              <span class="group-count">{{ upcomingServices.length }} within two weeks</span>
             </div>
             <div v-if="upcomingServices.length" class="service-list">
               <ServiceCard
@@ -274,22 +309,74 @@ const browseResults = computed(() => {
             <div v-else class="services-empty">
               <span><v-icon icon="mdi-calendar-plus-outline" size="29" /></span>
               <div>
-                <h3>No Upcoming Services</h3>
-                <p>Create a service to begin planning your next gathering.</p>
+                <h3>No Services in the Next Two Weeks</h3>
+                <p v-if="allUpcomingServices.length">
+                  Your later services are available under Plan Ahead.
+                </p>
+                <p v-else>Create a service to begin planning your next gathering.</p>
               </div>
-              <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" to="/create-service"
+              <v-btn
+                v-if="allUpcomingServices.length"
+                color="primary"
+                variant="tonal"
+                prepend-icon="mdi-calendar-clock-outline"
+                @click="tab = 'planning'"
+                >Plan Ahead</v-btn
+              >
+              <v-btn
+                v-else
+                color="primary"
+                variant="tonal"
+                prepend-icon="mdi-plus"
+                to="/create-service"
                 >Create Service</v-btn
               >
             </div>
           </section>
         </div>
 
-        <div v-else-if="store.loaded" class="browse-layout">
+        <div v-else-if="store.loaded && tab === 'planning'">
+          <template v-if="futureServiceGroups.length">
+            <section v-for="group in futureServiceGroups" :key="group.key" class="service-group">
+              <div class="group-heading">
+                <div>
+                  <span class="group-kicker">Future Services</span>
+                  <h3>{{ group.label }}</h3>
+                </div>
+                <span class="group-count"
+                  >{{ group.services.length }}
+                  {{ group.services.length === 1 ? 'service' : 'services' }}</span
+                >
+              </div>
+              <div class="service-list">
+                <ServiceCard
+                  v-for="service in group.services"
+                  :key="service.id"
+                  :service="service"
+                  :preacher-name="preacherName(service)"
+                  @delete="deleteService(service)"
+                />
+              </div>
+            </section>
+          </template>
+          <div v-else class="services-empty">
+            <span><v-icon icon="mdi-calendar-check-outline" size="29" /></span>
+            <div>
+              <h3>No Future Services Yet</h3>
+              <p>Create a service to begin planning an upcoming gathering.</p>
+            </div>
+            <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" to="/create-service"
+              >Create Service</v-btn
+            >
+          </div>
+        </div>
+
+        <div v-else-if="store.loaded && tab === 'browse'" class="browse-layout">
           <aside class="browse-filters" aria-label="Filter services">
             <div class="filter-header">
               <div>
                 <span>Filters</span>
-                <small>Narrow the service history</small>
+                <small>Choose a range, then narrow the results</small>
               </div>
               <v-btn
                 v-if="hasBrowseFilters"
@@ -302,6 +389,29 @@ const browseResults = computed(() => {
             </div>
             <div class="filter-fields">
               <div class="filter-field">
+                <label><v-icon icon="mdi-calendar-range" size="17" />Services Shown</label>
+                <div class="visible-filter-options">
+                  <button
+                    type="button"
+                    class="visible-filter-option"
+                    :class="{ 'visible-filter-option--active': browseScope === 'recent' }"
+                    :aria-pressed="browseScope === 'recent'"
+                    @click="browseScope = 'recent'"
+                  >
+                    <span>Recent Services</span><strong>{{ recentServices.length }}</strong>
+                  </button>
+                  <button
+                    type="button"
+                    class="visible-filter-option"
+                    :class="{ 'visible-filter-option--active': browseScope === 'all' }"
+                    :aria-pressed="browseScope === 'all'"
+                    @click="browseScope = 'all'"
+                  >
+                    <span>All Services</span><strong>{{ visibleServices.length }}</strong>
+                  </button>
+                </div>
+              </div>
+              <div class="filter-field">
                 <label><v-icon icon="mdi-church-outline" size="17" />Service Type</label>
                 <div class="visible-filter-options">
                   <button
@@ -311,7 +421,7 @@ const browseResults = computed(() => {
                     :aria-pressed="browseType === null"
                     @click="browseType = null"
                   >
-                    <span>All Types</span><strong>{{ visibleServices.length }}</strong>
+                    <span>All Types</span><strong>{{ browseScopeServices.length }}</strong>
                   </button>
                   <button
                     v-for="type in serviceTypeOptions"
@@ -324,7 +434,7 @@ const browseResults = computed(() => {
                   >
                     <span>{{ type }}</span>
                     <strong>{{
-                      visibleServices.filter((service) => service.type === type).length
+                      browseScopeServices.filter((service) => service.type === type).length
                     }}</strong>
                   </button>
                 </div>
@@ -341,7 +451,7 @@ const browseResults = computed(() => {
                   >
                     <span>All Preachers</span
                     ><strong>{{
-                      visibleServices.filter((service) => !!preacherName(service)).length
+                      browseScopeServices.filter((service) => !!preacherName(service)).length
                     }}</strong>
                   </button>
                   <button
@@ -355,7 +465,8 @@ const browseResults = computed(() => {
                   >
                     <span>{{ preacher }}</span>
                     <strong>{{
-                      visibleServices.filter((service) => preacherName(service) === preacher).length
+                      browseScopeServices.filter((service) => preacherName(service) === preacher)
+                        .length
                     }}</strong>
                   </button>
                 </div>
@@ -389,9 +500,21 @@ const browseResults = computed(() => {
             <div class="group-heading">
               <div>
                 <span class="group-kicker">{{
-                  hasBrowseFilters ? 'Filtered Results' : 'History'
+                  hasBrowseCriteria
+                    ? 'Filtered Results'
+                    : browseScope === 'all'
+                      ? 'Complete Directory'
+                      : 'History'
                 }}</span>
-                <h3>{{ hasBrowseFilters ? 'Matching Services' : 'Recent Services' }}</h3>
+                <h3>
+                  {{
+                    hasBrowseCriteria
+                      ? 'Matching Services'
+                      : browseScope === 'all'
+                        ? 'All Services'
+                        : 'Recent Services'
+                  }}
+                </h3>
               </div>
               <span class="group-count"
                 >{{ browseResults.length }}

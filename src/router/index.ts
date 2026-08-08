@@ -164,14 +164,14 @@ const router = createRouter({
       component: () => import('@/views/PlanningReportView.vue'),
     },
     {
-      path: '/planning-ahead',
-      name: 'planning-ahead',
-      component: () => import('@/views/PlanningAheadView.vue'),
-    },
-    {
-      path: '/planning-ahead/:serviceId',
+      path: '/service/:id/plan',
       name: 'service-plan',
       component: () => import('@/views/ServicePlanView.vue'),
+    },
+    { path: '/planning-ahead', redirect: '/' },
+    {
+      path: '/planning-ahead/:serviceId',
+      redirect: (to) => ({ name: 'service-plan', params: { id: to.params.serviceId as string } }),
     },
   ],
 })

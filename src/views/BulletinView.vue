@@ -21,9 +21,16 @@ import { exportCompletionMessage, exportDocumentReport, exportRawPdf } from '@/r
 import type { ReportFormat } from '@/reports/types'
 import type { Service } from '@/models/service'
 import { formatServiceTime } from '@/utils/serviceTime'
+import { returnPath } from '@/utils/returnNavigation'
 import BulletinSettingsDialog from '@/components/bulletin/BulletinSettingsDialog.vue'
 
 const route = useRoute()
+const backTo = computed(() =>
+  returnPath(route.query.returnTo, `/service/${route.params.id as string}`),
+)
+const backLabel = computed(() =>
+  backTo.value.includes('/plan') ? 'Back to Planning' : 'Back to Service',
+)
 const servicesStore = useServicesStore()
 const songsStore = useSongsStore()
 const slidesStore = useSlidesStore()
@@ -207,13 +214,8 @@ async function copyBulletin() {
   <main v-if="service" class="bulletin-page">
     <header class="bulletin-hero">
       <div class="bulletin-hero-toolbar">
-        <v-btn
-          variant="text"
-          size="small"
-          prepend-icon="mdi-chevron-left"
-          :to="`/service/${service.id}`"
-        >
-          Back to Service
+        <v-btn variant="text" size="small" prepend-icon="mdi-chevron-left" :to="backTo">
+          {{ backLabel }}
         </v-btn>
         <v-btn
           variant="text"
@@ -230,8 +232,8 @@ async function copyBulletin() {
           <h1>Bulletin</h1>
           <p class="service-context">{{ service.type }} <span>·</span> {{ serviceDateLabel }}</p>
           <p class="page-description">
-            Review this week's order of worship and announcements, then export or copy the
-            finished bulletin.
+            Review this week's order of worship and announcements, then export or copy the finished
+            bulletin.
           </p>
         </div>
         <div class="hero-side">

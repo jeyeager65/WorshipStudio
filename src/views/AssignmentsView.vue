@@ -22,6 +22,7 @@ import type { Person } from '@/models/library'
 import { personDisplayName } from '@/models/library'
 import { roleDisplayLabel } from '@/models/settings'
 import { formatServiceTime } from '@/utils/serviceTime'
+import { returnPath } from '@/utils/returnNavigation'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import {
   assignmentEmailRosterLines,
@@ -36,6 +37,12 @@ const peopleStore = usePeopleStore()
 const settingsStore = useSettingsStore()
 const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsavedChangesStore())
 const confirmDialog = useConfirmDialogStore()
+const backTo = computed(() =>
+  returnPath(route.query.returnTo, `/service/${route.params.id as string}`),
+)
+const backLabel = computed(() =>
+  backTo.value.includes('/plan') ? 'Back to Planning' : 'Back to Service',
+)
 
 const service = ref<Service>()
 const editorLoading = ref(true)
@@ -88,11 +95,11 @@ onUnmounted(() => {
 const serviceDateLabel = computed(() => {
   if (!service.value) return ''
   const date = new Date(`${service.value.date}T00:00:00`).toLocaleDateString(undefined, {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-      })
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  })
   const time = formatServiceTime(service.value.time)
   return time ? `${date} · ${time}` : date
 })
@@ -142,7 +149,9 @@ const orderOfServiceRoles = computed<string[]>(() => {
   }
   return roles
 })
-const usedStaffingRoles = computed(() => usedRoles.value.filter((r) => !orderOfServiceRoles.value.includes(r)))
+const usedStaffingRoles = computed(() =>
+  usedRoles.value.filter((r) => !orderOfServiceRoles.value.includes(r)),
+)
 
 interface DisplayGroup {
   name: string
@@ -155,7 +164,16 @@ interface DisplayGroup {
 // Keep category identity separate from operational warning/error colors. The most common
 // groups receive blue, teal, violet, and terracotta first; amber and brass are deliberately
 // last because they sit too close to the warning palette used for assignment conflicts.
-const CATEGORY_COLORS = ['primary', 'teal', 'violet', 'terracotta', 'rose', 'slate', 'secondary', 'amber']
+const CATEGORY_COLORS = [
+  'primary',
+  'teal',
+  'violet',
+  'terracotta',
+  'rose',
+  'slate',
+  'secondary',
+  'amber',
+]
 function categoryColor(groupName: string): string {
   const groups = settingsStore.librarySettings?.roleGroups ?? []
   const index = groups.findIndex((g) => g.name === groupName)
@@ -218,7 +236,9 @@ const addRoleItems = computed<RoleOption[]>(() => {
   for (const group of settingsStore.librarySettings?.roleGroups ?? []) {
     // Order of Service roles are managed exclusively in that section above, whether or not
     // they're currently used — never offered here too.
-    const options = group.roles.filter((r) => !usedRoles.value.includes(r) && !orderOfServiceRoles.value.includes(r))
+    const options = group.roles.filter(
+      (r) => !usedRoles.value.includes(r) && !orderOfServiceRoles.value.includes(r),
+    )
     if (!options.length) continue
     items.push({ type: 'subheader', title: group.name })
     for (const role of options) items.push({ title: role, value: role })
@@ -238,7 +258,10 @@ function onAddRole(role: string | null) {
 // sermon's Preacher) are never touched, template or no template.
 const resetDialogOpen = ref(false)
 const resetTemplate = computed(() =>
-  defaultServiceTemplate(settingsStore.librarySettings?.serviceTemplates, service.value?.type ?? ''),
+  defaultServiceTemplate(
+    settingsStore.librarySettings?.serviceTemplates,
+    service.value?.type ?? '',
+  ),
 )
 const resetPlan = computed(() => {
   if (!service.value || !resetTemplate.value) return null
@@ -252,11 +275,16 @@ const resetAdditions = computed(() => {
   if (!resetPlan.value) return []
   const counts = new Map<string, number>()
   for (const a of resetPlan.value.toAdd) counts.set(a.role, (counts.get(a.role) ?? 0) + 1)
-  return [...counts.entries()].map(([role, count]) => `${roleLabel(role)}${count > 1 ? ` ×${count}` : ''}`)
+  return [...counts.entries()].map(
+    ([role, count]) => `${roleLabel(role)}${count > 1 ? ` ×${count}` : ''}`,
+  )
 })
 const resetRemovals = computed<ResetRemoval[]>(() => {
   if (!resetPlan.value) return []
-  return resetPlan.value.toRemove.map((a) => ({ role: roleLabel(a.role), personName: personName(a.personId) || undefined }))
+  return resetPlan.value.toRemove.map((a) => ({
+    role: roleLabel(a.role),
+    personName: personName(a.personId) || undefined,
+  }))
 })
 function openResetDialog() {
   resetDialogOpen.value = true
@@ -264,7 +292,9 @@ function openResetDialog() {
 function applyReset() {
   if (!service.value || !resetPlan.value) return
   const plan = resetPlan.value
-  service.value.assignments = (service.value.assignments ?? []).filter((a) => !plan.toRemove.includes(a)).concat(plan.toAdd)
+  service.value.assignments = (service.value.assignments ?? [])
+    .filter((a) => !plan.toRemove.includes(a))
+    .concat(plan.toAdd)
   resetDialogOpen.value = false
 }
 
@@ -293,17 +323,27 @@ function isUnavailable(assignment: RoleAssignment): boolean {
 // since that's the person saying outright they can't do this date.
 const conflictLines = computed(() =>
   conflicts.value.map(
-    (conflict) => `${personName(conflict.personId)} is assigned to both ${conflict.roles.map(roleLabel).join(' and ')}`,
+    (conflict) =>
+      `${personName(conflict.personId)} is assigned to both ${conflict.roles.map(roleLabel).join(' and ')}`,
   ),
 )
 const unavailableLines = computed(() =>
   roster.value
     .filter((assignment) => isUnavailable(assignment))
-    .map((assignment) => `${personName(assignment.personId)} marked unavailable this date (${roleLabel(assignment.role)})`),
+    .map(
+      (assignment) =>
+        `${personName(assignment.personId)} marked unavailable this date (${roleLabel(assignment.role)})`,
+    ),
 )
-const filledAssignmentCount = computed(() => roster.value.filter((assignment) => assignment.personId).length)
-const openAssignmentCount = computed(() => roster.value.filter((assignment) => !assignment.personId).length)
-const tentativeAssignmentCount = computed(() => roster.value.filter((assignment) => assignment.tentative).length)
+const filledAssignmentCount = computed(
+  () => roster.value.filter((assignment) => assignment.personId).length,
+)
+const openAssignmentCount = computed(
+  () => roster.value.filter((assignment) => !assignment.personId).length,
+)
+const tentativeAssignmentCount = computed(
+  () => roster.value.filter((assignment) => assignment.tentative).length,
+)
 
 // People directory management — a lightweight "+ New Person" reachable right from the
 // assignments page, rather than only through the People page, since that's the moment it's
@@ -424,8 +464,8 @@ async function copyEmailDraft() {
   <main v-else-if="service" class="assignments-page">
     <header class="assignments-hero">
       <div class="assignments-hero-toolbar">
-        <v-btn variant="text" size="small" prepend-icon="mdi-chevron-left" :to="`/service/${service.id}`">
-          Back to Service
+        <v-btn variant="text" size="small" prepend-icon="mdi-chevron-left" :to="backTo">
+          {{ backLabel }}
         </v-btn>
         <v-btn variant="text" size="small" prepend-icon="mdi-refresh" @click="openResetDialog">
           Reset from Template
@@ -508,7 +548,9 @@ async function copyEmailDraft() {
 
         <section v-if="groupedRoles.length" class="assignment-section">
           <div class="section-heading">
-            <span class="section-icon section-icon--staffing"><v-icon icon="mdi-account-group-outline" size="21" /></span>
+            <span class="section-icon section-icon--staffing"
+              ><v-icon icon="mdi-account-group-outline" size="21"
+            /></span>
             <div>
               <h2>Service Team</h2>
               <p>Staffing and volunteer roles supporting this service.</p>
@@ -540,7 +582,10 @@ async function copyEmailDraft() {
           </div>
         </section>
 
-        <div v-if="orderOfServiceGroups.length === 0 && groupedRoles.length === 0" class="assignments-empty-state">
+        <div
+          v-if="orderOfServiceGroups.length === 0 && groupedRoles.length === 0"
+          class="assignments-empty-state"
+        >
           <span><v-icon icon="mdi-account-group-outline" size="28" /></span>
           <h2>No roles yet</h2>
           <p>Add a role to begin building this service team.</p>
@@ -561,10 +606,22 @@ async function copyEmailDraft() {
             hide-details
             @update:model-value="onAddRole"
           />
-          <v-btn block variant="tonal" color="primary" prepend-icon="mdi-account-plus-outline" @click="openAddPerson">
+          <v-btn
+            block
+            variant="tonal"
+            color="primary"
+            prepend-icon="mdi-account-plus-outline"
+            @click="openAddPerson"
+          >
             New Person
           </v-btn>
-          <v-btn block variant="flat" color="primary" prepend-icon="mdi-email-outline" @click="openEmailDialog">
+          <v-btn
+            block
+            variant="flat"
+            color="primary"
+            prepend-icon="mdi-email-outline"
+            @click="openEmailDialog"
+          >
             Share Assignments
           </v-btn>
           <p class="settings-note">Roles are managed in Settings → Roles</p>
@@ -573,22 +630,32 @@ async function copyEmailDraft() {
         <section class="sidebar-panel">
           <div class="sidebar-panel-title">Status Guide</div>
           <div class="status-guide-row">
-            <span class="status-icon status-icon--tentative"><v-icon icon="mdi-clock-outline" size="17" /></span>
+            <span class="status-icon status-icon--tentative"
+              ><v-icon icon="mdi-clock-outline" size="17"
+            /></span>
             <div><strong>Tentative</strong><small>Assignment is not confirmed</small></div>
           </div>
           <div class="status-guide-row">
-            <span class="status-icon status-icon--warning"><v-icon icon="mdi-alert-outline" size="17" /></span>
+            <span class="status-icon status-icon--warning"
+              ><v-icon icon="mdi-alert-outline" size="17"
+            /></span>
             <div><strong>Double-booked</strong><small>Review, but may be intentional</small></div>
           </div>
           <div class="status-guide-row">
-            <span class="status-icon status-icon--error"><v-icon icon="mdi-calendar-remove-outline" size="17" /></span>
+            <span class="status-icon status-icon--error"
+              ><v-icon icon="mdi-calendar-remove-outline" size="17"
+            /></span>
             <div><strong>Unavailable</strong><small>Choose someone available</small></div>
           </div>
         </section>
       </aside>
     </div>
 
-    <PersonEditorDialog v-model="personDialogOpen" :role-groups="allGroupedRoles" @save="savePerson" />
+    <PersonEditorDialog
+      v-model="personDialogOpen"
+      :role-groups="allGroupedRoles"
+      @save="savePerson"
+    />
 
     <v-dialog v-model="resetDialogOpen" max-width="480">
       <v-card>
@@ -596,16 +663,19 @@ async function copyEmailDraft() {
         <v-card-text>
           <template v-if="!resetTemplate">
             <p class="text-medium-emphasis">
-              No service template found for "{{ service.type }}". Add one in Settings → Service Templates first.
+              No service template found for "{{ service.type }}". Add one in Settings → Service
+              Templates first.
             </p>
           </template>
           <template v-else-if="resetAdditions.length === 0 && resetRemovals.length === 0">
-            <p class="text-medium-emphasis">Assignments already match the template — nothing to change.</p>
+            <p class="text-medium-emphasis">
+              Assignments already match the template — nothing to change.
+            </p>
           </template>
           <template v-else>
             <p class="text-caption text-medium-emphasis mb-3">
-              Only staffing roles from the template are affected — roles tied to an actual item on this service (e.g.
-              the sermon's Preacher) are never changed here.
+              Only staffing roles from the template are affected — roles tied to an actual item on
+              this service (e.g. the sermon's Preacher) are never changed here.
             </p>
             <div v-if="resetAdditions.length" class="mb-3">
               <div class="text-overline text-medium-emphasis">Will add</div>
@@ -614,7 +684,8 @@ async function copyEmailDraft() {
             <div v-if="resetRemovals.length">
               <div class="text-overline text-medium-emphasis">Will remove</div>
               <div v-for="(removal, index) in resetRemovals" :key="`remove-${index}`">
-                − {{ removal.role }}<span v-if="removal.personName"> ({{ removal.personName }})</span>
+                − {{ removal.role
+                }}<span v-if="removal.personName"> ({{ removal.personName }})</span>
               </div>
             </div>
           </template>
@@ -622,7 +693,9 @@ async function copyEmailDraft() {
         <v-card-actions>
           <v-spacer />
           <v-btn variant="outlined" @click="resetDialogOpen = false">
-            {{ resetTemplate && (resetAdditions.length || resetRemovals.length) ? 'Cancel' : 'Close' }}
+            {{
+              resetTemplate && (resetAdditions.length || resetRemovals.length) ? 'Cancel' : 'Close'
+            }}
           </v-btn>
           <v-btn
             v-if="resetTemplate && (resetAdditions.length || resetRemovals.length)"
@@ -645,15 +718,30 @@ async function copyEmailDraft() {
             <small>Prepare one roster email for everyone serving.</small>
           </div>
           <v-spacer />
-          <v-btn icon="mdi-close" variant="text" size="small" aria-label="Close" @click="emailDialogOpen = false" />
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            size="small"
+            aria-label="Close"
+            @click="emailDialogOpen = false"
+          />
         </v-card-title>
         <v-card-text class="share-dialog-content">
           <section class="recipient-summary">
             <span><v-icon icon="mdi-account-multiple-outline" size="20" /></span>
             <div>
-              <strong>{{ recipientEmails.length }} email recipient{{ recipientEmails.length === 1 ? '' : 's' }}</strong>
-              <p v-if="recipientEmails.length">Addresses will be placed together in the email’s To field.</p>
-              <p v-else>Add email addresses to the assigned people, or enter recipients manually after opening the draft.</p>
+              <strong
+                >{{ recipientEmails.length }} email recipient{{
+                  recipientEmails.length === 1 ? '' : 's'
+                }}</strong
+              >
+              <p v-if="recipientEmails.length">
+                Addresses will be placed together in the email’s To field.
+              </p>
+              <p v-else>
+                Add email addresses to the assigned people, or enter recipients manually after
+                opening the draft.
+              </p>
               <template v-if="recipientEmails.length">
                 <v-btn
                   variant="text"
@@ -666,36 +754,81 @@ async function copyEmailDraft() {
                   {{ showRecipientEmails ? 'Hide addresses' : 'View addresses' }}
                 </v-btn>
                 <v-expand-transition>
-                  <p v-if="showRecipientEmails" class="recipient-addresses">{{ recipientEmails.join(', ') }}</p>
+                  <p v-if="showRecipientEmails" class="recipient-addresses">
+                    {{ recipientEmails.join(', ') }}
+                  </p>
                 </v-expand-transition>
               </template>
             </div>
             <span class="to-badge">TO</span>
           </section>
 
-          <v-alert v-if="peopleMissingEmail.length" type="warning" variant="tonal" density="compact" class="mb-4">
-            <strong>{{ peopleMissingEmail.length }} assigned {{ peopleMissingEmail.length === 1 ? 'person has' : 'people have' }} no email address:</strong>
+          <v-alert
+            v-if="peopleMissingEmail.length"
+            type="warning"
+            variant="tonal"
+            density="compact"
+            class="mb-4"
+          >
+            <strong
+              >{{ peopleMissingEmail.length }} assigned
+              {{ peopleMissingEmail.length === 1 ? 'person has' : 'people have' }} no email
+              address:</strong
+            >
             {{ peopleMissingEmail.map(personDisplayName).join(', ') }}
           </v-alert>
 
-          <v-text-field v-model="emailSubject" label="Subject" variant="outlined" density="comfortable" class="mb-2" />
-          <v-textarea v-model="emailMessage" label="Message" variant="outlined" rows="9" auto-grow />
+          <v-text-field
+            v-model="emailSubject"
+            label="Subject"
+            variant="outlined"
+            density="comfortable"
+            class="mb-2"
+          />
+          <v-textarea
+            v-model="emailMessage"
+            label="Message"
+            variant="outlined"
+            rows="9"
+            auto-grow
+          />
 
-          <v-alert v-if="emailActionStatus" type="success" variant="tonal" density="compact" class="mt-2">
+          <v-alert
+            v-if="emailActionStatus"
+            type="success"
+            variant="tonal"
+            density="compact"
+            class="mt-2"
+          >
             {{ emailActionStatus }}
           </v-alert>
-          <v-alert v-if="emailActionError" type="error" variant="tonal" density="compact" class="mt-2">
+          <v-alert
+            v-if="emailActionError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mt-2"
+          >
             Could not prepare the email: {{ emailActionError }}
           </v-alert>
           <p class="share-delivery-note">
-            Worship Studio prepares the draft but does not send it. Your email application handles the account and delivery.
+            Worship Studio prepares the draft but does not send it. Your email application handles
+            the account and delivery.
           </p>
         </v-card-text>
         <v-card-actions class="share-dialog-actions">
           <v-btn variant="text" @click="emailDialogOpen = false">Close</v-btn>
           <v-spacer />
-          <v-btn variant="tonal" prepend-icon="mdi-content-copy" @click="copyEmailDraft">Copy Message</v-btn>
-          <v-btn color="primary" variant="flat" prepend-icon="mdi-open-in-new" :loading="openingEmailApp" @click="openEmailDraft">
+          <v-btn variant="tonal" prepend-icon="mdi-content-copy" @click="copyEmailDraft"
+            >Copy Message</v-btn
+          >
+          <v-btn
+            color="primary"
+            variant="flat"
+            prepend-icon="mdi-open-in-new"
+            :loading="openingEmailApp"
+            @click="openEmailDraft"
+          >
             Open in Email App
           </v-btn>
         </v-card-actions>

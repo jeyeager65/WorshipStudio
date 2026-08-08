@@ -9,7 +9,10 @@ import type { Service } from '@/models/service'
 const vuetify = createVuetify()
 const router = createRouter({
   history: createMemoryHistory(),
-  routes: [{ path: '/service/:id', component: { template: '<div />' } }],
+  routes: [
+    { path: '/service/:id', component: { template: '<div />' } },
+    { path: '/service/:id/plan', component: { template: '<div />' } },
+  ],
 })
 
 function sampleService(overrides: Partial<Service> = {}): Service {
@@ -17,6 +20,7 @@ function sampleService(overrides: Partial<Service> = {}): Service {
     id: 'service-1',
     date: '2026-07-19',
     type: 'Sunday Morning Worship',
+    serviceTemplateName: 'Sunday Worship',
     items: [
       { id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: [] } },
       { id: 'item-sermon', type: 'sermon', title: 'Our Lord’s Prayer', passages: [], mainPassageId: '', outline: [] },
@@ -60,6 +64,22 @@ describe('ServiceCard', () => {
     })
     expect(wrapper.text()).toContain('0 songs')
     expect(wrapper.text()).toContain('not yet started')
+  })
+
+  it('shows the applied template and hides progress ratios when no template is applied', () => {
+    const withTemplate = mount(ServiceCard, {
+      props: { service: sampleService() },
+      global: { plugins: [vuetify, router] },
+    })
+    expect(withTemplate.text()).toContain('Sunday Worship')
+    expect(withTemplate.text()).toContain('1 of 1 songs')
+
+    const withoutTemplate = mount(ServiceCard, {
+      props: { service: sampleService({ serviceTemplateName: undefined }) },
+      global: { plugins: [vuetify, router] },
+    })
+    expect(withoutTemplate.text()).toContain('No template applied')
+    expect(withoutTemplate.text()).not.toContain('1 of 1 songs')
   })
 
   it('renders the badge when provided', () => {

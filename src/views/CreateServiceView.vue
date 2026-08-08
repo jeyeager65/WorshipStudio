@@ -87,7 +87,7 @@ function seedFromTemplate(): { items: Service['items']; assignments: Service['as
 // Handed to the workspace via the store rather than saved here — nothing is written to
 // disk until its Save button is used, so backing out of a just-created service without
 // saving leaves no trace (see ServiceWorkspaceView, which consumes and clears this).
-async function createService(destination: 'plan' | 'workspace') {
+async function createService(destination: 'plan' | 'service') {
   const { items, assignments } = seedFromTemplate()
   const service: Service = {
     id: `service-${crypto.randomUUID()}`,
@@ -113,7 +113,7 @@ async function createService(destination: 'plan' | 'workspace') {
   }
   if (destination === 'plan') {
     await store.save(service)
-    router.push(`/planning-ahead/${service.id}`)
+    router.push(`/service/${service.id}/plan`)
   } else {
     store.draftService = service
     router.push(`/service/${service.id}`)
@@ -128,7 +128,7 @@ async function createService(destination: 'plan' | 'workspace') {
         <v-btn to="/" variant="text" prepend-icon="mdi-arrow-left" class="back-button">Services</v-btn>
         <div class="page-eyebrow">Service Planning</div>
         <h1>Create Service</h1>
-        <p>Choose the service details and optionally add the first sermon information before opening the workspace.</p>
+        <p>Choose the service details and optionally add the first sermon information before opening the service.</p>
       </div>
     </header>
 
@@ -237,7 +237,7 @@ async function createService(destination: 'plan' | 'workspace') {
               <div><strong>{{ templateContentCount }}</strong><span>Order Items</span></div>
               <div><strong>{{ templateAssignmentCount }}</strong><span>Assignments</span></div>
             </div>
-            <p>The template creates placeholders and assignment rows that you can complete in the service workspace.</p>
+            <p>The template creates placeholders and assignment rows that you can complete in the service editor.</p>
           </template>
           <div v-else class="no-template">
             <v-icon icon="mdi-file-outline" size="22" />
@@ -254,15 +254,15 @@ async function createService(destination: 'plan' | 'workspace') {
 
         <div class="save-note">
           <v-icon icon="mdi-content-save-outline" size="18" />
-          <p>Create &amp; Plan saves the service first. Create &amp; Open Workspace starts an unsaved draft.</p>
+          <p>Create &amp; Plan saves the service first. Create &amp; Open Service starts an unsaved draft.</p>
         </div>
         <div class="summary-actions">
           <v-btn variant="outlined" to="/">Cancel</v-btn>
           <v-btn variant="outlined" color="primary" :disabled="!canCreate" @click="createService('plan')">
             Create &amp; Plan
           </v-btn>
-          <v-btn variant="flat" color="primary" :disabled="!canCreate" append-icon="mdi-arrow-right" @click="createService('workspace')">
-            Create &amp; Open Workspace
+          <v-btn variant="flat" color="primary" :disabled="!canCreate" append-icon="mdi-arrow-right" @click="createService('service')">
+            Create &amp; Open Service
           </v-btn>
         </div>
       </aside>

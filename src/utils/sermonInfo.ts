@@ -9,8 +9,8 @@ export function findSermonItem(service: Service): SermonItem | undefined {
   return service.items.find((item): item is SermonItem => item.type === 'sermon')
 }
 
-/** Same "main passage wins" resolution used everywhere a sermon's passage is shown (Service
- *  Order list, Order of Worship, cards, Planning Ahead). */
+/** Same main-passage resolution used everywhere a sermon's passage is shown (Service Order,
+ *  Order of Worship, service cards, and the service plan). */
 export function sermonMainReference(item: SermonItem): string {
   const mainPassage = item.passages.find((p) => p.id === item.mainPassageId)
   return mainPassage?.reference ?? ''
