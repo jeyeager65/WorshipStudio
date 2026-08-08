@@ -87,12 +87,13 @@ const BULLETIN_LABEL_DRIVEN_TYPES = new Set(['sermon', 'bulletin-note', 'placeho
 // the item's own default content — song title, scripture reference, etc. — moved to the
 // second line below), same as sermon/bulletin-note already prioritize it as their whole label.
 function serviceOrderPrimaryLabel(item: ServiceItem): string {
+  if (item.type === 'sermon') return item.bulletinLabel || 'Worship Through the Word'
   if (item.bulletinLabel && !BULLETIN_LABEL_DRIVEN_TYPES.has(item.type)) return item.bulletinLabel
   return props.itemLabel(item)
 }
 
 function serviceOrderSecondaryLabel(item: ServiceItem): string | undefined {
-  if (item.type === 'sermon') return sermonMainReference(item) || undefined
+  if (item.type === 'sermon') return item.title?.trim() || sermonMainReference(item) || undefined
   if (item.bulletinLabel && !BULLETIN_LABEL_DRIVEN_TYPES.has(item.type)) return props.itemLabel(item)
   return undefined
 }
@@ -177,14 +178,14 @@ async function removeServiceItem(index: number) {
             size="small"
             style="cursor: grab"
           />
-          <div class="flex-grow-1" style="min-width: 0">
+          <div class="service-item-copy flex-grow-1">
             <div class="service-item-title-row">
               <span class="service-item-title" :class="{ 'font-italic': item.type === 'placeholder' }">
                 {{ serviceOrderPrimaryLabel(item) }}
               </span>
               <span v-if="itemHasLive(index)" class="service-item-live-badge"><i />Live</span>
             </div>
-            <div v-if="serviceOrderSecondaryLabel(item)" class="text-caption text-medium-emphasis">
+            <div v-if="serviceOrderSecondaryLabel(item)" class="service-item-secondary text-caption text-medium-emphasis">
               {{ serviceOrderSecondaryLabel(item) }}
             </div>
           </div>
@@ -206,14 +207,14 @@ async function removeServiceItem(index: number) {
           <span class="service-item-icon" :style="{ color: `rgb(var(--v-theme-${itemColor(item)}))` }">
             <v-icon :icon="itemIcon(item)" size="17" />
           </span>
-          <div class="flex-grow-1" style="min-width: 0">
+          <div class="service-item-copy flex-grow-1">
             <div class="service-item-title-row">
               <span class="service-item-title" :class="{ 'font-italic': item.type === 'placeholder' }">
                 {{ serviceOrderPrimaryLabel(item) }}
               </span>
               <span v-if="itemHasLive(index)" class="service-item-live-badge"><i />Live</span>
             </div>
-            <div v-if="serviceOrderSecondaryLabel(item)" class="text-caption text-medium-emphasis">
+            <div v-if="serviceOrderSecondaryLabel(item)" class="service-item-secondary text-caption text-medium-emphasis">
               {{ serviceOrderSecondaryLabel(item) }}
             </div>
           </div>
@@ -406,6 +407,15 @@ async function removeServiceItem(index: number) {
   border-radius: 6px;
   background: color-mix(in srgb, currentColor 16%, transparent);
 }
+.service-item-copy {
+  min-width: 0;
+  transition: padding-right 120ms ease;
+}
+.service-item-secondary {
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
 .service-item-title-row {
   display: flex;
   align-items: center;
@@ -445,14 +455,28 @@ async function removeServiceItem(index: number) {
   box-shadow: 0 0 0 2px rgba(var(--v-theme-error), 0.15);
 }
 .row-remove {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  right: 5px;
+  transform: translateY(-50%);
   opacity: 0;
+  pointer-events: none;
+  background: color-mix(in srgb, rgb(var(--v-theme-surface)) 88%, transparent);
   color: rgba(var(--v-theme-on-surface), 0.58);
   transition:
     opacity 120ms ease,
     color 120ms ease;
 }
-.service-item:hover .row-remove {
+.service-item:hover .service-item-copy,
+.service-item:focus-within .service-item-copy {
+  padding-right: 28px;
+}
+.service-item:hover .row-remove,
+.service-item:focus-within .row-remove,
+.row-remove:focus-visible {
   opacity: 1;
+  pointer-events: auto;
 }
 .row-remove:hover {
   color: rgb(var(--v-theme-error));

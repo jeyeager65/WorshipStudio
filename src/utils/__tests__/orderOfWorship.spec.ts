@@ -65,6 +65,22 @@ describe('buildOrderOfWorship', () => {
     ])
   })
 
+  it('prefixes a bulletin song number with its optional collection abbreviation', () => {
+    const service = baseService({
+      items: [{ id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: [] } }],
+    })
+    const doc = buildOrderOfWorship(
+      service,
+      songs,
+      slides,
+      new Map(),
+      new Map(),
+      undefined,
+      [{ name: 'hymnal', abbreviation: 'WH' }],
+    )
+    expect(doc.lines[0]?.text).toBe('Come Behold the Wondrous Mystery WH 184')
+  })
+
   it("resolves an item's person via its role's Assignments entry, not a direct id", () => {
     const service = baseService({
       assignments: [{ role: 'Scripture Reader', personId: 'person-jordan', tentative: false }],

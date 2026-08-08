@@ -168,6 +168,11 @@ const router = createRouter({
       name: 'planning-ahead',
       component: () => import('@/views/PlanningAheadView.vue'),
     },
+    {
+      path: '/planning-ahead/:serviceId',
+      name: 'service-plan',
+      component: () => import('@/views/ServicePlanView.vue'),
+    },
   ],
 })
 

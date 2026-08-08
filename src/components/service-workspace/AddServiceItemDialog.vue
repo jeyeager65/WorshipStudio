@@ -381,10 +381,17 @@ async function addSermonToService() {
       id: `item-${crypto.randomUUID()}`,
       type: 'sermon',
       title: sermonTitleDraft.value.trim() || undefined,
-      passages,
-      mainPassageId: sermonMainPassageId.value ?? '',
-      outline: sermonOutlineBlocks.value.map((block) => ({ ...block })),
-    }
+        passages,
+        mainPassageId: sermonMainPassageId.value ?? '',
+        outline: sermonOutlineBlocks.value.map((block) => ({ ...block })),
+        presentMainPassage: true,
+        flow: [
+          ...passages
+            .filter((passage) => passage.id !== sermonMainPassageId.value)
+            .map((passage) => ({ type: 'passage' as const, passageId: passage.id })),
+          ...sermonOutlineBlocks.value.map((block) => ({ type: 'outline' as const, outlineId: block.id })),
+        ],
+      }
     insertItem(item)
     for (const passage of sermonPassages.value) {
       const resolved = sermonPassagePickerRefs.value[passage.id]?.resolvedPassage

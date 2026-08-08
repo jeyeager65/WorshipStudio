@@ -16,10 +16,16 @@ export function roleDisplayLabel(role: string, roleGroups: RoleGroup[]): string 
   return group ? `${group.name} - ${role}` : role
 }
 
+export interface SongCollectionDefinition {
+  name: string
+  /** Optional short label printed before a song's collection number in the bulletin. */
+  abbreviation?: string
+}
+
 /** library-settings.json — synced, shared across the church's setup. */
 export interface LibrarySettings {
   serviceTypes: string[]
-  collections: string[]
+  collections: SongCollectionDefinition[]
   roleGroups: RoleGroup[]
   serviceTemplates: ServiceTemplate[]
   branding: {

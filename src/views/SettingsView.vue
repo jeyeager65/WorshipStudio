@@ -21,6 +21,7 @@ import ExternalAppsSection from '@/components/settings/ExternalAppsSection.vue'
 import RemoteControlSection from '@/components/settings/RemoteControlSection.vue'
 import BibleTranslationsSection from '@/components/settings/BibleTranslationsSection.vue'
 import CanvaSection from '@/components/settings/CanvaSection.vue'
+import SongCollectionsSection from '@/components/settings/SongCollectionsSection.vue'
 
 const store = useSettingsStore()
 const { librarySettings, machineSettings } = storeToRefs(store)
@@ -319,7 +320,7 @@ async function saveSettings() {
           description="Songbooks and catalogs a song can belong to, each with its own number."
           icon="mdi-bookshelf"
         >
-          <ManagedStringList v-model="librarySettings.collections" add-label="Add a collection…" />
+          <SongCollectionsSection v-model="librarySettings.collections" />
         </SettingsPanel>
       </template>
 

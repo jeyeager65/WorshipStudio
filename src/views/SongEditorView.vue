@@ -248,7 +248,7 @@ function removeFromArrangement(index: number) {
             <div v-for="(entry, index) in song.collections" :key="index" class="collection-row">
               <v-combobox
                 v-model="entry.collectionId"
-                :items="librarySettings?.collections ?? []"
+                :items="librarySettings?.collections.map((collection) => collection.name) ?? []"
                 label="Collection"
                 variant="outlined"
                 hide-details

@@ -12,7 +12,7 @@ export function findSermonItem(service: Service): SermonItem | undefined {
 /** Same "main passage wins" resolution used everywhere a sermon's passage is shown (Service
  *  Order list, Order of Worship, cards, Planning Ahead). */
 export function sermonMainReference(item: SermonItem): string {
-  const mainPassage = item.passages.find((p) => p.id === item.mainPassageId) ?? item.passages[0]
+  const mainPassage = item.passages.find((p) => p.id === item.mainPassageId)
   return mainPassage?.reference ?? ''
 }
 
@@ -92,15 +92,17 @@ export function applySermonEdit(
       item.passages.push({ id: passageId, reference: input.passageReference, translation: defaultTranslationCode, displayMode: 'full' })
       item.mainPassageId = passageId
     }
+    item.presentMainPassage = true
   } else {
     // Clearing the field removes just the main passage (symmetric with title clearing to
     // undefined above) — any other passages already entered via the fuller Add Sermon form or
-    // detail panel are untouched, and a remaining one (if any) is promoted to main.
+    // detail panel are untouched and remain supporting passages in the sermon flow.
     const mainPassageIndex = item.passages.findIndex((p) => p.id === item.mainPassageId)
     if (mainPassageIndex !== -1) {
       item.passages.splice(mainPassageIndex, 1)
-      item.mainPassageId = item.passages[0]?.id ?? ''
     }
+    item.mainPassageId = ''
+    item.presentMainPassage = false
   }
 
   const role = item.role ?? defaultRole

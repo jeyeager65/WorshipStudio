@@ -107,7 +107,10 @@ async function loadSampleData() {
       librarySettings.value.serviceTypes = [...sampleServiceTypes]
       librarySettings.value.roleGroups = structuredClone(sampleRoleGroups)
       librarySettings.value.serviceTemplates = structuredClone(sampleServiceTemplates)
-      librarySettings.value.collections = [...sampleCollections]
+      librarySettings.value.collections = sampleCollections.map((name) => ({
+        name,
+        abbreviation: name === 'Worship Hymnal' ? 'WH' : undefined,
+      }))
       await store.save()
     }
     sampleDataLoaded.value = true

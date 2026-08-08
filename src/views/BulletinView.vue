@@ -123,6 +123,7 @@ const bulletin = computed(() =>
         personNames.value,
         formalPersonNames.value,
         settingsStore.librarySettings?.bulletin,
+        settingsStore.librarySettings?.collections ?? [],
       )
     : undefined,
 )

@@ -1,16 +1,21 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { VueDraggable } from 'vue-draggable-plus'
 import { useSongsStore } from '@/stores/songs'
 import { useSettingsStore } from '@/stores/settings'
+import { useServicesStore } from '@/stores/services'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import LibraryEmptyState from '@/components/LibraryEmptyState.vue'
 import type { Song } from '@/models/song'
+import type { ServiceItem } from '@/models/service'
 
 const router = useRouter()
+const route = useRoute()
 const store = useSongsStore()
 const settingsStore = useSettingsStore()
+const servicesStore = useServicesStore()
 const confirmDialog = useConfirmDialogStore()
 
 const query = ref('')
@@ -18,9 +23,35 @@ const activeCollection = ref<string>()
 const activeTag = ref<string>()
 const importing = ref(false)
 const showArchived = ref(false)
+const selectingSongId = ref<string>()
+
+const selectionServiceId = computed(() =>
+  typeof route.query.selectFor === 'string' ? route.query.selectFor : undefined,
+)
+const selectionMode = computed(() => !!selectionServiceId.value)
+const selectionService = computed(() =>
+  servicesStore.services.find((service) => service.id === selectionServiceId.value),
+)
+const selectedSongIds = computed(
+  () => new Set(selectionService.value?.items.filter((item) => item.type === 'song').map((item) => item.songId) ?? []),
+)
+const selectedSongs = ref<Song[]>([])
+function syncSelectedSongs() {
+  const service = selectionService.value
+  selectedSongs.value = !service
+    ? []
+    : service.items.filter((item) => item.type === 'song')
+    .map((item) => store.songs.find((song) => song.id === item.songId))
+    .filter((song): song is Song => !!song)
+}
+watch([selectionService, () => store.songs], syncSelectedSongs, { immediate: true })
 
 onMounted(async () => {
-  await Promise.all([store.loaded ? Promise.resolve() : store.load(), settingsStore.load()])
+  await Promise.all([
+    store.loaded ? Promise.resolve() : store.load(),
+    settingsStore.load(),
+    selectionMode.value && !servicesStore.loaded ? servicesStore.load() : Promise.resolve(),
+  ])
 })
 
 // Archived songs are a separate mode from the active library, not blended into one list —
@@ -32,7 +63,9 @@ const visibleSongs = computed(() =>
   allSongs.value.filter((song) => !!song.archived === showArchived.value),
 )
 const collectionFilters = computed(() => {
-  const names = new Set(settingsStore.librarySettings?.collections ?? [])
+  const names = new Set(
+    settingsStore.librarySettings?.collections.map((collection) => collection.name) ?? [],
+  )
   for (const song of visibleSongs.value)
     for (const collection of song.collections) names.add(collection.collectionId)
   return [...names]
@@ -100,6 +133,12 @@ function collectionsLabel(song: Song): string {
     .join(', ')
 }
 
+function firstCollectionLabel(song: Song): string | undefined {
+  const collection = song.collections[0]
+  if (!collection) return undefined
+  return collection.number ? `${collection.collectionId} #${collection.number}` : collection.collectionId
+}
+
 // The same usage data as the Song Editor, split into two aligned lines in this directory — see
 // domain::songs::recompute_usage (Rust) / recomputeSongUsage (mock adapter), which keep this
 // current from the service's own date whenever a service is saved or deleted, not save time.
@@ -161,6 +200,57 @@ function openSong(song: Song) {
   router.push(`/library/songs/${song.id}`)
 }
 
+async function togglePlanSong(song: Song) {
+  const service = selectionService.value
+  if (!service || selectingSongId.value) return
+  selectingSongId.value = song.id
+  try {
+    const alreadySelected = selectedSongIds.value.has(song.id)
+    const items: ServiceItem[] = alreadySelected
+      ? service.items.filter((item) => item.type !== 'song' || item.songId !== song.id)
+      : [...service.items, { id: `item-${crypto.randomUUID()}`, type: 'song', songId: song.id, arrangement: { sequence: [...song.defaultArrangement.sequence] } }]
+    await servicesStore.save({ ...service, items })
+  } finally {
+    selectingSongId.value = undefined
+  }
+}
+
+async function saveSelectedSongOrder() {
+  const service = selectionService.value
+  if (!service || selectingSongId.value) return
+  selectingSongId.value = 'reordering'
+  try {
+    const songItems = new Map(service.items.filter((item) => item.type === 'song').map((item) => [item.songId, item]))
+    const orderedSongItems = selectedSongs.value.map((song) => songItems.get(song.id)).filter((item) => !!item)
+    let songIndex = 0
+    const items = service.items.map((item) => {
+      if (item.type !== 'song') return item
+      const song = orderedSongItems[songIndex++]
+      if (!song) return item
+      return {
+        ...song,
+        id: item.id,
+        role: item.role,
+        bulletinLabel: item.bulletinLabel,
+        bulletinNote: item.bulletinNote,
+      }
+    })
+    await servicesStore.save({ ...service, items })
+  } finally {
+    selectingSongId.value = undefined
+  }
+}
+
+function handleSongCard(song: Song) {
+  if (selectionMode.value) void togglePlanSong(song)
+  else openSong(song)
+}
+
+function finishSelection() {
+  const destination = typeof route.query.returnTo === 'string' ? route.query.returnTo : '/planning-ahead'
+  router.push(destination)
+}
+
 async function importFromOpenSong() {
   importing.value = true
   try {
@@ -176,9 +266,9 @@ async function importFromOpenSong() {
     <header class="songs-hero">
       <div>
         <div class="page-eyebrow">Content Library</div>
-        <h1>Songs</h1>
+        <h1>{{ selectionMode ? 'Choose Songs' : 'Songs' }}</h1>
         <p>
-          Organize lyrics, arrangements, collections, and service usage in one searchable library.
+          {{ selectionMode ? 'Browse the full library and select songs for this service plan.' : 'Organize lyrics, arrangements, collections, and service usage in one searchable library.' }}
         </p>
       </div>
       <div class="songs-summary" aria-label="Song library summary">
@@ -196,6 +286,28 @@ async function importFromOpenSong() {
         </div>
       </div>
     </header>
+
+    <section v-if="selectionMode" class="selected-set-panel" aria-label="Songs selected for this plan">
+      <header class="selected-set-heading">
+        <span><v-icon icon="mdi-playlist-music" size="20" /><strong>{{ selectedSongs.length }}</strong> selected for this plan</span>
+        <v-btn color="primary" variant="flat" size="small" @click="finishSelection">Done</v-btn>
+      </header>
+      <VueDraggable
+        v-if="selectedSongs.length"
+        v-model="selectedSongs"
+        class="selected-set-list"
+        handle=".selected-set-drag"
+        :animation="150"
+        @end="saveSelectedSongOrder"
+      >
+        <div v-for="song in selectedSongs" :key="song.id" class="selected-set-row">
+          <v-icon icon="mdi-drag-vertical" size="18" class="selected-set-drag" />
+          <span><strong>{{ song.title }}</strong><small v-if="firstCollectionLabel(song)">{{ firstCollectionLabel(song) }}</small></span>
+          <v-btn icon="mdi-close" size="x-small" variant="text" aria-label="Remove from plan" @click="togglePlanSong(song)" />
+        </div>
+      </VueDraggable>
+      <p v-else class="selected-set-empty">Select songs from the library below.</p>
+    </section>
 
     <section class="songs-directory">
       <div class="songs-toolbar">
@@ -224,6 +336,7 @@ async function importFromOpenSong() {
             class="song-search"
           />
           <v-btn
+            v-if="!selectionMode"
             :variant="showArchived ? 'flat' : 'outlined'"
             :color="showArchived ? 'secondary' : undefined"
             prepend-icon="mdi-archive-outline"
@@ -235,7 +348,7 @@ async function importFromOpenSong() {
             }}</v-chip>
           </v-btn>
           <v-btn
-            v-if="!showArchived"
+            v-if="!selectionMode && !showArchived"
             variant="outlined"
             color="secondary"
             prepend-icon="mdi-file-import"
@@ -245,7 +358,7 @@ async function importFromOpenSong() {
             Import OpenSong
           </v-btn>
           <v-btn
-            v-if="!showArchived"
+            v-if="!selectionMode && !showArchived"
             variant="flat"
             color="primary"
             prepend-icon="mdi-plus"
@@ -366,10 +479,11 @@ async function importFromOpenSong() {
               v-for="song in filteredSongs"
               :key="song.id"
               class="song-card"
+              :class="{ 'song-card--selected': selectionMode && selectedSongIds.has(song.id) }"
               tabindex="0"
-              @click="openSong(song)"
-              @keydown.enter="openSong(song)"
-              @keydown.space.prevent="openSong(song)"
+              @click="handleSongCard(song)"
+              @keydown.enter="handleSongCard(song)"
+              @keydown.space.prevent="handleSongCard(song)"
             >
               <span class="song-icon"><v-icon icon="mdi-music-note" size="22" /></span>
               <div class="song-identity">
@@ -406,7 +520,17 @@ async function importFromOpenSong() {
                   Not used in a while
                 </v-chip>
               </span>
-              <v-menu>
+              <v-btn
+                v-if="selectionMode"
+                :icon="selectedSongIds.has(song.id) ? 'mdi-check' : 'mdi-plus'"
+                :color="selectedSongIds.has(song.id) ? 'primary' : undefined"
+                :loading="selectingSongId === song.id"
+                variant="text"
+                size="small"
+                :aria-label="selectedSongIds.has(song.id) ? 'Remove from plan' : 'Add to plan'"
+                @click.stop="togglePlanSong(song)"
+              />
+              <v-menu v-else>
                 <template #activator="{ props }">
                   <v-btn
                     v-bind="props"
@@ -468,6 +592,84 @@ async function importFromOpenSong() {
   border-radius: 11px;
   background: rgba(var(--v-theme-surface), 0.76);
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.08);
+}
+.selected-set-panel {
+  max-width: 1240px;
+  margin: 0 auto 18px;
+  border: 1px solid rgba(var(--v-theme-primary), 0.24);
+  border-radius: 9px;
+  background: rgba(var(--v-theme-surface), 0.96);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.1);
+}
+.selected-set-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+}
+.selected-set-heading > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(var(--v-theme-on-surface), 0.7);
+  font-size: 0.72rem;
+}
+.selected-set-heading .v-icon,
+.selected-set-heading strong {
+  color: rgb(var(--v-theme-primary));
+}
+.selected-set-drag {
+  color: rgba(var(--v-theme-on-surface), 0.34);
+  cursor: grab;
+}
+.selected-set-drag:active {
+  cursor: grabbing;
+}
+.selected-set-list {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+.selected-set-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 22px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  background: rgba(var(--v-theme-surface), 0.98);
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+}
+.selected-set-row:last-child {
+  border-bottom: 0;
+}
+.selected-set-row > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.selected-set-row strong,
+.selected-set-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.selected-set-row strong {
+  color: rgba(var(--v-theme-on-surface), 0.8);
+  font-size: 0.7rem;
+}
+.selected-set-row small {
+  margin-top: 1px;
+  color: rgba(var(--v-theme-on-surface), 0.44);
+  font-size: 0.61rem;
+}
+.selected-set-empty {
+  margin: 0;
+  padding: 12px 14px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+  color: rgba(var(--v-theme-on-surface), 0.45);
+  font-size: 0.7rem;
 }
 .songs-hero {
   display: flex;
@@ -713,6 +915,10 @@ async function importFromOpenSong() {
   box-shadow: 0 9px 24px rgba(0, 0, 0, 0.1);
   outline: none;
   transform: translateY(-1px);
+}
+.song-card--selected {
+  border-color: rgba(var(--v-theme-primary), 0.42);
+  background: rgba(var(--v-theme-primary), 0.09);
 }
 .song-card:focus-visible {
   box-shadow:

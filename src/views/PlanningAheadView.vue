@@ -1,22 +1,29 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import { useServicesStore } from '@/stores/services'
 import { usePeopleStore } from '@/stores/people'
+import { useSettingsStore } from '@/stores/settings'
+import { useSongsStore } from '@/stores/songs'
 import { groupUpcomingByMonth, hasStarted, needsPreacher } from '@/utils/planningAhead'
 import { personFormalName } from '@/models/library'
 import type { Service } from '@/models/service'
-import { findSermonItem, sermonPreacherId } from '@/utils/sermonInfo'
+import { applySermonEdit, defaultSermonRole, findSermonItem, sermonMainReference, sermonPreacherId } from '@/utils/sermonInfo'
 import { formatServiceTime } from '@/utils/serviceTime'
 import { localCalendarDate } from '@/utils/calendarDate'
+import FiveMinuteTimePicker from '@/components/FiveMinuteTimePicker.vue'
 
 const store = useServicesStore()
 const peopleStore = usePeopleStore()
+const settingsStore = useSettingsStore()
+const songsStore = useSongsStore()
 const router = useRouter()
 
 onMounted(() => {
   if (!store.loaded) store.load()
   if (!peopleStore.loaded) peopleStore.load()
+  if (!settingsStore.loaded) settingsStore.load()
+  if (!songsStore.loaded) songsStore.load()
 })
 
 function preacherName(service: Service): string | undefined {
@@ -58,6 +65,98 @@ function sermonTitle(service: Service): string | undefined {
 function openService(serviceId: string) {
   router.push(`/service/${serviceId}`)
 }
+
+const planDialog = ref(false)
+const createPlanDialog = ref(false)
+const planningService = ref<Service>()
+const planningSermonTitle = ref('')
+const planningPassage = ref('')
+const planningPreacherId = ref<string>()
+const savingPlan = ref(false)
+const creatingPlan = ref(false)
+const newPlanDate = ref(localCalendarDate())
+const newPlanTime = ref('')
+const newPlanType = ref('')
+
+const preacherOptions = computed(() =>
+  peopleStore.people.map((person) => ({ title: personFormalName(person), value: person.id })),
+)
+const plannedSongs = computed(() => {
+  const service = planningService.value
+  if (!service) return []
+  return (service.planningSongIds ?? []).map((songId) => ({ songId, song: songsStore.songs.find((song) => song.id === songId) }))
+})
+
+function openPlan(service: Service) {
+  router.push(`/planning-ahead/${service.id}`)
+}
+
+function beginCreatePlan() {
+  newPlanDate.value = localCalendarDate()
+  newPlanTime.value = ''
+  newPlanType.value = settingsStore.librarySettings?.serviceTypes[0] ?? ''
+  createPlanDialog.value = true
+}
+
+async function createPlan() {
+  if (!newPlanDate.value || !newPlanType.value || creatingPlan.value) return
+  creatingPlan.value = true
+  try {
+    const service: Service = {
+      id: `service-${crypto.randomUUID()}`,
+      date: newPlanDate.value,
+      time: newPlanTime.value || undefined,
+      type: newPlanType.value,
+      items: [],
+      assignments: [],
+      updatedAt: '',
+      updatedByDevice: '',
+    }
+    await store.save(service)
+    createPlanDialog.value = false
+    router.push(`/planning-ahead/${service.id}`)
+  } finally {
+    creatingPlan.value = false
+  }
+}
+
+function removePlannedSong(songId: string) {
+  const service = planningService.value
+  if (!service) return
+  service.planningSongIds = service.planningSongIds?.filter((id) => id !== songId)
+}
+
+async function savePlan() {
+  const service = planningService.value
+  if (!service || savingPlan.value) return
+  savingPlan.value = true
+  try {
+    if (planningSermonTitle.value || planningPassage.value || planningPreacherId.value || findSermonItem(service)) {
+      applySermonEdit(
+        service,
+        {
+          title: planningSermonTitle.value,
+          passageReference: planningPassage.value,
+          preacherId: planningPreacherId.value,
+        },
+        defaultSermonRole(settingsStore.librarySettings?.serviceTemplates, service.type),
+        settingsStore.librarySettings?.defaultTranslationCode ?? 'KJV',
+      )
+    }
+    service.planningNotes = service.planningNotes?.trim() || undefined
+    await store.save(service)
+    planDialog.value = false
+  } finally {
+    savingPlan.value = false
+  }
+}
+
+async function chooseSongs() {
+  const service = planningService.value
+  if (!service) return
+  await savePlan()
+  router.push({ path: '/library/songs', query: { selectFor: service.id, returnTo: '/planning-ahead' } })
+}
 </script>
 
 <template>
@@ -71,7 +170,8 @@ function openService(serviceId: string) {
         <h1>Planning Ahead</h1>
         <p>
           See what is coming, identify missing details, and begin preparing services before the full
-          order is ready.
+          order is ready. Plan songs, sermon details, and notes here; use the full service only
+          when you are ready for the complete order and assignments.
         </p>
       </div>
       <div class="hero-side">
@@ -89,9 +189,9 @@ function openService(serviceId: string) {
             ><span>Not Started</span>
           </div>
         </div>
-        <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" to="/create-service"
-          >Create Service</v-btn
-        >
+        <div class="hero-actions">
+          <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" to="/create-service">Create Service</v-btn>
+        </div>
       </div>
     </header>
 
@@ -146,17 +246,13 @@ function openService(serviceId: string) {
         </div>
 
         <div class="planning-columns" aria-hidden="true">
-          <span>Service</span><span>Sermon</span><span>Preacher</span><span>Status</span><span />
+          <span>Service</span><span>Sermon</span><span>Preacher</span><span>Planning</span><span />
         </div>
         <div class="planning-list">
           <article
             v-for="service in currentMonth?.services"
             :key="service.id"
             class="planning-row"
-            tabindex="0"
-            @click="openService(service.id)"
-            @keydown.enter="openService(service.id)"
-            @keydown.space.prevent="openService(service.id)"
           >
             <div class="service-cell">
               <div class="date-tile">
@@ -184,14 +280,30 @@ function openService(serviceId: string) {
               >
             </div>
             <div>
-              <span
-                class="planning-state"
-                :class="{ 'planning-state--started': hasStarted(service) }"
-              >
-                <i />{{ hasStarted(service) ? 'Started' : 'Not Started' }}
-              </span>
+              <div class="planning-actions">
+                <span
+                  class="planning-state"
+                  :class="{ 'planning-state--started': hasStarted(service) }"
+                >
+                  <i />{{ hasStarted(service) ? 'Started' : 'Not Started' }}
+                </span>
+                <span v-if="service.planningNotes" class="planning-note-indicator">
+                  <v-icon icon="mdi-note-text-outline" size="14" /> Note added
+                </span>
+                <v-btn size="small" variant="tonal" color="primary" @click="openPlan(service)">
+                  Plan Service
+                </v-btn>
+              </div>
             </div>
-            <v-icon icon="mdi-chevron-right" class="row-chevron" size="21" />
+            <v-btn
+              icon="mdi-arrow-top-right"
+              variant="text"
+              size="small"
+              class="open-service-button"
+              aria-label="Open full service workspace"
+              title="Open full service workspace"
+              @click="openService(service.id)"
+            />
           </article>
         </div>
       </div>
@@ -200,11 +312,91 @@ function openService(serviceId: string) {
     <section v-else class="planning-empty">
       <span><v-icon icon="mdi-calendar-plus-outline" size="34" /></span>
       <h2>No Upcoming Services</h2>
-      <p>Create a service to begin building your long-range plan.</p>
-      <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" to="/create-service"
-        >Create Service</v-btn
-      >
+      <p>Create a service to start planning songs, details, and assignments.</p>
+      <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" to="/create-service">Create Service</v-btn>
     </section>
+
+    <v-dialog v-model="createPlanDialog" max-width="520">
+      <v-card>
+        <v-card-title>Create a Plan</v-card-title>
+        <v-card-subtitle>Start with the basics. Songs, notes, and sermon details can come next.</v-card-subtitle>
+        <v-card-text class="create-plan-content">
+          <v-row>
+            <v-col cols="12" sm="6">
+              <v-text-field v-model="newPlanDate" type="date" label="Service Date" variant="outlined" />
+            </v-col>
+            <v-col cols="12" sm="6">
+              <five-minute-time-picker v-model="newPlanTime" label="Start Time" />
+            </v-col>
+          </v-row>
+          <v-select
+            v-model="newPlanType"
+            :items="settingsStore.librarySettings?.serviceTypes ?? []"
+            label="Service Type"
+            variant="outlined"
+            no-data-text="No service types configured"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="createPlanDialog = false">Cancel</v-btn>
+          <v-btn color="primary" variant="flat" :disabled="!newPlanDate || !newPlanType" :loading="creatingPlan" @click="createPlan">
+            Create and Plan
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="planDialog" max-width="760" scrollable>
+      <v-card v-if="planningService">
+        <v-card-title>Plan {{ planningService.type }}</v-card-title>
+        <v-card-subtitle>
+          Build only what you know now. Open the full service when you are ready for assignments and the order of worship.
+        </v-card-subtitle>
+        <v-card-text class="plan-dialog-content">
+          <v-row>
+            <v-col cols="12" sm="6">
+              <v-text-field v-model="planningSermonTitle" label="Sermon Title" variant="outlined" />
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-select v-model="planningPreacherId" :items="preacherOptions" label="Preacher" variant="outlined" clearable />
+            </v-col>
+          </v-row>
+          <v-text-field v-model="planningPassage" label="Main Passage" placeholder="e.g. Matthew 6:9-13" variant="outlined" />
+          <v-textarea
+            v-model="planningService.planningNotes"
+            label="Planning Notes"
+            placeholder="Ideas, reminders, themes, or details to work out later"
+            variant="outlined"
+            rows="3"
+            auto-grow
+          />
+
+          <div class="plan-section-heading">
+            <div><h3>Planned Songs</h3><p>Browse by theme or search the library. Selecting a song adds it to this plan.</p></div>
+          </div>
+          <div v-if="plannedSongs.length" class="planned-song-list">
+            <div v-for="entry in plannedSongs" :key="entry.songId" class="planned-song-row">
+              <v-icon icon="mdi-music-note-outline" size="19" />
+              <span>{{ entry.song?.title ?? 'Unavailable song' }}</span>
+              <v-btn icon="mdi-close" size="x-small" variant="text" aria-label="Remove song" @click="removePlannedSong(entry.songId)" />
+            </div>
+          </div>
+          <p v-else class="no-planned-songs">No songs selected yet.</p>
+
+          <v-btn class="browse-songs-button" prepend-icon="mdi-music-note-plus" variant="tonal" color="primary" @click="chooseSongs">
+            Choose Songs from Library
+          </v-btn>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="planDialog = false">Cancel</v-btn>
+          <v-btn color="primary" variant="flat" :loading="savingPlan" @click="savePlan">Save Plan</v-btn>
+          <v-btn variant="tonal" @click="openService(planningService.id)">Open Full Service</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
   </main>
 </template>
 
@@ -270,6 +462,11 @@ function openService(serviceId: string) {
   flex-shrink: 0;
   align-items: center;
   gap: 12px;
+}
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 .planning-summary {
   display: flex;
@@ -448,20 +645,6 @@ function openService(serviceId: string) {
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   border-radius: 8px;
   background: rgba(var(--v-theme-background), 0.32);
-  cursor: pointer;
-  transition:
-    border-color var(--ws-transition-fast),
-    background-color var(--ws-transition-fast),
-    box-shadow var(--ws-transition-fast),
-    transform var(--ws-transition-fast);
-}
-.planning-row:hover,
-.planning-row:focus-visible {
-  border-color: rgba(var(--v-theme-primary), 0.28);
-  background: rgba(var(--v-theme-primary), 0.04);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.1);
-  outline: none;
-  transform: translateY(-1px);
 }
 .service-cell {
   display: grid;
@@ -558,14 +741,82 @@ function openService(serviceId: string) {
   background: rgb(var(--v-theme-success));
   box-shadow: 0 0 0 3px rgba(var(--v-theme-success), 0.1);
 }
-.row-chevron {
-  color: rgba(var(--v-theme-on-surface), 0.26);
+.planning-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
 }
-.planning-row:hover .row-chevron {
+.planning-actions .v-btn {
+  min-width: 0;
+  margin-left: -8px;
+  font-size: 0.68rem;
+  text-transform: none;
+}
+.planning-note-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-size: 0.66rem;
+}
+.planning-note-indicator .v-icon {
   color: rgb(var(--v-theme-primary));
+}
+.open-service-button {
+  justify-self: end;
+  color: rgba(var(--v-theme-on-surface), 0.48);
 }
 .mobile-label {
   display: none;
+}
+.plan-dialog-content {
+  padding-top: 20px;
+}
+.create-plan-content {
+  padding-top: 20px;
+}
+.plan-section-heading {
+  margin: 4px 0 12px;
+}
+.plan-section-heading h3 {
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.88);
+  font-size: 0.9rem;
+}
+.plan-section-heading p,
+.no-planned-songs {
+  margin: 4px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-size: 0.72rem;
+}
+.planned-song-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.planned-song-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 38px;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 7px;
+  color: rgba(var(--v-theme-on-surface), 0.76);
+  font-size: 0.76rem;
+}
+.planned-song-row .v-icon {
+  color: rgb(var(--v-theme-primary));
+}
+.planned-song-row span {
+  flex: 1;
+}
+.browse-songs-button {
+  width: 100%;
+  margin-top: 14px;
+  text-transform: none;
 }
 .planning-empty {
   display: flex;
@@ -603,6 +854,10 @@ function openService(serviceId: string) {
     width: 100%;
     justify-content: space-between;
   }
+  .hero-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
   .planning-workspace {
     grid-template-columns: 190px minmax(0, 1fr);
   }
@@ -610,8 +865,8 @@ function openService(serviceId: string) {
   .planning-row {
     grid-template-columns: minmax(210px, 1.2fr) minmax(140px, 1fr) minmax(120px, 0.8fr) 24px;
   }
-  .planning-columns > :nth-child(4),
-  .planning-row > :nth-child(4) {
+  .planning-columns > :nth-child(3),
+  .planning-row > :nth-child(3) {
     display: none;
   }
 }
@@ -646,6 +901,9 @@ function openService(serviceId: string) {
     align-items: stretch;
     flex-direction: column;
   }
+  .hero-actions {
+    justify-content: flex-start;
+  }
   .planning-summary {
     align-self: flex-start;
   }
@@ -659,14 +917,14 @@ function openService(serviceId: string) {
     grid-template-columns: 1fr 20px;
     gap: 11px;
   }
-  .planning-row > :not(.service-cell, .row-chevron) {
+  .planning-row > :not(.service-cell, .open-service-button) {
     grid-column: 1;
     margin-left: 61px;
   }
   .service-cell {
     grid-column: 1;
   }
-  .row-chevron {
+  .open-service-button {
     grid-column: 2;
     grid-row: 1 / 4;
   }

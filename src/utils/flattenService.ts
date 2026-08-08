@@ -327,11 +327,16 @@ export function flattenService(
       // slides came before it, so adding/removing/reordering a sibling can never shift, or
       // collide with, another passage's or outline block's key (see pushScriptureSlides's own
       // doc comment for why that matters).
-      for (const passage of item.passages) {
-        const resolved =
-          passage.displayMode === 'reference-only'
-            ? undefined
-            : scriptureById.get(`${item.id}:${passage.id}`)
+      // An empty/missing mainPassageId means this sermon intentionally has no main passage.
+      // Supporting passages stay in the ordered flow and must never be promoted implicitly.
+      const mainPassage = item.passages.find((passage) => passage.id === item.mainPassageId)
+      const legacyFlow = [
+        ...item.passages.filter((passage) => passage.id !== mainPassage?.id).map((passage) => ({ type: 'passage' as const, passageId: passage.id })),
+        ...item.outline.map((block) => ({ type: 'outline' as const, outlineId: block.id })),
+      ]
+      const flow = item.flow ?? legacyFlow
+      const presentPassage = (passage: (typeof item.passages)[number]) => {
+        const resolved = passage.displayMode === 'reference-only' ? undefined : scriptureById.get(`${item.id}:${passage.id}`)
         // Passage slides use the default *scripture* theme (not the sermon theme) unless the
         // item has its own override — resolvePresentationTheme already checks the override
         // against this target first, so an override that isn't valid for 'scripture' still
@@ -351,7 +356,7 @@ export function flattenService(
           passage.id,
         )
       }
-      item.outline.forEach((block) => {
+      const presentOutline = (block: (typeof item.outline)[number]) => {
         flat.push({
           key: `${item.id}:outline:${block.id}`,
           itemIndex,
@@ -369,8 +374,18 @@ export function flattenService(
           // fall back to showing the same title twice.
           footerText: '',
         })
-      })
-      if (item.passages.length === 0 && item.outline.length === 0) {
+      }
+      if (mainPassage && item.presentMainPassage !== false) presentPassage(mainPassage)
+      for (const entry of flow) {
+        if (entry.type === 'passage') {
+          const passage = item.passages.find((candidate) => candidate.id === entry.passageId)
+          if (passage && passage.id !== mainPassage?.id) presentPassage(passage)
+        } else {
+          const block = item.outline.find((candidate) => candidate.id === entry.outlineId)
+          if (block) presentOutline(block)
+        }
+      }
+      if (!mainPassage && flow.length === 0) {
         flat.push({
           key: `${item.id}:0`,
           itemIndex,

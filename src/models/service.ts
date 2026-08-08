@@ -10,6 +10,12 @@ export interface SermonPassage {
   displayMode: 'full' | 'reference-only'
 }
 
+/** One presentable step after a sermon's main passage. Keeping references to the existing
+ * passage/outline records avoids duplicating their editing and scripture-display settings. */
+export type SermonFlowItem =
+  | { type: 'passage'; passageId: string }
+  | { type: 'outline'; outlineId: string }
+
 export type ServiceItemContent =
   | { type: 'song'; songId: string; arrangement: Arrangement }
   | {
@@ -35,6 +41,12 @@ export type ServiceItemContent =
       passages: SermonPassage[]
       mainPassageId: string
       outline: SongBlock[]
+      /** Whether the main passage is presented before the remaining sermon flow. Defaults to
+       * true for compatibility with existing sermons and the common public-reading pattern. */
+      presentMainPassage?: boolean
+      /** Supporting scripture and outline points in their intended presentation order. Legacy
+       * sermons without a flow retain their historical passages-then-outline order. */
+      flow?: SermonFlowItem[]
     }
   /** A bulletin-only line (e.g. "Silent Preparation", a named prayer) — never presented on
    *  screen (see flattenService.ts); its heading/body are the shared bulletinLabel/bulletinNote
@@ -119,6 +131,12 @@ export interface Service {
    *  start times were introduced. */
   time?: string
   type: string
+  /** Private, service-level planning context that does not appear in the order of worship. */
+  planningNotes?: string
+  /** Songs being considered or ordered during planning; separate from the actual service items. */
+  planningSongIds?: string[]
+  /** The template most recently applied to this service, for planning context. */
+  serviceTemplateName?: string
   items: ServiceItem[]
   /** Operator-only notes, keyed by service item id. */
   presenterNotes?: Record<string, string>

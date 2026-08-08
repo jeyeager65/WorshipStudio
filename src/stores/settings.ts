@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { getAdapter } from '@/adapters'
 import { useAsyncStoreState } from '@/composables/useAsyncStoreState'
-import type { LibrarySettings, MachineSettings } from '@/models/settings'
+import type { LibrarySettings, MachineSettings, SongCollectionDefinition } from '@/models/settings'
 
 export const useSettingsStore = defineStore('settings', () => {
   const librarySettings = ref<LibrarySettings>()
@@ -17,6 +17,12 @@ export const useSettingsStore = defineStore('settings', () => {
       ])
       librarySettings.value = {
         ...library,
+        // Desktop deserialization migrates old string entries itself, but browser-demo
+        // localStorage bypasses Rust. Normalize the legacy shape here too so every view sees
+        // the same clean collection records and the next save persists the new format.
+        collections: (library.collections as Array<SongCollectionDefinition | string>).map(
+          (collection) => typeof collection === 'string' ? { name: collection } : collection,
+        ),
         // Browser-demo localStorage and older library-settings.json files predate the shared
         // Canva integration block. Normalize once at the store boundary so every view can rely
         // on the current shape.

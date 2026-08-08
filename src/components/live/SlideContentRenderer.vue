@@ -568,6 +568,21 @@ const progressSegments = computed(() => {
   transform: translateX(-50%);
   width: 85cqw;
 }
+/* A contrast panel behind the complete wayfinding indicator keeps its labels and bar readable
+   over both light photography and dark theme backgrounds. This is a pseudo-element rather
+   than padding on the container: percentage positions for the Testament boundary and current
+   reference marker must remain relative to exactly the same width as the progress bar. */
+.wayfinding-progress-container::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: calc(clamp(10px, 1.6cqw, 24px) * -1);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: clamp(12px, 1.4cqw, 22px);
+  background: rgba(7, 11, 17, 0.46);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(3px);
+}
 .wayfinding-progress-labels {
   display: flex;
   justify-content: space-between;

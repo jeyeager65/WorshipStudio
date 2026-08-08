@@ -11,6 +11,7 @@ import {
 } from '@/utils/sermonInfo'
 import { personFormalName, sortByPreferredRole } from '@/models/library'
 import type { Service } from '@/models/service'
+import FiveMinuteTimePicker from '@/components/FiveMinuteTimePicker.vue'
 
 const props = defineProps<{ modelValue: boolean; service: Service }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
@@ -94,13 +95,9 @@ function save() {
             <v-text-field v-model="editDate" type="date" label="Date" variant="outlined" />
           </v-col>
           <v-col cols="6">
-            <v-text-field
+            <five-minute-time-picker
               v-model="editTime"
-              type="time"
-              step="300"
               label="Start Time"
-              variant="outlined"
-              clearable
             />
           </v-col>
         </v-row>

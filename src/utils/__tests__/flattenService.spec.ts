@@ -496,7 +496,7 @@ describe('flattenService — sermon', () => {
     }
   }
 
-  it('presents every passage in list order, then the outline, with unique continuous keys', () => {
+  it('presents the main passage first, then the legacy supporting passages and outline', () => {
     const service = makeService({
       items: [
         {
@@ -518,17 +518,67 @@ describe('flattenService — sermon', () => {
     const flat = flattenService(service, new Map(), scriptureById)
 
     expect(flat).toHaveLength(4)
-    expect(flat.map((s) => s.itemLabel)).toEqual(['Romans 8:28', 'Mark 5:1-20', 'Sermon Outline', 'Sermon Outline'])
-    expect(flat.map((s) => s.subLabel)).toEqual(['Reference Only', 'ESV', 'The Setup', 'The Turn'])
+    expect(flat.map((s) => s.itemLabel)).toEqual(['Mark 5:1-20', 'Romans 8:28', 'Sermon Outline', 'Sermon Outline'])
+    expect(flat.map((s) => s.subLabel)).toEqual(['ESV', 'Reference Only', 'The Setup', 'The Turn'])
     expect(flat[3].text).toBe('Point two')
     expect(new Set(flat.map((s) => s.key)).size).toBe(4)
     // Content-addressed keys (by the passage's/block's own id, not cumulative position) — see
     // the "keeps a passage's key stable" test below for the regression this guards against.
     expect(flat.map((s) => s.key)).toEqual([
-      'item-1:passage:p1:0',
       'item-1:passage:p2:0',
+      'item-1:passage:p1:0',
       'item-1:outline:o1',
       'item-1:outline:o2',
+    ])
+  })
+
+  it('interleaves supporting scripture and outline points in sermon flow order', () => {
+    const service = makeService({
+      items: [{
+        id: 'item-1',
+        type: 'sermon',
+        passages: [
+          { id: 'main', reference: 'John 1:1-4', translation: 'ESV', displayMode: 'reference-only' },
+          { id: 'support', reference: 'Romans 8:28', translation: 'ESV', displayMode: 'reference-only' },
+        ],
+        mainPassageId: 'main',
+        outline: [{ id: 'point', label: 'God is faithful', text: '' }],
+        flow: [
+          { type: 'outline', outlineId: 'point' },
+          { type: 'passage', passageId: 'support' },
+        ],
+      }],
+    })
+
+    const flat = flattenService(service, new Map())
+    expect(flat.map((slide) => slide.key)).toEqual([
+      'item-1:passage:main:0',
+      'item-1:outline:point',
+      'item-1:passage:support:0',
+    ])
+  })
+
+  it('keeps supporting scripture in flow order when the sermon has no main passage', () => {
+    const service = makeService({
+      items: [{
+        id: 'item-1',
+        type: 'sermon',
+        passages: [
+          { id: 'support', reference: 'Romans 8:28', translation: 'ESV', displayMode: 'reference-only' },
+        ],
+        mainPassageId: '',
+        outline: [{ id: 'point', label: 'God is faithful', text: '' }],
+        flow: [
+          { type: 'outline', outlineId: 'point' },
+          { type: 'passage', passageId: 'support' },
+        ],
+      }],
+    })
+
+    const flat = flattenService(service, new Map())
+    expect(flat.map((slide) => slide.key)).toEqual([
+      'item-1:outline:point',
+      'item-1:passage:support:0',
     ])
   })
 

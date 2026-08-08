@@ -241,6 +241,9 @@ mod tests {
             date: date.to_string(),
             time: None,
             service_type: "Sunday Morning Worship".to_string(),
+            planning_notes: None,
+            planning_song_ids: None,
+            service_template_name: None,
             items: vec![crate::models::ServiceItem {
                 theme_id: None,
                 id: format!("item-{song_id}"),

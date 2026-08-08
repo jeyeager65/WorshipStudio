@@ -522,9 +522,35 @@ const editingSermonPassageId = ref<string>()
 // stays scannable instead of showing every passage's full text at once. The Main Passage isn't
 // part of this — it's always shown expanded, since there's only ever one.
 const expandedSupportingPassageId = ref<string>()
+const expandedMainSermonPassage = ref(true)
 // Same edit/expand split as passages above, applied to outline points.
 const editingSermonOutlineId = ref<string>()
 const expandedSermonOutlineId = ref<string>()
+
+function selectMainSermonFlow() {
+  const expanding = !expandedMainSermonPassage.value
+  expandedMainSermonPassage.value = expanding
+  if (expanding) {
+    expandedSupportingPassageId.value = undefined
+    expandedSermonOutlineId.value = undefined
+  }
+}
+function selectSermonFlowPassage(passageId: string) {
+  const expanding = expandedSupportingPassageId.value !== passageId
+  expandedSupportingPassageId.value = expanding ? passageId : undefined
+  if (expanding) {
+    expandedMainSermonPassage.value = false
+    expandedSermonOutlineId.value = undefined
+  }
+}
+function selectSermonFlowOutline(outlineId: string) {
+  const expanding = expandedSermonOutlineId.value !== outlineId
+  expandedSermonOutlineId.value = expanding ? outlineId : undefined
+  if (expanding) {
+    expandedMainSermonPassage.value = false
+    expandedSupportingPassageId.value = undefined
+  }
+}
 watch(
   selectedItem,
   (item) => {
@@ -536,6 +562,7 @@ watch(
     // Switching to a different item (or away from this sermon entirely) shouldn't leave a
     // stale passage/outline point expanded or mid-edit for whatever's selected next.
     editingSermonPassageId.value = undefined
+    expandedMainSermonPassage.value = true
     expandedSupportingPassageId.value = undefined
     editingSermonOutlineId.value = undefined
     expandedSermonOutlineId.value = undefined
@@ -565,20 +592,44 @@ async function commitSermonPassageReference(itemId: string, passageId: string) {
 // operations the Add dialog offers at creation time, now also available in place, so a
 // passage added mid-week (or an outline point that needs editing) doesn't require deleting
 // and re-adding the whole sermon item.
-function addSermonPassage(itemId: string) {
+function addSermonPassage(itemId: string, asMain = false) {
   const item = service.value?.items.find((i) => i.id === itemId)
   if (!item || item.type !== 'sermon') return
   const id = `passage-${crypto.randomUUID()}`
   item.passages.push({ id, reference: '', translation: scriptureDraft.value.translation, displayMode: 'full' })
+  item.flow = item.flow ?? [
+    ...item.passages.slice(0, -1).filter((passage) => passage.id !== item.mainPassageId).map((passage) => ({ type: 'passage', passageId: passage.id } as const)),
+    ...item.outline.map((block) => ({ type: 'outline', outlineId: block.id } as const)),
+  ]
+  if (asMain) {
+    item.mainPassageId = id
+    item.presentMainPassage = true
+  } else {
+    item.flow.push({ type: 'passage', passageId: id })
+  }
   sermonPassageReferenceDrafts[id] = ''
-  // The first passage is always "the" main passage — no manual designation needed (see
-  // removeSermonPassage for the mirrored sync on removal).
-  item.mainPassageId = item.passages[0].id
   // Straight into edit mode — a freshly added passage has no reference yet, so there's nothing
   // useful to look at until it's actually been given one (matches "Add Outline Point"'s own
   // behavior below).
   editingSermonPassageId.value = id
-  expandedSupportingPassageId.value = id
+  expandedMainSermonPassage.value = asMain
+  expandedSupportingPassageId.value = asMain ? undefined : id
+  expandedSermonOutlineId.value = undefined
+}
+function addMainSermonPassage(itemId: string) {
+  const item = service.value?.items.find((candidate) => candidate.id === itemId)
+  if (!item || item.type !== 'sermon') return
+  const existing = item.passages.find((passage) => passage.id === item.mainPassageId)
+  if (!existing) {
+    addSermonPassage(itemId, true)
+    return
+  }
+  item.presentMainPassage = true
+  sermonPassageReferenceDrafts[existing.id] = existing.reference
+  editingSermonPassageId.value = existing.id
+  expandedMainSermonPassage.value = true
+  expandedSupportingPassageId.value = undefined
+  expandedSermonOutlineId.value = undefined
 }
 async function removeSermonPassage(itemId: string, passageId: string) {
   const item = service.value?.items.find((i) => i.id === itemId)
@@ -587,10 +638,15 @@ async function removeSermonPassage(itemId: string, passageId: string) {
   if (index === -1) return
   if (!(await confirmDialog.confirm('Remove this passage?', 'Remove'))) return
   item.passages.splice(index, 1)
+  item.flow = item.flow?.filter((entry) => entry.type !== 'passage' || entry.passageId !== passageId)
   delete sermonPassageReferenceDrafts[passageId]
   scriptureById.delete(`${itemId}:${passageId}`)
   scriptureErrors.delete(`${itemId}:${passageId}`)
-  item.mainPassageId = item.passages[0]?.id ?? ''
+  if (item.mainPassageId === passageId) {
+    item.mainPassageId = ''
+    item.presentMainPassage = false
+    expandedMainSermonPassage.value = false
+  }
 }
 // The sermon's own title — also settable from the "Edit Service Details" header dialog
 // (ServiceDetailsDialog.vue, via applySermonEdit), but that's a roundabout path when you're
@@ -605,7 +661,16 @@ function updateSermonTitle(itemId: string, title: string) {
 function toggleSermonPassageEdit(passageId: string) {
   const turningOn = editingSermonPassageId.value !== passageId
   editingSermonPassageId.value = turningOn ? passageId : undefined
-  if (turningOn) expandedSupportingPassageId.value = passageId
+  if (turningOn) {
+    if (passageId === mainSermonPassage.value.id) {
+      expandedMainSermonPassage.value = true
+      expandedSupportingPassageId.value = undefined
+    } else {
+      expandedMainSermonPassage.value = false
+      expandedSupportingPassageId.value = passageId
+    }
+    expandedSermonOutlineId.value = undefined
+  }
 }
 function toggleSupportingPassageExpanded(passageId: string) {
   expandedSupportingPassageId.value =
@@ -614,7 +679,11 @@ function toggleSupportingPassageExpanded(passageId: string) {
 function toggleSermonOutlineEdit(blockId: string) {
   const turningOn = editingSermonOutlineId.value !== blockId
   editingSermonOutlineId.value = turningOn ? blockId : undefined
-  if (turningOn) expandedSermonOutlineId.value = blockId
+  if (turningOn) {
+    expandedMainSermonPassage.value = false
+    expandedSupportingPassageId.value = undefined
+    expandedSermonOutlineId.value = blockId
+  }
 }
 // Expanding an outline point doubles as selecting it for presentation — there's no separate
 // "preview vs. live" row the way passages have several auto-split pages, so opening the one
@@ -634,9 +703,16 @@ function addSermonOutlineBlock(itemId: string) {
   if (!item || item.type !== 'sermon') return
   const id = `outline-${crypto.randomUUID()}`
   item.outline.push({ id, label: '', text: '' })
+  item.flow = item.flow ?? [
+    ...item.passages.filter((passage) => passage.id !== item.mainPassageId).map((passage) => ({ type: 'passage', passageId: passage.id } as const)),
+    ...item.outline.slice(0, -1).map((block) => ({ type: 'outline', outlineId: block.id } as const)),
+  ]
+  item.flow.push({ type: 'outline', outlineId: id })
   // Straight into edit mode — a freshly added point is still an empty placeholder, so there's
   // nothing useful to look at until it's actually been titled and filled in.
   expandedSermonOutlineId.value = id
+  expandedMainSermonPassage.value = false
+  expandedSupportingPassageId.value = undefined
   editingSermonOutlineId.value = id
 }
 async function removeSermonOutlineBlock(itemId: string, index: number) {
@@ -646,20 +722,88 @@ async function removeSermonOutlineBlock(itemId: string, index: number) {
   if (!target) return
   if (!(await confirmDialog.confirm(`Remove "${target.label}"?`, 'Remove'))) return
   item.outline.splice(index, 1)
+  item.flow = item.flow?.filter((entry) => entry.type !== 'outline' || entry.outlineId !== target.id)
 }
 // The Main Passage (index 0) is fixed in place — only the passages after it are reorderable, so
 // VueDraggable gets a writable slice rather than the item's own full passages array.
-const mainSermonPassage = computed(() =>
-  selectedItem.value?.type === 'sermon' ? selectedItem.value.passages[0] : undefined,
-)
+const mainSermonPassage = computed<SermonPassage>(() => {
+  const item = selectedItem.value
+  return item?.type === 'sermon'
+    ? item.passages.find((passage) => passage.id === item.mainPassageId) ?? { id: '', reference: '', translation: '', displayMode: 'full' }
+    : { id: '', reference: '', translation: '', displayMode: 'full' }
+})
 const supportingSermonPassages = computed<SermonPassage[]>({
-  get: () => (selectedItem.value?.type === 'sermon' ? selectedItem.value.passages.slice(1) : []),
+  get: () => (selectedItem.value?.type === 'sermon' ? selectedItem.value.passages.filter((passage) => passage.id !== mainSermonPassage.value?.id) : []),
   set: (value) => {
     const item = selectedItem.value
-    if (!item || item.type !== 'sermon' || !item.passages[0]) return
-    item.passages = [item.passages[0], ...value]
+    const main = mainSermonPassage.value
+    if (!item || item.type !== 'sermon' || !main.id) return
+    item.passages = [main, ...value]
   },
 })
+type SermonFlowRow = { key: string; type: 'passage' | 'outline'; label: string; detail: string }
+const sermonFlow = computed({
+  get: (): SermonFlowRow[] => {
+    const item = selectedItem.value
+    if (!item || item.type !== 'sermon') return []
+    const main = mainSermonPassage.value
+    const legacy = [
+      ...item.passages.filter((passage) => passage.id !== main?.id).map((passage) => ({ type: 'passage' as const, passageId: passage.id })),
+      ...item.outline.map((block) => ({ type: 'outline' as const, outlineId: block.id })),
+    ]
+    const rows: SermonFlowRow[] = []
+    for (const entry of item.flow ?? legacy) {
+      if (entry.type === 'passage') {
+        const passage = item.passages.find((candidate) => candidate.id === entry.passageId)
+        if (passage && passage.id !== main?.id) rows.push({ key: `passage:${passage.id}`, type: 'passage', label: passage.reference || 'Untitled scripture', detail: passage.displayMode === 'full' ? 'Full text' : 'Reference only' })
+        continue
+      }
+      const block = item.outline.find((candidate) => candidate.id === entry.outlineId)
+      if (block) rows.push({ key: `outline:${block.id}`, type: 'outline', label: block.label || 'Untitled point', detail: block.text || 'Outline point' })
+    }
+    return rows
+  },
+  set: (rows: SermonFlowRow[]) => {
+    const item = selectedItem.value
+    if (!item || item.type !== 'sermon') return
+    item.flow = rows.map((row) => row.type === 'passage'
+      ? { type: 'passage', passageId: row.key.slice('passage:'.length) }
+      : { type: 'outline', outlineId: row.key.slice('outline:'.length) })
+  },
+})
+function sermonFlowPassage(entry: SermonFlowRow) {
+  if (entry.type !== 'passage' || selectedItem.value?.type !== 'sermon') return undefined
+  return selectedItem.value.passages.find((passage) => passage.id === entry.key.slice('passage:'.length))
+}
+function sermonFlowOutline(entry: SermonFlowRow) {
+  if (entry.type !== 'outline' || selectedItem.value?.type !== 'sermon') return undefined
+  return selectedItem.value.outline.find((block) => block.id === entry.key.slice('outline:'.length))
+}
+function sermonFlowOutlineIndex(entry: SermonFlowRow) {
+  const item = selectedItem.value
+  return entry.type === 'outline' && item?.type === 'sermon'
+    ? item.outline.findIndex((block) => block.id === entry.key.slice('outline:'.length))
+    : -1
+}
+function selectedSermonId() {
+  return selectedItem.value?.type === 'sermon' ? selectedItem.value.id : ''
+}
+function sermonFlowEntryIsLive(entry: SermonFlowRow) {
+  if (entry.type === 'passage')
+    return passageFlatSlides(entry.key.slice('passage:'.length)).some((slide) => flatIndex.value === flatIndexForKey(slide.key))
+  const item = selectedItem.value
+  return item?.type === 'sermon' && flatIndex.value === sermonOutlineFlatIndex(item, sermonFlowOutlineIndex(entry))
+}
+function selectSermonFlowEntry(entry: SermonFlowRow) {
+  if (entry.type === 'passage') selectSermonFlowPassage(entry.key.slice('passage:'.length))
+  else selectSermonFlowOutline(entry.key.slice('outline:'.length))
+}
+function removeSermonFlowEntry(entry: SermonFlowRow) {
+  const item = selectedItem.value
+  if (!item || item.type !== 'sermon') return
+  if (entry.type === 'passage') void removeSermonPassage(item.id, entry.key.slice('passage:'.length))
+  else void removeSermonOutlineBlock(item.id, sermonFlowOutlineIndex(entry))
+}
 
 const selectedSong = computed<Song | undefined>(() => {
   const item = selectedItem.value
@@ -701,9 +845,9 @@ function sermonOutlineFlatIndex(
   item: Extract<ServiceItem, { type: 'sermon' }>,
   outlineIndex: number,
 ): number {
-  const itemSlides = flatSlides.value.filter((s) => s.itemId === item.id)
-  const target = itemSlides[itemSlides.length - item.outline.length + outlineIndex]
-  return target ? flatSlides.value.indexOf(target) : -1
+  const block = item.outline[outlineIndex]
+  if (!block) return -1
+  return flatSlides.value.findIndex((slide) => slide.key === `${item.id}:outline:${block.id}`)
 }
 const selectedMediaUrl = computed(() => {
   const item = selectedItem.value
@@ -901,6 +1045,36 @@ const {
   retryExternalApp: () => retryExternalApp(),
   closeExternalApp: () => closeExternalApp(),
 })
+
+// Previous/Next changes the transport's live slide directly, bypassing the sermon-flow row
+// click handlers that normally manage this accordion. Keep the visible editor synchronized
+// with whichever sermon content is live so moving across passage/outline boundaries opens the
+// destination section and closes the one the operator just left. Moving between pages of the
+// same passage intentionally leaves that passage open.
+watch(
+  () => liveSlide.value?.key,
+  () => {
+    const slide = liveSlide.value
+    const item = selectedItem.value
+    if (!slide || item?.type !== 'sermon' || slide.itemId !== item.id) return
+
+    if (slide.passageId) {
+      const mainPassageId = item.mainPassageId
+      expandedMainSermonPassage.value = slide.passageId === mainPassageId
+      expandedSupportingPassageId.value =
+        slide.passageId === mainPassageId ? undefined : slide.passageId
+      expandedSermonOutlineId.value = undefined
+      return
+    }
+
+    const outline = item.outline.find((block) => slide.key === `${item.id}:outline:${block.id}`)
+    if (!outline) return
+    expandedMainSermonPassage.value = false
+    expandedSupportingPassageId.value = undefined
+    expandedSermonOutlineId.value = outline.id
+  },
+  { immediate: true, flush: 'post' },
+)
 
 const {
   externalAppError,
@@ -1508,7 +1682,72 @@ function updateRolePerson(role: string, personId: string | undefined) {
               style="max-width: 460px"
               @update:model-value="(value: string) => updateSermonTitle(selectedItem!.id, value)"
             />
-            <template v-if="mainSermonPassage">
+            <div class="d-flex align-center justify-space-between mb-1"><div class="text-overline text-medium-emphasis">Sermon Flow</div><div class="d-flex ga-2"><v-btn size="small" color="primary" variant="tonal" prepend-icon="mdi-book-plus-outline" @click="addSermonPassage(selectedItem!.id)">Add Scripture</v-btn><v-btn size="small" color="primary" variant="tonal" prepend-icon="mdi-format-list-bulleted" @click="addSermonOutlineBlock(selectedItem!.id)">Add Point</v-btn></div></div>
+            <p class="text-caption text-medium-emphasis mb-2">The main passage is presented first. Drag supporting scripture and outline points into the order you will use them.</p>
+            <div v-if="mainSermonPassage.id && selectedItem.presentMainPassage !== false" class="sermon-flow-entry mb-2">
+              <div class="slide-row" :class="{ 'slide-row--live': passageFlatSlides(mainSermonPassage.id).some((slide) => flatIndex === flatIndexForKey(slide.key)) }" @click="selectMainSermonFlow">
+                <v-icon :icon="expandedMainSermonPassage ? 'mdi-chevron-down' : 'mdi-chevron-right'" size="small" />
+                <v-icon icon="mdi-pin-outline" size="small" />
+                <div class="flex-grow-1" style="min-width:0"><div class="slide-row-title-row"><strong class="text-body-2 text-truncate">{{ mainSermonPassage.reference || 'Main passage' }}</strong><span v-if="passageFlatSlides(mainSermonPassage.id).some((slide) => flatIndex === flatIndexForKey(slide.key))" class="slide-row-live-badge"><i />Live</span></div><div class="text-caption text-medium-emphasis">Main passage · {{ mainSermonPassage.displayMode === 'full' ? 'Full text' : 'Reference only' }}</div></div>
+                <v-btn :icon="editingSermonPassageId === mainSermonPassage.id ? 'mdi-check' : 'mdi-pencil-outline'" variant="text" size="x-small" @click.stop="toggleSermonPassageEdit(mainSermonPassage.id)" />
+                <v-btn icon="mdi-delete-outline" variant="text" size="x-small" class="row-remove" @click.stop="removeSermonPassage(selectedItem!.id, mainSermonPassage.id)" />
+              </div>
+              <div v-if="expandedMainSermonPassage" class="sermon-flow-detail">
+                <template v-if="editingSermonPassageId === mainSermonPassage.id">
+                  <v-text-field v-model="sermonPassageReferenceDrafts[mainSermonPassage.id]" label="Reference" variant="outlined" density="compact" class="mb-2" @blur="commitSermonPassageReference(selectedItem!.id, mainSermonPassage.id)" />
+                  <v-btn-toggle :model-value="mainSermonPassage.displayMode" mandatory density="compact" divided class="mb-2" @update:model-value="(value: 'full' | 'reference-only') => updateSermonPassageDisplayMode(selectedItem!.id, mainSermonPassage!.id, value)"><v-btn value="full" size="small">Show Full Text</v-btn><v-btn value="reference-only" size="small">Reference Only</v-btn></v-btn-toggle>
+                  <v-select v-if="mainSermonPassage.displayMode === 'full'" :model-value="mainSermonPassage.translation" :items="scriptureTranslations" item-title="name" item-value="code" label="Translation" variant="outlined" density="compact" @update:model-value="(value: string) => updateSermonPassageTranslation(selectedItem!.id, mainSermonPassage!.id, value)" />
+                </template>
+                <div v-if="mainSermonPassage.displayMode === 'reference-only'" class="slide-row" :class="{ 'slide-row--live': flatIndex === flatIndexForKey(passageFlatSlides(mainSermonPassage.id)[0]?.key ?? '') }" @click="goLive(flatIndexForKey(passageFlatSlides(mainSermonPassage.id)[0]?.key ?? ''))"><div class="slide-row-title-row"><span>Reference only — no verse text shown.</span><span v-if="flatIndex === flatIndexForKey(passageFlatSlides(mainSermonPassage.id)[0]?.key ?? '')" class="slide-row-live-badge"><i />Live</span></div></div>
+                <div v-else-if="scriptureErrors.get(`${selectedItem!.id}:${mainSermonPassage.id}`)" class="text-error">{{ scriptureErrors.get(`${selectedItem!.id}:${mainSermonPassage.id}`) }}</div>
+                <div v-else-if="!scriptureById.get(`${selectedItem!.id}:${mainSermonPassage.id}`)" class="text-medium-emphasis">Loading…</div>
+                <div v-else class="d-flex flex-column ga-1"><div v-for="slide in passageFlatSlides(mainSermonPassage.id)" :key="slide.key" class="slide-row" :class="{ 'slide-row--live': flatIndex === flatIndexForKey(slide.key) }" @click="goLive(flatIndexForKey(slide.key))"><div><div class="slide-row-title-row"><span v-if="passageFlatSlides(mainSermonPassage.id).length > 1" class="text-caption text-medium-emphasis">{{ slide.subLabel }}</span><span v-if="flatIndex === flatIndexForKey(slide.key)" class="slide-row-live-badge"><i />Live</span></div><div class="text-body-2" style="white-space:pre-line">{{ slide.text }}</div></div></div></div>
+              </div>
+            </div>
+            <div v-else class="sermon-flow-entry mb-2">
+              <div class="slide-row">
+                <v-icon icon="mdi-pin-outline" size="small" />
+                <div class="flex-grow-1" style="min-width: 0">
+                  <strong class="text-body-2">Main passage</strong>
+                  <div class="text-caption text-medium-emphasis">Not set</div>
+                </div>
+                <v-btn icon="mdi-plus" variant="text" size="x-small" aria-label="Add main passage" @click.stop="addMainSermonPassage(selectedItem!.id)" />
+              </div>
+            </div>
+            <VueDraggable v-if="sermonFlow.length" v-model="sermonFlow" handle=".sermon-flow-drag" :animation="150" class="d-flex flex-column ga-2 mb-4">
+              <div v-for="entry in sermonFlow" :key="entry.key" class="sermon-flow-entry">
+                <div class="slide-row" :class="{ 'slide-row--live': sermonFlowEntryIsLive(entry) }" @click="selectSermonFlowEntry(entry)">
+                  <v-icon icon="mdi-drag-vertical" class="sermon-flow-drag" size="small" @click.stop />
+                  <v-icon :icon="entry.type === 'passage' ? (expandedSupportingPassageId === entry.key.slice('passage:'.length) ? 'mdi-chevron-down' : 'mdi-chevron-right') : (expandedSermonOutlineId === entry.key.slice('outline:'.length) ? 'mdi-chevron-down' : 'mdi-chevron-right')" size="small" />
+                  <v-icon :icon="entry.type === 'passage' ? 'mdi-book-open-page-variant-outline' : 'mdi-format-list-bulleted'" size="small" />
+                  <div class="flex-grow-1" style="min-width:0"><div class="slide-row-title-row"><strong class="text-body-2 text-truncate">{{ entry.label }}</strong><span v-if="sermonFlowEntryIsLive(entry)" class="slide-row-live-badge"><i />Live</span></div><div class="text-caption text-medium-emphasis">{{ entry.type === 'passage' ? entry.detail : 'Outline point' }}</div></div>
+                  <v-btn
+                    :icon="entry.type === 'passage'
+                      ? (editingSermonPassageId === entry.key.slice('passage:'.length) ? 'mdi-check' : 'mdi-pencil-outline')
+                      : (editingSermonOutlineId === entry.key.slice('outline:'.length) ? 'mdi-check' : 'mdi-pencil-outline')"
+                    variant="text"
+                    size="x-small"
+                    @click.stop="entry.type === 'passage' ? toggleSermonPassageEdit(entry.key.slice('passage:'.length)) : toggleSermonOutlineEdit(entry.key.slice('outline:'.length))"
+                  />
+                  <v-btn icon="mdi-delete-outline" variant="text" size="x-small" class="row-remove" @click.stop="removeSermonFlowEntry(entry)" />
+                </div>
+                <div v-if="entry.type === 'passage' && expandedSupportingPassageId === entry.key.slice('passage:'.length) && sermonFlowPassage(entry)" class="sermon-flow-detail">
+                  <template v-if="editingSermonPassageId === sermonFlowPassage(entry)!.id"><v-text-field v-model="sermonPassageReferenceDrafts[sermonFlowPassage(entry)!.id]" label="Reference" variant="outlined" density="compact" class="mb-2" @blur="commitSermonPassageReference(selectedSermonId(), sermonFlowPassage(entry)!.id)" /><v-btn-toggle :model-value="sermonFlowPassage(entry)!.displayMode" mandatory density="compact" divided class="mb-2" @update:model-value="(value: 'full' | 'reference-only') => updateSermonPassageDisplayMode(selectedSermonId(), sermonFlowPassage(entry)!.id, value)"><v-btn value="full" size="small">Show Full Text</v-btn><v-btn value="reference-only" size="small">Reference Only</v-btn></v-btn-toggle><v-select v-if="sermonFlowPassage(entry)!.displayMode === 'full'" :model-value="sermonFlowPassage(entry)!.translation" :items="scriptureTranslations" item-title="name" item-value="code" label="Translation" variant="outlined" density="compact" @update:model-value="(value: string) => updateSermonPassageTranslation(selectedSermonId(), sermonFlowPassage(entry)!.id, value)" /></template>
+                  <div v-if="sermonFlowPassage(entry)!.displayMode === 'reference-only'" class="slide-row" :class="{ 'slide-row--live': flatIndex === flatIndexForKey(passageFlatSlides(sermonFlowPassage(entry)!.id)[0]?.key ?? '') }" @click="goLive(flatIndexForKey(passageFlatSlides(sermonFlowPassage(entry)!.id)[0]?.key ?? ''))"><div class="slide-row-title-row"><span>Reference only — no verse text shown.</span><span v-if="flatIndex === flatIndexForKey(passageFlatSlides(sermonFlowPassage(entry)!.id)[0]?.key ?? '')" class="slide-row-live-badge"><i />Live</span></div></div><div v-else-if="scriptureErrors.get(`${selectedSermonId()}:${sermonFlowPassage(entry)!.id}`)" class="text-error">{{ scriptureErrors.get(`${selectedSermonId()}:${sermonFlowPassage(entry)!.id}`) }}</div><div v-else-if="!scriptureById.get(`${selectedSermonId()}:${sermonFlowPassage(entry)!.id}`)" class="text-medium-emphasis">Loading…</div><div v-else class="d-flex flex-column ga-1"><div v-for="slide in passageFlatSlides(sermonFlowPassage(entry)!.id)" :key="slide.key" class="slide-row" :class="{ 'slide-row--live': flatIndex === flatIndexForKey(slide.key) }" @click="goLive(flatIndexForKey(slide.key))"><div><div class="slide-row-title-row"><span class="text-caption text-medium-emphasis">{{ slide.subLabel }}</span><span v-if="flatIndex === flatIndexForKey(slide.key)" class="slide-row-live-badge"><i />Live</span></div><div class="text-body-2" style="white-space:pre-line">{{ slide.text }}</div></div></div></div>
+                </div>
+                <div v-if="entry.type === 'outline' && expandedSermonOutlineId === entry.key.slice('outline:'.length) && sermonFlowOutline(entry)" class="sermon-flow-detail">
+                  <template v-if="editingSermonOutlineId === sermonFlowOutline(entry)!.id"><v-text-field v-model="sermonFlowOutline(entry)!.label" label="Title" variant="outlined" density="compact" class="mb-2" /><v-textarea v-model="sermonFlowOutline(entry)!.text" label="Details" variant="outlined" density="compact" rows="3" auto-grow /></template>
+                  <div class="slide-row" :class="{ 'slide-row--live': sermonFlowEntryIsLive(entry) }" @click="goLive(sermonOutlineFlatIndex(selectedItem, sermonFlowOutlineIndex(entry)))">
+                    <div class="flex-grow-1" style="min-width: 0">
+                      <div class="slide-row-title-row"><span class="text-body-2 font-weight-bold">{{ sermonFlowOutline(entry)!.label || 'Untitled point' }}</span><span v-if="sermonFlowEntryIsLive(entry)" class="slide-row-live-badge"><i />Live</span></div>
+                      <div v-if="sermonFlowOutline(entry)!.text" class="text-body-2 text-medium-emphasis mt-1" style="white-space: pre-line">{{ sermonFlowOutline(entry)!.text }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </VueDraggable>
+            <p v-else class="text-caption text-medium-emphasis mb-4">Add supporting scripture or outline points below to build the rest of the flow.</p>
+            <div v-if="selectedItem && selectedItem.type === 'sermon'" style="display:none">
               <div class="text-overline text-medium-emphasis mb-2">Main Passage</div>
               <div class="mb-3">
                 <div class="d-flex align-center justify-space-between mb-1" style="gap: 6px">
@@ -1678,9 +1917,10 @@ function updateRolePerson(role: string, personId: string | undefined) {
                   </div>
                 </div>
               </div>
-            </template>
-            <p v-else class="text-medium-emphasis mb-3">No passage yet.</p>
+            </div>
+            <p v-if="false" class="text-medium-emphasis mb-3">No passage yet.</p>
 
+            <div v-if="selectedItem && selectedItem.type === 'sermon'" style="display:none">
             <template v-if="supportingSermonPassages.length > 0">
               <div class="text-overline text-medium-emphasis mt-4 mb-2">Supporting Passages</div>
               <VueDraggable
@@ -2025,6 +2265,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
             >
               Add Outline Point
             </v-btn>
+            </div>
           </template>
 
           <template v-else-if="selectedItem.type === 'bulletin-note'">
@@ -2614,6 +2855,16 @@ function updateRolePerson(role: string, personId: string | undefined) {
   border-left: 5px solid rgb(var(--v-theme-error));
   padding-left: 7px;
 }
+.sermon-flow-entry { min-width: 0; }
+.sermon-flow-entry > .slide-row { align-items: center; cursor: pointer; }
+.sermon-flow-detail {
+  margin: 6px 0 4px 30px;
+  padding: 12px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 8px;
+  background: rgba(var(--v-theme-background), 0.34);
+}
+.sermon-flow-detail :deep(.v-field) { max-width: 520px; }
 .row-remove {
   opacity: 0;
   color: rgba(var(--v-theme-on-surface), 0.58);

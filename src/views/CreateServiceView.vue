@@ -10,6 +10,7 @@ import { applyServiceTemplate, defaultServiceTemplate } from '@/utils/serviceTem
 import { applySermonEdit } from '@/utils/sermonInfo'
 import { formatServiceTime } from '@/utils/serviceTime'
 import { localCalendarDate } from '@/utils/calendarDate'
+import FiveMinuteTimePicker from '@/components/FiveMinuteTimePicker.vue'
 
 const router = useRouter()
 const store = useServicesStore()
@@ -86,14 +87,15 @@ function seedFromTemplate(): { items: Service['items']; assignments: Service['as
 // Handed to the workspace via the store rather than saved here — nothing is written to
 // disk until its Save button is used, so backing out of a just-created service without
 // saving leaves no trace (see ServiceWorkspaceView, which consumes and clears this).
-function createService() {
+async function createService(destination: 'plan' | 'workspace') {
   const { items, assignments } = seedFromTemplate()
   const service: Service = {
     id: `service-${crypto.randomUUID()}`,
     date: date.value,
-    time: time.value || undefined,
-    type: type.value,
-    items,
+      time: time.value || undefined,
+      type: type.value,
+      serviceTemplateName: selectedTemplate.value?.serviceType,
+      items,
     assignments,
     updatedAt: '',
     updatedByDevice: '',
@@ -109,8 +111,13 @@ function createService() {
       settingsStore.librarySettings?.defaultTranslationCode ?? 'KJV',
     )
   }
-  store.draftService = service
-  router.push(`/service/${service.id}`)
+  if (destination === 'plan') {
+    await store.save(service)
+    router.push(`/planning-ahead/${service.id}`)
+  } else {
+    store.draftService = service
+    router.push(`/service/${service.id}`)
+  }
 }
 </script>
 
@@ -137,7 +144,11 @@ function createService() {
           </div>
           <div class="details-grid">
             <v-text-field v-model="date" type="date" label="Service Date" variant="outlined" hide-details />
-            <v-text-field v-model="time" type="time" step="300" label="Start Time" variant="outlined" hide-details clearable />
+            <five-minute-time-picker
+              v-model="time"
+              label="Start Time"
+              hide-details
+            />
             <v-select
               v-model="type"
               :items="settingsStore.librarySettings?.serviceTypes ?? []"
@@ -243,18 +254,15 @@ function createService() {
 
         <div class="save-note">
           <v-icon icon="mdi-content-save-outline" size="18" />
-          <p>This creates an unsaved draft. Use Save in the workspace when you are ready to keep it.</p>
+          <p>Create &amp; Plan saves the service first. Create &amp; Open Workspace starts an unsaved draft.</p>
         </div>
         <div class="summary-actions">
           <v-btn variant="outlined" to="/">Cancel</v-btn>
-          <v-btn
-            variant="flat"
-            color="primary"
-            :disabled="!canCreate"
-            append-icon="mdi-arrow-right"
-            @click="createService"
-          >
-            Create and Open Service
+          <v-btn variant="outlined" color="primary" :disabled="!canCreate" @click="createService('plan')">
+            Create &amp; Plan
+          </v-btn>
+          <v-btn variant="flat" color="primary" :disabled="!canCreate" append-icon="mdi-arrow-right" @click="createService('workspace')">
+            Create &amp; Open Workspace
           </v-btn>
         </div>
       </aside>
@@ -555,6 +563,9 @@ function createService() {
   grid-template-columns: auto minmax(0, 1fr);
   gap: 9px;
   margin-top: 18px;
+}
+.summary-actions > :last-child {
+  grid-column: 1 / -1;
 }
 @media (max-width: 850px) {
   .create-layout {

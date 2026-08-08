@@ -101,6 +101,15 @@ pub struct SermonPassage {
     pub display_mode: DisplayMode,
 }
 
+/// One ordered, presentable step after a sermon's main passage. It refers to the canonical
+/// passage or outline record instead of copying its scripture/display or slide content.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(tag = "type", rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum SermonFlowItem {
+    Passage { passage_id: String },
+    Outline { outline_id: String },
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(
     tag = "type",
@@ -150,6 +159,10 @@ pub enum ServiceItemContent {
         main_passage_id: String,
         #[serde(default)]
         outline: Vec<SongBlock>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        present_main_passage: Option<bool>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        flow: Vec<SermonFlowItem>,
     },
     /// A bulletin-only line (e.g. "Silent Preparation", a named prayer) — never presented on
     /// screen (see domain-side flattening); its heading/body are the shared bulletin_label/
@@ -423,6 +436,15 @@ pub struct Service {
     pub time: Option<String>,
     #[serde(rename = "type")]
     pub service_type: String,
+    /// Private planning context that does not appear in the order of worship.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub planning_notes: Option<String>,
+    /// Songs being considered or ordered during planning, separate from the service order.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub planning_song_ids: Option<Vec<String>>,
+    /// The template most recently applied to this service, for planning context.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service_template_name: Option<String>,
     #[serde(default)]
     pub items: Vec<ServiceItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -588,8 +610,8 @@ pub struct ApiBibleTranslation {
 pub struct LibrarySettings {
     #[serde(default)]
     pub service_types: Vec<String>,
-    #[serde(default)]
-    pub collections: Vec<String>,
+    #[serde(default, deserialize_with = "deserialize_song_collection_definitions")]
+    pub collections: Vec<SongCollectionDefinition>,
     #[serde(default)]
     pub role_groups: Vec<RoleGroup>,
     #[serde(default)]
@@ -640,6 +662,40 @@ pub struct LibrarySettings {
     /// which read these rather than hardcoding "Order of Worship"/"Heart Preparation"/etc.).
     #[serde(default)]
     pub bulletin: BulletinSettings,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SongCollectionDefinition {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub abbreviation: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum StoredSongCollectionDefinition {
+    Name(String),
+    Definition(SongCollectionDefinition),
+}
+
+fn deserialize_song_collection_definitions<'de, D>(
+    deserializer: D,
+) -> Result<Vec<SongCollectionDefinition>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let stored = Vec::<StoredSongCollectionDefinition>::deserialize(deserializer)?;
+    Ok(stored
+        .into_iter()
+        .map(|entry| match entry {
+            StoredSongCollectionDefinition::Name(name) => SongCollectionDefinition {
+                name,
+                abbreviation: None,
+            },
+            StoredSongCollectionDefinition::Definition(definition) => definition,
+        })
+        .collect())
 }
 
 /// See LibrarySettings::bulletin's own doc comment. `#[serde(default)]` per boolean field
@@ -1034,6 +1090,26 @@ mod tests {
         assert_eq!(settings.wayfinding_max_font_size_px, 150);
         assert!(settings.canva_integration.client_id.is_empty());
         assert!(settings.canva_integration.client_secret.is_empty());
+    }
+
+    #[test]
+    fn library_settings_migrates_string_collections_to_clean_definitions() {
+        let json = r##"{
+            "serviceTypes": [],
+            "collections": ["Hymns of Grace", { "name": "Worship Hymnal", "abbreviation": "WH" }],
+            "roleGroups": [],
+            "serviceTemplates": [],
+            "branding": { "churchName": "", "primaryColor": "#1F3A5F", "secondaryColor": "#C9A227" },
+            "mediaMaxSyncedFileSizeMb": 50
+        }"##;
+        let settings: LibrarySettings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.collections[0].name, "Hymns of Grace");
+        assert_eq!(settings.collections[0].abbreviation, None);
+        assert_eq!(settings.collections[1].name, "Worship Hymnal");
+        assert_eq!(settings.collections[1].abbreviation.as_deref(), Some("WH"));
+
+        let serialized = serde_json::to_value(settings).unwrap();
+        assert!(serialized["collections"][0].is_object());
     }
 
     #[test]

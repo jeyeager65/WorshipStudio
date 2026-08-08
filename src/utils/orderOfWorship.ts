@@ -1,7 +1,7 @@
 import type { Service, ServiceItem, RoleAssignment } from '@/models/service'
 import type { Song } from '@/models/song'
 import type { SlideLibraryItem } from '@/models/library'
-import type { BulletinSettings } from '@/models/settings'
+import type { BulletinSettings, SongCollectionDefinition } from '@/models/settings'
 import { buildBulletinDocument } from '@/reports/builders/bulletin'
 import { formatServiceTime } from '@/utils/serviceTime'
 
@@ -59,12 +59,18 @@ function songLine(
   songs: Map<string, Song>,
   assignments: RoleAssignment[] | undefined,
   personNames: Map<string, string>,
+  collectionDefinitions: SongCollectionDefinition[],
 ): OrderOfWorshipLine {
   const song = songs.get(item.songId)
-  const number = song?.collections[0]?.number
+  const collection = song?.collections[0]
+  const number = collection?.number?.trim()
+  const abbreviation = collectionDefinitions
+    .find((definition) => definition.name === collection?.collectionId)
+    ?.abbreviation?.trim()
+  const citation = number ? [abbreviation, number].filter(Boolean).join(' ') : ''
   return {
     role: roleFor(item, undefined),
-    text: `${song?.title ?? 'Unknown song'}${number ? ` ${number}` : ''}`,
+    text: `${song?.title ?? 'Unknown song'}${citation ? ` ${citation}` : ''}`,
     person: resolveRolePerson(item.role, assignments, personNames),
     note: item.bulletinNote,
   }
@@ -98,6 +104,7 @@ function buildLines(
   songs: Map<string, Song>,
   slides: Map<string, SlideLibraryItem>,
   bulletinPersonNames: Map<string, string>,
+  collectionDefinitions: SongCollectionDefinition[],
 ): OrderOfWorshipLine[] {
   const assignments = service.assignments
   // External App Hand-off items are a technical hand-off to another program (a slideshow, a
@@ -113,7 +120,14 @@ function buildLines(
     return true
   })
   const lines = printableItems.map((item): OrderOfWorshipLine => {
-    const line = lineFor(item, songs, slides, assignments, bulletinPersonNames)
+    const line = lineFor(
+      item,
+      songs,
+      slides,
+      assignments,
+      bulletinPersonNames,
+      collectionDefinitions,
+    )
     return { ...line, kind: item.type }
   })
   // A pure post-pass (rather than computed inline above) since it needs to look at the
@@ -130,10 +144,11 @@ function lineFor(
   slides: Map<string, SlideLibraryItem>,
   assignments: RoleAssignment[] | undefined,
   personNames: Map<string, string>,
+  collectionDefinitions: SongCollectionDefinition[],
 ): OrderOfWorshipLine {
   switch (item.type) {
     case 'song':
-      return songLine(item, songs, assignments, personNames)
+      return songLine(item, songs, assignments, personNames, collectionDefinitions)
     case 'scripture':
       return {
         role: roleFor(item, 'Scripture Reading:'),
@@ -189,7 +204,7 @@ function lineFor(
       // week); when both exist, the label wins the heading slot, so the title would otherwise
       // just vanish — instead it moves down to the second line, alongside the main passage
       // reference, the same slot an explicit bulletinNote would otherwise occupy.
-      const mainPassage = item.passages.find((p) => p.id === item.mainPassageId) ?? item.passages[0]
+      const mainPassage = item.passages.find((p) => p.id === item.mainPassageId)
       const titleWithPassage =
         item.bulletinLabel && item.title
           ? [item.title, mainPassage?.reference].filter(Boolean).join(' · ')
@@ -227,6 +242,7 @@ export function buildOrderOfWorship(
   // Optional (defaults to the same church-chosen defaults Settings itself starts with) so every
   // existing caller/test that predates Settings → Bulletin keeps working unchanged.
   bulletin?: Pick<BulletinSettings, 'page1Title' | 'page1FooterEnabled' | 'page1FooterTitle'>,
+  collectionDefinitions: SongCollectionDefinition[] = [],
 ): OrderOfWorshipDoc {
   const songs = new Map(songList.map((s) => [s.id, s]))
   const slides = new Map(slideList.map((s) => [s.id, s]))
@@ -246,7 +262,7 @@ export function buildOrderOfWorship(
     // A bulletin is a formal document, so titles apply to every participant—not only the
     // preacher. The ordinary-name map remains the fallback for older callers that do not yet
     // provide a distinct formal-name map.
-    lines: buildLines(service, songs, slides, formalPersonNames),
+    lines: buildLines(service, songs, slides, formalPersonNames, collectionDefinitions),
     footer:
       footerEnabled && service.bulletinPage1Footer
         ? { title: bulletin?.page1FooterTitle ?? 'Heart Preparation', text: service.bulletinPage1Footer }

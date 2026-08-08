@@ -174,6 +174,8 @@ fn apply_legacy_sermon_fields(
         passages: vec![],
         main_passage_id: String::new(),
         outline: vec![],
+        present_main_passage: Some(true),
+        flow: vec![],
     };
 
     let index = match target_index {
@@ -294,6 +296,9 @@ mod tests {
             date: date.to_string(),
             time: None,
             service_type: "Sunday Morning Worship".to_string(),
+            planning_notes: None,
+            planning_song_ids: None,
+            service_template_name: None,
             items: vec![],
             presenter_notes: None,
             assignments: None,
