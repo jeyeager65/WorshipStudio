@@ -3,15 +3,19 @@
  * Root component mounted by main.ts instead of App.vue directly. App.vue calls getAdapter()
  * synchronously at <script setup> module scope, so the adapter must already be resolved before
  * App.vue is even instantiated — this component exists to do that resolution first, showing a
- * chooser/resume UI only when it's actually needed (the real, non-demo web build with no already-
- * granted folder access), and rendering the real App.vue unchanged once ready.
+ * chooser/resume UI only when it's actually needed, and rendering the real App.vue unchanged
+ * once ready.
  *
- * Tauri and the public GitHub Pages demo build resolve instantly, no UI shown — this only ever
- * becomes visible for a plain `pnpm build`/dev-server deploy running in a browser.
+ * Tauri resolves instantly, no UI shown. Every other web deploy — including the public GitHub
+ * Pages build, deliberately not special-cased — shows the real "Open Your Library Folder" / "Try
+ * the Demo" chooser, since a real usable web build hosted for free on Pages was the actual point,
+ * not a fake pitch deck. The one exception: a `?demo=1` URL param skips straight to the mock
+ * adapter with no chooser at all, for the docs landing page's dedicated "Try the Web Demo" link
+ * (docs/index.md) to keep that a true one-click experience.
  */
 import { onMounted, ref } from 'vue'
 import App from '@/App.vue'
-import { getAdapter, isPublicDemoBuild, isTauri, setAdapterInstance } from '@/adapters'
+import { getAdapter, isTauri, setAdapterInstance } from '@/adapters'
 import { createMockAdapter } from '@/adapters/mock'
 import { createWebAdapter } from '@/adapters/web'
 import {
@@ -29,10 +33,16 @@ const pendingHandle = ref<FileSystemDirectoryHandle>()
 const fsaSupported = typeof window !== 'undefined' && 'showDirectoryPicker' in window
 
 onMounted(async () => {
-  if (isTauri() || isPublicDemoBuild()) {
-    // Unchanged existing behavior — getAdapter() itself still knows how to resolve these two,
-    // this just makes sure it happens before App.vue reads it.
+  if (isTauri()) {
+    // Unchanged existing behavior — getAdapter() itself still knows how to resolve this, this
+    // just makes sure it happens before App.vue reads it.
     setAdapterInstance(getAdapter())
+    phase.value = 'ready'
+    return
+  }
+
+  if (new URLSearchParams(window.location.search).has('demo')) {
+    setAdapterInstance(createMockAdapter())
     phase.value = 'ready'
     return
   }

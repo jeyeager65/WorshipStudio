@@ -2,20 +2,16 @@
  * Real File System Access-backed StudioAdapter. All ten storage-shaped ports (Songs, Services,
  * Slides, Media, Themes, People, Announcements, Settings, Scripture, Export — see
  * web-feature-parity.md §5's "Sizing the storage-shaped remainder") are genuinely implemented
- * against the picked folder, not stubs. `live` is real too (see ./live.ts) — a plain browser
- * window plus BroadcastChannel, reusing the same SlideContentRenderer.vue every other live-content
- * consumer already uses. `displays`/`externalApps`/`remote`/`canva` stay omitted (optional on
- * StudioAdapter) since they're confirmed impossible in any browser or need a redesign (Canva's
- * OAuth loopback callback) rather than being merely unbuilt.
+ * against the picked folder, not stubs. `live` is real too (see @/utils/liveAudienceWindow) — a
+ * plain browser window plus BroadcastChannel, reusing the same SlideContentRenderer.vue every
+ * other live-content consumer already uses (shared with the mock adapter too, since it's
+ * genuinely storage-independent). `displays`/`externalApps`/`remote`/`canva` stay omitted
+ * (optional on StudioAdapter) since they're confirmed impossible in any browser or need a
+ * redesign (Canva's OAuth loopback callback) rather than being merely unbuilt.
  *
- * Not wired into getAdapter() (adapters/index.ts) yet. That's a deliberate stopping point, not
- * an oversight: getAdapter() is synchronous and called throughout the app assuming an
- * already-constructed adapter, but constructing this one requires an async user gesture
- * (showDirectoryPicker()) first — there's no way to produce a real FileSystemDirectoryHandle
- * without prompting the user and awaiting their folder choice. Wiring this in for real needs its
- * own pass: a folder-picker entry screen, IndexedDB persistence of the handle (confirmed working
- * silently across reloads in the August 2026 spike), and a resume-access flow — real UI work, not
- * an extension of the storage-port pattern this file proves out.
+ * Wired into getAdapter() via src/BootGate.vue, not getAdapter() (adapters/index.ts) itself:
+ * constructing this adapter requires an async user gesture (showDirectoryPicker()) first, which
+ * getAdapter()'s synchronous, called-everywhere contract can't accommodate on its own.
  */
 
 import type {
@@ -31,8 +27,8 @@ import {
   isValidReference,
   parseReference,
 } from '@/utils/scriptureReference'
+import { createLiveAudienceWindowPort } from '@/utils/liveAudienceWindow'
 import { createWebAnnouncementsPort } from './announcements'
-import { createWebLivePresentationPort } from './live'
 import { createWebMediaPort } from './media'
 import { createWebPeoplePort } from './people'
 import { createWebServicesPort } from './services'
@@ -95,7 +91,7 @@ export function createWebAdapter(root: FileSystemDirectoryHandle): StudioAdapter
     // A real audience window (see ./live.ts): a plain window.open() plus BroadcastChannel,
     // rendering through the same SlideContentRenderer.vue the Tauri presentation window and
     // Remote Control mirror both use.
-    live: createWebLivePresentationPort(),
+    live: createLiveAudienceWindowPort(),
     // displays/externalApps/remote intentionally omitted (optional on StudioAdapter) — confirmed
     // impossible in any browser (web-feature-parity.md §4/§5), not merely unbuilt.
     sync: {

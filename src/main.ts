@@ -14,8 +14,9 @@ import WebAudienceView from './views/WebAudienceView.vue'
 import router from './router'
 import vuetify from './plugins/vuetify'
 
-// The web build's audience window (see src/adapters/web/live.ts) opens this same page with
-// ?presentation=1 and expects only the current slide, full-bleed — same reasoning as the Tauri
+// The audience window (see src/utils/liveAudienceWindow.ts, used by both the mock/demo and real
+// web adapters) opens this same page with ?presentation=1 and expects only the current slide,
+// full-bleed — same reasoning as the Tauri
 // desktop build's separate "presentation" WebviewWindow (App.vue), just detected via a query
 // param instead of a native window label since a browser window has no such concept. Mounted
 // directly here rather than through BootGate: this window never needs its own adapter, only the

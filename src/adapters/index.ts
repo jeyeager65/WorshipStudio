@@ -10,16 +10,6 @@ declare global {
 
 let instance: StudioAdapter | undefined
 
-/** True only for the public GitHub Pages demo build — the only thing that ever sets
- *  VITE_BASE_PATH (see release.yml's deploy-demo job and notes/release-process.md). A plain
- *  `pnpm build`/local dev server and the Tauri bundle both serve from the root path, so this is
- *  false for both. Checked via import.meta.env.BASE_URL rather than VITE_BASE_PATH directly:
- *  Vite only injects env vars actually referenced through import.meta.env, and VITE_BASE_PATH is
- *  otherwise only ever consumed in vite.config.ts's Node context, not the client bundle. */
-export function isPublicDemoBuild(): boolean {
-  return import.meta.env.BASE_URL !== '/'
-}
-
 export function isTauri(): boolean {
   return typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__)
 }

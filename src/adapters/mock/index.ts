@@ -30,6 +30,7 @@ import { parseOpenSongXml } from './opensongParser'
 import { pickFilesInBrowser } from './pickFiles'
 import { availableTranslations, loadKjv } from './scriptureFixtures'
 import { generateQrCodeDataUrl } from '@/utils/qrCode'
+import { createLiveAudienceWindowPort } from '@/utils/liveAudienceWindow'
 import {
   formatReference,
   getBookNames,
@@ -101,7 +102,6 @@ export function createMockAdapter(): StudioAdapter {
 
   const librarySettingsStore = new MockSingleton('library-settings', seedLibrarySettings)
   const machineSettingsStore = new MockSingleton('machine-settings', seedMachineSettings)
-  let liveIndex = -1
   // Real hardware enumeration would refresh id/name/resolution from the OS each time and
   // look up only the role from per-machine storage; the mock's "hardware" is fake and
   // stable either way, so persisting the whole record is equivalent and simpler.
@@ -422,25 +422,11 @@ export function createMockAdapter(): StudioAdapter {
       // return here.
       listApiBibleCatalog: async () => [],
     },
-    live: {
-      startPresenting: async () => {
-        if (liveIndex === -1) liveIndex = 0
-      },
-      stopPresenting: async () => {
-        liveIndex = -1
-      },
-      goToIndex: async (index) => {
-        liveIndex = index
-      },
-      next: async () => {
-        liveIndex += 1
-      },
-      previous: async () => {
-        liveIndex = Math.max(0, liveIndex - 1)
-      },
-      // No real second window exists in the browser demo, so there's nothing to broadcast to.
-      setLiveContent: async () => {},
-    },
+    // A real audience window — the mock/demo adapter gets the exact same window.open()+
+    // BroadcastChannel presentation the real web adapter uses (createLiveAudienceWindowPort is
+    // genuinely storage-independent, so there's no reason for the demo to fake this with a
+    // no-op instead of showing the real feature working).
+    live: createLiveAudienceWindowPort(),
     displays: {
       list: () => displays.list(),
       assignRole: async (displayId, role: DisplayRole) => {

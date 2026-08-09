@@ -1,6 +1,8 @@
 /**
- * LivePresentationPort for a File System Access-backed web build — a plain browser window plus
- * BroadcastChannel, in place of the Tauri desktop build's native WebviewWindow plus emit/listen
+ * LivePresentationPort backed by a plain browser window plus BroadcastChannel — used identically
+ * by both the mock/demo adapter and the real File System Access-backed web adapter, since it's
+ * genuinely storage-independent (no filesystem access at all, just window.open() and browser
+ * messaging). In place of the Tauri desktop build's native WebviewWindow plus emit/listen
  * (src/adapters/tauri/index.ts, src/views/PresentationView.vue). Renders through the exact same
  * SlideContentRenderer.vue every other live-content consumer uses (the Tauri presentation window,
  * the Remote Control phone mirror, and the operator's own preview thumbnails) — see
@@ -28,7 +30,7 @@ function buildAudienceUrl(): string {
   return url.toString()
 }
 
-export function createWebLivePresentationPort(): LivePresentationPort {
+export function createLiveAudienceWindowPort(): LivePresentationPort {
   const channel = new BroadcastChannel(AUDIENCE_CHANNEL_NAME)
   let audienceWindow: Window | null = null
   let lastContent: LiveSlideContent | null = null

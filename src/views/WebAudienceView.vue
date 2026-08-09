@@ -1,10 +1,11 @@
 <script setup lang="ts">
 /**
- * The web build's audience-facing window — opened by src/adapters/web/live.ts via window.open(),
- * detected in main.ts via a `?presentation=1` query param (mounted directly, bypassing BootGate
- * and adapter resolution entirely: this window never needs its own adapter, only the
- * BroadcastChannel content stream). Renders through the same SlideContentRenderer.vue the Tauri
- * desktop build's PresentationView.vue and the Remote Control phone mirror both use.
+ * The audience-facing window — opened by src/utils/liveAudienceWindow.ts via window.open() (used
+ * by both the mock/demo and real web adapters), detected in main.ts via a `?presentation=1` query
+ * param (mounted directly, bypassing BootGate and adapter resolution entirely: this window never
+ * needs its own adapter, only the BroadcastChannel content stream). Renders through the same
+ * SlideContentRenderer.vue the Tauri desktop build's PresentationView.vue and the Remote Control
+ * phone mirror both use.
  *
  * No app-bar, no Vuetify chrome — just the current slide, full-bleed, plus a display-choosing
  * fullscreen affordance. Two-tier by necessity, not preference — confirmed in the August 2026
@@ -20,7 +21,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import SlideContentRenderer from '@/components/live/SlideContentRenderer.vue'
 import type { LiveSlideContent } from '@/adapters/types'
-import { AUDIENCE_CHANNEL_NAME, type AudienceMessage } from '@/adapters/web/audienceChannel'
+import { AUDIENCE_CHANNEL_NAME, type AudienceMessage } from '@/utils/audienceChannel'
 
 const current = ref<LiveSlideContent>()
 const isFullscreen = ref(false)

@@ -1,7 +1,9 @@
 /**
- * Shared BroadcastChannel contract between the web adapter's live port (src/adapters/web/live.ts,
- * the sender) and the audience window (src/views/WebAudienceView.vue, the receiver) — kept in one
- * place so both sides agree on the channel name and message shape without duplicating literals.
+ * Shared BroadcastChannel contract between the live audience window port
+ * (src/utils/liveAudienceWindow.ts, the sender — used by both the mock/demo and real web
+ * adapters) and the audience window itself (src/views/WebAudienceView.vue, the receiver) — kept
+ * in one place so both sides agree on the channel name and message shape without duplicating
+ * literals.
  *
  * Mirrors the Tauri desktop build's presentation window, which uses `emit`/`listen` events
  * instead (`live:slide-changed`, `presentation:ready` — see src/adapters/tauri/index.ts and

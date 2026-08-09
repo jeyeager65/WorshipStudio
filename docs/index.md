@@ -12,6 +12,11 @@ layout: home
 # intercept the click at all (see router.js's click handler: any <a> with a `target` attribute,
 # any value, is left alone) — belt-and-suspenders, since the router already skips interception
 # for a different-origin href on its own.
+#
+# The `?demo=1` param (BootGate.vue) skips straight to the mock/fixture adapter with no chooser —
+# the bare /app/ URL (visited directly, not through this link) shows a real "Open Your Library
+# Folder" / "Try the Demo" choice instead, since the web build is a real, usable app now, not
+# just a pitch deck. This link keeps the one-click demo experience for anyone arriving here.
 hero:
   name: Worship Studio
   text: Plan, prepare, and present your church services — all in one place.
@@ -31,7 +36,7 @@ hero:
       link: /getting-started
     - theme: alt
       text: Try the Web Demo
-      link: https://jeyeager65.github.io/WorshipStudio/app/
+      link: https://jeyeager65.github.io/WorshipStudio/app/?demo=1
       target: _self
     - theme: alt
       text: Browse all topics
