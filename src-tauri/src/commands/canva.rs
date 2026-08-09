@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, State};
 
 use crate::domain::media::MediaImportCommit;
-use crate::domain::{delete_file_if_exists, manifest, media, read_json_file, write_json_file};
+use crate::domain::{delete_file_if_exists, media, read_json_file, write_json_file};
 use crate::models::{MediaItem, MediaOrigin};
 use crate::paths::{
     app_data_dir, canva_auth_path, library_root, local_media_root, now_iso, this_device_name,
@@ -626,7 +626,6 @@ pub async fn import_canva_video(
                 .ok_or_else(|| "Canva export did not create a media record.".to_string())?
         }
     };
-    manifest::rebuild(&root).map_err(|e| e.to_string())?;
     let _ = fs::remove_file(&temp_path);
     Ok(CanvaVideoExportResult {
         design,
@@ -723,7 +722,6 @@ pub async fn import_canva_pages(
         };
         media_items.push((page.page_number, item));
     }
-    manifest::rebuild(&root).map_err(|e| e.to_string())?;
     let _ = fs::remove_dir_all(&temp_dir);
     Ok(CanvaImportResult {
         design,

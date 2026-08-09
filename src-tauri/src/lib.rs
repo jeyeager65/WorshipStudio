@@ -128,7 +128,6 @@ pub fn run() {
             commands::slides::get_slide,
             commands::slides::save_slide,
             commands::slides::delete_slide,
-            commands::slides::generate_qr_code,
             commands::settings::get_library_settings,
             commands::settings::save_library_settings,
             commands::settings::get_machine_settings,

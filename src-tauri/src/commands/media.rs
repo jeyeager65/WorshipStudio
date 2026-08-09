@@ -1,6 +1,5 @@
 use tauri::AppHandle;
 
-use crate::domain::manifest;
 use crate::domain::media::{self, MediaImportCommit, StagedMediaFile};
 use crate::models::MediaItem;
 use crate::paths::{library_root, local_media_root, now_iso, this_device_name};
@@ -14,7 +13,6 @@ pub fn list_media(app: AppHandle) -> Result<Vec<MediaItem>, String> {
 pub fn save_media(app: AppHandle, item: MediaItem) -> Result<(), String> {
     let root = library_root(&app);
     media::save(&root, item, &this_device_name(&app), &now_iso()).map_err(|e| e.to_string())?;
-    manifest::rebuild(&root).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -22,7 +20,6 @@ pub fn save_media(app: AppHandle, item: MediaItem) -> Result<(), String> {
 pub fn delete_media(app: AppHandle, id: String) -> Result<(), String> {
     let root = library_root(&app);
     media::delete(&root, &local_media_root(&app), &id).map_err(|e| e.to_string())?;
-    manifest::rebuild(&root).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -48,7 +45,6 @@ pub fn commit_media_import(
         &now_iso(),
     )
     .map_err(|e| e.to_string())?;
-    manifest::rebuild(&root).map_err(|e| e.to_string())?;
     Ok(created)
 }
 

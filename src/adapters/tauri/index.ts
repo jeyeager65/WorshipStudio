@@ -35,6 +35,7 @@ import type { SlideLibraryItem, MediaItem, Theme, Person } from '@/models/librar
 import type { LibrarySettings, MachineSettings } from '@/models/settings'
 import type { Announcement } from '@/models/announcement'
 import { friendlyDisplayName } from '@/utils/displayName'
+import { generateQrCodeDataUrl } from '@/utils/qrCode'
 
 /**
  * Real adapter — thin wrapper over Rust commands (src-tauri/src/commands).
@@ -153,6 +154,11 @@ export function createTauriAdapter(): StudioAdapter {
       skipTaskbar: true,
       resizable: false,
       focus: false,
+      // Ctrl/Cmd +/-/0 as a quick manual scaling knob for the audience output — the same
+      // capability the web build's audience window already gets for free from being a real
+      // browser window. Windows: WebView2's IsZoomControlEnabled; macOS/Linux: Tauri's own
+      // ctrl/cmd +/- polyfill (20% steps, 20%-1000%).
+      zoomHotkeysEnabled: true,
     })
 
     // The presentation window's own app instance signals readiness (see PresentationView.vue)
@@ -322,7 +328,7 @@ export function createTauriAdapter(): StudioAdapter {
       get: (id) => invoke<SlideLibraryItem | undefined>('get_slide', { id }),
       save: (item) => invoke('save_slide', { item }),
       delete: (id) => invoke('delete_slide', { id }),
-      generateQrCode: (content) => invoke<string>('generate_qr_code', { content }),
+      generateQrCode: (content) => generateQrCodeDataUrl(content),
     },
     media: {
       list: () => invoke<MediaItem[]>('list_media'),

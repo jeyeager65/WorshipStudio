@@ -46,15 +46,18 @@ const filterOptions: { value: 'all' | PresentationThemeTarget; label: string; ic
 
 onMounted(async () => {
   await Promise.all([store.load(), mediaStore.load(), settingsStore.load()])
-  if (!getAdapter().media.getFilePath) return
+  const adapter = getAdapter()
   await Promise.all(
     store.themes.map(async (theme) => {
       if (!theme.backgroundId || !mediaStore.items.some((item) => item.id === theme.backgroundId))
         return
       try {
-        mediaUrls[theme.id] = convertFileSrc(
-          await getAdapter().media.getFilePath!(theme.backgroundId),
-        )
+        // getFilePath is Tauri-only; getPreviewUrl is implemented by every adapter (mock, web)
+        // as the fallback rather than silently never previewing a background there.
+        const url = adapter.media.getFilePath
+          ? convertFileSrc(await adapter.media.getFilePath(theme.backgroundId))
+          : await adapter.media.getPreviewUrl(theme.backgroundId)
+        if (url) mediaUrls[theme.id] = url
       } catch (error) {
         console.error(`Failed to load preview for ${theme.name}:`, error)
       }

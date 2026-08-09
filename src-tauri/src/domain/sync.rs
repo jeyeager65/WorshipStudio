@@ -6,11 +6,9 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::models::{
-    LibrarySettings, ManifestEntry, MediaItem, Person, Service, SlideLibraryItem, Song, Theme,
-};
+use crate::models::{LibrarySettings, MediaItem, Person, Service, SlideLibraryItem, Song, Theme};
 
-use super::{backup_path, read_json_file, restore_json_backup, write_json_file};
+use super::{backup_path, manifest, read_json_file, restore_json_backup, write_json_file};
 
 /// Matches Dropbox's "conflicted copy" filename convention — the exact wording has varied
 /// across client versions ("Conflicted copy", "<device>'s conflicted copy"), so this just
@@ -69,7 +67,6 @@ fn validate_library_json(root: &Path, path: &Path, bytes: &[u8]) -> Result<(), s
         Some("themes") => serde_json::from_slice::<Theme>(bytes).map(drop),
         Some("people") => serde_json::from_slice::<Person>(bytes).map(drop),
         Some("library-settings.json") => serde_json::from_slice::<LibrarySettings>(bytes).map(drop),
-        Some("manifest.json") => serde_json::from_slice::<Vec<ManifestEntry>>(bytes).map(drop),
         _ => serde_json::from_slice::<Value>(bytes).map(drop),
     }
 }
@@ -331,12 +328,18 @@ fn dropbox_process_running() -> bool {
 
 pub fn get_status(root: &Path) -> std::io::Result<SyncStatus> {
     let folder_readable = root.exists() && fs::read_dir(root).is_ok();
-    // Read passively rather than manifest::rebuild()'s full rescan-and-rewrite — a status
-    // check shouldn't have the side effect of touching manifest.json on every poll; a
-    // slightly-stale timestamp here is a fine tradeoff (the next real save refreshes it).
-    let entries: Vec<ManifestEntry> =
-        read_json_file(&root.join("manifest.json"))?.unwrap_or_default();
-    let last_library_change_at = entries.into_iter().map(|e| e.updated_at).max();
+    // No persisted manifest file — compute fresh on demand. This is only called at app launch
+    // and from the manual Library/Sync "Refresh" action, so a full scan each time is cheap
+    // enough, and it avoids ever needing a synced index file at all. Best-effort: a single
+    // malformed/conflicted item would otherwise abort the whole computation (songs::list() and
+    // friends fail loud on a parse error, by design, for the library-editing views) — but that's
+    // exactly the situation Library Health exists to help diagnose, so a status check must stay
+    // resilient rather than going blank the moment there's something to report.
+    let last_library_change_at = manifest::compute(root)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|e| e.updated_at)
+        .max();
     let conflict_count = detect_conflicts(root)?.len();
     let recovery_count = detect_recovery_issues(root)?.len();
     Ok(SyncStatus {
@@ -522,13 +525,15 @@ mod tests {
     #[test]
     fn recovery_scan_identifies_a_damaged_file_and_verified_backup() {
         let dir = tempfile::tempdir().unwrap();
-        let manifest = dir.path().join("manifest.json");
-        fs::write(&manifest, "{interrupted").unwrap();
-        fs::write(backup_path(&manifest), "[]").unwrap();
+        // Deliberately not a recognized filename in validate_library_json's dispatch table, so
+        // this exercises the generic "any valid JSON" fallback rather than a specific schema.
+        let target = dir.path().join("some-root-file.json");
+        fs::write(&target, "{interrupted").unwrap();
+        fs::write(backup_path(&target), "[]").unwrap();
 
         let issues = detect_recovery_issues(dir.path()).unwrap();
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].relative_path, "manifest.json");
+        assert_eq!(issues[0].relative_path, "some-root-file.json");
         assert!(issues[0].backup_available);
 
         recover_from_backup(dir.path(), &issues[0].file_path).unwrap();
@@ -538,11 +543,11 @@ mod tests {
     #[test]
     fn quarantine_preserves_damaged_bytes_but_removes_them_from_the_active_library() {
         let dir = tempfile::tempdir().unwrap();
-        let manifest = dir.path().join("manifest.json");
-        fs::write(&manifest, "{interrupted").unwrap();
+        let target = dir.path().join("some-root-file.json");
+        fs::write(&target, "{interrupted").unwrap();
 
-        let destination = quarantine_damaged_file(dir.path(), &manifest.to_string_lossy()).unwrap();
-        assert!(!manifest.exists());
+        let destination = quarantine_damaged_file(dir.path(), &target.to_string_lossy()).unwrap();
+        assert!(!target.exists());
         assert_eq!(fs::read_to_string(destination).unwrap(), "{interrupted");
         assert!(detect_recovery_issues(dir.path()).unwrap().is_empty());
     }

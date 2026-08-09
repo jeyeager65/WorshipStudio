@@ -1,6 +1,6 @@
 # Worship Studio Completion Audit
 
-Last reviewed: August 1, 2026
+Last reviewed: August 1, 2026. 1.0 scope confirmed August 8, 2026: local Bible-file import, full automated help-video generation, and the web-based prep build (§7 of [web-feature-parity.md](web-feature-parity.md)) moved from "candidate post-1.0"/exploratory into required 1.0 scope. QR slide items turned out to already be fully implemented (`SlideQrElement`, live rendering, editor support), not a gap. Sheet-music/PDF mapping, built-in email delivery, and additional song import/export formats stay deferred post-1.0.
 
 ## Current assessment
 
@@ -197,31 +197,29 @@ Each item should be assigned to a named milestone such as **0.5 polish**, **befo
 
 The data model recognizes audio, but live rendering remains a placeholder. A complete implementation needs file selection, playback, pause/seek/stop behavior, live-transition semantics, missing-file handling, remote behavior, and operator status.
 
-### QR slide items
-
-The data model recognizes QR items, but the content type is not complete. Decide whether the advanced Slide editor already covers the actual use cases well enough or whether a quick URL-to-QR content type is still valuable.
-
 ### Sheet music / PDF region mapping
 
-Not implemented and already described in the feature specification as speculative. It is a strong candidate for post-1.0 unless real users identify it as necessary.
+Status: post-1.0 by explicit decision (confirmed August 8, 2026). Not implemented and already described in the feature specification as speculative. Only reconsider if real users identify it as necessary.
 
 ### Additional song import and export
 
-Still absent:
+Status: post-1.0 by explicit decision (confirmed August 8, 2026). Still absent:
 
 - ChordPro structure import
 - Plain-text paste and parse
 - OpenSong XML export
 
-OpenSong import covers the immediate migration need, so these can be prioritized from actual usage rather than feature parity.
+OpenSong import covers the immediate migration need, so these stay deferred and can be prioritized from actual usage rather than feature parity.
 
 ### Local Bible-file import
 
-KJV and API-backed translations are supported, but the general local Bible import workflow is not complete. Decide whether churches need OpenSong Bible files or another documented format before 1.0.
+Status: in scope for 1.0 (decided August 8, 2026).
+
+KJV and API-backed translations are supported, but the general local Bible import workflow is not complete. Decide whether churches need OpenSong Bible files or another documented format, then implement it before 1.0.
 
 ### Email delivery
 
-Built-in delivery is deferred until after 1.0. Worship Studio deliberately remains responsible for message and document generation, then delegates account access and delivery to the user's installed mail application. Revisit SMTP or a cloud provider only if early adopters demonstrate that opening a prepared draft is insufficient.
+Status: post-1.0 by explicit decision (confirmed August 8, 2026). Built-in delivery is deferred until after 1.0, if it ever happens. Worship Studio deliberately remains responsible for message and document generation, then delegates account access and delivery to the user's installed mail application. Revisit SMTP or a cloud provider only if early adopters demonstrate that opening a prepared draft is insufficient.
 
 ### Replace undo toasts with real undo/redo history
 
@@ -246,19 +244,76 @@ The shared history implementation lives in `src/stores/history.ts` and `src/comp
 
 ### Automatic updates
 
+Status: deprioritized (decided August 8, 2026) — day-to-day use is mostly running in dev mode rather than the distributed installer, so the lack of an updater isn't currently felt. Revisit priority as real distribution to church machines picks up.
+
 The release workflow creates versioned artifacts, but the application does not check for, download, or install updates. Add a Tauri updater before distributing broadly, or document a clear manual update process and expose the Releases page prominently.
 
 ### Help and documentation generation
 
+Status: in scope for 1.0, including full automated help-video generation (decided August 8, 2026).
+
 The application has source, issue, and release links in About, but does not yet have an operator guide, keyboard-shortcut reference, troubleshooting flow, or generated help videos.
+
+### Web-based prep build
+
+Status: in scope for 1.0 (decided August 8, 2026). See [web-feature-parity.md](web-feature-parity.md) §7 for the full research this decision is based on.
+
+A zero-install web build lets volunteers do service/library prep — song, slide, service, and media library editing; scripture lookup; volunteer roster — from a browser, using the File System Access API to read and write the same Dropbox-synced folder the desktop app uses, rather than the demo's `localStorage` fixtures.
+
+**Implemented August 8, 2026**: the sync/conflict-detection logic (`src-tauri/src/domain/sync.rs`) is ported to TypeScript — `src/adapters/web/fsaStorage.ts` (generic File System Access read/write/list/remove helpers, the walking-skeleton "storage abstraction" piece) and `src/adapters/web/sync.ts` (`detectConflicts`, `resolveConflict`, `detectRecoveryIssues`, `recoverFromBackup`, `quarantineDamagedFile` — a close translation of the Rust functions of the same shape, kept side-by-side comparable rather than reimagined). Two deliberate, documented gaps versus the Rust version: it assumes `.backup` files already exist (from the desktop app's writes) rather than giving the web build's own writes backup-on-write behavior yet — that belongs with the actual Songs/Settings storage-port work, not conflict detection; and `validateLibraryJson` only checks for a present `id` field per kind rather than fully deserializing against each model's real shape, since no runtime schema-validation library is in use — still catches the real failure mode (interrupted writes leaving truncated JSON), just not "valid JSON, wrong shape."
+
+**Walking skeleton implemented August 8, 2026** (same day, second pass): `StudioAdapter['kind']` widened to `'tauri' | 'mock' | 'web'` and `DiagnosticSummary.installationMode` widened to include `'web'`. `src/adapters/web/settings.ts` and `src/adapters/web/songs.ts` are real, tested FSA-backed ports — `LibrarySettings` at `library-settings.json` in the picked folder (synced, matching the desktop build), `MachineSettings` in the browser's own `localStorage` (never synced, matching the desktop build's per-machine app-data file being deliberately outside the synced folder). Everything else in `createWebAdapter()` started as an honest `throw`-on-call stub rather than a silent fake.
+
+**All ten storage-shaped ports completed August 8, 2026** (same day, third pass — see the "Sizing the storage-shaped remainder" section of [web-feature-parity.md](web-feature-parity.md) §5 for the original list): `src/adapters/web/collection.ts` extracted the shared list/get/save/delete/stamp pattern once real duplication showed up across Songs, Themes, People, and Announcements. `src/adapters/web/themes.ts`, `people.ts`, `announcements.ts` are thin wrappers over it. `src/adapters/web/slides.ts` adds real QR generation via the new `qrcode` npm dependency (MIT-licensed, ~well-established) — using its SVG output rather than its canvas-based PNG path, since canvas isn't available in the vitest/jsdom test environment without another native dependency, and an `<img>` consumer can't tell PNG from SVG either way. `src/adapters/web/services.ts` handles the year-subfolder layout directly (doesn't fit the shared collection helper) and ports `recomputeSongUsage` from the mock adapter's own version of the same Rust logic; `importOpenSongSets` returns `undefined` (the already-documented "no browser equivalent" contract every adapter uses) and `migrateLegacySermonFields` is a genuine no-op, since any library with pre-migration data was necessarily created by the desktop app, which already runs that backfill on every launch. `src/adapters/web/media.ts` is the largest: real file bytes read/write to `media/`, `media-items/<id>.json` metadata, content hashing via Web Crypto's `SHA-256` (matching Rust's own "no hashing crate for something this low-stakes" reasoning, just applied to what's actually built into the browser instead of `DefaultHasher`), filename-collision dedup, and `importStockBackgrounds()` doing a real `fetch()` of the bundled `public/stock-backgrounds/` assets rather than faking a record the way the mock adapter has to. One documented simplification: `'local'` (never-synced, machine-only) media has no distinct destination yet — it lands in the same picked folder as `'synced'` media, since a genuinely separate local-only folder would need a second `showDirectoryPicker()` grant; noted in the code rather than silently claiming location fidelity that isn't there.
+
+Covered by 47 vitest cases across the adapter (11 sync, 5 Settings, 5 Songs, 4 for the shared collection helper, 3 for Themes/People/Announcements, 2 Slides, 9 Services, 7 Media) against the hand-rolled in-memory File System Access fake, extended to store real bytes (not just text) once Media needed it. `type-check`, `lint`, `prettier --check`, the full `test:unit` suite (370 passed), and a full production `build` are all clean — the adapter object type-checks against the complete `StudioAdapter` interface with every required port now genuinely implemented, not stubbed.
+
+**`getAdapter()` wiring completed August 8, 2026** (same day, fifth pass): `src/BootGate.vue` is now the actual root component `main.ts` mounts (`App.vue` itself is unchanged). The reason a new root component was needed rather than an early-return inside `App.vue`: `App.vue` already calls `getAdapter()` synchronously at `<script setup>` module scope, before its own `onMounted` even runs, so the adapter has to be fully resolved *before* `App.vue` is instantiated at all — not something a v-if inside its template could gate. `BootGate.vue` resolves the adapter first (instant, no UI, for Tauri and the public GitHub Pages demo build — `isPublicDemoBuild()` checks `import.meta.env.BASE_URL !== '/'`, the only thing `VITE_BASE_PATH` ever sets it to) and only renders `<App />` once resolution finishes. For the real (non-demo) web case it does the full flow: check `src/adapters/web/handlePersistence.ts`'s IndexedDB-stored handle, `queryPermission()` it, resolve silently if already granted, prompt for a `requestPermission()` click if not (a "Resume Access" screen), or show the initial "Open Your Library Folder" / "Try the Demo" chooser if no handle is stored yet — matching the exact flow validated in the earlier File System Access spike. `adapters/index.ts` gained `setAdapterInstance()`/`isTauri()`/`isPublicDemoBuild()`; `getAdapter()` itself is otherwise unchanged and still resolves Tauri/mock on its own if ever called before `BootGate` sets an instance.
+
+One real gap surfaced during implementation: TS's bundled DOM lib doesn't include `showDirectoryPicker` or the `queryPermission`/`requestPermission` handle methods (still-experimental "Project Fugu" APIs) — added the community `@types/wicg-file-system-access` package (MIT, declaration-merges against lib.dom's existing `FileSystemHandle`/`FileSystemDirectoryHandle`) and wired it into `tsconfig.app.json`'s `types` array. That alone wasn't enough: `tsconfig.vitest.json` *overrides* (doesn't merge with) the inherited `types` array down to `["node"]` only, which silently dropped the new types for every `.vue`/`.ts` file vitest's project reference touches (TS config `types` arrays replace on override, not merge) — fixed by listing both there too. Worth remembering for the next global ambient-types addition to this project.
+
+Verified with a real automated smoke test (Playwright/headless Chromium against the Vite dev server, not just unit tests): the chooser screen renders correctly with both buttons and matches the app's branding, and clicking "Try the Demo" loads the full real app (Services dashboard, sample data) with zero console errors. `cargo`/frontend validation all still clean; production `build` succeeds (main bundle grew ~19 KB now that the web adapter and `qrcode` are actually reachable code, not dead-code-eliminated).
+
+**Confirmed by real human testing, August 8, 2026**: picking a real folder via "Open Your Library Folder" and using the app against it works. This is the first part of this whole effort verified against a real browser and a real folder rather than the fake FSA test double or an automated headless run.
+
+**Two real bugs fixed the same day, surfaced by that manual testing**:
+
+- **Background/media images weren't loading anywhere in the web build** (and, it turns out, never worked in the mock/browser-demo build either — this predates the web adapter, just never got exercised with real content before). `ServiceWorkspaceView.vue`, `ThemeLibraryView.vue`, and `ThemeEditorView.vue` all resolved media/background URLs through exactly one path — `media.getFilePath` (Tauri-only, optional) — with an early return and no fallback when it's unavailable. Every adapter (including mock) implements `media.getPreviewUrl` unconditionally, so all three now prefer `getFilePath` when present (unchanged Tauri behavior) and fall back to `getPreviewUrl` otherwise.
+- **No favicon.** `index.html` had no `<link rel="icon">` at all. Reused `src-tauri/icons/icon.ico` (the existing desktop app icon, copied to `public/favicon.ico`) rather than generating a new asset.
+
+**Real audience-window presenting implemented August 8, 2026** (same day, sixth pass), after confirming `live` was still the documented no-op placeholder. `src/adapters/web/live.ts` (`LivePresentationPort`) opens a plain `window.open()` audience window and drives it over a `BroadcastChannel` (`src/adapters/web/audienceChannel.ts` — a `'ready'`/`'content'` handshake, the same reason the Tauri build's `presentation:ready` event exists: a message sent before the new window's listener attaches is simply lost). `src/views/WebAudienceView.vue` is the audience window's content — detected in `main.ts` via a `?presentation=1` query param (mirroring how the Tauri build detects its `presentation`-labeled native window, just via URL instead of a window label) and mounted directly, bypassing `BootGate`/adapter resolution entirely since this window only ever needs the broadcast stream. It renders through the exact same `SlideContentRenderer.vue`/`SlideSceneRenderer.vue` every other live-content consumer already uses (the Tauri presentation window, the Remote Control phone mirror) — confirmed via research that these components have zero Tauri dependencies before building on them, per direct user steer to reuse the existing control rather than reimplement rendering.
+
+Fullscreen, including **per-monitor selection** (added same day after initial manual confirmation, per request): windowed by default (required — some operators have no second monitor at all), with a two-tier "Choose Display…" control using `getScreenDetails()`/`requestFullscreen({screen})` when the Window Management API is available, falling back to a plain in-place `requestFullscreen()` (no screen targeting) otherwise. Two-tier because both `getScreenDetails()`'s permission prompt and `requestFullscreen({screen})` need their own genuine click inside the audience window itself — confirmed in the original August 2026 spike and unavoidable, not a design choice. Needed a second types package (`@types/webscreens-window-placement`, alongside `wicg-file-system-access`) added to both `tsconfig.app.json` and `tsconfig.vitest.json`'s `types` arrays for the same reason as before.
+
+**Confirmed by real human testing, August 8, 2026**: the monitor-picker enhancement — "Choose Display…" correctly lists real monitors and fullscreens onto the specific one chosen. Closes out the last unverified piece of the presenting work.
+
+**Canva stays Tauri-only — decided August 8, 2026, backed by real research, not assumption.** Checked Canva's own Connect API docs directly rather than guessing: PKCE does not solve this. PKCE only protects the authorization step; the token-exchange step requires HTTP Basic Auth with the client secret, and Canva's own docs state plainly that "requests that require authenticating with your client ID and client secret can't be made from a web-browser client — they'll be blocked by Canva's CORS policy." That's a hard block from Canva's server, not a best-practice recommendation — no way to store or hide the secret client-side gets around it. A working web build integration would need a real backend/proxy server just for the token-exchange step, which undercuts the web build's entire "zero-install, no server to run" premise for a content-import convenience feature. Decided not worth it: Canva stays desktop-only, and churches needing Canva content from the web build use the manual workaround that already exists regardless — export from Canva directly, then import the file as ordinary media through the web build's normal media import flow (`pickFilesToImport`/`commitImport`, already fully working). Revisit only if a church actually asks for direct in-browser Canva import.
+
+**Deliberately still not done**: backup-on-write for the web build's own saves (so its writes get the same corruption protection as the desktop build's — currently `recoverFromBackup`/`quarantineDamagedFile` only have something to recover if the *desktop* app wrote the `.backup`); a real second local-only media folder; `SettingsPort.pickLibraryFolder()` still returns `undefined` (no in-app "switch folder" after initial pick, though the picker/persistence mechanism now exists to build it from); and Bible API key wiring (ESV/api.bible) — CORS is confirmed open for this one (unlike Canva), just not wired up yet: no key-entry UI, no fetch plumbing, `listApiBibleCatalog()` still returns `[]`.
+
+**QR generation consolidated, August 8, 2026** (same day, fourth pass): adding the `qrcode` npm dependency for the web adapter's Slide QR element surfaced that the Tauri adapter's `generateQrCode` didn't need its Rust round-trip at all — QR generation is pure and client-side, unlike Remote Control's pairing QR (native-only, embedded HTTP server, no browser equivalent), which is the only thing `remote_server::qr_data_url` actually needs to stay in Rust for. Moved to a single shared `src/utils/qrCode.ts` used identically by the Tauri, mock, and web adapters; removed the now-unused `generate_qr_code` Tauri command and its `lib.rs` registration. Side effect worth noting: the mock/browser-demo build's Slide QR element went from a hardcoded empty string ("real QR rendering is Rust-side only") to a genuinely real QR code, since the shared implementation has no reason to fake it there anymore. `cargo build`/`fmt --check`/`test` (167 passed) and the frontend `type-check`/`lint`/`test:unit` (370 passed) plus a production `build` are all clean.
+
+**Implemented August 8, 2026**: `manifest.json` eliminated as a persisted file rather than trying to make it sync-safe. It was originally documented (`notes/architecture-plan.md:90`) as an "index for fast startup, no full-folder scan," but that optimization was never actually wired up — the app still does full per-collection scans at startup for the UI regardless — and its only real consumer turned out to be `get_status()`'s single `last_library_change_at` timestamp, read just twice a session (app launch, and the manual "Refresh" button in Library/Sync settings; not polled, and not used by Library Health's actual conflict/recovery scanning or diagnostics counts). `domain::manifest::rebuild()` (renamed `compute()`) now only lists every collection and builds entries in memory — its `write_json_file()` call is gone, and `get_status()` calls it on demand instead of reading a file. Net effect: no file means no Dropbox sync, no conflicts, no per-device naming or stale-file question to solve; it's out of Library Health's corruption/backup/restore scanning (`domain/sync.rs`'s `"manifest.json"` dispatch branch removed); all ~16 write-path `manifest::rebuild()` calls (`commands/{songs,services,slides,media,themes,people,announcements,canva,opensong,stock_content,sync}.rs`) are gone since nothing persists after a save; and the web build's scope shrinks — there's no manifest storage format left to port to TypeScript, just the equivalent in-memory scan for the browser's own status display.
+
+One real bug surfaced and fixed during implementation: `songs::list()` and its siblings deliberately hard-fail the whole listing if any single item fails to parse (by design, for the library-editing views — completion-audit item 1's "malformed vs missing" distinction). `manifest::compute()` reuses those same list calls, so a naive `get_status()` would abort entirely — losing `folder_readable`, `conflict_count`, and `recovery_count` along with it — the moment any one file was corrupted or sitting as an unresolved Dropbox conflict. That's exactly the situation Library Health exists to help diagnose, so failing the whole status check in response would have been a real regression from the old always-available-if-stale `manifest.json` read. Fixed by treating `manifest::compute()`'s result as best-effort inside `get_status()` (`.unwrap_or_default()` — a degraded/missing `last_library_change_at` rather than a hard failure); `detect_conflicts`/`detect_recovery_issues` were never affected, since they scan the filesystem directly rather than going through `manifest::compute()`. Verified: `cargo fmt --check`, `cargo build`, and the full `cargo test` suite (167 passed) all clean.
+
+Also included: user-supplied ESV/api.bible keys stored in the browser's own `localStorage` — confirmed August 8, 2026 via an empirical CORS check (`curl` with an `Origin` header) against both providers; both permit direct cross-origin calls with their real auth headers, no proxy needed (see [web-feature-parity.md](web-feature-parity.md) §3) — and the Window Management API for monitor-identify labeling and second-monitor fullscreen audience output.
+
+Decided August 8, 2026: the audience view must not require a second monitor. The operator can decline to pick a second screen, or deliberately pick the same screen for both operator and audience; either way the web build opens the audience view as an ordinary windowed (non-fullscreen) view over the same `BroadcastChannel` content path, skipping `getScreenDetails()`/`requestFullscreen({ screen })` entirely rather than forcing multi-monitor hardware to even try it out.
+
+Confirmed via a real two-monitor spike, August 8, 2026 (see [web-feature-parity.md](web-feature-parity.md) §2): `requestFullscreen({screen})` cannot be triggered from the operator's own click — it has to be a genuine click inside the newly opened audience window itself, or Chrome throws `Permissions check failed`. So "start presenting" onto a second screen is at minimum a two-click flow: the operator's click opens the audience window, then a second click inside that window (an obvious on-screen prompt, not hidden) is what actually goes fullscreen. Design the UX around that rather than assuming a single click can do both.
+
+The Window Management API side of this item is fully de-risked as of August 8, 2026 — a working spike against real two-monitor hardware validated screen enumeration, correctly anchored fullscreen, per-window `BroadcastChannel` content delivery, and the windowed fallback, all end-to-end. The Bible-API CORS question is also resolved (above).
+
+Storage layer also spiked and confirmed, August 8, 2026 (see [web-feature-parity.md](web-feature-parity.md) §5): `showDirectoryPicker()` against a real library folder correctly listed the known subfolders and read/parsed a real song file; `createWritable()`/`close()` write, read-back, and delete all round-tripped cleanly; and — the biggest open risk — a `FileSystemDirectoryHandle` stored in IndexedDB came back `queryPermission() === "granted"` after a page reload with **no re-prompt at all**, better than the research doc's cautious expectation. All three of §5's core claims are now hardware-verified on Windows Chrome, not just docs-plausible. Not yet checked on macOS Chrome — worth a quick recheck there given the pastor's-Mac use case, but this is no longer an open technical unknown blocking the decision to build it; remaining work is implementation (the conflict-detection TS port, the ten storage-shaped adapter ports, manifest-format compatibility) rather than feasibility risk.
+
+The live presentation machine stays on the Tauri desktop app. Second-monitor fullscreen audience output, External App Hand-off, and the local Remote Control HTTP server/mDNS are not implemented for the web build — they're sandboxing boundaries a browser cannot cross, not features that were deprioritized. A real hosted backend/server is explicitly out of scope; the File System Access API against the existing synced-folder model covers the committed scope without one.
 
 ## Testing and release hardening
 
-### Add a Windows E2E smoke lane to CI
+### Windows E2E stays manual, not CI
 
-The native WebdriverIO/Tauri suite exists under `e2e/`, but the normal CI workflow runs frontend unit tests and Rust tests only.
-
-A time-bounded CI smoke suite should cover:
+Decided August 8, 2026: the native WebdriverIO/Tauri suite under `e2e/` stays a manually run pre-release check rather than moving into the normal CI workflow (which continues running frontend unit tests and Rust tests only). Run it deliberately before cutting a release, covering at least:
 
 - First launch and setup completion
 - Create, save, close, reopen, and edit a service
@@ -268,8 +323,6 @@ A time-bounded CI smoke suite should cover:
 - Report generation and save/open flow
 - Remote server startup and basic authorization
 - Portable machine-settings behavior
-
-The full native suite can remain scheduled or manually triggered if it is too slow for every push.
 
 ### Real-hardware test matrix
 
@@ -383,11 +436,13 @@ This does not apply to user-facing imports such as OpenSong or to migrations del
 5. Library Health and Sync Conflicts redesign — completed August 1, 2026
 6. Credential boundary and focused security review — completed August 1, 2026
 7. Honest email/copy/mail-client workflow — completed August 1, 2026
-8. Windows E2E smoke CI and real-hardware testing
-9. Automatic updates and user-accessible diagnostics — diagnostics completed August 1, 2026; updater pending
-10. Finalize the 1.0 persisted schemas and remove development-era compatibility code
-11. Documentation and licensing reconciliation
-12. Decide which incomplete content/import features belong before 1.0
+8. Manual Windows E2E pre-release run and real-hardware testing (deliberately not CI — decided August 8, 2026)
+9. Local Bible-file import
+10. Web-based prep build: File System Access storage layer, conflict-detection ported to TypeScript, Bible API key wiring, Window Management API monitor labeling
+11. Full automated help-video generation
+12. Automatic updates — deprioritized August 8, 2026; user-accessible diagnostics already completed August 1, 2026
+13. Finalize the 1.0 persisted schemas and remove development-era compatibility code
+14. Documentation and licensing reconciliation
 
 ## Suggested milestone split
 
@@ -405,21 +460,23 @@ This does not apply to user-facing imports such as OpenSong or to migrations del
 ### Before 1.0
 
 - Credential-boundary verification and rotation documentation
-- Updater or a deliberate documented alternative
-- Windows E2E smoke CI
+- Updater or a deliberate documented alternative — deprioritized, see below
+- Manual Windows E2E pre-release run (deliberately not CI)
 - Diagnostics export
 - Licensing confirmation
 - Security review
 - Final schema cleanup with pre-1.0 migrations and compatibility fields removed
+- Local Bible-file import
+- Full automated help-video generation
+- Web-based prep build (§7 split): File System Access storage layer, conflict-detection ported to TypeScript, Bible API key wiring, Window Management API monitor labeling
 
 ### Candidate post-1.0 work
 
+Deferred by explicit decision (confirmed August 8, 2026) — only reconsidered if a real church need surfaces:
+
 - Sheet-music PDF mapping
 - Built-in email delivery
-- QR content type
-- Additional song import/export formats
-- Local Bible imports, if not required by early adopters
-- Full automated help-video generation
+- Additional song import/export formats (ChordPro import, plain-text paste/parse, OpenSong XML export)
 
 ## Completion criteria
 
@@ -430,7 +487,7 @@ Worship Studio is ready for a stable release when:
 - Synced integration credentials and local authorization tokens follow the documented boundary and never appear in logs or diagnostics.
 - The operator can verify service readiness before presenting.
 - A projector can be connected or changed without restarting the app.
-- The critical Windows workflow passes automated smoke tests and the hardware matrix.
+- The critical Windows workflow passes a manual E2E pre-release run and the hardware matrix.
 - A clean 1.0 installation uses the final persisted formats without development-era migration or compatibility code.
 - No visible control claims to perform an action that is not implemented.
 - Remaining incomplete features are hidden, clearly labeled, or explicitly deferred.

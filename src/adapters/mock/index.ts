@@ -29,6 +29,7 @@ import {
 import { parseOpenSongXml } from './opensongParser'
 import { pickFilesInBrowser } from './pickFiles'
 import { availableTranslations, loadKjv } from './scriptureFixtures'
+import { generateQrCodeDataUrl } from '@/utils/qrCode'
 import {
   formatReference,
   getBookNames,
@@ -234,9 +235,7 @@ export function createMockAdapter(): StudioAdapter {
       get: (id) => slides.get(id),
       save: (item) => slides.save({ ...item, ...nowStamp() }),
       delete: (id) => slides.delete(id),
-      // Real QR rendering is Rust-side only (see the Tauri adapter) — same "empty, not faked"
-      // precedent as remote device provisioning's qrDataUrl in the browser demo build.
-      generateQrCode: async () => '',
+      generateQrCode: (content) => generateQrCodeDataUrl(content),
     },
     media: {
       list: () => media.list() as Promise<MediaItem[]>,

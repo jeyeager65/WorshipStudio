@@ -236,6 +236,11 @@ pub fn local_lan_ip() -> Option<IpAddr> {
     socket.local_addr().ok().map(|addr| addr.ip())
 }
 
+/// Remote Control pairing QR only (device provisioning/re-pairing, and the `/api/get_qr`-style
+/// route below) — a native-only feature with no browser equivalent, so it stays Rust-side. The
+/// Slide editor's QR element used to reuse this via a `generate_qr_code` command, but that was
+/// pure/client-side work with no real reason to round-trip through Rust; it's now a shared
+/// TypeScript implementation (`src/utils/qrCode.ts`) used identically by every adapter.
 pub fn qr_data_url(url: &str) -> Result<String, String> {
     let code = qrcode::QrCode::new(url.as_bytes()).map_err(|e| e.to_string())?;
     let buffer = code.render::<image::Luma<u8>>().build();

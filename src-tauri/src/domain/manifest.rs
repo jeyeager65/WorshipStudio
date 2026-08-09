@@ -2,14 +2,13 @@ use std::path::Path;
 
 use crate::models::ManifestEntry;
 
-use super::{announcements, media, people, services, slides, songs, themes, write_json_file};
+use super::{announcements, media, people, services, slides, songs, themes};
 
-const MANIFEST_FILE: &str = "manifest.json";
-
-/// Rebuilds manifest.json from scratch by scanning every library folder. Simple full-rebuild
-/// rather than incremental patching — correctness over cleverness, and cheap at the scale of
-/// a single church's library. Called after every save/delete of a synced library item.
-pub fn rebuild(root: &Path) -> std::io::Result<Vec<ManifestEntry>> {
+/// Computes an in-memory index by scanning every library folder — no longer persisted to disk.
+/// The only consumer is `sync::get_status()`, which is read rarely enough (app launch, manual
+/// refresh) that a fresh scan on demand is simpler and cheaper than keeping a synced file
+/// current after every write. See notes/completion-audit.md's "Web-based prep build" section.
+pub fn compute(root: &Path) -> std::io::Result<Vec<ManifestEntry>> {
     let mut entries = Vec::new();
 
     for song in songs::list(root)? {
@@ -79,7 +78,6 @@ pub fn rebuild(root: &Path) -> std::io::Result<Vec<ManifestEntry>> {
         });
     }
 
-    write_json_file(&root.join(MANIFEST_FILE), &entries)?;
     Ok(entries)
 }
 
@@ -90,7 +88,7 @@ mod tests {
     use crate::models::{Arrangement, Song, Usage};
 
     #[test]
-    fn rebuild_indexes_every_saved_song() {
+    fn compute_indexes_every_saved_song() {
         let dir = tempfile::tempdir().unwrap();
         songs::save(
             dir.path(),
@@ -119,10 +117,10 @@ mod tests {
         )
         .unwrap();
 
-        let entries = rebuild(dir.path()).unwrap();
+        let entries = compute(dir.path()).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].kind, "song");
         assert_eq!(entries[0].label, "Amazing Grace");
-        assert!(dir.path().join("manifest.json").exists());
+        assert!(!dir.path().join("manifest.json").exists());
     }
 }

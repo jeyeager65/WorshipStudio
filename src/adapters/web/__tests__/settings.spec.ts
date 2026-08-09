@@ -1,0 +1,52 @@
+import { beforeEach, describe, expect, it } from 'vitest'
+import { createWebSettingsPort } from '../settings'
+import { createFakeRoot } from './fakeFsa'
+
+beforeEach(() => {
+  localStorage.clear()
+})
+
+describe('createWebSettingsPort', () => {
+  it('returns first-run defaults when library-settings.json does not exist yet', async () => {
+    const port = createWebSettingsPort(createFakeRoot())
+    const settings = await port.getLibrarySettings()
+    expect(settings.serviceTypes).toEqual([])
+    expect(settings.defaultTranslationCode).toBe('KJV')
+    expect(settings.bulletin.page1Title).toBe('Order of Worship')
+  })
+
+  it('round-trips saved library settings through the picked folder', async () => {
+    const port = createWebSettingsPort(createFakeRoot())
+    const settings = await port.getLibrarySettings()
+    settings.branding.churchName = 'Hope Church'
+    await port.saveLibrarySettings(settings)
+
+    const reloaded = await port.getLibrarySettings()
+    expect(reloaded.branding.churchName).toBe('Hope Church')
+  })
+
+  it('returns first-run defaults for machine settings when localStorage is empty', async () => {
+    const port = createWebSettingsPort(createFakeRoot())
+    const settings = await port.getMachineSettings()
+    expect(settings.hasCompletedSetup).toBe(false)
+    expect(settings.thisComputerName).toBe('')
+  })
+
+  it('persists machine settings to localStorage, not the picked folder', async () => {
+    const root = createFakeRoot()
+    const port = createWebSettingsPort(root)
+    const settings = await port.getMachineSettings()
+    await port.saveMachineSettings({ ...settings, thisComputerName: 'Volunteer Laptop' })
+
+    // A second port instance against the same root, with no localStorage cleared, still sees it —
+    // proving persistence isn't routed through the FSA root at all.
+    const otherPort = createWebSettingsPort(root)
+    expect((await otherPort.getMachineSettings()).thisComputerName).toBe('Volunteer Laptop')
+  })
+
+  it('falls back to defaults rather than throwing on a corrupt localStorage value', async () => {
+    localStorage.setItem('worship-studio:web:machine-settings', '{not json')
+    const port = createWebSettingsPort(createFakeRoot())
+    await expect(port.getMachineSettings()).resolves.toMatchObject({ hasCompletedSetup: false })
+  })
+})

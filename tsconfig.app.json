@@ -6,6 +6,13 @@
     "composite": true,
     "paths": {
       "@/*": ["./src/*"]
-    }
+    },
+    // TS's built-in DOM lib doesn't cover the File System Access or Window Management APIs'
+    // newer/experimental pieces (showDirectoryPicker, queryPermission/requestPermission,
+    // getScreenDetails, requestFullscreen({screen})) — these fill the gap via declaration
+    // merging against lib.dom's existing interfaces (see @/adapters/web/, @/views/
+    // WebAudienceView.vue). Doesn't reintroduce the Node-types pollution the empty array in the
+    // extended dom preset was guarding against — only these two packages are listed.
+    "types": ["wicg-file-system-access", "webscreens-window-placement"]
   }
 }

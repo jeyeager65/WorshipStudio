@@ -544,7 +544,7 @@ export interface DiagnosticSummary {
   buildProfile: string
   platform: string
   architecture: string
-  installationMode: 'installed' | 'portable' | 'browser-demo'
+  installationMode: 'installed' | 'portable' | 'browser-demo' | 'web'
   setupComplete: boolean
   libraryReadable: boolean
   libraryItems: {
@@ -597,7 +597,7 @@ export interface ExportPort {
 }
 
 export interface StudioAdapter {
-  readonly kind: 'tauri' | 'mock'
+  readonly kind: 'tauri' | 'mock' | 'web'
   songs: SongPort
   services: ServicePort
   slides: SlideLibraryPort

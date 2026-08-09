@@ -40,7 +40,7 @@ pub fn delete(root: &Path, id: &str) -> std::io::Result<()> {
 /// services, rather than incrementing them on each save — the only way "last used" stays
 /// correct if a service's songs or date are edited later, or the most recent service
 /// referencing a song is deleted (same "full rebuild over incremental patching" philosophy as
-/// manifest::rebuild). lastUsedAt is the *service's own date*, not when it was saved. Only
+/// manifest::compute). lastUsedAt is the *service's own date*, not when it was saved. Only
 /// songs whose stats actually changed are rewritten, so saving/deleting a service that doesn't
 /// affect a given song's history never touches that song's file (avoids needless sync
 /// churn/conflicts across every song in the library on every save).

@@ -1,6 +1,6 @@
 use tauri::AppHandle;
 
-use crate::domain::{manifest, songs};
+use crate::domain::songs;
 use crate::models::Song;
 use crate::paths::{library_root, now_iso, this_device_name};
 
@@ -18,7 +18,6 @@ pub fn get_song(app: AppHandle, id: String) -> Result<Option<Song>, String> {
 pub fn save_song(app: AppHandle, song: Song) -> Result<(), String> {
     let root = library_root(&app);
     songs::save(&root, song, &this_device_name(&app), &now_iso()).map_err(|e| e.to_string())?;
-    manifest::rebuild(&root).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -26,7 +25,6 @@ pub fn save_song(app: AppHandle, song: Song) -> Result<(), String> {
 pub fn delete_song(app: AppHandle, id: String) -> Result<(), String> {
     let root = library_root(&app);
     songs::delete(&root, &id).map_err(|e| e.to_string())?;
-    manifest::rebuild(&root).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -37,6 +35,5 @@ pub fn import_song_opensong_xml(app: AppHandle, xml: String) -> Result<Song, Str
     let song =
         songs::import_from_opensong_xml(&root, &xml, id, &this_device_name(&app), &now_iso())
             .map_err(|e| e.to_string())?;
-    manifest::rebuild(&root).map_err(|e| e.to_string())?;
     Ok(song)
 }

@@ -1,7 +1,7 @@
 use tauri::AppHandle;
 
 use crate::domain::opensong_sets::{self, ImportSetsSummary};
-use crate::domain::{manifest, services, songs};
+use crate::domain::{services, songs};
 use crate::paths::{library_root, now_iso, this_device_name};
 
 /// Imports OpenSong Sets as Services for the given year, matching each set's songs by title
@@ -42,6 +42,5 @@ pub fn import_opensong_sets(
         }
     }
 
-    manifest::rebuild(&root).map_err(|e| e.to_string())?;
     Ok(summary)
 }

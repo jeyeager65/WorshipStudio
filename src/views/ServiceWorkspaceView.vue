@@ -203,14 +203,19 @@ async function updateSermonPassageDisplayMode(
 // could reuse the same media). getFilePath is a real Rust round trip (only the Rust side
 // knows library_root/local_media_root), so this can't happen inside flattenService's
 // otherwise-synchronous walk — resolved once up front instead, same pattern as scripture above.
+// getFilePath is Tauri-only; every adapter (including mock and the web build) still implements
+// getPreviewUrl, so that's the fallback rather than silently never resolving anything.
 const mediaUrlById = reactive(new Map<string, string>())
 const mediaErrors = reactive(new Map<string, string>())
 
 async function resolveMediaItem(mediaId: string) {
-  if (mediaUrlById.has(mediaId) || !getAdapter().media.getFilePath) return
+  if (mediaUrlById.has(mediaId)) return
   try {
-    const path = await getAdapter().media.getFilePath!(mediaId)
-    mediaUrlById.set(mediaId, convertFileSrc(path))
+    const adapter = getAdapter()
+    const url = adapter.media.getFilePath
+      ? convertFileSrc(await adapter.media.getFilePath(mediaId))
+      : await adapter.media.getPreviewUrl(mediaId)
+    if (url) mediaUrlById.set(mediaId, url)
     mediaErrors.delete(mediaId)
   } catch (e) {
     mediaErrors.set(mediaId, errorMessage(e, 'Failed to load media file.'))

@@ -272,10 +272,15 @@ watch(
   async (id) => {
     const request = ++previewMediaRequest
     previewMediaUrl.value = undefined
-    if (!isMediaBackground(id) || !getAdapter().media.getFilePath) return
+    if (!isMediaBackground(id)) return
     try {
-      const path = await getAdapter().media.getFilePath!(id)
-      if (request === previewMediaRequest) previewMediaUrl.value = convertFileSrc(path)
+      // getFilePath is Tauri-only; getPreviewUrl is implemented by every adapter (mock, web) as
+      // the fallback rather than silently never previewing a background there.
+      const adapter = getAdapter()
+      const url = adapter.media.getFilePath
+        ? convertFileSrc(await adapter.media.getFilePath(id))
+        : await adapter.media.getPreviewUrl(id)
+      if (request === previewMediaRequest && url) previewMediaUrl.value = url
     } catch (error) {
       console.error('Failed to preview theme background:', error)
     }

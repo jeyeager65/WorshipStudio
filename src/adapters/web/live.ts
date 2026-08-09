@@ -1,0 +1,87 @@
+/**
+ * LivePresentationPort for a File System Access-backed web build — a plain browser window plus
+ * BroadcastChannel, in place of the Tauri desktop build's native WebviewWindow plus emit/listen
+ * (src/adapters/tauri/index.ts, src/views/PresentationView.vue). Renders through the exact same
+ * SlideContentRenderer.vue every other live-content consumer uses (the Tauri presentation window,
+ * the Remote Control phone mirror, and the operator's own preview thumbnails) — see
+ * src/views/WebAudienceView.vue.
+ *
+ * Deliberately windowed by default rather than auto-fullscreening on a chosen monitor: an August
+ * 2026 spike confirmed requestFullscreen({screen}) needs a genuine click inside the *new* window
+ * itself (the opener's click doesn't count, even synchronously) and that cross-monitor
+ * window.open() positioning isn't reliable — but a real display simply doesn't exist for many
+ * operators (a laptop alone, or two people sharing one screen), so the audience window has to work
+ * as an ordinary window regardless (decided August 8, 2026, notes/completion-audit.md's "Web-based
+ * prep build" section). The operator can drag this window to a second monitor the normal OS way
+ * and click "Go Fullscreen" there — plain requestFullscreen() with no {screen} targeting, which
+ * fullscreens wherever the window currently is without needing the Window Management permission
+ * or any screen-picker UI at all.
+ */
+
+import type { LivePresentationPort, LiveSlideContent } from '@/adapters/types'
+import { AUDIENCE_CHANNEL_NAME, type AudienceMessage } from './audienceChannel'
+
+function buildAudienceUrl(): string {
+  const url = new URL(window.location.href)
+  url.hash = ''
+  url.search = '?presentation=1'
+  return url.toString()
+}
+
+export function createWebLivePresentationPort(): LivePresentationPort {
+  const channel = new BroadcastChannel(AUDIENCE_CHANNEL_NAME)
+  let audienceWindow: Window | null = null
+  let lastContent: LiveSlideContent | null = null
+  let liveIndex = -1
+
+  channel.onmessage = (event: MessageEvent<AudienceMessage>) => {
+    if (event.data?.type === 'ready') {
+      const message: AudienceMessage = { type: 'content', content: lastContent }
+      channel.postMessage(message)
+    }
+  }
+
+  return {
+    startPresenting: async () => {
+      if (audienceWindow && !audienceWindow.closed) {
+        audienceWindow.focus()
+        return
+      }
+      audienceWindow = window.open(
+        buildAudienceUrl(),
+        'worship-studio-audience',
+        'width=1280,height=720',
+      )
+      if (liveIndex === -1) liveIndex = 0
+    },
+    stopPresenting: async () => {
+      audienceWindow?.close()
+      audienceWindow = null
+      liveIndex = -1
+    },
+    goToIndex: async (index) => {
+      liveIndex = index
+    },
+    next: async () => {
+      liveIndex += 1
+    },
+    previous: async () => {
+      liveIndex = Math.max(0, liveIndex - 1)
+    },
+    setLiveContent: async (content) => {
+      lastContent = content ?? null
+      const message: AudienceMessage = { type: 'content', content: lastContent }
+      channel.postMessage(message)
+    },
+    // The operator's own Previous/Current/Next preview thumbnails (useLiveTransport.ts) render
+    // SlideContentRenderer at this exact size and CSS-scale it down, specifically so their
+    // auto-fit font/wrapping decisions match what the audience window actually shows — without
+    // this, they silently fall back to a hardcoded 1920x1080 assumption that has no reason to
+    // match a windowed popup (1280x720 by default) or whatever real monitor it's later
+    // fullscreened onto. Same-origin window properties, no special access needed.
+    getPresentationSize: async () => {
+      if (!audienceWindow || audienceWindow.closed) return undefined
+      return { width: audienceWindow.innerWidth, height: audienceWindow.innerHeight }
+    },
+  }
+}

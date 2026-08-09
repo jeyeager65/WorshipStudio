@@ -1,7 +1,6 @@
 use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Manager};
 
-use crate::domain::manifest;
 use crate::domain::stock_content::{self, StockImportSummary};
 use crate::paths::{library_root, local_media_root, now_iso, this_device_name};
 
@@ -25,6 +24,5 @@ pub fn import_stock_backgrounds(app: AppHandle) -> Result<StockImportSummary, St
         &now_iso(),
     )
     .map_err(|error| error.to_string())?;
-    manifest::rebuild(&root).map_err(|error| error.to_string())?;
     Ok(summary)
 }
