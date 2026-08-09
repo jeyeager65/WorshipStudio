@@ -126,8 +126,7 @@ async function resolveConflict(conflict: ConflictedItem, keep: 'mine' | 'theirs'
     await store.resolve(conflict.conflictFilePath, keep)
     const refreshed = await refreshLibraryKind(conflict.kind)
     resolvedConflictCount.value += 1
-    if (refreshed)
-      actionNotice.value = `${conflict.label} now uses the version from ${chosenName}.`
+    if (refreshed) actionNotice.value = `${conflict.label} now uses the version from ${chosenName}.`
     else
       actionError.value = `${conflict.label} was resolved, but the in-memory library could not be refreshed. Retry the affected library page or restart Worship Studio.`
   } catch (error) {
@@ -226,38 +225,89 @@ async function moveAside(issue: RecoveryIssue) {
         @retry="store.load"
       />
 
-      <v-alert v-if="actionError || store.mutationError" type="error" variant="tonal" closable class="health-alert" @click:close="actionError = ''; store.clearMutationError()">
+      <v-alert
+        v-if="actionError || store.mutationError"
+        type="error"
+        variant="tonal"
+        closable
+        class="health-alert"
+        @click:close="
+          actionError = '';
+          store.clearMutationError()
+        "
+      >
         The library action could not be completed: {{ actionError || store.mutationError }}
       </v-alert>
-      <v-alert v-if="actionNotice" type="success" variant="tonal" closable class="health-alert" @click:close="actionNotice = ''">
+      <v-alert
+        v-if="actionNotice"
+        type="success"
+        variant="tonal"
+        closable
+        class="health-alert"
+        @click:close="actionNotice = ''"
+      >
         {{ actionNotice }}
       </v-alert>
 
       <section v-if="store.recoveryIssues.length" class="health-section recovery-section">
         <header class="section-heading">
-          <span class="section-icon is-error"><v-icon icon="mdi-file-alert-outline" size="22" /></span>
+          <span class="section-icon is-error"
+            ><v-icon icon="mdi-file-alert-outline" size="22"
+          /></span>
           <div>
             <h2>Damaged files</h2>
-            <p>These files cannot be read. Restore a verified backup or preserve the damaged bytes outside the active library.</p>
+            <p>
+              These files cannot be read. Restore a verified backup or preserve the damaged bytes
+              outside the active library.
+            </p>
           </div>
           <strong>{{ store.recoveryIssues.length }}</strong>
         </header>
 
         <div class="recovery-list">
-          <article v-for="issue in store.recoveryIssues" :key="issue.filePath" class="recovery-card">
-            <div class="recovery-status" :class="issue.backupAvailable ? 'has-backup' : 'no-backup'">
-              <v-icon :icon="issue.backupAvailable ? 'mdi-backup-restore' : 'mdi-backup-restore-outline'" size="21" />
+          <article
+            v-for="issue in store.recoveryIssues"
+            :key="issue.filePath"
+            class="recovery-card"
+          >
+            <div
+              class="recovery-status"
+              :class="issue.backupAvailable ? 'has-backup' : 'no-backup'"
+            >
+              <v-icon
+                :icon="issue.backupAvailable ? 'mdi-backup-restore' : 'mdi-backup-restore-outline'"
+                size="21"
+              />
             </div>
             <div class="recovery-copy">
               <span>{{ issue.relativePath }}</span>
-              <strong>{{ issue.backupAvailable ? 'A verified backup is available' : 'No valid automatic backup was found' }}</strong>
+              <strong>{{
+                issue.backupAvailable
+                  ? 'A verified backup is available'
+                  : 'No valid automatic backup was found'
+              }}</strong>
               <p>{{ issue.error }}</p>
             </div>
             <div class="recovery-actions">
-              <v-btn v-if="issue.backupAvailable" color="primary" variant="flat" prepend-icon="mdi-backup-restore" :loading="activeOperation === `${issue.filePath}:restore`" :disabled="!!activePath" @click="restore(issue)">
+              <v-btn
+                v-if="issue.backupAvailable"
+                color="primary"
+                variant="flat"
+                prepend-icon="mdi-backup-restore"
+                :loading="activeOperation === `${issue.filePath}:restore`"
+                :disabled="!!activePath"
+                @click="restore(issue)"
+              >
                 Restore Backup
               </v-btn>
-              <v-btn color="warning" variant="tonal" prepend-icon="mdi-file-move-outline" :loading="activeOperation === `${issue.filePath}:move`" :disabled="!!activePath" @click="moveAside(issue)">
+              <v-btn
+                color="warning"
+                variant="tonal"
+                prepend-icon="mdi-file-move-outline"
+                :loading="activeOperation === `${issue.filePath}:move`"
+                :disabled="!!activePath"
+                @click="moveAside(issue)"
+              >
                 Move Aside
               </v-btn>
             </div>
@@ -267,35 +317,61 @@ async function moveAside(issue: RecoveryIssue) {
 
       <section v-if="store.conflicts.length" class="health-section conflict-section">
         <header class="section-heading">
-          <span class="section-icon is-warning"><v-icon icon="mdi-source-branch-sync" size="22" /></span>
+          <span class="section-icon is-warning"
+            ><v-icon icon="mdi-source-branch-sync" size="22"
+          /></span>
           <div>
             <h2>Versions to review</h2>
-            <p>Dropbox preserved both edits. Compare the changed fields and choose the version the shared library should keep.</p>
+            <p>
+              Dropbox preserved both edits. Compare the changed fields and choose the version the
+              shared library should keep.
+            </p>
           </div>
           <strong>{{ store.conflicts.length }}</strong>
         </header>
 
         <div class="review-progress">
           <div>
-            <strong>{{ resolvedConflictCount ? `${resolvedConflictCount} resolved` : 'Review each item' }}</strong>
+            <strong>{{
+              resolvedConflictCount ? `${resolvedConflictCount} resolved` : 'Review each item'
+            }}</strong>
             <span>{{ store.conflicts.length }} remaining</span>
           </div>
-          <v-progress-linear :model-value="initialConflictCount ? (resolvedConflictCount / initialConflictCount) * 100 : 0" color="primary" height="5" rounded />
+          <v-progress-linear
+            :model-value="
+              initialConflictCount ? (resolvedConflictCount / initialConflictCount) * 100 : 0
+            "
+            color="primary"
+            height="5"
+            rounded
+          />
         </div>
 
-        <article v-for="conflict in store.conflicts" :key="conflict.conflictFilePath" class="conflict-card">
+        <article
+          v-for="conflict in store.conflicts"
+          :key="conflict.conflictFilePath"
+          class="conflict-card"
+        >
           <header class="conflict-title">
-            <span class="kind-badge"><v-icon icon="mdi-file-compare" size="18" />{{ kindLabel(conflict.kind) }}</span>
+            <span class="kind-badge"
+              ><v-icon icon="mdi-file-compare" size="18" />{{ kindLabel(conflict.kind) }}</span
+            >
             <div>
               <h3>{{ conflict.label }}</h3>
-              <p>{{ changedFields(conflict).length }} changed field{{ changedFields(conflict).length === 1 ? '' : 's' }}</p>
+              <p>
+                {{ changedFields(conflict).length }} changed field{{
+                  changedFields(conflict).length === 1 ? '' : 's'
+                }}
+              </p>
             </div>
           </header>
 
           <div class="version-identities">
             <div>
               <span>This computer</span>
-              <strong>{{ deviceName(conflict.thisVersion.updatedByDevice, 'Current version') }}</strong>
+              <strong>{{
+                deviceName(conflict.thisVersion.updatedByDevice, 'Current version')
+              }}</strong>
               <small>Edited {{ formatWhen(conflict.thisVersion.updatedAt) }}</small>
             </div>
             <span class="compare-mark"><v-icon icon="mdi-compare-horizontal" size="20" /></span>
@@ -307,13 +383,18 @@ async function moveAside(issue: RecoveryIssue) {
           </div>
 
           <div class="field-comparison">
-            <div class="comparison-header"><span>Changed field</span><span>This computer</span><span>{{ conflict.otherDevice }}</span></div>
+            <div class="comparison-header">
+              <span>Changed field</span><span>This computer</span
+              ><span>{{ conflict.otherDevice }}</span>
+            </div>
             <div v-for="field in changedFields(conflict)" :key="field.key" class="comparison-row">
               <strong>{{ formatFieldName(field.key) }}</strong>
               <pre>{{ formatValue(field.thisValue) }}</pre>
               <pre>{{ formatValue(field.otherValue) }}</pre>
             </div>
-            <p v-if="!changedFields(conflict).length" class="no-field-differences">Only the saved device or time differs between these versions.</p>
+            <p v-if="!changedFields(conflict).length" class="no-field-differences">
+              Only the saved device or time differs between these versions.
+            </p>
           </div>
 
           <footer class="conflict-actions">
@@ -321,8 +402,21 @@ async function moveAside(issue: RecoveryIssue) {
               <v-icon icon="mdi-information-outline" size="18" />
               <span>The unselected conflicted copy will be removed.</span>
             </div>
-            <v-btn variant="outlined" :loading="activeOperation === `${conflict.conflictFilePath}:mine`" :disabled="!!activePath" @click="resolveConflict(conflict, 'mine')">Keep This Computer</v-btn>
-            <v-btn color="primary" variant="flat" :loading="activeOperation === `${conflict.conflictFilePath}:theirs`" :disabled="!!activePath" @click="resolveConflict(conflict, 'theirs')">Keep {{ conflict.otherDevice }}</v-btn>
+            <v-btn
+              variant="outlined"
+              :loading="activeOperation === `${conflict.conflictFilePath}:mine`"
+              :disabled="!!activePath"
+              @click="resolveConflict(conflict, 'mine')"
+              >Keep This Computer</v-btn
+            >
+            <v-btn
+              color="primary"
+              variant="flat"
+              :loading="activeOperation === `${conflict.conflictFilePath}:theirs`"
+              :disabled="!!activePath"
+              @click="resolveConflict(conflict, 'theirs')"
+              >Keep {{ conflict.otherDevice }}</v-btn
+            >
           </footer>
         </article>
       </section>
@@ -331,11 +425,27 @@ async function moveAside(issue: RecoveryIssue) {
         <LibraryEmptyState
           icon="mdi-shield-check-outline"
           :title="finishedReview ? 'Library review complete' : 'Your library is healthy'"
-          :message="finishedReview ? 'All damaged files and synced versions have been handled. The affected library content has been refreshed.' : 'There are no damaged files or synced versions requiring review.'"
+          :message="
+            finishedReview
+              ? 'All damaged files and synced versions have been handled. The affected library content has been refreshed.'
+              : 'There are no damaged files or synced versions requiring review.'
+          "
           compact
         >
-          <v-btn color="primary" variant="flat" prepend-icon="mdi-calendar-month" @click="router.push('/')">Return to Services</v-btn>
-          <v-btn variant="tonal" prepend-icon="mdi-refresh" :loading="store.refreshing" @click="store.load">Check Again</v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            prepend-icon="mdi-calendar-month"
+            @click="router.push('/')"
+            >Return to Services</v-btn
+          >
+          <v-btn
+            variant="tonal"
+            prepend-icon="mdi-refresh"
+            :loading="store.refreshing"
+            @click="store.load"
+            >Check Again</v-btn
+          >
         </LibraryEmptyState>
       </section>
     </template>
@@ -343,78 +453,404 @@ async function moveAside(issue: RecoveryIssue) {
 </template>
 
 <style scoped>
-.health-page { max-width: 1180px; margin: 0 auto; padding: 30px 34px 64px; }
-.health-hero { display: flex; align-items: center; justify-content: space-between; gap: 28px; margin-bottom: 18px; padding: 22px 24px; border: 1px solid rgba(var(--v-theme-on-surface), .08); border-radius: 12px; background: radial-gradient(circle at 90% 0, rgba(var(--v-theme-primary), .11), transparent 240px), rgba(var(--v-theme-surface), .74); box-shadow: 0 12px 30px rgba(0,0,0,.07); }
-.health-hero-copy > span { color: rgb(var(--v-theme-primary)); font-size: .66rem; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
-.health-hero h1 { margin: 3px 0 0; font-size: 1.5rem; letter-spacing: -.025em; }
-.health-hero p { max-width: 650px; margin: 7px 0 0; color: rgba(var(--v-theme-on-surface), .56); font-size: .78rem; }
-.health-summary { display: grid; flex: 0 0 auto; grid-template-columns: repeat(2, 92px); gap: 8px; }
-.health-summary > div { display: grid; grid-template-columns: 24px 1fr; align-items: center; padding: 9px 10px; border: 1px solid rgba(var(--v-theme-on-surface), .08); border-radius: 9px; background: rgba(var(--v-theme-background), .34); color: rgba(var(--v-theme-on-surface), .5); }
-.health-summary > div.active { color: rgb(var(--v-theme-warning)); border-color: rgba(var(--v-theme-warning), .28); background: rgba(var(--v-theme-warning), .07); }
-.health-summary > div:first-child.active { color: rgb(var(--v-theme-error)); border-color: rgba(var(--v-theme-error), .28); background: rgba(var(--v-theme-error), .07); }
-.health-summary strong { font-size: 1rem; }
-.health-summary span { grid-column: 1 / -1; margin-top: 2px; font-size: .6rem; font-weight: 700; text-transform: uppercase; }
-.health-alert { margin-bottom: 14px; }
-.health-section, .healthy-panel { overflow: hidden; margin-top: 16px; border: 1px solid rgba(var(--v-theme-on-surface), .09); border-radius: 12px; background: rgba(var(--v-theme-surface), .7); box-shadow: 0 10px 26px rgba(0,0,0,.055); }
-.section-heading { display: grid; grid-template-columns: 42px minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 16px 18px; border-bottom: 1px solid rgba(var(--v-theme-on-surface), .08); }
-.section-icon { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 10px; }
-.section-icon.is-error { color: rgb(var(--v-theme-error)); background: rgba(var(--v-theme-error), .1); }
-.section-icon.is-warning { color: rgb(var(--v-theme-warning)); background: rgba(var(--v-theme-warning), .1); }
-.section-heading h2 { margin: 0; font-size: .94rem; }
-.section-heading p { margin: 3px 0 0; color: rgba(var(--v-theme-on-surface), .54); font-size: .7rem; line-height: 1.45; }
-.section-heading > strong { display: grid; min-width: 27px; height: 27px; place-items: center; border-radius: 99px; background: rgba(var(--v-theme-on-surface), .07); font-size: .72rem; }
-.recovery-list { display: grid; gap: 9px; padding: 14px; }
-.recovery-card { display: grid; grid-template-columns: 44px minmax(0,1fr) auto; align-items: center; gap: 13px; padding: 13px; border: 1px solid rgba(var(--v-theme-error), .2); border-radius: 10px; background: rgba(var(--v-theme-background), .24); }
-.recovery-status { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 9px; }
-.recovery-status.has-backup { color: rgb(var(--v-theme-success)); background: rgba(var(--v-theme-success), .1); }
-.recovery-status.no-backup { color: rgb(var(--v-theme-warning)); background: rgba(var(--v-theme-warning), .1); }
-.recovery-copy { display: flex; min-width: 0; flex-direction: column; }
-.recovery-copy > span { overflow: hidden; color: rgba(var(--v-theme-on-surface), .48); font-family: monospace; font-size: .65rem; text-overflow: ellipsis; white-space: nowrap; }
-.recovery-copy strong { margin-top: 2px; font-size: .76rem; }
-.recovery-copy p { margin: 3px 0 0; color: rgba(var(--v-theme-on-surface), .55); font-size: .68rem; overflow-wrap: anywhere; }
-.recovery-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.review-progress { display: grid; gap: 8px; padding: 13px 18px; border-bottom: 1px solid rgba(var(--v-theme-on-surface), .07); background: rgba(var(--v-theme-primary), .025); }
-.review-progress > div { display: flex; justify-content: space-between; font-size: .67rem; }
-.review-progress span { color: rgba(var(--v-theme-on-surface), .5); }
-.conflict-card { margin: 14px; border: 1px solid rgba(var(--v-theme-warning), .23); border-radius: 11px; background: rgba(var(--v-theme-background), .24); }
-.conflict-title { display: flex; align-items: center; gap: 12px; padding: 14px 15px; border-bottom: 1px solid rgba(var(--v-theme-on-surface), .07); }
-.kind-badge { display: flex; align-items: center; gap: 6px; padding: 6px 9px; border-radius: 7px; color: rgb(var(--v-theme-warning)); background: rgba(var(--v-theme-warning), .1); font-size: .63rem; font-weight: 750; text-transform: uppercase; }
-.conflict-title h3 { margin: 0; font-size: .9rem; }
-.conflict-title p { margin: 2px 0 0; color: rgba(var(--v-theme-on-surface), .48); font-size: .65rem; }
-.version-identities { display: grid; grid-template-columns: 1fr 34px 1fr; align-items: center; gap: 8px; padding: 13px 15px; }
-.version-identities > div { display: flex; min-width: 0; flex-direction: column; padding: 10px 12px; border: 1px solid rgba(var(--v-theme-on-surface), .08); border-radius: 8px; }
-.version-identities > div > span { color: rgba(var(--v-theme-on-surface), .45); font-size: .59rem; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
-.version-identities strong { margin-top: 2px; overflow: hidden; font-size: .76rem; text-overflow: ellipsis; white-space: nowrap; }
-.version-identities small { margin-top: 2px; color: rgba(var(--v-theme-on-surface), .5); font-size: .62rem; }
-.compare-mark { display: grid; place-items: center; color: rgba(var(--v-theme-on-surface), .38); }
-.field-comparison { margin: 0 15px 14px; overflow: hidden; border: 1px solid rgba(var(--v-theme-on-surface), .08); border-radius: 8px; }
-.comparison-header, .comparison-row { display: grid; grid-template-columns: minmax(110px,.55fr) repeat(2,minmax(0,1fr)); }
-.comparison-header { background: rgba(var(--v-theme-on-surface), .045); color: rgba(var(--v-theme-on-surface), .48); font-size: .58rem; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
-.comparison-header span, .comparison-row > * { min-width: 0; padding: 8px 10px; border-right: 1px solid rgba(var(--v-theme-on-surface), .07); }
-.comparison-header span:last-child, .comparison-row > *:last-child { border-right: 0; }
-.comparison-row { border-top: 1px solid rgba(var(--v-theme-on-surface), .07); }
-.comparison-row > strong { color: rgba(var(--v-theme-on-surface), .72); font-size: .67rem; }
-.comparison-row pre { max-height: 150px; margin: 0; overflow: auto; color: rgba(var(--v-theme-on-surface), .78); font-family: inherit; font-size: .66rem; line-height: 1.42; white-space: pre-wrap; overflow-wrap: anywhere; }
-.no-field-differences { margin: 0; padding: 18px; color: rgba(var(--v-theme-on-surface), .5); font-size: .7rem; text-align: center; }
-.conflict-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 15px; border-top: 1px solid rgba(var(--v-theme-on-surface), .07); }
-.conflict-actions > div { display: flex; flex: 1; align-items: center; gap: 6px; color: rgba(var(--v-theme-on-surface), .48); font-size: .65rem; }
-.healthy-panel :deep(.library-empty) { min-height: 310px; }
+.health-page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 30px 34px 64px;
+}
+.health-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  margin-bottom: 18px;
+  padding: 22px 24px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 90% 0, rgba(var(--v-theme-primary), 0.11), transparent 240px),
+    rgba(var(--v-theme-surface), 0.74);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.07);
+}
+.health-hero-copy > span {
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.66rem;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.health-hero h1 {
+  margin: 3px 0 0;
+  font-size: 1.5rem;
+  letter-spacing: -0.025em;
+}
+.health-hero p {
+  max-width: 650px;
+  margin: 7px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.56);
+  font-size: 0.78rem;
+}
+.health-summary {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(2, 92px);
+  gap: 8px;
+}
+.health-summary > div {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-items: center;
+  padding: 9px 10px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 9px;
+  background: rgba(var(--v-theme-background), 0.34);
+  color: rgba(var(--v-theme-on-surface), 0.5);
+}
+.health-summary > div.active {
+  color: rgb(var(--v-theme-warning));
+  border-color: rgba(var(--v-theme-warning), 0.28);
+  background: rgba(var(--v-theme-warning), 0.07);
+}
+.health-summary > div:first-child.active {
+  color: rgb(var(--v-theme-error));
+  border-color: rgba(var(--v-theme-error), 0.28);
+  background: rgba(var(--v-theme-error), 0.07);
+}
+.health-summary strong {
+  font-size: 1rem;
+}
+.health-summary span {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.health-alert {
+  margin-bottom: 14px;
+}
+.health-section,
+.healthy-panel {
+  overflow: hidden;
+  margin-top: 16px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.09);
+  border-radius: 12px;
+  background: rgba(var(--v-theme-surface), 0.7);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.055);
+}
+.section-heading {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+}
+.section-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 10px;
+}
+.section-icon.is-error {
+  color: rgb(var(--v-theme-error));
+  background: rgba(var(--v-theme-error), 0.1);
+}
+.section-icon.is-warning {
+  color: rgb(var(--v-theme-warning));
+  background: rgba(var(--v-theme-warning), 0.1);
+}
+.section-heading h2 {
+  margin: 0;
+  font-size: 0.94rem;
+}
+.section-heading p {
+  margin: 3px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.54);
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+.section-heading > strong {
+  display: grid;
+  min-width: 27px;
+  height: 27px;
+  place-items: center;
+  border-radius: 99px;
+  background: rgba(var(--v-theme-on-surface), 0.07);
+  font-size: 0.72rem;
+}
+.recovery-list {
+  display: grid;
+  gap: 9px;
+  padding: 14px;
+}
+.recovery-card {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  padding: 13px;
+  border: 1px solid rgba(var(--v-theme-error), 0.2);
+  border-radius: 10px;
+  background: rgba(var(--v-theme-background), 0.24);
+}
+.recovery-status {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 9px;
+}
+.recovery-status.has-backup {
+  color: rgb(var(--v-theme-success));
+  background: rgba(var(--v-theme-success), 0.1);
+}
+.recovery-status.no-backup {
+  color: rgb(var(--v-theme-warning));
+  background: rgba(var(--v-theme-warning), 0.1);
+}
+.recovery-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.recovery-copy > span {
+  overflow: hidden;
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-family: monospace;
+  font-size: 0.65rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recovery-copy strong {
+  margin-top: 2px;
+  font-size: 0.76rem;
+}
+.recovery-copy p {
+  margin: 3px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  font-size: 0.68rem;
+  overflow-wrap: anywhere;
+}
+.recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.review-progress {
+  display: grid;
+  gap: 8px;
+  padding: 13px 18px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+  background: rgba(var(--v-theme-primary), 0.025);
+}
+.review-progress > div {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.67rem;
+}
+.review-progress span {
+  color: rgba(var(--v-theme-on-surface), 0.5);
+}
+.conflict-card {
+  margin: 14px;
+  border: 1px solid rgba(var(--v-theme-warning), 0.23);
+  border-radius: 11px;
+  background: rgba(var(--v-theme-background), 0.24);
+}
+.conflict-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 15px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+.kind-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  color: rgb(var(--v-theme-warning));
+  background: rgba(var(--v-theme-warning), 0.1);
+  font-size: 0.63rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+.conflict-title h3 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.conflict-title p {
+  margin: 2px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.65rem;
+}
+.version-identities {
+  display: grid;
+  grid-template-columns: 1fr 34px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 15px;
+}
+.version-identities > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 10px 12px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 8px;
+}
+.version-identities > div > span {
+  color: rgba(var(--v-theme-on-surface), 0.45);
+  font-size: 0.59rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.version-identities strong {
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.version-identities small {
+  margin-top: 2px;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-size: 0.62rem;
+}
+.compare-mark {
+  display: grid;
+  place-items: center;
+  color: rgba(var(--v-theme-on-surface), 0.38);
+}
+.field-comparison {
+  margin: 0 15px 14px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 8px;
+}
+.comparison-header,
+.comparison-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.55fr) repeat(2, minmax(0, 1fr));
+}
+.comparison-header {
+  background: rgba(var(--v-theme-on-surface), 0.045);
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.58rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.comparison-header span,
+.comparison-row > * {
+  min-width: 0;
+  padding: 8px 10px;
+  border-right: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+.comparison-header span:last-child,
+.comparison-row > *:last-child {
+  border-right: 0;
+}
+.comparison-row {
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+.comparison-row > strong {
+  color: rgba(var(--v-theme-on-surface), 0.72);
+  font-size: 0.67rem;
+}
+.comparison-row pre {
+  max-height: 150px;
+  margin: 0;
+  overflow: auto;
+  color: rgba(var(--v-theme-on-surface), 0.78);
+  font-family: inherit;
+  font-size: 0.66rem;
+  line-height: 1.42;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.no-field-differences {
+  margin: 0;
+  padding: 18px;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-size: 0.7rem;
+  text-align: center;
+}
+.conflict-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 15px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+.conflict-actions > div {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.65rem;
+}
+.healthy-panel :deep(.library-empty) {
+  min-height: 310px;
+}
 @media (max-width: 760px) {
-  .health-page { padding: 20px 16px 44px; }
-  .health-hero { align-items: flex-start; flex-direction: column; }
-  .health-summary { width: 100%; grid-template-columns: repeat(2,1fr); }
-  .recovery-card { grid-template-columns: 44px minmax(0,1fr); }
-  .recovery-actions { grid-column: 1 / -1; justify-content: flex-start; }
-  .comparison-header { display: none; }
-  .comparison-row { grid-template-columns: 1fr 1fr; }
-  .comparison-row > strong { grid-column: 1 / -1; border-right: 0; border-bottom: 1px solid rgba(var(--v-theme-on-surface), .07); }
-  .conflict-actions { align-items: stretch; flex-direction: column; }
-  .conflict-actions > div { margin-bottom: 4px; }
+  .health-page {
+    padding: 20px 16px 44px;
+  }
+  .health-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .health-summary {
+    width: 100%;
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .recovery-card {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+  .recovery-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+  .comparison-header {
+    display: none;
+  }
+  .comparison-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .comparison-row > strong {
+    grid-column: 1 / -1;
+    border-right: 0;
+    border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+  }
+  .conflict-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .conflict-actions > div {
+    margin-bottom: 4px;
+  }
 }
 @media (max-width: 500px) {
-  .version-identities { grid-template-columns: 1fr; }
-  .compare-mark { transform: rotate(90deg); }
-  .comparison-row { grid-template-columns: 1fr; }
-  .comparison-row pre { border-right: 0; border-bottom: 1px solid rgba(var(--v-theme-on-surface), .07); }
+  .version-identities {
+    grid-template-columns: 1fr;
+  }
+  .compare-mark {
+    transform: rotate(90deg);
+  }
+  .comparison-row {
+    grid-template-columns: 1fr;
+  }
+  .comparison-row pre {
+    border-right: 0;
+    border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+  }
 }
 </style>

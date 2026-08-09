@@ -171,7 +171,9 @@ export function parseOpenSongXml(xml: string): ParsedOpenSongSong {
   const ccli = extractTag(xml, 'ccli')
   const presentation = extractTag(xml, 'presentation')
   const lyrics = extractTag(xml, 'lyrics')
-  const { blocks, sequence: lyricsSequence } = lyrics ? parseLyrics(lyrics) : { blocks: [], sequence: [] }
+  const { blocks, sequence: lyricsSequence } = lyrics
+    ? parseLyrics(lyrics)
+    : { blocks: [], sequence: [] }
 
   let sequence = lyricsSequence
   if (presentation) {

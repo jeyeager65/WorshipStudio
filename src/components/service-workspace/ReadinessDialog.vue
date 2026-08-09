@@ -11,21 +11,36 @@ defineEmits<{ 'update:modelValue': [boolean]; 'issue-selected': [ReadinessIssue]
 </script>
 
 <template>
-  <v-dialog :model-value="modelValue" max-width="720" @update:model-value="$emit('update:modelValue', $event)">
+  <v-dialog
+    :model-value="modelValue"
+    max-width="720"
+    @update:model-value="$emit('update:modelValue', $event)"
+  >
     <v-card class="readiness-dialog-card">
       <v-card-title class="readiness-dialog-title">
         <span class="readiness-dialog-title-icon" :class="`is-${color}`">
           <v-icon :icon="icon" size="23" />
         </span>
         <span>
-          <strong>{{ readiness.blockers.length ? 'Service Needs Attention' : 'Ready to Present' }}</strong>
+          <strong>{{
+            readiness.blockers.length ? 'Service Needs Attention' : 'Ready to Present'
+          }}</strong>
           <small>
-            {{ readiness.blockers.length }} blocker{{ readiness.blockers.length === 1 ? '' : 's' }}
-            · {{ readiness.warnings.length }} warning{{ readiness.warnings.length === 1 ? '' : 's' }}
+            {{ readiness.blockers.length }} blocker{{
+              readiness.blockers.length === 1 ? '' : 's'
+            }}
+            · {{ readiness.warnings.length }} warning{{
+              readiness.warnings.length === 1 ? '' : 's'
+            }}
           </small>
         </span>
         <v-spacer />
-        <v-btn icon="mdi-close" variant="text" size="small" @click="$emit('update:modelValue', false)" />
+        <v-btn
+          icon="mdi-close"
+          variant="text"
+          size="small"
+          @click="$emit('update:modelValue', false)"
+        />
       </v-card-title>
       <v-card-text class="readiness-dialog-content">
         <div v-if="!readiness.issues.length" class="readiness-complete-state">

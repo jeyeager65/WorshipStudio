@@ -136,6 +136,11 @@ export function createMockAdapter(): StudioAdapter {
   // real thumbnail for anything imported this session. Revoked on delete; there's no other
   // cleanup opportunity in a browser demo (no app-close hook to rely on either way).
   const mediaPreviewUrls = new Map<string, string>()
+  // Same idea as mediaPreviewUrls, but for the Import Media dialog's own review rows — created
+  // lazily per staged path the first time it's asked for, rather than eagerly for every staged
+  // file, since not every staged file necessarily gets its preview shown before the dialog
+  // closes.
+  const stagedPreviewUrls = new Map<string, string>()
 
   async function importOpenSongXml(xml: string): Promise<Song> {
     const parsed = parseOpenSongXml(xml)
@@ -259,6 +264,15 @@ export function createMockAdapter(): StudioAdapter {
           })
         }
         return staged
+      },
+      getStagedPreviewUrl: async (path) => {
+        const cached = stagedPreviewUrls.get(path)
+        if (cached) return cached
+        const file = stagedMediaFiles.get(path)
+        if (!file) return undefined
+        const url = URL.createObjectURL(file)
+        stagedPreviewUrls.set(path, url)
+        return url
       },
       commitImport: async (files: MediaImportCommit[]) => {
         const created: MediaItem[] = []

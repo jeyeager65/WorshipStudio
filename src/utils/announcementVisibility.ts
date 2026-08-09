@@ -12,7 +12,9 @@ export function effectiveStopDate(announcement: Announcement): string | undefine
  *  supplies one automatically, so only the ongoing/standing pattern (no event date) requires the
  *  operator to type an explicit `showUntil`. Used by the management UI to reject a save that
  *  would otherwise never expire. */
-export function requiresExplicitStopDate(announcement: Pick<Announcement, 'eventDate' | 'showUntil'>): boolean {
+export function requiresExplicitStopDate(
+  announcement: Pick<Announcement, 'eventDate' | 'showUntil'>,
+): boolean {
   return !announcement.eventDate && !announcement.showUntil
 }
 

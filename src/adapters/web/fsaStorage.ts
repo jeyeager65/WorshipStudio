@@ -92,12 +92,34 @@ export async function writeTextFile(
   await writable.close()
 }
 
+export function backupPath(relativePath: string): string {
+  return `${relativePath}.backup`
+}
+
+/** Mirrors src-tauri/src/domain/mod.rs's write_json_file exactly: serialize the new value first
+ *  (so a serialization failure touches nothing on disk), then — only if a previous version
+ *  exists AND parses as valid JSON — write that previous version to `<path>.backup` before
+ *  overwriting `path` with the new content. An already-corrupt existing file is left as-is
+ *  rather than overwriting a known-good backup with garbage, so a prior successful save stays
+ *  recoverable even after an external sync corruption. This is what gives the web build's own
+ *  writes the same corruption protection recoverFromBackup/quarantineDamagedFile (sync.ts) rely
+ *  on for the desktop build's writes. */
 export async function writeJsonFile(
   root: FileSystemDirectoryHandle,
   relativePath: string,
   value: unknown,
 ): Promise<void> {
-  await writeTextFile(root, relativePath, JSON.stringify(value, null, 2))
+  const bytes = JSON.stringify(value, null, 2)
+  const previous = await readFileText(root, relativePath)
+  if (previous !== null) {
+    try {
+      JSON.parse(previous)
+      await writeTextFile(root, backupPath(relativePath), previous)
+    } catch {
+      // Previous version doesn't parse — never replace a known-good backup with corrupt bytes.
+    }
+  }
+  await writeTextFile(root, relativePath, bytes)
 }
 
 /** Raw binary read/write for media files — everything else in this module is JSON/text. Returns

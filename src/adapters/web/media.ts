@@ -1,6 +1,7 @@
 /**
- * MediaPort for a File System Access-backed web build — media-items/<id>.json for metadata,
- * media/<filename> for the actual bytes, mirroring src-tauri/src/domain/media.rs.
+ * MediaPort for a File System Access-backed web build — media-items/<id>.json for metadata
+ * (always in the synced library folder, regardless of location), media/<filename> under that
+ * same folder for 'synced' bytes, mirroring src-tauri/src/domain/media.rs.
  *
  * Two deliberate differences from the Rust version:
  * - Content hashing uses Web Crypto's SHA-256 (crypto.subtle.digest) rather than Rust's
@@ -9,11 +10,15 @@
  *   the same reasoning applied to what's actually built into this platform; hashes are only ever
  *   compared within one adapter's own records, so cross-implementation hash equality was never a
  *   requirement.
- * - 'local' media (never-synced, too-large-to-share files, normally in a separate machine-local
- *   folder outside the synced library) has no distinct destination here — it lands in the same
- *   picked folder as 'synced' media. A genuinely separate local-only folder would need a second
- *   showDirectoryPicker() grant, which is real scope beyond this pass; documented here rather
- *   than silently pretending location fidelity that doesn't exist yet.
+ * - The local media folder is granted lazily rather than up front like Rust's local_media_root
+ *   (which paths.rs resolves automatically, no picker needed, since Tauri can just use an
+ *   OS-appdata subfolder). A browser has no such implicit writable location — the first commit
+ *   of a 'local' item prompts showDirectoryPicker() (only there, since that's the one call in
+ *   this file guaranteed to run inside the user gesture the API requires) and the resulting
+ *   handle is cached for the rest of the session and persisted (handlePersistence.ts) so it
+ *   isn't asked for again next launch. Other entry points (getPreviewUrl, delete) only use an
+ *   already-granted handle and never prompt, since they can be reached from contexts (rendering,
+ *   background cleanup) that aren't a fresh user gesture.
  */
 
 import type { MediaItem, Theme } from '@/models/library'
@@ -29,6 +34,7 @@ import { presentationThemeDefaults } from '@/utils/presentationTheme'
 import { pickFilesInBrowser } from '@/adapters/mock/pickFiles'
 import { createFsaCollection } from './collection'
 import { joinPath, listEntries, readBytes, removeFile, writeBytes } from './fsaStorage'
+import { loadStoredLocalMediaHandle, storeLocalMediaHandle } from './handlePersistence'
 
 const MEDIA_ITEMS_DIR = 'media-items'
 const MEDIA_FILES_DIR = 'media'
@@ -82,14 +88,81 @@ export function createWebMediaPort(
   // there's no real filesystem path to hand back in a browser, same reasoning as the mock
   // adapter's identical stagedMediaFiles map.
   const staged = new Map<string, File>()
+  // Preview blob URLs for the Import Media dialog's own review rows, created lazily per staged
+  // path the first time it's asked for — same idea as MediaLibraryView's committed-item preview
+  // caching, just keyed by the staged map's synthetic path instead of a MediaItem id.
+  const stagedPreviewUrls = new Map<string, string>()
+  // Cached for this adapter instance once granted/picked, so a whole session never needs more
+  // than one prompt (or, once handlePersistence.ts has it, zero prompts across sessions).
+  let localMediaRoot: FileSystemDirectoryHandle | undefined
+
+  /** The local media folder if one has already been granted access — checks the in-memory cache,
+   *  then a previously stored handle's still-live permission. Never prompts, so it's safe to call
+   *  from contexts (rendering, delete) that aren't a fresh user gesture. */
+  async function grantedLocalMediaRoot(): Promise<FileSystemDirectoryHandle | undefined> {
+    if (localMediaRoot) return localMediaRoot
+    const stored = await loadStoredLocalMediaHandle().catch(() => undefined)
+    if (!stored) return undefined
+    const permission = await stored.queryPermission({ mode: 'readwrite' }).catch(() => 'prompt')
+    if (permission !== 'granted') return undefined
+    localMediaRoot = stored
+    return stored
+  }
+
+  /** The local media folder, prompting for one if it hasn't been granted yet — only called from
+   *  commitImport, the one path in this file that's always reached via a click on an "Import"
+   *  button, so it still carries the user gesture showDirectoryPicker() requires. */
+  async function ensureLocalMediaRoot(): Promise<FileSystemDirectoryHandle> {
+    const granted = await grantedLocalMediaRoot()
+    if (granted) return granted
+    const handle = await window.showDirectoryPicker({
+      mode: 'readwrite',
+      id: 'worship-studio-local-media',
+    })
+    await storeLocalMediaHandle(handle)
+    localMediaRoot = handle
+    return handle
+  }
 
   async function listNormalized(): Promise<MediaItem[]> {
     return (await items.list()).map(normalizeTitle)
   }
 
+  /** The root+relative-dir pair a MediaItem's bytes currently live under, per its `location` —
+   *  shared by save's move-on-location-change logic, delete, and getPreviewUrl. `undefined` root
+   *  means "can't be reached from here" (a 'local' item whose folder isn't granted this session),
+   *  same "location is inherently machine-local" caveat documented on the module itself. */
+  async function locateBytes(
+    item: MediaItem,
+  ): Promise<{ dirRoot: FileSystemDirectoryHandle | undefined; relativeDir: string }> {
+    return item.location === 'local'
+      ? { dirRoot: await grantedLocalMediaRoot(), relativeDir: '' }
+      : { dirRoot: root, relativeDir: MEDIA_FILES_DIR }
+  }
+
   return {
     list: () => listNormalized(),
     save: async (item) => {
+      const previous = await items.get(item.id)
+      if (previous && previous.location !== item.location) {
+        // Rust's save() (src-tauri/src/domain/media.rs) does the same move-on-location-change —
+        // otherwise the file would stay in its old folder while getPreviewUrl/delete start
+        // looking for it in the new one, silently breaking playback.
+        const { dirRoot: srcRoot, relativeDir: srcDir } = await locateBytes(previous)
+        const bytes = srcRoot && (await readBytes(srcRoot, joinPath(srcDir, previous.filename)))
+        if (srcRoot && bytes) {
+          const isMovingToLocal = item.location === 'local'
+          const destRoot = isMovingToLocal ? await ensureLocalMediaRoot() : root
+          const destDir = isMovingToLocal ? '' : MEDIA_FILES_DIR
+          const destFilename = await uniqueFilename(destRoot, destDir, item.filename)
+          await writeBytes(destRoot, joinPath(destDir, destFilename), bytes)
+          await removeFile(srcRoot, joinPath(srcDir, previous.filename))
+          item = { ...item, filename: destFilename }
+        }
+        // A missing/inaccessible source (already gone, or a 'local' file this machine never
+        // had) leaves nothing to move — the metadata update below still proceeds, matching
+        // delete()'s "metadata is authoritative, file cleanup is best-effort" precedent.
+      }
       await items.save(item)
     },
     pickFilesToImport: async () => {
@@ -113,6 +186,15 @@ export function createWebMediaPort(
       }
       return result
     },
+    getStagedPreviewUrl: async (path) => {
+      const cached = stagedPreviewUrls.get(path)
+      if (cached) return cached
+      const file = staged.get(path)
+      if (!file) return undefined
+      const url = URL.createObjectURL(file)
+      stagedPreviewUrls.set(path, url)
+      return url
+    },
     commitImport: async (files: MediaImportCommit[]) => {
       const created: MediaItem[] = []
       for (const commit of files) {
@@ -122,9 +204,15 @@ export function createWebMediaPort(
             `Staged file not found for "${commit.filename}" — it may have already been committed, or the page was reloaded since it was picked.`,
           )
         }
-        const destFilename = await uniqueFilename(root, MEDIA_FILES_DIR, commit.filename)
+        // 'local' files live flat in their own granted folder (mirrors Rust's
+        // local_media_root.join(filename), no subfolder); 'synced' files stay under this
+        // library's media/ subfolder, same as before.
+        const isLocal = commit.location === 'local'
+        const dirRoot = isLocal ? await ensureLocalMediaRoot() : root
+        const relativeDir = isLocal ? '' : MEDIA_FILES_DIR
+        const destFilename = await uniqueFilename(dirRoot, relativeDir, commit.filename)
         const bytes = await file.arrayBuffer()
-        await writeBytes(root, joinPath(MEDIA_FILES_DIR, destFilename), bytes)
+        await writeBytes(dirRoot, joinPath(relativeDir, destFilename), bytes)
         const saved = await items.save({
           id: `media-${crypto.randomUUID()}`,
           filename: destFilename,
@@ -153,14 +241,21 @@ export function createWebMediaPort(
     delete: async (id) => {
       const item = await items.get(id)
       await items.delete(id)
-      if (item) await removeFile(root, joinPath(MEDIA_FILES_DIR, item.filename))
+      if (!item) return
+      // Only removes the backing file if it's actually reachable from here (a 'local' item
+      // needs this machine to already have that folder granted) — deleting the metadata record
+      // still succeeds either way (see module doc comment).
+      const { dirRoot, relativeDir } = await locateBytes(item)
+      if (dirRoot) await removeFile(dirRoot, joinPath(relativeDir, item.filename))
     },
     // No getFilePath — Tauri-only per its own doc comment (turned into a usable src via
     // convertFileSrc, which has no browser equivalent); getPreviewUrl below covers the web build.
     getPreviewUrl: async (id) => {
       const item = await items.get(id)
       if (!item) return undefined
-      const bytes = await readBytes(root, joinPath(MEDIA_FILES_DIR, item.filename))
+      const { dirRoot, relativeDir } = await locateBytes(item)
+      if (!dirRoot) return undefined
+      const bytes = await readBytes(dirRoot, joinPath(relativeDir, item.filename))
       if (!bytes) return undefined
       const mimeType = item.kind === 'video' ? 'video/mp4' : 'image/*'
       return URL.createObjectURL(new Blob([bytes], { type: mimeType }))

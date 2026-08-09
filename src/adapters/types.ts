@@ -94,6 +94,14 @@ export interface MediaPort {
   save(item: MediaItem): Promise<void>
   /** Opens a native/browser file picker and stages each selection (size, kind, duplicate check) for the Import Media review dialog — nothing is copied into the library yet. */
   pickFilesToImport(): Promise<StagedMediaFile[]>
+  /**
+   * A ready-to-use `<img>`/`<video>` src for a *staged, not-yet-committed* file's own review row
+   * (Import Media dialog) — same "never a raw path the caller has to interpret" contract as
+   * getPreviewUrl below, just for a StagedMediaFile.path instead of a committed MediaItem.id.
+   * Resolves to undefined if the given path isn't currently staged (already committed, already
+   * removed, or a stale reference), so callers fall back to a plain kind icon.
+   */
+  getStagedPreviewUrl(path: string): Promise<string | undefined>
   /** Copies each accepted staged file into the library (synced or local, per its chosen location) and creates its record. */
   commitImport(files: MediaImportCommit[]): Promise<MediaItem[]>
   /** Passive re-check for an already-imported item — the "DUPLICATE" badge's backstop for files that entered the library some other way. */

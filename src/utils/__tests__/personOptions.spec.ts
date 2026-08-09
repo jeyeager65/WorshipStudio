@@ -85,10 +85,20 @@ describe('personOptionsForRole', () => {
 
   it('does not treat a role name as a substring match against unrelated preferred roles', () => {
     const people: Person[] = [
-      person({ id: 'a', firstName: 'Ann', lastName: 'Adams', preferredRoles: ['Sound Booth Lead'] }),
+      person({
+        id: 'a',
+        firstName: 'Ann',
+        lastName: 'Adams',
+        preferredRoles: ['Sound Booth Lead'],
+      }),
       person({ id: 'b', firstName: 'Bob', lastName: 'Bell', preferredRoles: ['Sound Booth'] }),
     ]
     const options = personOptionsForRole(people, 'Sound Booth')
-    expect(options.map((o) => o.title)).toEqual(['Preferred', 'Bob Bell', 'Everyone Else', 'Ann Adams'])
+    expect(options.map((o) => o.title)).toEqual([
+      'Preferred',
+      'Bob Bell',
+      'Everyone Else',
+      'Ann Adams',
+    ])
   })
 })

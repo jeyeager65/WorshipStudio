@@ -641,7 +641,10 @@ async function skipSetup() {
                 >Past-service folder import is available in the desktop app.</v-alert
               >
 
-              <article class="import-card" :class="{ 'import-card--disabled': !isDesktop }">
+              <article
+                class="import-card"
+                :class="{ 'import-card--disabled': adapter.kind === 'mock' }"
+              >
                 <span class="import-icon"><v-icon icon="mdi-folder-sync-outline" size="23" /></span>
                 <div class="import-copy">
                   <strong>Shared library folder</strong>
@@ -650,7 +653,9 @@ async function skipSetup() {
                       store.machineSettings.libraryPath ||
                       (isDesktop
                         ? 'Choose a Dropbox, OneDrive, or other synced folder.'
-                        : 'The browser demo uses temporary local data.')
+                        : adapter.kind === 'web'
+                          ? 'Already using the folder you opened this library from.'
+                          : 'The browser demo uses temporary local data.')
                     }}
                   </p>
                 </div>
@@ -659,7 +664,7 @@ async function skipSetup() {
                     variant="outlined"
                     prepend-icon="mdi-folder-cog-outline"
                     :loading="pickingLibraryFolder"
-                    :disabled="!isDesktop"
+                    :disabled="adapter.kind === 'mock'"
                     @click="pickLibraryFolder"
                     >{{
                       store.machineSettings.libraryPath ? 'Change Folder' : 'Choose Folder'
@@ -677,7 +682,9 @@ async function skipSetup() {
               </article>
 
               <article class="import-card">
-                <span class="import-icon"><v-icon icon="mdi-image-multiple-outline" size="23" /></span>
+                <span class="import-icon"
+                  ><v-icon icon="mdi-image-multiple-outline" size="23"
+                /></span>
                 <div class="import-copy">
                   <strong>Stock background images</strong>
                   <p>6 royalty-free backgrounds and 2 starter themes, ready to use right away.</p>

@@ -106,11 +106,7 @@ export interface SlideCountdownElement extends SlideElementBase {
 }
 
 export type SlideElement =
-  | SlideTextElement
-  | SlideImageElement
-  | SlideShapeElement
-  | SlideQrElement
-  | SlideCountdownElement
+  SlideTextElement | SlideImageElement | SlideShapeElement | SlideQrElement | SlideCountdownElement
 
 export interface LibrarySlide {
   id: string

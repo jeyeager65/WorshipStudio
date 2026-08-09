@@ -2,7 +2,7 @@ import { computed, onMounted, onUnmounted, ref, watch, type ComputedRef, type Re
 import { getAdapter } from '@/adapters'
 import { useSettingsStore } from '@/stores/settings'
 import { useThemesStore } from '@/stores/themes'
-import { resolvePresentationFontFamily } from '@/utils/presentationFonts'
+import { cssFontFamily, resolvePresentationFontFamily } from '@/utils/presentationFonts'
 import { presentationTextEffect } from '@/utils/presentationTextEffect'
 import { resolvePresentationTheme } from '@/utils/presentationTheme'
 import type { FlatSlide } from '@/utils/flattenService'
@@ -208,7 +208,8 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     if (!theme) return undefined
     const branding = settingsStore.librarySettings?.branding
     let backgroundColor = theme.backgroundColor ?? '#000000'
-    if (theme.backgroundId === 'brand-primary') backgroundColor = branding?.primaryColor ?? '#3B5BDB'
+    if (theme.backgroundId === 'brand-primary')
+      backgroundColor = branding?.primaryColor ?? '#3B5BDB'
     else if (theme.backgroundId === 'brand-secondary')
       backgroundColor = branding?.secondaryColor ?? '#8A5BD6'
 
@@ -219,7 +220,7 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
       ? mediaUrlById.get(backgroundMediaItem.id)
       : undefined
     return {
-      fontFamily: resolvePresentationFontFamily(theme.font),
+      fontFamily: cssFontFamily(resolvePresentationFontFamily(theme.font)),
       textColor: theme.textColor,
       textEffect: presentationTextEffect(theme),
       backgroundColor,

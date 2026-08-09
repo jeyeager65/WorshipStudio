@@ -94,7 +94,9 @@ function updateBulletinNote(value: string) {
           clearable
           hide-details
           placeholder="No role"
-          @update:model-value="(value: string | undefined) => updateItemRole(selectedItem.id, value)"
+          @update:model-value="
+            (value: string | undefined) => updateItemRole(selectedItem.id, value)
+          "
         />
       </label>
       <label v-if="selectedItem.role" class="property-row">

@@ -68,15 +68,15 @@ async function loadEditor() {
     }
     song.value = loadedSong
     librarySettings.value = settings
-  // A freshly created song is inherently unsaved — starting dirty (rather than false, as
-  // for an existing song) enables the Save button and the router guard's
-  // leave-without-saving warning immediately, so it's never silently lost with no way to
-  // recover it.
-  isDirty.value = isNew
+    // A freshly created song is inherently unsaved — starting dirty (rather than false, as
+    // for an existing song) enables the Save button and the router guard's
+    // leave-without-saving warning immediately, so it's never silently lost with no way to
+    // recover it.
+    isDirty.value = isNew
     // Start history after loading so the persisted document is the non-undoable baseline.
     documentHistory.start((dirty) => (isDirty.value = dirty), isNew)
-  // The Save button itself lives in the persistent app bar (App.vue), not a per-page
-  // toolbar that would scroll out of view — this view just supplies the action.
+    // The Save button itself lives in the persistent app bar (App.vue), not a per-page
+    // toolbar that would scroll out of view — this view just supplies the action.
     saveHandler.value = saveSong
   } catch (error) {
     song.value = undefined
@@ -113,8 +113,14 @@ const usageLabel = computed(() => {
   // last 365 days (recompute_usage tracks these independently; a song doesn't need any use in
   // the past year to have ever been used at all).
   if (!lastUsedAt) return 'Not yet used'
-  const last = new Date(`${lastUsedAt}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-  return usesPastYear > 0 ? `Last used ${last} · used ${usesPastYear}x this year` : `Last used ${last}`
+  const last = new Date(`${lastUsedAt}T00:00:00`).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+  return usesPastYear > 0
+    ? `Last used ${last} · used ${usesPastYear}x this year`
+    : `Last used ${last}`
 })
 
 function addCollection() {
@@ -124,7 +130,8 @@ async function removeCollection(index: number) {
   if (!song.value) return
   const removed = song.value.collections[index]
   if (!removed) return
-  if (!(await confirmDialog.confirm(`Remove "${removed.collectionId || 'collection'}"?`, 'Remove'))) return
+  if (!(await confirmDialog.confirm(`Remove "${removed.collectionId || 'collection'}"?`, 'Remove')))
+    return
   song.value.collections.splice(index, 1)
 }
 
@@ -174,7 +181,9 @@ function removeFromArrangement(index: number) {
   <main v-else-if="song" class="song-editor-page">
     <header class="editor-header">
       <div class="header-content">
-        <v-btn to="/library/songs" variant="text" prepend-icon="mdi-arrow-left" class="back-button">Songs</v-btn>
+        <v-btn to="/library/songs" variant="text" prepend-icon="mdi-arrow-left" class="back-button"
+          >Songs</v-btn
+        >
         <div class="title-row">
           <div class="title-copy">
             <div class="eyebrow">Song Editor</div>
@@ -216,12 +225,7 @@ function removeFromArrangement(index: number) {
               class="title-detail-field"
             />
             <v-text-field v-model="song.author" label="Author" variant="outlined" hide-details />
-            <v-text-field
-              v-model="song.artist"
-              label="Artist"
-              variant="outlined"
-              hide-details
-            />
+            <v-text-field v-model="song.artist" label="Artist" variant="outlined" hide-details />
             <v-text-field v-model="song.ccli" label="CCLI Number" variant="outlined" hide-details />
             <v-combobox
               v-model="song.tags"
@@ -242,7 +246,9 @@ function removeFromArrangement(index: number) {
               <h2>Collections</h2>
               <p>Place this song in one or more songbooks or library groups.</p>
             </div>
-            <v-btn variant="tonal" color="primary" prepend-icon="mdi-plus" @click="addCollection">Add Collection</v-btn>
+            <v-btn variant="tonal" color="primary" prepend-icon="mdi-plus" @click="addCollection"
+              >Add Collection</v-btn
+            >
           </div>
           <div v-if="song.collections.length" class="collection-list">
             <div v-for="(entry, index) in song.collections" :key="index" class="collection-row">
@@ -275,9 +281,16 @@ function removeFromArrangement(index: number) {
               <h2>Lyrics</h2>
               <p>Create reusable sections, then arrange them in the panel on the right.</p>
             </div>
-            <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="addBlock">Add Block</v-btn>
+            <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="addBlock"
+              >Add Block</v-btn
+            >
           </div>
-          <VueDraggable v-model="song.blocks" handle=".drag-handle" :animation="150" class="block-list">
+          <VueDraggable
+            v-model="song.blocks"
+            handle=".drag-handle"
+            :animation="150"
+            class="block-list"
+          >
             <article
               v-for="(block, index) in song.blocks"
               :key="block.id"
@@ -290,7 +303,11 @@ function removeFromArrangement(index: number) {
               <div class="block-rail" />
               <div class="block-content">
                 <div class="block-header">
-                  <v-icon icon="mdi-drag-vertical" class="drag-handle" aria-label="Drag to reorder" />
+                  <v-icon
+                    icon="mdi-drag-vertical"
+                    class="drag-handle"
+                    aria-label="Drag to reorder"
+                  />
                   <span class="block-number">{{ index + 1 }}</span>
                   <v-text-field
                     v-model="block.label"
@@ -364,7 +381,9 @@ function removeFromArrangement(index: number) {
             v-for="(id, index) in song.defaultArrangement.sequence"
             :key="index"
             class="arrangement-item"
-            :style="{ '--item-accent': `rgb(var(--v-theme-${colorForBlockLabel(blockLabel(id))}))` }"
+            :style="{
+              '--item-accent': `rgb(var(--v-theme-${colorForBlockLabel(blockLabel(id))}))`,
+            }"
           >
             <v-icon icon="mdi-drag-vertical" class="drag-handle" size="20" />
             <span class="arrangement-number">{{ index + 1 }}</span>
@@ -399,7 +418,9 @@ function removeFromArrangement(index: number) {
           </div>
           <p v-else class="no-blocks">Create a lyric block before building an arrangement.</p>
         </div>
-        <p class="arrangement-help">Drag items to reorder them. Service arrangements can still be customized independently.</p>
+        <p class="arrangement-help">
+          Drag items to reorder them. Service arrangements can still be customized independently.
+        </p>
       </aside>
     </div>
   </main>

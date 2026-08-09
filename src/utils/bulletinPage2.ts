@@ -46,7 +46,9 @@ function formatDate(date: string, referenceYear: number): string {
   const includeYear = parsed.getFullYear() !== referenceYear
   return parsed.toLocaleDateString(
     undefined,
-    includeYear ? { month: 'long', day: 'numeric', year: 'numeric' } : { month: 'long', day: 'numeric' },
+    includeYear
+      ? { month: 'long', day: 'numeric', year: 'numeric' }
+      : { month: 'long', day: 'numeric' },
   )
 }
 

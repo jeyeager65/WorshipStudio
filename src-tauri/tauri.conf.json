@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Worship Studio",
-  "version": "0.8.3",
+  "version": "../package.json",
   "identifier": "dev.yeager.worshipstudio",
   "build": {
     "frontendDist": "../dist",

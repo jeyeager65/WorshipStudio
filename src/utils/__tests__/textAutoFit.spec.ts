@@ -32,7 +32,10 @@ describe('paginateTextUnits', () => {
   })
 
   it('fits more units per page at a smaller minimum font size', () => {
-    const units = Array.from({ length: 20 }, (_, i) => `${i + 1} A modestly sized line of scripture text here.`)
+    const units = Array.from(
+      { length: 20 },
+      (_, i) => `${i + 1} A modestly sized line of scripture text here.`,
+    )
     const smallRangePages = paginateTextUnits(units, { minPx: 20, maxPx: 40 })
     const largeRangePages = paginateTextUnits(units, { minPx: 60, maxPx: 90 })
     expect(smallRangePages.length).toBeLessThan(largeRangePages.length)

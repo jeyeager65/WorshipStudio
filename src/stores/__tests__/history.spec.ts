@@ -72,12 +72,24 @@ describe('history store', () => {
   it('drops the redo branch when editing after undo', () => {
     const store = useHistoryStore()
     store.registerScope(() => undefined)
-    store.push('First', () => undefined, () => undefined)
-    store.push('Second', () => undefined, () => undefined)
+    store.push(
+      'First',
+      () => undefined,
+      () => undefined,
+    )
+    store.push(
+      'Second',
+      () => undefined,
+      () => undefined,
+    )
     store.undo()
     expect(store.canRedo).toBe(true)
 
-    store.push('Replacement', () => undefined, () => undefined)
+    store.push(
+      'Replacement',
+      () => undefined,
+      () => undefined,
+    )
     expect(store.canRedo).toBe(false)
     expect(store.undoLabel).toBe('Replacement')
   })

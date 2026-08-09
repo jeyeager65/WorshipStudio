@@ -29,7 +29,11 @@ export const useConfirmDialogStore = defineStore('confirmDialog', () => {
   }
 
   /** Three-way prompt: Save & continue / discard & continue / Cancel. */
-  function confirmWithSave(text: string, discardLabel: string, saveButtonLabel: string): Promise<Response> {
+  function confirmWithSave(
+    text: string,
+    discardLabel: string,
+    saveButtonLabel: string,
+  ): Promise<Response> {
     message.value = text
     confirmLabel.value = discardLabel
     saveLabel.value = saveButtonLabel

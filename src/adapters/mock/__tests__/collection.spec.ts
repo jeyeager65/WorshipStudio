@@ -12,7 +12,11 @@ describe('MockCollection', () => {
   it('round-trips a plain object through save/list/get', async () => {
     const collection = new MockCollection<Item>(`test-${crypto.randomUUID()}`, [])
     await collection.save({ id: 'a', title: 'A', blocks: [{ id: 'b1', text: 'hi' }] })
-    expect(await collection.get('a')).toEqual({ id: 'a', title: 'A', blocks: [{ id: 'b1', text: 'hi' }] })
+    expect(await collection.get('a')).toEqual({
+      id: 'a',
+      title: 'A',
+      blocks: [{ id: 'b1', text: 'hi' }],
+    })
     expect(await collection.list()).toHaveLength(1)
   })
 
@@ -43,7 +47,9 @@ describe('MockCollection', () => {
 
 describe('MockSingleton', () => {
   it('returns the seed value until saved', async () => {
-    const singleton = new MockSingleton<{ name: string }>(`test-${crypto.randomUUID()}`, { name: 'seed' })
+    const singleton = new MockSingleton<{ name: string }>(`test-${crypto.randomUUID()}`, {
+      name: 'seed',
+    })
     expect(await singleton.get()).toEqual({ name: 'seed' })
   })
 
@@ -57,7 +63,9 @@ describe('MockSingleton', () => {
   })
 
   it('save() stores a copy — later mutating the caller-supplied object does not change stored data', async () => {
-    const singleton = new MockSingleton<{ name: string }>(`test-${crypto.randomUUID()}`, { name: 'seed' })
+    const singleton = new MockSingleton<{ name: string }>(`test-${crypto.randomUUID()}`, {
+      name: 'seed',
+    })
     const value = reactive({ name: 'A' })
     await singleton.save(value)
 

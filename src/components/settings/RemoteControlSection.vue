@@ -120,218 +120,229 @@ onMounted(async () => {
   <!-- Single root element required so the parent's v-show can toggle this section's visibility
        (v-show can't attach to a multi-root/fragment component). -->
   <div>
-  <SettingsPanel
-    title="Connection"
-    description="How phones and tablets find this Worship Studio installation on the local network."
-    icon="mdi-lan-connect"
-  >
-    <div class="remote-connection-summary">
-      <span class="remote-connection-summary-icon">
-        <v-icon icon="mdi-access-point-network" size="20" />
-      </span>
-      <div>
-        <span>Active address</span>
-        <strong>
-          {{ remoteServerInfo?.hostname ?? remoteServerInfo?.lanIp ?? 'Starting…' }}:{{
-            remoteServerInfo?.port ?? '…'
-          }}
-        </strong>
-        <small v-if="remoteServerInfo?.lanIp">
-          Also available at {{ remoteServerInfo.lanIp }}:{{ remoteServerInfo.port }}
-        </small>
-      </div>
-      <v-chip
-        :color="remoteServerInfo ? 'success' : undefined"
-        variant="tonal"
-        size="small"
-        :prepend-icon="remoteServerInfo ? 'mdi-check-circle-outline' : 'mdi-timer-sand'"
-      >
-        {{ remoteServerInfo ? 'Available' : 'Starting' }}
-      </v-chip>
-    </div>
-
-    <div class="remote-connection-options">
-      <div class="remote-setting-row">
-        <div class="remote-setting-copy">
-          <strong>Local hostname</strong>
-          <span>
-            Leave automatic for an installation-specific name. Use “worshipstudio” for the primary
-            booth.
-          </span>
-        </div>
-        <v-text-field
-          v-model="remoteHostnameOverride"
-          label="Hostname"
-          placeholder="Automatic"
-          suffix=".local"
-          variant="outlined"
-          density="comfortable"
-          clearable
-          maxlength="63"
-          hide-details
-        />
-      </div>
-
-      <div class="remote-setting-row">
-        <div class="remote-setting-copy">
-          <strong>Port</strong>
-          <span>
-            Automatic remembers an available port. Set a specific port only when required by the
-            network.
-          </span>
-        </div>
-        <v-number-input
-          v-model="remotePortOverride"
-          label="Port"
-          placeholder="Automatic"
-          variant="outlined"
-          density="comfortable"
-          control-variant="stacked"
-          :min="1024"
-          :max="65535"
-          clearable
-          hide-details
-        />
-      </div>
-    </div>
-  </SettingsPanel>
-
-  <SettingsPanel
-    title="Paired devices"
-    description="Phones and tablets authorized to view or control the current presentation."
-    icon="mdi-cellphone-link"
-  >
-    <template #action>
-      <v-btn
-        variant="flat"
-        color="primary"
-        prepend-icon="mdi-plus"
-        :disabled="remotePersonOptions.length === 0"
-        @click="openProvisionDialog()"
-      >
-        Pair a Device
-      </v-btn>
-    </template>
-    <v-alert v-if="remoteServerInfo && !remoteServerInfo.lanIp" type="warning" variant="tonal" class="mb-4">
-      Couldn't detect a network address for this computer — check that it's connected to the
-      church's network, then reopen this screen.
-    </v-alert>
-    <v-alert
-      v-if="remotePersonOptions.length === 0"
-      type="info"
-      variant="tonal"
-      density="compact"
-      class="mb-4"
+    <SettingsPanel
+      title="Connection"
+      description="How phones and tablets find this Worship Studio installation on the local network."
+      icon="mdi-lan-connect"
     >
-      Add a person before pairing a Remote Control device.
-    </v-alert>
-    <v-list v-if="remoteDevices.length > 0" density="comfortable" class="settings-list">
-      <v-list-item v-for="device in remoteDevices" :key="device.id" rounded="lg" class="mb-1" border>
-        <template #prepend><v-icon icon="mdi-cellphone" class="mr-3" /></template>
-        <v-list-item-title class="font-weight-bold">{{ device.name }}</v-list-item-title>
-        <v-list-item-subtitle>
-          {{ remoteDeviceOwner(device) }} · {{ accessLevelLabel(device.accessLevel) }}
-        </v-list-item-subtitle>
-        <template #append>
-          <v-btn
-            icon="mdi-qrcode-scan"
-            variant="text"
-            size="small"
-            :loading="repairingDeviceId === device.id"
-            :disabled="!device.personId"
-            aria-label="Re-pair device"
-            @click.stop="repairRemoteDevice(device)"
-          />
-          <v-btn
-            icon="mdi-trash-can-outline"
-            variant="text"
-            size="small"
-            color="error"
-            @click.stop="revokeRemoteDevice(device)"
-          />
-        </template>
-      </v-list-item>
-    </v-list>
-    <div v-else class="settings-empty">
-      <v-icon icon="mdi-cellphone-off" size="28" />
-      <span>No devices paired yet.</span>
-    </div>
-  </SettingsPanel>
+      <div class="remote-connection-summary">
+        <span class="remote-connection-summary-icon">
+          <v-icon icon="mdi-access-point-network" size="20" />
+        </span>
+        <div>
+          <span>Active address</span>
+          <strong>
+            {{ remoteServerInfo?.hostname ?? remoteServerInfo?.lanIp ?? 'Starting…' }}:{{
+              remoteServerInfo?.port ?? '…'
+            }}
+          </strong>
+          <small v-if="remoteServerInfo?.lanIp">
+            Also available at {{ remoteServerInfo.lanIp }}:{{ remoteServerInfo.port }}
+          </small>
+        </div>
+        <v-chip
+          :color="remoteServerInfo ? 'success' : undefined"
+          variant="tonal"
+          size="small"
+          :prepend-icon="remoteServerInfo ? 'mdi-check-circle-outline' : 'mdi-timer-sand'"
+        >
+          {{ remoteServerInfo ? 'Available' : 'Starting' }}
+        </v-chip>
+      </div>
 
-  <v-dialog v-model="provisionDialogOpen" max-width="480">
-    <v-card>
-      <v-card-title>Pair a Device</v-card-title>
-      <v-card-text>
-        <template v-if="!provisionResult">
-          <v-select
-            v-model="newDevicePersonId"
-            :items="remotePersonOptions"
-            label="Person"
-            placeholder="Choose the device owner"
-            variant="outlined"
-            density="comfortable"
-            class="mb-2"
-          />
+      <div class="remote-connection-options">
+        <div class="remote-setting-row">
+          <div class="remote-setting-copy">
+            <strong>Local hostname</strong>
+            <span>
+              Leave automatic for an installation-specific name. Use “worshipstudio” for the primary
+              booth.
+            </span>
+          </div>
           <v-text-field
-            v-model="newDeviceName"
-            label="Device Name"
-            placeholder="e.g. iPhone or Booth Tablet"
+            v-model="remoteHostnameOverride"
+            label="Hostname"
+            placeholder="Automatic"
+            suffix=".local"
             variant="outlined"
             density="comfortable"
-            autofocus
-            class="mb-2"
+            clearable
+            maxlength="63"
+            hide-details
           />
-          <v-select
-            v-model="newDeviceAccessLevel"
-            :items="accessLevelOptions"
-            label="Access Level"
-            variant="outlined"
-            density="comfortable"
-          />
-          <div class="text-caption text-medium-emphasis mb-2">
-            <div>
-              <strong>View Only</strong> — mirrors the presentation screen, no controls.
-            </div>
-            <div>
-              <strong>Full Control</strong> — mirror, Previous/Next, jump to any slide, and
-              Start/Stop Presenting.
-            </div>
+        </div>
+
+        <div class="remote-setting-row">
+          <div class="remote-setting-copy">
+            <strong>Port</strong>
+            <span>
+              Automatic remembers an available port. Set a specific port only when required by the
+              network.
+            </span>
           </div>
-        </template>
-        <template v-else>
-          <div class="text-center mb-3">
-            <img
-              :src="provisionResult.qrDataUrl"
-              alt="Pairing QR code"
-              style="width: 220px; height: 220px"
+          <v-number-input
+            v-model="remotePortOverride"
+            label="Port"
+            placeholder="Automatic"
+            variant="outlined"
+            density="comfortable"
+            control-variant="stacked"
+            :min="1024"
+            :max="65535"
+            clearable
+            hide-details
+          />
+        </div>
+      </div>
+    </SettingsPanel>
+
+    <SettingsPanel
+      title="Paired devices"
+      description="Phones and tablets authorized to view or control the current presentation."
+      icon="mdi-cellphone-link"
+    >
+      <template #action>
+        <v-btn
+          variant="flat"
+          color="primary"
+          prepend-icon="mdi-plus"
+          :disabled="remotePersonOptions.length === 0"
+          @click="openProvisionDialog()"
+        >
+          Pair a Device
+        </v-btn>
+      </template>
+      <v-alert
+        v-if="remoteServerInfo && !remoteServerInfo.lanIp"
+        type="warning"
+        variant="tonal"
+        class="mb-4"
+      >
+        Couldn't detect a network address for this computer — check that it's connected to the
+        church's network, then reopen this screen.
+      </v-alert>
+      <v-alert
+        v-if="remotePersonOptions.length === 0"
+        type="info"
+        variant="tonal"
+        density="compact"
+        class="mb-4"
+      >
+        Add a person before pairing a Remote Control device.
+      </v-alert>
+      <v-list v-if="remoteDevices.length > 0" density="comfortable" class="settings-list">
+        <v-list-item
+          v-for="device in remoteDevices"
+          :key="device.id"
+          rounded="lg"
+          class="mb-1"
+          border
+        >
+          <template #prepend><v-icon icon="mdi-cellphone" class="mr-3" /></template>
+          <v-list-item-title class="font-weight-bold">{{ device.name }}</v-list-item-title>
+          <v-list-item-subtitle>
+            {{ remoteDeviceOwner(device) }} · {{ accessLevelLabel(device.accessLevel) }}
+          </v-list-item-subtitle>
+          <template #append>
+            <v-btn
+              icon="mdi-qrcode-scan"
+              variant="text"
+              size="small"
+              :loading="repairingDeviceId === device.id"
+              :disabled="!device.personId"
+              aria-label="Re-pair device"
+              @click.stop="repairRemoteDevice(device)"
             />
-          </div>
-          <p class="text-body-2 text-center mb-2">
-            Scan this with "{{ newDeviceName }}"'s camera, or open this link on it directly:
-          </p>
-          <p class="text-caption text-medium-emphasis text-center" style="word-break: break-all">
-            {{ provisionResult.pairingUrl }}
-          </p>
-        </template>
-      </v-card-text>
-      <v-card-actions>
-        <v-spacer />
-        <template v-if="!provisionResult">
-          <v-btn variant="text" @click="provisionDialogOpen = false">Cancel</v-btn>
-          <v-btn
-            variant="flat"
-            color="primary"
-            :loading="provisioning"
-            :disabled="!newDevicePersonId || !newDeviceName.trim()"
-            @click="provisionDevice"
+            <v-btn
+              icon="mdi-trash-can-outline"
+              variant="text"
+              size="small"
+              color="error"
+              @click.stop="revokeRemoteDevice(device)"
+            />
+          </template>
+        </v-list-item>
+      </v-list>
+      <div v-else class="settings-empty">
+        <v-icon icon="mdi-cellphone-off" size="28" />
+        <span>No devices paired yet.</span>
+      </div>
+    </SettingsPanel>
+
+    <v-dialog v-model="provisionDialogOpen" max-width="480">
+      <v-card>
+        <v-card-title>Pair a Device</v-card-title>
+        <v-card-text>
+          <template v-if="!provisionResult">
+            <v-select
+              v-model="newDevicePersonId"
+              :items="remotePersonOptions"
+              label="Person"
+              placeholder="Choose the device owner"
+              variant="outlined"
+              density="comfortable"
+              class="mb-2"
+            />
+            <v-text-field
+              v-model="newDeviceName"
+              label="Device Name"
+              placeholder="e.g. iPhone or Booth Tablet"
+              variant="outlined"
+              density="comfortable"
+              autofocus
+              class="mb-2"
+            />
+            <v-select
+              v-model="newDeviceAccessLevel"
+              :items="accessLevelOptions"
+              label="Access Level"
+              variant="outlined"
+              density="comfortable"
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              <div><strong>View Only</strong> — mirrors the presentation screen, no controls.</div>
+              <div>
+                <strong>Full Control</strong> — mirror, Previous/Next, jump to any slide, and
+                Start/Stop Presenting.
+              </div>
+            </div>
+          </template>
+          <template v-else>
+            <div class="text-center mb-3">
+              <img
+                :src="provisionResult.qrDataUrl"
+                alt="Pairing QR code"
+                style="width: 220px; height: 220px"
+              />
+            </div>
+            <p class="text-body-2 text-center mb-2">
+              Scan this with "{{ newDeviceName }}"'s camera, or open this link on it directly:
+            </p>
+            <p class="text-caption text-medium-emphasis text-center" style="word-break: break-all">
+              {{ provisionResult.pairingUrl }}
+            </p>
+          </template>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <template v-if="!provisionResult">
+            <v-btn variant="text" @click="provisionDialogOpen = false">Cancel</v-btn>
+            <v-btn
+              variant="flat"
+              color="primary"
+              :loading="provisioning"
+              :disabled="!newDevicePersonId || !newDeviceName.trim()"
+              @click="provisionDevice"
+            >
+              Generate QR Code
+            </v-btn>
+          </template>
+          <v-btn v-else variant="flat" color="primary" @click="provisionDialogOpen = false"
+            >Done</v-btn
           >
-            Generate QR Code
-          </v-btn>
-        </template>
-        <v-btn v-else variant="flat" color="primary" @click="provisionDialogOpen = false">Done</v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 

@@ -192,190 +192,193 @@ async function pickLibraryFolder() {
   <!-- Single root element required so the parent's v-show can toggle this section's visibility
        (v-show can't attach to a multi-root/fragment component). -->
   <div>
-  <SettingsPanel
-    title="Library folder"
-    description="The shared location containing services, songs, people, themes, and settings."
-    icon="mdi-folder-sync-outline"
-  >
-    <div class="path-setting">
-      <v-text-field
-        v-model="machineSettings!.libraryPath"
-        label="Library path"
-        placeholder="C:\\WorshipStudio\\Library or ./Library"
-        variant="outlined"
-        density="comfortable"
-        :hint="
-          libraryPathIsRelative
-            ? 'Relative to the folder containing the Worship Studio executable.'
-            : 'Absolute path on this computer.'
-        "
-        persistent-hint
-        class="library-path-field"
-      />
-      <div class="path-setting-actions">
+    <SettingsPanel
+      title="Library folder"
+      description="The shared location containing services, songs, people, themes, and settings."
+      icon="mdi-folder-sync-outline"
+    >
+      <div class="path-setting">
+        <v-text-field
+          v-model="machineSettings!.libraryPath"
+          label="Library path"
+          placeholder="C:\\WorshipStudio\\Library or ./Library"
+          variant="outlined"
+          density="comfortable"
+          :hint="
+            libraryPathIsRelative
+              ? 'Relative to the folder containing the Worship Studio executable.'
+              : 'Absolute path on this computer.'
+          "
+          persistent-hint
+          class="library-path-field"
+        />
+        <div class="path-setting-actions">
+          <v-btn
+            variant="outlined"
+            prepend-icon="mdi-folder-open-outline"
+            :loading="pickingLibraryFolder"
+            @click="pickLibraryFolder"
+          >
+            Browse…
+          </v-btn>
+          <v-btn
+            variant="tonal"
+            color="primary"
+            prepend-icon="mdi-usb-flash-drive-outline"
+            @click="usePortableLibraryFolder"
+          >
+            Use Portable Folder
+          </v-btn>
+        </div>
+      </div>
+    </SettingsPanel>
+
+    <SettingsPanel
+      title="Sync health"
+      description="Folder access, Dropbox availability, and conflicted-copy files."
+      icon="mdi-cloud-check-outline"
+    >
+      <template #action>
+        <v-btn variant="text" size="small" :loading="refreshingSync" @click="refreshSyncStatus">
+          Check Now
+        </v-btn>
+      </template>
+
+      <div v-if="syncStore.status" class="status-list">
+        <div class="d-flex align-center ga-2 mb-2">
+          <v-icon
+            :icon="syncStore.status.folderReadable ? 'mdi-check-circle' : 'mdi-alert-circle'"
+            :color="syncStore.status.folderReadable ? 'success' : 'error'"
+            size="small"
+          />
+          <span class="text-body-2"
+            >Library folder
+            {{ syncStore.status.folderReadable ? 'readable' : 'not readable' }}</span
+          >
+        </div>
+        <div class="d-flex align-center ga-2 mb-2">
+          <v-icon
+            :icon="syncStore.status.syncClientRunning ? 'mdi-check-circle' : 'mdi-alert-circle'"
+            :color="syncStore.status.syncClientRunning ? 'success' : 'warning'"
+            size="small"
+          />
+          <span class="text-body-2">
+            Dropbox
+            {{
+              syncStore.status.syncClientRunning
+                ? 'appears to be running'
+                : "doesn't appear to be running"
+            }}
+          </span>
+        </div>
+        <div
+          v-if="syncStore.status.lastLibraryChangeAt"
+          class="text-caption text-medium-emphasis mb-4"
+        >
+          Last library change:
+          {{ new Date(syncStore.status.lastLibraryChangeAt).toLocaleString() }}
+        </div>
+
+        <v-btn
+          v-if="syncStore.status.conflictCount > 0 || syncStore.status.recoveryCount > 0"
+          variant="flat"
+          :color="syncStore.status.recoveryCount > 0 ? 'error' : 'warning'"
+          prepend-icon="mdi-database-alert-outline"
+          to="/sync-conflicts"
+        >
+          Review
+          {{ syncStore.status.recoveryCount + syncStore.status.conflictCount }} Library Issue{{
+            syncStore.status.recoveryCount + syncStore.status.conflictCount === 1 ? '' : 's'
+          }}
+        </v-btn>
+        <p v-else class="text-medium-emphasis text-body-2">
+          No damaged files or sync conflicts right now.
+        </p>
+      </div>
+    </SettingsPanel>
+
+    <SettingsPanel
+      title="Data tools"
+      description="Demo and maintenance actions for the selected library folder."
+      icon="mdi-database-cog-outline"
+      tone="danger"
+    >
+      <div class="data-tools-group">
         <v-btn
           variant="outlined"
-          prepend-icon="mdi-folder-open-outline"
-          :loading="pickingLibraryFolder"
-          @click="pickLibraryFolder"
+          color="primary"
+          prepend-icon="mdi-database-import-outline"
+          :loading="loadingSampleData"
+          @click="loadSampleData"
         >
-          Browse…
+          Load Sample Data
         </v-btn>
         <v-btn
-          variant="tonal"
+          variant="outlined"
           color="primary"
-          prepend-icon="mdi-usb-flash-drive-outline"
-          @click="usePortableLibraryFolder"
+          prepend-icon="mdi-image-plus-outline"
+          :loading="addingStockBackgrounds"
+          @click="addStockBackgrounds"
         >
-          Use Portable Folder
+          Add Stock Backgrounds
+        </v-btn>
+        <v-btn
+          variant="outlined"
+          color="primary"
+          prepend-icon="mdi-file-import"
+          :loading="importingOpenSong"
+          @click="importOpenSong"
+        >
+          Import OpenSong
         </v-btn>
       </div>
-    </div>
-  </SettingsPanel>
-
-  <SettingsPanel
-    title="Sync health"
-    description="Folder access, Dropbox availability, and conflicted-copy files."
-    icon="mdi-cloud-check-outline"
-  >
-    <template #action>
-      <v-btn variant="text" size="small" :loading="refreshingSync" @click="refreshSyncStatus">
-        Check Now
-      </v-btn>
-    </template>
-
-    <div v-if="syncStore.status" class="status-list">
-      <div class="d-flex align-center ga-2 mb-2">
-        <v-icon
-          :icon="syncStore.status.folderReadable ? 'mdi-check-circle' : 'mdi-alert-circle'"
-          :color="syncStore.status.folderReadable ? 'success' : 'error'"
-          size="small"
-        />
-        <span class="text-body-2"
-          >Library folder
-          {{ syncStore.status.folderReadable ? 'readable' : 'not readable' }}</span
+      <v-divider class="my-4" />
+      <div class="data-tools-group">
+        <v-btn
+          variant="outlined"
+          color="error"
+          prepend-icon="mdi-delete-forever-outline"
+          :loading="clearingData"
+          @click="clearExistingData"
         >
+          Clear Existing Data
+        </v-btn>
       </div>
-      <div class="d-flex align-center ga-2 mb-2">
-        <v-icon
-          :icon="syncStore.status.syncClientRunning ? 'mdi-check-circle' : 'mdi-alert-circle'"
-          :color="syncStore.status.syncClientRunning ? 'success' : 'warning'"
-          size="small"
-        />
-        <span class="text-body-2">
-          Dropbox
-          {{
-            syncStore.status.syncClientRunning
-              ? 'appears to be running'
-              : "doesn't appear to be running"
-          }}
-        </span>
+      <div v-if="sampleDataLoaded" class="text-caption text-medium-emphasis mt-2">
+        Sample songs, services, people, and themes added — check Home to see them.
+      </div>
+      <div v-if="stockBackgroundsAdded" class="text-caption text-medium-emphasis mt-2">
+        {{ stockBackgroundsAdded.mediaAdded }} background image{{
+          stockBackgroundsAdded.mediaAdded === 1 ? '' : 's'
+        }}
+        and {{ stockBackgroundsAdded.themesAdded }} theme{{
+          stockBackgroundsAdded.themesAdded === 1 ? '' : 's'
+        }}
+        added (already-present ones were skipped).
       </div>
       <div
-        v-if="syncStore.status.lastLibraryChangeAt"
-        class="text-caption text-medium-emphasis mb-4"
+        v-if="openSongImportedCount !== undefined"
+        class="text-caption text-medium-emphasis mt-2"
       >
-        Last library change:
-        {{ new Date(syncStore.status.lastLibraryChangeAt).toLocaleString() }}
+        {{ openSongImportedCount }} song{{ openSongImportedCount === 1 ? '' : 's' }} imported from
+        OpenSong.
       </div>
-
-      <v-btn
-        v-if="syncStore.status.conflictCount > 0 || syncStore.status.recoveryCount > 0"
-        variant="flat"
-        :color="syncStore.status.recoveryCount > 0 ? 'error' : 'warning'"
-        prepend-icon="mdi-database-alert-outline"
-        to="/sync-conflicts"
+      <v-alert
+        v-if="stockBackgroundsError"
+        type="error"
+        variant="tonal"
+        density="compact"
+        class="mt-2"
+        closable
+        @click:close="stockBackgroundsError = ''"
       >
-        Review
-        {{ syncStore.status.recoveryCount + syncStore.status.conflictCount }} Library Issue{{
-          syncStore.status.recoveryCount + syncStore.status.conflictCount === 1 ? '' : 's'
-        }}
-      </v-btn>
-      <p v-else class="text-medium-emphasis text-body-2">
-        No damaged files or sync conflicts right now.
-      </p>
-    </div>
-  </SettingsPanel>
-
-  <SettingsPanel
-    title="Data tools"
-    description="Demo and maintenance actions for the selected library folder."
-    icon="mdi-database-cog-outline"
-    tone="danger"
-  >
-    <div class="data-tools-group">
-      <v-btn
-        variant="outlined"
-        color="primary"
-        prepend-icon="mdi-database-import-outline"
-        :loading="loadingSampleData"
-        @click="loadSampleData"
-      >
-        Load Sample Data
-      </v-btn>
-      <v-btn
-        variant="outlined"
-        color="primary"
-        prepend-icon="mdi-image-plus-outline"
-        :loading="addingStockBackgrounds"
-        @click="addStockBackgrounds"
-      >
-        Add Stock Backgrounds
-      </v-btn>
-      <v-btn
-        variant="outlined"
-        color="primary"
-        prepend-icon="mdi-file-import"
-        :loading="importingOpenSong"
-        @click="importOpenSong"
-      >
-        Import OpenSong
-      </v-btn>
-    </div>
-    <v-divider class="my-4" />
-    <div class="data-tools-group">
-      <v-btn
-        variant="outlined"
-        color="error"
-        prepend-icon="mdi-delete-forever-outline"
-        :loading="clearingData"
-        @click="clearExistingData"
-      >
-        Clear Existing Data
-      </v-btn>
-    </div>
-    <div v-if="sampleDataLoaded" class="text-caption text-medium-emphasis mt-2">
-      Sample songs, services, people, and themes added — check Home to see them.
-    </div>
-    <div v-if="stockBackgroundsAdded" class="text-caption text-medium-emphasis mt-2">
-      {{ stockBackgroundsAdded.mediaAdded }} background image{{
-        stockBackgroundsAdded.mediaAdded === 1 ? '' : 's'
-      }}
-      and {{ stockBackgroundsAdded.themesAdded }} theme{{
-        stockBackgroundsAdded.themesAdded === 1 ? '' : 's'
-      }}
-      added (already-present ones were skipped).
-    </div>
-    <div v-if="openSongImportedCount !== undefined" class="text-caption text-medium-emphasis mt-2">
-      {{ openSongImportedCount }} song{{ openSongImportedCount === 1 ? '' : 's' }} imported from
-      OpenSong.
-    </div>
-    <v-alert
-      v-if="stockBackgroundsError"
-      type="error"
-      variant="tonal"
-      density="compact"
-      class="mt-2"
-      closable
-      @click:close="stockBackgroundsError = ''"
-    >
-      {{ stockBackgroundsError }}
-    </v-alert>
-    <div v-if="dataCleared" class="text-caption text-medium-emphasis mt-2">
-      All songs, services, people, themes, service types, collections, role categories, and
-      service templates have been deleted.
-    </div>
-  </SettingsPanel>
+        {{ stockBackgroundsError }}
+      </v-alert>
+      <div v-if="dataCleared" class="text-caption text-medium-emphasis mt-2">
+        All songs, services, people, themes, service types, collections, role categories, and
+        service templates have been deleted.
+      </div>
+    </SettingsPanel>
   </div>
 </template>
 

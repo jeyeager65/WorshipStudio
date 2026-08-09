@@ -3,12 +3,9 @@
  * a TypeScript port of src-tauri/src/domain/sync.rs's equivalent functions, kept close enough
  * to a straight translation that the two should be read side by side when either changes.
  *
- * Scope note (August 2026): this ports detection/recovery/resolution only. It assumes `.backup`
- * files already exist where the desktop app created them; it does not yet give the web build's
- * own writes the same backup-on-write behavior as Rust's write_json_file (that belongs with the
- * actual storage-port work — Songs/Settings/etc. — not with conflict detection). Until that
- * lands, a file corrupted after being written *only* from a browser has no backup to recover
- * from here, same as if the desktop app had never touched it either.
+ * fsaStorage.ts's writeJsonFile gives the web build's own writes the same backup-on-write
+ * behavior as Rust's write_json_file (August 2026), so recoverFromBackup/quarantineDamagedFile
+ * below work the same regardless of which app (desktop or browser) most recently wrote a file.
  *
  * Also lighter than the Rust version in one place: validateLibraryJson only checks for a
  * present `id` field per kind rather than fully deserializing against each model's real shape
@@ -20,6 +17,7 @@
 
 import type { ConflictedItem, RecoveryIssue } from '@/adapters/types'
 import {
+  backupPath,
   joinPath,
   listEntries,
   readFileText,
@@ -32,10 +30,6 @@ import {
 /** Matches Dropbox's "conflicted copy" filename convention — mirrors the Rust CONFLICT_PATTERN
  *  regex exactly (case-insensitive, tolerant of the wording varying by client version). */
 const CONFLICT_PATTERN = /^(?<stem>.+) \([^)]*conflicted copy[^)]*\)(?<ext>\.[^./]+)?$/i
-
-function backupPath(relativePath: string): string {
-  return `${relativePath}.backup`
-}
 
 function labelFor(kind: string, value: Record<string, unknown>): string {
   const str = (key: string): string | undefined =>

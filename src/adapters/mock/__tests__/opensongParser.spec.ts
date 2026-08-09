@@ -41,14 +41,16 @@ describe('parseOpenSongXml', () => {
   })
 
   it('treats an empty tag marker as a repeat of the earlier block', () => {
-    const xml = '<song><title>Test</title><lyrics>[C]\nChorus\n\n[V1]\nVerse\n\n[C]\n</lyrics></song>'
+    const xml =
+      '<song><title>Test</title><lyrics>[C]\nChorus\n\n[V1]\nVerse\n\n[C]\n</lyrics></song>'
     const parsed = parseOpenSongXml(xml)
     expect(parsed.blocks).toHaveLength(2)
     expect(parsed.arrangement.sequence).toEqual(['c', 'v1', 'c'])
   })
 
   it('decodes common XML entities', () => {
-    const xml = '<song><title>Test</title><lyrics>[V1]\nRock &amp; Redeemer&apos;s &quot;Grace&quot;\n</lyrics></song>'
+    const xml =
+      '<song><title>Test</title><lyrics>[V1]\nRock &amp; Redeemer&apos;s &quot;Grace&quot;\n</lyrics></song>'
     const parsed = parseOpenSongXml(xml)
     expect(parsed.blocks[0].text).toBe('Rock & Redeemer\'s "Grace"')
   })

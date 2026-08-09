@@ -13,8 +13,7 @@ export interface SermonPassage {
 /** One presentable step after a sermon's main passage. Keeping references to the existing
  * passage/outline records avoids duplicating their editing and scripture-display settings. */
 export type SermonFlowItem =
-  | { type: 'passage'; passageId: string }
-  | { type: 'outline'; outlineId: string }
+  { type: 'passage'; passageId: string } | { type: 'outline'; outlineId: string }
 
 export type ServiceItemContent =
   | { type: 'song'; songId: string; arrangement: Arrangement }

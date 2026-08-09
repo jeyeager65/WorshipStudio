@@ -1,6 +1,12 @@
 import type { OrderOfWorshipDoc } from '@/utils/orderOfWorship'
 import type { BulletinPage2Doc } from '@/utils/bulletinPage2'
-import type { DocumentReport, ReportBlock, ReportBranding, ReportRun, ReportTableCell } from '../types'
+import type {
+  DocumentReport,
+  ReportBlock,
+  ReportBranding,
+  ReportRun,
+  ReportTableCell,
+} from '../types'
 
 // Printed on a black-and-white laser printer — every run gets this explicitly rather than
 // relying on the shared renderers' own (colorful, brand-driven) style defaults. The overridden
@@ -126,7 +132,9 @@ export function buildBulletinDocument(
 
   for (const line of doc.lines) {
     const runs: ReportRun[] = [
-      ...(line.role ? [{ text: `${line.role} `, bold: true, color: BLACK, fontSize: FONT_BODY }] : []),
+      ...(line.role
+        ? [{ text: `${line.role} `, bold: true, color: BLACK, fontSize: FONT_BODY }]
+        : []),
       ...(line.text ? [{ text: line.text, color: BLACK, fontSize: FONT_BODY }] : []),
     ]
 

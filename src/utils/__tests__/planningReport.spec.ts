@@ -43,7 +43,15 @@ describe('buildPlanningReport', () => {
         type: 'Sunday Morning Worship',
         items: [
           { id: 'i1', type: 'song', songId: 'song-2', arrangement: { sequence: [] } },
-          { id: 'i2', type: 'sermon', title: 'Grace Abounds', role: 'Preacher', passages: [], mainPassageId: '', outline: [] },
+          {
+            id: 'i2',
+            type: 'sermon',
+            title: 'Grace Abounds',
+            role: 'Preacher',
+            passages: [],
+            mainPassageId: '',
+            outline: [],
+          },
         ],
         assignments: [
           { role: 'Piano', personId: 'person-1', tentative: false },
@@ -60,7 +68,10 @@ describe('buildPlanningReport', () => {
       }),
     ]
 
-    const rows = buildPlanningReport(services, songs, personNames, roleGroups, { fromDate: '2026-01-01', toDate: '2026-12-31' })
+    const rows = buildPlanningReport(services, songs, personNames, roleGroups, {
+      fromDate: '2026-01-01',
+      toDate: '2026-12-31',
+    })
 
     expect(rows.map((r) => r.serviceId)).toEqual(['svc-1', 'svc-2'])
     expect(rows[0]).toMatchObject({
@@ -94,10 +105,16 @@ describe('buildPlanningReport', () => {
   it('excludes services outside the date range (inclusive boundaries)', () => {
     const services = [service({ id: 'svc-1', date: '2026-01-01', type: 'Sunday Morning Worship' })]
     expect(
-      buildPlanningReport(services, songs, personNames, roleGroups, { fromDate: '2026-01-01', toDate: '2026-01-01' }),
+      buildPlanningReport(services, songs, personNames, roleGroups, {
+        fromDate: '2026-01-01',
+        toDate: '2026-01-01',
+      }),
     ).toHaveLength(1)
     expect(
-      buildPlanningReport(services, songs, personNames, roleGroups, { fromDate: '2026-01-02', toDate: '2026-01-31' }),
+      buildPlanningReport(services, songs, personNames, roleGroups, {
+        fromDate: '2026-01-02',
+        toDate: '2026-01-31',
+      }),
     ).toHaveLength(0)
   })
 
@@ -116,7 +133,10 @@ describe('buildPlanningReport', () => {
 
   it('omits an unassigned or empty roster/song list rather than erroring', () => {
     const services = [service({ id: 'svc-1', date: '2026-01-05', type: 'Sunday Morning Worship' })]
-    const rows = buildPlanningReport(services, songs, personNames, roleGroups, { fromDate: '2026-01-01', toDate: '2026-12-31' })
+    const rows = buildPlanningReport(services, songs, personNames, roleGroups, {
+      fromDate: '2026-01-01',
+      toDate: '2026-12-31',
+    })
     expect(rows[0]).toMatchObject({ songTitles: [], rosterGroups: [] })
   })
 })

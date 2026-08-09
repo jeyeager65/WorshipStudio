@@ -20,7 +20,10 @@ export function findBook(name: string): BibleBookRef | undefined {
   if (!normalized) return undefined
   const aliased = BOOK_ALIASES[normalized]
   return bibleBooks.find(
-    (b) => normalize(b.name) === normalized || normalize(b.abbr) === normalized || (aliased && b.name === aliased),
+    (b) =>
+      normalize(b.name) === normalized ||
+      normalize(b.abbr) === normalized ||
+      (aliased && b.name === aliased),
   )
 }
 
@@ -84,7 +87,11 @@ export function parseReference(text: string): ScriptureReference | undefined {
   const startChapter = Number(chapterText)
   const startVerse = startVerseText ? Number(startVerseText) : 1
   const endChapter = endChapterText ? Number(endChapterText) : startChapter
-  const endVerse = endVerseText ? Number(endVerseText) : startVerseText ? startVerse : (book.chapters[startChapter - 1] ?? startVerse)
+  const endVerse = endVerseText
+    ? Number(endVerseText)
+    : startVerseText
+      ? startVerse
+      : (book.chapters[startChapter - 1] ?? startVerse)
 
   return { book: book.name, startChapter, startVerse, endChapter, endVerse }
 }
@@ -126,7 +133,9 @@ function totalVerses(book: BibleBookRef): number {
 // double as a length proxy for the wayfinding progress bar below, without needing the full
 // bundled KJV text.
 const OLD_TESTAMENT_BOOK_COUNT = 39
-const TOTAL_OT_VERSES = bibleBooks.slice(0, OLD_TESTAMENT_BOOK_COUNT).reduce((sum, b) => sum + totalVerses(b), 0)
+const TOTAL_OT_VERSES = bibleBooks
+  .slice(0, OLD_TESTAMENT_BOOK_COUNT)
+  .reduce((sum, b) => sum + totalVerses(b), 0)
 const TOTAL_BIBLE_VERSES = bibleBooks.reduce((sum, b) => sum + totalVerses(b), 0)
 
 /** Fraction of the whole Bible (by KJV verse count) that falls at the end of the Old Testament —
@@ -141,12 +150,17 @@ export function getBibleProgress(ref: ScriptureReference): number | undefined {
   if (!book) return undefined
   const index = bibleBooks.findIndex((b) => b.name === book.name)
   const versesBeforeBook = bibleBooks.slice(0, index).reduce((sum, b) => sum + totalVerses(b), 0)
-  const versesBeforeChapter = book.chapters.slice(0, ref.startChapter - 1).reduce((sum, c) => sum + c, 0)
+  const versesBeforeChapter = book.chapters
+    .slice(0, ref.startChapter - 1)
+    .reduce((sum, c) => sum + c, 0)
   return (versesBeforeBook + versesBeforeChapter + ref.startVerse) / TOTAL_BIBLE_VERSES
 }
 
 export function formatReference(ref: ScriptureReference): string {
-  const wholeChapter = ref.startVerse === 1 && ref.endChapter === ref.startChapter && ref.endVerse === getVerseCount(ref.book, ref.startChapter)
+  const wholeChapter =
+    ref.startVerse === 1 &&
+    ref.endChapter === ref.startChapter &&
+    ref.endVerse === getVerseCount(ref.book, ref.startChapter)
   if (wholeChapter) return `${ref.book} ${ref.startChapter}`
   if (ref.startChapter === ref.endChapter) {
     return ref.startVerse === ref.endVerse

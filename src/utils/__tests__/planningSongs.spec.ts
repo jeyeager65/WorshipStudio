@@ -82,14 +82,36 @@ describe('planning song slots', () => {
 
   it('compacts remaining songs forward and leaves the final slot empty', () => {
     const items: ServiceItem[] = [
-      { id: 'slot-1', type: 'song', songId: 'song-1', arrangement: { sequence: [] }, bulletinLabel: 'Opening Song' },
+      {
+        id: 'slot-1',
+        type: 'song',
+        songId: 'song-1',
+        arrangement: { sequence: [] },
+        bulletinLabel: 'Opening Song',
+      },
       { id: 'slot-2', type: 'placeholder', label: 'Middle Song', suggestedTab: 'songs' },
       { id: 'prayer', type: 'bulletin-note', bulletinLabel: 'Prayer' },
-      { id: 'slot-3', type: 'song', songId: 'song-3', arrangement: { sequence: ['v1'] }, bulletinLabel: 'Closing Song' },
+      {
+        id: 'slot-3',
+        type: 'song',
+        songId: 'song-3',
+        arrangement: { sequence: ['v1'] },
+        bulletinLabel: 'Closing Song',
+      },
     ]
     const compacted = compactPlanningSongSlots(items)
-    expect(compacted[0]).toMatchObject({ id: 'slot-1', type: 'song', songId: 'song-1', bulletinLabel: 'Opening Song' })
-    expect(compacted[1]).toMatchObject({ id: 'slot-2', type: 'song', songId: 'song-3', bulletinLabel: 'Middle Song' })
+    expect(compacted[0]).toMatchObject({
+      id: 'slot-1',
+      type: 'song',
+      songId: 'song-1',
+      bulletinLabel: 'Opening Song',
+    })
+    expect(compacted[1]).toMatchObject({
+      id: 'slot-2',
+      type: 'song',
+      songId: 'song-3',
+      bulletinLabel: 'Middle Song',
+    })
     expect(compacted[2]).toEqual(items[2])
     expect(compacted[3]).toMatchObject({ id: 'slot-3', type: 'placeholder', label: 'Closing Song' })
   })

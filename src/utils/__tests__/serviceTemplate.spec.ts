@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { applyServiceTemplate, defaultServiceTemplate, planAssignmentResetFromTemplate } from '@/utils/serviceTemplate'
+import {
+  applyServiceTemplate,
+  defaultServiceTemplate,
+  planAssignmentResetFromTemplate,
+} from '@/utils/serviceTemplate'
 import type { Service, ServiceTemplate } from '@/models/service'
 
 describe('defaultServiceTemplate', () => {
@@ -17,7 +21,9 @@ describe('defaultServiceTemplate', () => {
   })
 
   it('honors an explicit empty association instead of restoring the legacy default', () => {
-    const templates: ServiceTemplate[] = [{ serviceType: 'Sunday Worship', defaultForServiceTypes: [], items: [] }]
+    const templates: ServiceTemplate[] = [
+      { serviceType: 'Sunday Worship', defaultForServiceTypes: [], items: [] },
+    ]
     expect(defaultServiceTemplate(templates, 'Sunday Worship')).toBeUndefined()
   })
 })
@@ -60,7 +66,12 @@ describe('applyServiceTemplate', () => {
     }
     const { items, assignments } = applyServiceTemplate(template)
     expect(items).toMatchObject([
-      { type: 'bulletin-note', role: 'Prayer', bulletinLabel: 'Silent Preparation', bulletinNote: '(please silence your phone)' },
+      {
+        type: 'bulletin-note',
+        role: 'Prayer',
+        bulletinLabel: 'Silent Preparation',
+        bulletinNote: '(please silence your phone)',
+      },
     ])
     expect(assignments).toEqual([{ role: 'Prayer', tentative: false }])
   })
@@ -83,7 +94,12 @@ describe('applyServiceTemplate', () => {
         suggestedTab: 'songs',
         bulletinNote: '(please stand)',
       },
-      { type: 'placeholder', label: 'Scripture Reading', suggestedTab: 'scripture', role: 'Scripture Reader' },
+      {
+        type: 'placeholder',
+        label: 'Scripture Reading',
+        suggestedTab: 'scripture',
+        role: 'Scripture Reader',
+      },
       { type: 'placeholder', label: 'Sermon', suggestedTab: 'sermon' },
       { type: 'placeholder', label: 'Special Music', suggestedTab: undefined },
     ])
@@ -100,11 +116,9 @@ describe('applyServiceTemplate', () => {
       ],
     }
     const { items } = applyServiceTemplate(template)
-    expect(items.map((item) => item.bulletinLabel ?? ('label' in item ? item.label : undefined))).toEqual([
-      'Welcome and Announcements',
-      'Opening Song',
-      'Silent Reflection',
-    ])
+    expect(
+      items.map((item) => item.bulletinLabel ?? ('label' in item ? item.label : undefined)),
+    ).toEqual(['Welcome and Announcements', 'Opening Song', 'Silent Reflection'])
   })
 
   it('gives every seeded item a unique id', () => {
@@ -121,11 +135,13 @@ describe('applyServiceTemplate', () => {
 })
 
 describe('planAssignmentResetFromTemplate', () => {
-  function service(overrides: Partial<Pick<Service, 'items' | 'assignments'>> = {}): Pick<Service, 'items' | 'assignments'> {
+  function service(
+    overrides: Partial<Pick<Service, 'items' | 'assignments'>> = {},
+  ): Pick<Service, 'items' | 'assignments'> {
     return { items: [], assignments: [], ...overrides }
   }
 
-  it("adds a missing role-only assignment introduced by the template", () => {
+  it('adds a missing role-only assignment introduced by the template', () => {
     const template: ServiceTemplate = {
       serviceType: 'Sunday Morning Worship',
       items: [{ id: 't1', kind: 'role-only', label: 'Greeter', role: 'Greeter', count: 2 }],
@@ -153,7 +169,10 @@ describe('planAssignmentResetFromTemplate', () => {
     }
     const assigned = { role: 'Greeter', personId: 'person-1', tentative: false }
     const unassigned = { role: 'Greeter', tentative: false }
-    const plan = planAssignmentResetFromTemplate(service({ assignments: [assigned, unassigned] }), template)
+    const plan = planAssignmentResetFromTemplate(
+      service({ assignments: [assigned, unassigned] }),
+      template,
+    )
     expect(plan.toAdd).toEqual([])
     expect(plan.toRemove).toEqual([unassigned])
   })

@@ -37,7 +37,12 @@ function runSetupWizard() {
       description="Review the initial library, display, and service configuration."
       icon="mdi-magic-staff"
     >
-      <v-btn variant="outlined" color="primary" prepend-icon="mdi-magic-staff" @click="runSetupWizard">
+      <v-btn
+        variant="outlined"
+        color="primary"
+        prepend-icon="mdi-magic-staff"
+        @click="runSetupWizard"
+      >
         Run Setup Wizard
       </v-btn>
     </SettingsPanel>

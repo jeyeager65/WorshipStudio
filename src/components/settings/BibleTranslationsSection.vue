@@ -128,157 +128,167 @@ function translationSource(entry: AvailableTranslationEntry): string {
 // Whether the ESV copyright notice below needs to show is a question of whether ESV is
 // actually resolvable right now (an esvApiKey configured on this machine — see
 // commands::scripture on the Rust side), which can lag one Save behind the draft key typed
-// into the field below.
-onMounted(async () => {
+// into the field below. Exposed so SettingsView.vue's saveSettings() can re-run this right
+// after a successful save (same pattern as CanvaSection.vue's loadCanvaStatus) — without it,
+// the "Save Settings to verify this key" warning below would stay stuck until the whole page
+// reloaded, since onMounted only ever runs once per component instance.
+async function refreshAvailability() {
   try {
     const translations = await getAdapter().scripture.listTranslations()
     esvAvailable.value = translations.some((t) => t.code === 'ESV')
   } catch (e) {
     console.error('Failed to list scripture translations:', e)
   }
-})
+}
+onMounted(refreshAvailability)
+defineExpose({ refreshAvailability })
 </script>
 
 <template>
   <!-- Single root element required so the parent's v-show can toggle this section's visibility
        (v-show can't attach to a multi-root/fragment component). -->
   <div>
-  <SettingsPanel
-    title="English Standard Version"
-    description="Connect an api.esv.org account to make the ESV available on this computer."
-    icon="mdi-key-outline"
-  >
-    <v-text-field
-      v-model="machineSettings!.esvApiKey"
-      label="ESV API key"
-      type="password"
-      variant="outlined"
-      density="compact"
-      autocomplete="off"
-      hint="Free account at api.esv.org."
-      persistent-hint
-      class="settings-form-field mb-3"
-    />
-    <v-alert v-if="esvAvailable" type="success" variant="tonal" density="compact">
-      {{ ESV_COPYRIGHT_NOTICE }}
-    </v-alert>
-    <v-alert v-else-if="machineSettings!.esvApiKey" type="warning" variant="tonal" density="compact">
-      Save Settings to verify this key.
-    </v-alert>
-    <p v-else class="settings-muted">Not configured on this machine.</p>
-  </SettingsPanel>
-
-  <SettingsPanel
-    title="Additional Bible editions"
-    description="Use api.bible to add NIV and other licensed translations to the library."
-    icon="mdi-book-plus-outline"
-  >
-    <v-text-field
-      v-model="machineSettings!.apiBibleKey"
-      label="api.bible API key"
-      type="password"
-      variant="outlined"
-      density="compact"
-      autocomplete="off"
-      hint="Free account at scripture.api.bible."
-      persistent-hint
-      class="settings-form-field mb-3"
-    />
-    <div v-if="machineSettings!.apiBibleKey">
-      <div class="translation-picker">
-        <v-autocomplete
-          v-model="pickedCatalogEntry"
-          :items="apiBibleCatalog"
-          :loading="loadingApiBibleCatalog"
-          :item-title="catalogItemTitle"
-          item-value="id"
-          return-object
-          label="Add a translation…"
-          variant="outlined"
-          density="compact"
-          hide-details
-          @update:focused="(focused: boolean) => focused && loadApiBibleCatalog()"
-        />
-        <v-btn
-          variant="flat"
-          color="primary"
-          prepend-icon="mdi-plus"
-          :disabled="!pickedCatalogEntry"
-          @click="addApiBibleTranslation"
-        >
-          Add
-        </v-btn>
-      </div>
-      <p v-if="addTranslationError" class="text-caption text-error mt-2">
-        {{ addTranslationError }}
-      </p>
-    </div>
-    <p v-else class="settings-muted">Not configured on this machine.</p>
-  </SettingsPanel>
-
-  <SettingsPanel
-    title="Available translations"
-    description="Choose the default used for new passages. Operators can still switch translations live."
-    icon="mdi-book-open-page-variant-outline"
-  >
-    <div class="translation-grid" role="radiogroup" aria-label="Default Bible translation">
-      <article
-        v-for="entry in availableTranslationEntries"
-        :key="entry.code"
-        class="translation-card"
-        :class="{
-          'translation-card--selected': librarySettings!.defaultTranslationCode === entry.code,
-        }"
-        role="radio"
-        :aria-checked="librarySettings!.defaultTranslationCode === entry.code"
-        tabindex="0"
-        @click="librarySettings!.defaultTranslationCode = entry.code"
-        @keydown.enter="librarySettings!.defaultTranslationCode = entry.code"
-        @keydown.space.prevent="librarySettings!.defaultTranslationCode = entry.code"
+    <SettingsPanel
+      title="English Standard Version"
+      description="Connect an api.esv.org account to make the ESV available on this computer."
+      icon="mdi-key-outline"
+    >
+      <v-text-field
+        v-model="machineSettings!.esvApiKey"
+        label="ESV API key"
+        type="password"
+        variant="outlined"
+        density="compact"
+        autocomplete="off"
+        hint="Free account at api.esv.org."
+        persistent-hint
+        class="settings-form-field mb-3"
+      />
+      <v-alert v-if="esvAvailable" type="success" variant="tonal" density="compact">
+        {{ ESV_COPYRIGHT_NOTICE }}
+      </v-alert>
+      <v-alert
+        v-else-if="machineSettings!.esvApiKey"
+        type="warning"
+        variant="tonal"
+        density="compact"
       >
-        <header>
-          <span class="translation-code">{{ entry.code }}</span>
-          <v-icon
-            v-if="librarySettings!.defaultTranslationCode === entry.code"
-            icon="mdi-check-circle"
-            color="primary"
-            size="19"
+        Save Settings to verify this key.
+      </v-alert>
+      <p v-else class="settings-muted">Not configured on this machine.</p>
+    </SettingsPanel>
+
+    <SettingsPanel
+      title="Additional Bible editions"
+      description="Use api.bible to add NIV and other licensed translations to the library."
+      icon="mdi-book-plus-outline"
+    >
+      <v-text-field
+        v-model="machineSettings!.apiBibleKey"
+        label="api.bible API key"
+        type="password"
+        variant="outlined"
+        density="compact"
+        autocomplete="off"
+        hint="Free account at scripture.api.bible."
+        persistent-hint
+        class="settings-form-field mb-3"
+      />
+      <div v-if="machineSettings!.apiBibleKey">
+        <div class="translation-picker">
+          <v-autocomplete
+            v-model="pickedCatalogEntry"
+            :items="apiBibleCatalog"
+            :loading="loadingApiBibleCatalog"
+            :item-title="catalogItemTitle"
+            item-value="id"
+            return-object
+            label="Add a translation…"
+            variant="outlined"
+            density="compact"
+            hide-details
+            @update:focused="(focused: boolean) => focused && loadApiBibleCatalog()"
           />
-        </header>
-        <h3>{{ entry.name }}</h3>
-        <p>{{ translationSource(entry) }}</p>
-        <footer>
-          <span v-if="entry.needsKey" class="translation-warning">
-            <v-icon icon="mdi-alert-circle-outline" size="15" /> API key needed
-          </span>
-          <span
-            v-else-if="librarySettings!.defaultTranslationCode === entry.code"
-            class="translation-default"
+          <v-btn
+            variant="flat"
+            color="primary"
+            prepend-icon="mdi-plus"
+            :disabled="!pickedCatalogEntry"
+            @click="addApiBibleTranslation"
           >
-            <v-icon icon="mdi-check-circle" size="15" /> Default
-          </span>
-          <span v-else class="translation-available">Available</span>
-          <span class="translation-card-actions">
-            <span
-              v-if="librarySettings!.defaultTranslationCode !== entry.code"
-              class="translation-set-default"
-              >Make default</span
-            >
-            <v-btn
-              v-if="entry.removable"
-              icon="mdi-delete-outline"
-              variant="text"
-              color="error"
-              size="small"
-              class="translation-remove"
-              :aria-label="`Remove ${entry.name}`"
-              @click.stop="removeApiBibleTranslation(entry.code)"
+            Add
+          </v-btn>
+        </div>
+        <p v-if="addTranslationError" class="text-caption text-error mt-2">
+          {{ addTranslationError }}
+        </p>
+      </div>
+      <p v-else class="settings-muted">Not configured on this machine.</p>
+    </SettingsPanel>
+
+    <SettingsPanel
+      title="Available translations"
+      description="Choose the default used for new passages. Operators can still switch translations live."
+      icon="mdi-book-open-page-variant-outline"
+    >
+      <div class="translation-grid" role="radiogroup" aria-label="Default Bible translation">
+        <article
+          v-for="entry in availableTranslationEntries"
+          :key="entry.code"
+          class="translation-card"
+          :class="{
+            'translation-card--selected': librarySettings!.defaultTranslationCode === entry.code,
+          }"
+          role="radio"
+          :aria-checked="librarySettings!.defaultTranslationCode === entry.code"
+          tabindex="0"
+          @click="librarySettings!.defaultTranslationCode = entry.code"
+          @keydown.enter="librarySettings!.defaultTranslationCode = entry.code"
+          @keydown.space.prevent="librarySettings!.defaultTranslationCode = entry.code"
+        >
+          <header>
+            <span class="translation-code">{{ entry.code }}</span>
+            <v-icon
+              v-if="librarySettings!.defaultTranslationCode === entry.code"
+              icon="mdi-check-circle"
+              color="primary"
+              size="19"
             />
-          </span>
-        </footer>
-      </article>
-    </div>
-  </SettingsPanel>
+          </header>
+          <h3>{{ entry.name }}</h3>
+          <p>{{ translationSource(entry) }}</p>
+          <footer>
+            <span v-if="entry.needsKey" class="translation-warning">
+              <v-icon icon="mdi-alert-circle-outline" size="15" /> API key needed
+            </span>
+            <span
+              v-else-if="librarySettings!.defaultTranslationCode === entry.code"
+              class="translation-default"
+            >
+              <v-icon icon="mdi-check-circle" size="15" /> Default
+            </span>
+            <span v-else class="translation-available">Available</span>
+            <span class="translation-card-actions">
+              <span
+                v-if="librarySettings!.defaultTranslationCode !== entry.code"
+                class="translation-set-default"
+                >Make default</span
+              >
+              <v-btn
+                v-if="entry.removable"
+                icon="mdi-delete-outline"
+                variant="text"
+                color="error"
+                size="small"
+                class="translation-remove"
+                :aria-label="`Remove ${entry.name}`"
+                @click.stop="removeApiBibleTranslation(entry.code)"
+              />
+            </span>
+          </footer>
+        </article>
+      </div>
+    </SettingsPanel>
   </div>
 </template>
 

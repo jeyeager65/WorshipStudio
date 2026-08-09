@@ -12,10 +12,14 @@ import logoLight from '@/assets/logo-light.png'
 const theme = useTheme()
 const aboutLogo = computed(() => (theme.global.current.value.dark ? logoDark : logoLight))
 
-const appVersion = ref('')
+// getVersion() (Tauri-only) is the authoritative packaged version when it resolves; in the
+// web/mock builds it always rejects, so this falls back to the version this bundle was actually
+// built from (__APP_VERSION__, see vite.config.ts) rather than the "Development build"
+// placeholder that used to show there regardless of what was actually running.
+const appVersion = ref(__APP_VERSION__)
 void getVersion()
   .then((version) => (appVersion.value = version))
-  .catch(() => (appVersion.value = 'Development build'))
+  .catch(() => {})
 
 const projectLinks = [
   {
@@ -57,7 +61,8 @@ async function openDiagnosticLogs() {
     await openLogsFolder()
     diagnosticStatus.value = 'Opened the Worship Studio logs folder.'
   } catch (error) {
-    diagnosticError.value = error instanceof Error ? error.message : 'The logs folder could not be opened.'
+    diagnosticError.value =
+      error instanceof Error ? error.message : 'The logs folder could not be opened.'
   } finally {
     diagnosticAction.value = undefined
   }
@@ -72,7 +77,8 @@ async function copyDiagnosticSummary() {
     await navigator.clipboard.writeText(formatDiagnosticSummary(summary))
     diagnosticStatus.value = 'Diagnostic summary copied. Review it before sharing.'
   } catch (error) {
-    diagnosticError.value = error instanceof Error ? error.message : 'The diagnostic summary could not be copied.'
+    diagnosticError.value =
+      error instanceof Error ? error.message : 'The diagnostic summary could not be copied.'
   } finally {
     diagnosticAction.value = undefined
   }
@@ -93,7 +99,8 @@ async function exportDiagnosticBundle() {
     if (result !== 'cancelled')
       diagnosticStatus.value = 'Diagnostic bundle saved. Review it before sharing.'
   } catch (error) {
-    diagnosticError.value = error instanceof Error ? error.message : 'The diagnostic bundle could not be exported.'
+    diagnosticError.value =
+      error instanceof Error ? error.message : 'The diagnostic bundle could not be exported.'
   } finally {
     diagnosticAction.value = undefined
   }
@@ -168,7 +175,13 @@ async function exportDiagnosticBundle() {
           Export Diagnostic Bundle
         </v-btn>
       </div>
-      <v-alert v-if="diagnosticStatus" type="success" variant="tonal" density="compact" class="mt-4">
+      <v-alert
+        v-if="diagnosticStatus"
+        type="success"
+        variant="tonal"
+        density="compact"
+        class="mt-4"
+      >
         {{ diagnosticStatus }}
       </v-alert>
       <v-alert v-if="diagnosticError" type="error" variant="tonal" density="compact" class="mt-4">

@@ -225,7 +225,9 @@ function renderTable(block: ReportTable, primary: string): Table {
           children: block.headers.map(
             (text) =>
               new TableCell({
-                shading: modern ? undefined : { type: ShadingType.CLEAR, fill: primary, color: 'auto' },
+                shading: modern
+                  ? undefined
+                  : { type: ShadingType.CLEAR, fill: primary, color: 'auto' },
                 borders: cellBorders,
                 children: [
                   new Paragraph({
@@ -310,7 +312,13 @@ function renderList(block: ReportList, primary: string): Paragraph[] {
       const bullet = `${block.items.length ? (block.ordered ? `${index + 1}.` : '•') : '—'} `
       const runs: ReportRun[] =
         typeof item === 'string'
-          ? [{ text: item, italics: block.items.length === 0, color: block.items.length === 0 ? '777777' : undefined }]
+          ? [
+              {
+                text: item,
+                italics: block.items.length === 0,
+                color: block.items.length === 0 ? '777777' : undefined,
+              },
+            ]
           : item
       return new Paragraph({
         indent: { left: 180, hanging: 140 },

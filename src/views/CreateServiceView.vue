@@ -26,7 +26,9 @@ const preacherId = ref<string>()
 const templateName = ref<string | null>(null)
 
 function selectDefaultTemplate(serviceType: string) {
-  templateName.value = defaultServiceTemplate(settingsStore.librarySettings?.serviceTemplates, serviceType)?.serviceType ?? null
+  templateName.value =
+    defaultServiceTemplate(settingsStore.librarySettings?.serviceTemplates, serviceType)
+      ?.serviceType ?? null
 }
 
 watch(type, selectDefaultTemplate)
@@ -39,22 +41,35 @@ onMounted(async () => {
 })
 
 const preacherOptions = computed(() =>
-  sortByPreferredRole(peopleStore.people, 'Preacher').map((p) => ({ title: personFormalName(p), value: p.id })),
+  sortByPreferredRole(peopleStore.people, 'Preacher').map((p) => ({
+    title: personFormalName(p),
+    value: p.id,
+  })),
 )
 
 const templateOptions = computed(() =>
   (settingsStore.librarySettings?.serviceTemplates ?? []).map((template) => {
-    const defaultTemplate = defaultServiceTemplate(settingsStore.librarySettings?.serviceTemplates, type.value)
+    const defaultTemplate = defaultServiceTemplate(
+      settingsStore.librarySettings?.serviceTemplates,
+      type.value,
+    )
     return {
-      title: template.serviceType === defaultTemplate?.serviceType ? `${template.serviceType} (Default)` : template.serviceType,
+      title:
+        template.serviceType === defaultTemplate?.serviceType
+          ? `${template.serviceType} (Default)`
+          : template.serviceType,
       value: template.serviceType,
     }
   }),
 )
 const selectedTemplate = computed(() =>
-  settingsStore.librarySettings?.serviceTemplates.find((template) => template.serviceType === templateName.value),
+  settingsStore.librarySettings?.serviceTemplates.find(
+    (template) => template.serviceType === templateName.value,
+  ),
 )
-const templateContentCount = computed(() => selectedTemplate.value?.items.filter((item) => item.kind !== 'role-only').length ?? 0)
+const templateContentCount = computed(
+  () => selectedTemplate.value?.items.filter((item) => item.kind !== 'role-only').length ?? 0,
+)
 const templateAssignmentCount = computed(
   () =>
     selectedTemplate.value?.items.reduce((count, item) => {
@@ -72,7 +87,9 @@ const formattedDate = computed(() => {
   })
 })
 const formattedTime = computed(() => formatServiceTime(time.value) ?? 'Time Not Set')
-const selectedPreacherName = computed(() => preacherOptions.value.find((option) => option.value === preacherId.value)?.title)
+const selectedPreacherName = computed(
+  () => preacherOptions.value.find((option) => option.value === preacherId.value)?.title,
+)
 const canCreate = computed(() => !!date.value && !!type.value)
 
 // Seeds this service's items/assignments once from the template selected on this screen (see
@@ -92,10 +109,10 @@ async function createService(destination: 'plan' | 'service') {
   const service: Service = {
     id: `service-${crypto.randomUUID()}`,
     date: date.value,
-      time: time.value || undefined,
-      type: type.value,
-      serviceTemplateName: selectedTemplate.value?.serviceType,
-      items,
+    time: time.value || undefined,
+    type: type.value,
+    serviceTemplateName: selectedTemplate.value?.serviceType,
+    items,
     assignments,
     updatedAt: '',
     updatedByDevice: '',
@@ -106,7 +123,11 @@ async function createService(destination: 'plan' | 'service') {
   if (sermonTitle.value || keyPassage.value || preacherId.value) {
     applySermonEdit(
       service,
-      { title: sermonTitle.value, passageReference: keyPassage.value, preacherId: preacherId.value },
+      {
+        title: sermonTitle.value,
+        passageReference: keyPassage.value,
+        preacherId: preacherId.value,
+      },
       selectedTemplate.value?.items.find((item) => item.kind === 'sermon')?.role,
       settingsStore.librarySettings?.defaultTranslationCode ?? 'KJV',
     )
@@ -125,10 +146,15 @@ async function createService(destination: 'plan' | 'service') {
   <main class="create-service-page">
     <header class="create-header">
       <div class="header-content">
-        <v-btn to="/" variant="text" prepend-icon="mdi-arrow-left" class="back-button">Services</v-btn>
+        <v-btn to="/" variant="text" prepend-icon="mdi-arrow-left" class="back-button"
+          >Services</v-btn
+        >
         <div class="page-eyebrow">Service Planning</div>
         <h1>Create Service</h1>
-        <p>Choose the service details and optionally add the first sermon information before opening the service.</p>
+        <p>
+          Choose the service details and optionally add the first sermon information before opening
+          the service.
+        </p>
       </div>
     </header>
 
@@ -143,12 +169,14 @@ async function createService(destination: 'plan' | 'service') {
             </div>
           </div>
           <div class="details-grid">
-            <v-text-field v-model="date" type="date" label="Service Date" variant="outlined" hide-details />
-            <five-minute-time-picker
-              v-model="time"
-              label="Start Time"
+            <v-text-field
+              v-model="date"
+              type="date"
+              label="Service Date"
+              variant="outlined"
               hide-details
             />
+            <five-minute-time-picker v-model="time" label="Start Time" hide-details />
             <v-select
               v-model="type"
               :items="settingsStore.librarySettings?.serviceTypes ?? []"
@@ -182,7 +210,9 @@ async function createService(destination: 'plan' | 'service') {
 
         <section class="form-section">
           <div class="section-heading">
-            <span class="section-icon section-icon--sermon"><v-icon icon="mdi-book-open-page-variant-outline" size="21" /></span>
+            <span class="section-icon section-icon--sermon"
+              ><v-icon icon="mdi-book-open-page-variant-outline" size="21"
+            /></span>
             <div>
               <h2>Sermon Details</h2>
               <p>Optional starting information. Everything here can be added or changed later.</p>
@@ -215,53 +245,99 @@ async function createService(destination: 'plan' | 'service') {
               />
             </div>
           </div>
-          <p class="section-note"><v-icon icon="mdi-information-outline" size="17" />Preachers are managed from the People directory.</p>
+          <p class="section-note">
+            <v-icon icon="mdi-information-outline" size="17" />Preachers are managed from the People
+            directory.
+          </p>
         </section>
       </div>
 
       <aside class="service-summary">
         <div class="summary-heading">
           <span><v-icon icon="mdi-church-outline" size="23" /></span>
-          <div><div class="summary-kicker">New Service</div><h2>{{ type || 'Select a Service Type' }}</h2></div>
+          <div>
+            <div class="summary-kicker">New Service</div>
+            <h2>{{ type || 'Select a Service Type' }}</h2>
+          </div>
         </div>
         <div class="summary-date">
           <v-icon icon="mdi-calendar-outline" size="19" />
-          <div><span>{{ formattedDate }}</span><small>{{ formattedTime }}</small></div>
+          <div>
+            <span>{{ formattedDate }}</span
+            ><small>{{ formattedTime }}</small>
+          </div>
         </div>
 
         <div class="summary-section">
           <div class="summary-label">Starting Template</div>
           <template v-if="selectedTemplate">
-            <div class="template-name"><v-icon icon="mdi-file-tree-outline" size="19" /><span>{{ selectedTemplate.serviceType }}</span></div>
-            <div class="template-stats">
-              <div><strong>{{ templateContentCount }}</strong><span>Order Items</span></div>
-              <div><strong>{{ templateAssignmentCount }}</strong><span>Assignments</span></div>
+            <div class="template-name">
+              <v-icon icon="mdi-file-tree-outline" size="19" /><span>{{
+                selectedTemplate.serviceType
+              }}</span>
             </div>
-            <p>The template creates placeholders and assignment rows that you can complete in the service editor.</p>
+            <div class="template-stats">
+              <div>
+                <strong>{{ templateContentCount }}</strong
+                ><span>Order Items</span>
+              </div>
+              <div>
+                <strong>{{ templateAssignmentCount }}</strong
+                ><span>Assignments</span>
+              </div>
+            </div>
+            <p>
+              The template creates placeholders and assignment rows that you can complete in the
+              service editor.
+            </p>
           </template>
           <div v-else class="no-template">
             <v-icon icon="mdi-file-outline" size="22" />
-            <div><strong>Blank Service</strong><span>No template is configured for this service type.</span></div>
+            <div>
+              <strong>Blank Service</strong
+              ><span>No template is configured for this service type.</span>
+            </div>
           </div>
         </div>
 
-        <div v-if="sermonTitle || keyPassage || selectedPreacherName" class="summary-section sermon-preview">
+        <div
+          v-if="sermonTitle || keyPassage || selectedPreacherName"
+          class="summary-section sermon-preview"
+        >
           <div class="summary-label">Sermon</div>
           <strong>{{ sermonTitle || 'Title Not Decided' }}</strong>
-          <span v-if="keyPassage"><v-icon icon="mdi-book-open-variant" size="16" />{{ keyPassage }}</span>
-          <span v-if="selectedPreacherName"><v-icon icon="mdi-account-voice" size="16" />{{ selectedPreacherName }}</span>
+          <span v-if="keyPassage"
+            ><v-icon icon="mdi-book-open-variant" size="16" />{{ keyPassage }}</span
+          >
+          <span v-if="selectedPreacherName"
+            ><v-icon icon="mdi-account-voice" size="16" />{{ selectedPreacherName }}</span
+          >
         </div>
 
         <div class="save-note">
           <v-icon icon="mdi-content-save-outline" size="18" />
-          <p>Create &amp; Plan saves the service first. Create &amp; Open Service starts an unsaved draft.</p>
+          <p>
+            Create &amp; Plan saves the service first. Create &amp; Open Service starts an unsaved
+            draft.
+          </p>
         </div>
         <div class="summary-actions">
           <v-btn variant="outlined" to="/">Cancel</v-btn>
-          <v-btn variant="outlined" color="primary" :disabled="!canCreate" @click="createService('plan')">
+          <v-btn
+            variant="outlined"
+            color="primary"
+            :disabled="!canCreate"
+            @click="createService('plan')"
+          >
             Create &amp; Plan
           </v-btn>
-          <v-btn variant="flat" color="primary" :disabled="!canCreate" append-icon="mdi-arrow-right" @click="createService('service')">
+          <v-btn
+            variant="flat"
+            color="primary"
+            :disabled="!canCreate"
+            append-icon="mdi-arrow-right"
+            @click="createService('service')"
+          >
             Create &amp; Open Service
           </v-btn>
         </div>

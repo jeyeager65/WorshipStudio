@@ -11,11 +11,11 @@ defineProps<{
 const steps = ['Preferences', 'Library', 'Services']
 
 // Same fallback Settings > About already uses — getVersion() is Tauri-only and rejects in the
-// browser demo build.
-const appVersion = ref('')
+// browser demo build, where __APP_VERSION__ (vite.config.ts) is the real fallback instead.
+const appVersion = ref(__APP_VERSION__)
 void getVersion()
   .then((version) => (appVersion.value = version))
-  .catch(() => (appVersion.value = ''))
+  .catch(() => {})
 </script>
 
 <template>

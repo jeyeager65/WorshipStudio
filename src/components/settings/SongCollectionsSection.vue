@@ -10,17 +10,24 @@ const newCollectionName = ref('')
 
 function addCollection() {
   const name = newCollectionName.value.trim()
-  if (!name || props.modelValue.some((collection) => collection.name.toLowerCase() === name.toLowerCase())) return
+  if (
+    !name ||
+    props.modelValue.some((collection) => collection.name.toLowerCase() === name.toLowerCase())
+  )
+    return
   emit('update:modelValue', [...props.modelValue, { name }])
   newCollectionName.value = ''
 }
 
 function updateAbbreviation(index: number, abbreviation: string) {
-  emit('update:modelValue', props.modelValue.map((collection, collectionIndex) =>
-    collectionIndex === index
-      ? { ...collection, abbreviation: abbreviation || undefined }
-      : collection,
-  ))
+  emit(
+    'update:modelValue',
+    props.modelValue.map((collection, collectionIndex) =>
+      collectionIndex === index
+        ? { ...collection, abbreviation: abbreviation || undefined }
+        : collection,
+    ),
+  )
 }
 
 function trimAbbreviation(index: number) {
@@ -32,7 +39,10 @@ async function removeCollection(index: number) {
   const collection = props.modelValue[index]
   if (!collection) return
   if (!(await confirmDialog.confirm(`Remove "${collection.name}"?`, 'Remove'))) return
-  emit('update:modelValue', props.modelValue.filter((_, collectionIndex) => collectionIndex !== index))
+  emit(
+    'update:modelValue',
+    props.modelValue.filter((_, collectionIndex) => collectionIndex !== index),
+  )
 }
 </script>
 
@@ -46,7 +56,9 @@ async function removeCollection(index: number) {
             <strong>{{ collection.name }}</strong>
             <small>
               Bulletin example:
-              {{ collection.abbreviation?.trim() ? `${collection.abbreviation.trim()} 184` : '184' }}
+              {{
+                collection.abbreviation?.trim() ? `${collection.abbreviation.trim()} 184` : '184'
+              }}
             </small>
           </div>
         </div>

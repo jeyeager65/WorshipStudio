@@ -105,132 +105,163 @@ defineExpose({ loadCanvaStatus })
   <!-- Single root element required so the parent's v-show can toggle this section's visibility
        (v-show can't attach to a multi-root/fragment component). -->
   <div>
-  <SettingsPanel
-    title="Church integration"
-    description="One Canva integration is shared by every Worship Studio computer using this library."
-    icon="mdi-connection"
-  >
-    <v-alert type="info" variant="tonal" density="compact" class="mb-4">
-      Create one integration in a church-controlled Canva Developer account. People at this
-      church use the same integration; they do not each create their own.
-    </v-alert>
-    <div class="canva-setup-steps mb-5">
-      <div><span>1</span><p><strong>Create the integration</strong><small>Copy its client ID and generate its client secret.</small></p></div>
-      <div><span>2</span><p><strong>Register this callback URL</strong><code>{{ canvaCallbackUrl }}</code></p></div>
-      <div>
-        <span>3</span>
-        <p>
-          <strong>Enable the required scopes</strong>
-          <small><code>design:meta:read</code>, <code>design:content:read</code>, and <code>design:content:write</code></small>
-        </p>
+    <SettingsPanel
+      title="Church integration"
+      description="One Canva integration is shared by every Worship Studio computer using this library."
+      icon="mdi-connection"
+    >
+      <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+        Create one integration in a church-controlled Canva Developer account. People at this church
+        use the same integration; they do not each create their own.
+      </v-alert>
+      <div class="canva-setup-steps mb-5">
+        <div>
+          <span>1</span>
+          <p>
+            <strong>Create the integration</strong
+            ><small>Copy its client ID and generate its client secret.</small>
+          </p>
+        </div>
+        <div>
+          <span>2</span>
+          <p>
+            <strong>Register this callback URL</strong><code>{{ canvaCallbackUrl }}</code>
+          </p>
+        </div>
+        <div>
+          <span>3</span>
+          <p>
+            <strong>Enable the required scopes</strong>
+            <small
+              ><code>design:meta:read</code>, <code>design:content:read</code>, and
+              <code>design:content:write</code></small
+            >
+          </p>
+        </div>
       </div>
-    </div>
-    <v-text-field
-      v-model="librarySettings!.canvaIntegration.clientId"
-      label="Canva client ID"
-      variant="outlined"
-      density="compact"
-      autocomplete="off"
-      class="settings-form-field mb-2"
-      hint="Shared through the church library."
-      persistent-hint
-    />
-    <v-text-field
-      v-model="librarySettings!.canvaIntegration.clientSecret"
-      label="Canva client secret"
-      type="password"
-      variant="outlined"
-      density="compact"
-      autocomplete="off"
-      class="settings-form-field"
-      hint="Shared privately with computers that can access this church library. Never included in logs or exports."
-      persistent-hint
-    />
-  </SettingsPanel>
-
-  <SettingsPanel
-    title="Callback address"
-    description="Canva requires an exact registered address, so this port stays fixed instead of following Remote Control."
-    icon="mdi-callback"
-  >
-    <div class="remote-setting-row canva-callback-setting">
-      <div class="remote-setting-copy">
-        <strong>This installation’s callback</strong>
-        <span>
-          Installed copies default to 47823 and portable copies to 47824. Change it only for a
-          conflict, then register the new URL in Canva.
-        </span>
-        <code>{{ canvaCallbackUrl }}</code>
-      </div>
-      <v-number-input
-        v-model="canvaCallbackPort"
-        label="Callback port"
+      <v-text-field
+        v-model="librarySettings!.canvaIntegration.clientId"
+        label="Canva client ID"
         variant="outlined"
-        density="comfortable"
-        control-variant="stacked"
-        :min="1024"
-        :max="65535"
-        :error="canvaPortConflict"
-        :error-messages="canvaPortConflict ? 'Use a different port from Remote Control.' : undefined"
+        density="compact"
+        autocomplete="off"
+        class="settings-form-field mb-2"
+        hint="Shared through the church library."
+        persistent-hint
       />
-    </div>
-    <v-alert v-if="canvaStatus?.error" type="warning" variant="tonal" density="compact" class="mt-4">
-      {{ canvaStatus.error }}
-    </v-alert>
-  </SettingsPanel>
-
-  <SettingsPanel
-    title="This computer"
-    description="The church integration is shared, but each computer authorizes the Canva account it will use."
-    icon="mdi-laptop-account"
-  >
-    <div class="canva-connection-status">
-      <span class="canva-connection-icon">
-        <v-icon :icon="canvaStatus?.connected ? 'mdi-check-circle-outline' : 'mdi-link-off'" size="22" />
-      </span>
-      <div>
-        <strong>{{ canvaStatus?.connected ? 'Connected to Canva' : 'Not connected' }}</strong>
-        <small>
-          {{
-            canvaStatus?.connected
-              ? 'OAuth access and refresh tokens are stored only for this installation.'
-              : 'Save the church integration first, then authorize this computer in your browser.'
-          }}
-        </small>
-      </div>
-      <v-btn
-        v-if="canvaStatus?.connected"
+      <v-text-field
+        v-model="librarySettings!.canvaIntegration.clientSecret"
+        label="Canva client secret"
+        type="password"
         variant="outlined"
-        color="error"
-        :loading="canvaStatusLoading"
-        @click="disconnectThisComputerFromCanva"
+        density="compact"
+        autocomplete="off"
+        class="settings-form-field"
+        hint="Shared privately with computers that can access this church library. Never included in logs or exports."
+        persistent-hint
+      />
+    </SettingsPanel>
+
+    <SettingsPanel
+      title="Callback address"
+      description="Canva requires an exact registered address, so this port stays fixed instead of following Remote Control."
+      icon="mdi-callback"
+    >
+      <div class="remote-setting-row canva-callback-setting">
+        <div class="remote-setting-copy">
+          <strong>This installation’s callback</strong>
+          <span>
+            Installed copies default to 47823 and portable copies to 47824. Change it only for a
+            conflict, then register the new URL in Canva.
+          </span>
+          <code>{{ canvaCallbackUrl }}</code>
+        </div>
+        <v-number-input
+          v-model="canvaCallbackPort"
+          label="Callback port"
+          variant="outlined"
+          density="comfortable"
+          control-variant="stacked"
+          :min="1024"
+          :max="65535"
+          :error="canvaPortConflict"
+          :error-messages="
+            canvaPortConflict ? 'Use a different port from Remote Control.' : undefined
+          "
+        />
+      </div>
+      <v-alert
+        v-if="canvaStatus?.error"
+        type="warning"
+        variant="tonal"
+        density="compact"
+        class="mt-4"
       >
-        Disconnect This Computer
-      </v-btn>
-      <v-btn
-        v-else
-        variant="flat"
-        color="primary"
-        prepend-icon="mdi-open-in-new"
-        :disabled="
-          isDirty ||
-          !librarySettings!.canvaIntegration.clientId.trim() ||
-          !librarySettings!.canvaIntegration.clientSecret.trim() ||
-          canvaPortConflict
-        "
-        :loading="canvaStatusLoading || canvaStatus?.connecting"
-        @click="connectThisComputerToCanva"
+        {{ canvaStatus.error }}
+      </v-alert>
+    </SettingsPanel>
+
+    <SettingsPanel
+      title="This computer"
+      description="The church integration is shared, but each computer authorizes the Canva account it will use."
+      icon="mdi-laptop-account"
+    >
+      <div class="canva-connection-status">
+        <span class="canva-connection-icon">
+          <v-icon
+            :icon="canvaStatus?.connected ? 'mdi-check-circle-outline' : 'mdi-link-off'"
+            size="22"
+          />
+        </span>
+        <div>
+          <strong>{{ canvaStatus?.connected ? 'Connected to Canva' : 'Not connected' }}</strong>
+          <small>
+            {{
+              canvaStatus?.connected
+                ? 'OAuth access and refresh tokens are stored only for this installation.'
+                : 'Save the church integration first, then authorize this computer in your browser.'
+            }}
+          </small>
+        </div>
+        <v-btn
+          v-if="canvaStatus?.connected"
+          variant="outlined"
+          color="error"
+          :loading="canvaStatusLoading"
+          @click="disconnectThisComputerFromCanva"
+        >
+          Disconnect This Computer
+        </v-btn>
+        <v-btn
+          v-else
+          variant="flat"
+          color="primary"
+          prepend-icon="mdi-open-in-new"
+          :disabled="
+            isDirty ||
+            !librarySettings!.canvaIntegration.clientId.trim() ||
+            !librarySettings!.canvaIntegration.clientSecret.trim() ||
+            canvaPortConflict
+          "
+          :loading="canvaStatusLoading || canvaStatus?.connecting"
+          @click="connectThisComputerToCanva"
+        >
+          Connect This Computer
+        </v-btn>
+      </div>
+      <v-alert
+        v-if="isDirty && !canvaStatus?.connected"
+        type="info"
+        variant="tonal"
+        density="compact"
+        class="mt-4"
       >
-        Connect This Computer
-      </v-btn>
-    </div>
-    <v-alert v-if="isDirty && !canvaStatus?.connected" type="info" variant="tonal" density="compact" class="mt-4">
-      Save these settings before connecting this computer.
-    </v-alert>
-    <v-alert v-if="canvaActionError" type="error" variant="tonal" density="compact" class="mt-4">
-      {{ canvaActionError }}
-    </v-alert>
-  </SettingsPanel>
+        Save these settings before connecting this computer.
+      </v-alert>
+      <v-alert v-if="canvaActionError" type="error" variant="tonal" density="compact" class="mt-4">
+        {{ canvaActionError }}
+      </v-alert>
+    </SettingsPanel>
   </div>
 </template>
 

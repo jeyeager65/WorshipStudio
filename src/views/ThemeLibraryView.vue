@@ -14,7 +14,7 @@ import {
   presentationThemeAppliesTo,
   presentationThemeDefaults,
 } from '@/utils/presentationTheme'
-import { resolvePresentationFontFamily } from '@/utils/presentationFonts'
+import { cssFontFamily, resolvePresentationFontFamily } from '@/utils/presentationFonts'
 import { presentationTextEffect, presentationTextShadow } from '@/utils/presentationTextEffect'
 
 const router = useRouter()
@@ -216,7 +216,7 @@ async function duplicateTheme(theme: Theme) {
               class="preview-text"
               :style="{
                 color: theme.textColor,
-                fontFamily: resolvePresentationFontFamily(theme.font),
+                fontFamily: cssFontFamily(resolvePresentationFontFamily(theme.font)),
                 textShadow: presentationTextShadow(presentationTextEffect(theme)),
               }"
             >

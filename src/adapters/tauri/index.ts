@@ -348,6 +348,11 @@ export function createTauriAdapter(): StudioAdapter {
         const paths = Array.isArray(selection) ? selection : [selection]
         return invoke<StagedMediaFile[]>('stage_media_import', { paths })
       },
+      // A staged file's `path` is its real source path on disk (see stage_imports's own
+      // doc comment on domain::media::StagedMediaFile) — still there until commit actually
+      // copies it into the library, so this needs no Rust round trip, just the same
+      // convertFileSrc wrapping getPreviewUrl below does for committed items.
+      getStagedPreviewUrl: async (path) => convertFileSrc(path),
       commitImport: (files: MediaImportCommit[]) =>
         invoke<MediaItem[]>('commit_media_import', { files }),
       detectDuplicates: (item) => invoke<MediaItem[]>('detect_media_duplicates', { item }),

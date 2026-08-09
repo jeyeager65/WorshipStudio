@@ -28,7 +28,11 @@ export interface CcliUsageFilter {
  * history rather than each song's own `usage.usesPastYear` (a rolling "past year" figure,
  * not scoped to an arbitrary reporting range) — for CCLI license reporting.
  */
-export function computeCcliUsage(services: Service[], songs: Song[], filter: CcliUsageFilter): CcliUsageSummary {
+export function computeCcliUsage(
+  services: Service[],
+  songs: Song[],
+  filter: CcliUsageFilter,
+): CcliUsageSummary {
   const songsById = new Map(songs.map((song) => [song.id, song]))
   const usesBySongId = new Map<string, number>()
   let servicesIncluded = 0
@@ -53,7 +57,13 @@ export function computeCcliUsage(services: Service[], songs: Song[], filter: Ccl
   const rows: SongUsageRow[] = [...usesBySongId.entries()]
     .map(([songId, timesUsed]) => {
       const song = songsById.get(songId)
-      return { songId, title: song?.title ?? 'Unknown song', ccli: song?.ccli, author: song?.author, timesUsed }
+      return {
+        songId,
+        title: song?.title ?? 'Unknown song',
+        ccli: song?.ccli,
+        author: song?.author,
+        timesUsed,
+      }
     })
     .sort((a, b) => b.timesUsed - a.timesUsed || a.title.localeCompare(b.title))
 
@@ -79,7 +89,10 @@ function isoDate(date: Date): string {
 }
 
 /** `today` is a parameter (rather than read internally) purely so this stays testable. */
-export function quickRangeDates(range: QuickRange, today: Date): { fromDate: string; toDate: string } {
+export function quickRangeDates(
+  range: QuickRange,
+  today: Date,
+): { fromDate: string; toDate: string } {
   const year = today.getFullYear()
   if (range === 'ytd') {
     return { fromDate: formatLocalDate(year, 0, 1), toDate: isoDate(today) }

@@ -1,4 +1,10 @@
-import type { RoleAssignment, Service, ServiceItem, ServiceTemplate, ServiceTemplateItem } from '@/models/service'
+import type {
+  RoleAssignment,
+  Service,
+  ServiceItem,
+  ServiceTemplate,
+  ServiceTemplateItem,
+} from '@/models/service'
 
 // Pre-selects the right Add-to-Service tab when a placeholder is replaced — 'other' has no
 // single best tab, so it's left unmapped (falls back to whatever the dialog defaults to).
@@ -19,7 +25,10 @@ export function defaultServiceTemplate(
 ): ServiceTemplate | undefined {
   return (
     templates?.find((template) => template.defaultForServiceTypes?.includes(serviceType)) ??
-    templates?.find((template) => template.defaultForServiceTypes === undefined && template.serviceType === serviceType)
+    templates?.find(
+      (template) =>
+        template.defaultForServiceTypes === undefined && template.serviceType === serviceType,
+    )
   )
 }
 
@@ -32,7 +41,10 @@ export function defaultServiceTemplate(
  *   item instead, carrying its bulletin label/note forward when replaced in place.
  * Order follows the template's own item order.
  */
-export function applyServiceTemplate(template: ServiceTemplate): { items: ServiceItem[]; assignments: RoleAssignment[] } {
+export function applyServiceTemplate(template: ServiceTemplate): {
+  items: ServiceItem[]
+  assignments: RoleAssignment[]
+} {
   const items: ServiceItem[] = []
   const assignments: RoleAssignment[] = []
 
@@ -91,12 +103,17 @@ export function planAssignmentResetFromTemplate(
   service: Pick<Service, 'items' | 'assignments'>,
   template: ServiceTemplate,
 ): AssignmentResetPlan {
-  const itemRoles = new Set(service.items.map((item) => item.role).filter((role): role is string => !!role))
+  const itemRoles = new Set(
+    service.items.map((item) => item.role).filter((role): role is string => !!role),
+  )
 
   const desiredCounts = new Map<string, number>()
   for (const templateItem of template.items) {
     if (templateItem.kind !== 'role-only' || !templateItem.role) continue
-    desiredCounts.set(templateItem.role, (desiredCounts.get(templateItem.role) ?? 0) + (templateItem.count ?? 1))
+    desiredCounts.set(
+      templateItem.role,
+      (desiredCounts.get(templateItem.role) ?? 0) + (templateItem.count ?? 1),
+    )
   }
 
   const existingByRole = new Map<string, RoleAssignment[]>()
@@ -117,7 +134,9 @@ export function planAssignmentResetFromTemplate(
     } else if (existing.length > desired) {
       // Unassigned rows are trimmed before assigned ones, so a person already picked for a
       // role is the last thing dropped when a template's count shrinks.
-      const byAssignedLast = [...existing].sort((a, b) => Number(!!a.personId) - Number(!!b.personId))
+      const byAssignedLast = [...existing].sort(
+        (a, b) => Number(!!a.personId) - Number(!!b.personId),
+      )
       toRemove.push(...byAssignedLast.slice(0, existing.length - desired))
     }
   }

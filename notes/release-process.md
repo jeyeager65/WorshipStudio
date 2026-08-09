@@ -68,8 +68,10 @@ already-trusted church machine needs to re-run `install-trust-windows.ps1` with 
 
 ## Cutting a release
 
-1. Bump the version in `package.json`, `src-tauri/tauri.conf.json`, and
-   `src-tauri/Cargo.toml` (keep all three in sync).
+1. Bump the version in `package.json` and `src-tauri/Cargo.toml` (keep both in sync).
+   `src-tauri/tauri.conf.json`'s `version` field points at `../package.json` rather than
+   carrying its own literal, so it follows automatically — confirmed by checking the generated
+   Windows resource file's FileVersion/ProductVersion after a build.
 2. Commit that change normally.
 3. Tag and push:
    ```sh

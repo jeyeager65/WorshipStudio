@@ -342,13 +342,7 @@ export const sampleRoleGroups: RoleGroup[] = [
   },
   {
     name: 'General',
-    roles: [
-      'Greeter',
-      'Sound Booth',
-      'Nursery',
-      "Children's Church K-2",
-      "Children's Church 3-4",
-    ],
+    roles: ['Greeter', 'Sound Booth', 'Nursery', "Children's Church K-2", "Children's Church 3-4"],
   },
 ]
 
@@ -748,9 +742,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
           arrangement: { sequence: ['v1', 'v2'] },
         },
       ],
-      assignments: [
-        { role: 'Vocals', personId: 'person-sample-sarah-mitchell', tentative: true },
-      ],
+      assignments: [{ role: 'Vocals', personId: 'person-sample-sarah-mitchell', tentative: true }],
       updatedAt: now,
       updatedByDevice: device,
     },

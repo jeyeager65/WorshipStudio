@@ -98,12 +98,51 @@ pub fn find_by_canva_video_origin(
     }))
 }
 
+/// rename() fails across filesystem boundaries — local_media_root (an OS app-data dir by
+/// default, see paths.rs) and the synced library root (wherever the user's Dropbox/OneDrive
+/// folder is) are exactly the kind of pair likely to live on different volumes, unlike the
+/// same-root renames elsewhere in this codebase (e.g. sync::quarantine_damaged_file), so a
+/// location change specifically needs the copy-then-remove fallback those don't.
+fn move_file(source: &Path, destination: &Path) -> std::io::Result<()> {
+    if fs::rename(source, destination).is_ok() {
+        return Ok(());
+    }
+    fs::copy(source, destination)?;
+    fs::remove_file(source)
+}
+
+/// Saves a MediaItem's metadata, moving its backing file between the synced library folder and
+/// the local-only folder first if `item.location` differs from what's on disk (e.g. the Media
+/// Library's Storage dropdown) — otherwise the file would stay wherever it physically was while
+/// `file_path` (which resolves purely from the *saved* location) started looking for it
+/// somewhere else, silently breaking playback. A destination filename collision gets a
+/// " (2)"-style suffix, same as commit_imports. A missing source file (already deleted, or a
+/// 'local' item this machine never actually had the bytes for) is tolerated — the metadata
+/// update still proceeds, matching delete()'s "metadata is authoritative, file cleanup is
+/// best-effort" precedent.
 pub fn save(
     root: &Path,
+    local_media_root: &Path,
     mut item: MediaItem,
     device: &str,
     now: &str,
 ) -> std::io::Result<MediaItem> {
+    if let Some(previous) = get(root, &item.id)? {
+        if previous.location != item.location {
+            let source = file_path(root, local_media_root, &previous);
+            if source.exists() {
+                let synced_dir = synced_media_dir(root);
+                let dest_dir: &Path = if item.location == "local" {
+                    local_media_root
+                } else {
+                    &synced_dir
+                };
+                fs::create_dir_all(dest_dir)?;
+                item.filename = unique_filename(dest_dir, &item.filename);
+                move_file(&source, &dest_dir.join(&item.filename))?;
+            }
+        }
+    }
     item.updated_at = now.to_string();
     item.updated_by_device = device.to_string();
     write_json_file(&media_item_path(root, &item.id), &item)?;
@@ -140,7 +179,7 @@ pub fn replace_from_file(
     item.title = replacement.title;
     item.description = replacement.description;
     item.tags = replacement.tags;
-    save(root, item, device, now).map(Some)
+    save(root, local_media_root, item, device, now).map(Some)
 }
 
 /// Deletes the authoritative metadata record, then best-effort removes the underlying file
@@ -402,6 +441,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         save(
             dir.path(),
+            dir.path(),
             sample("media-1", "a.jpg", "synced", "abc"),
             "d",
             "now",
@@ -410,6 +450,118 @@ mod tests {
         assert_eq!(
             get(dir.path(), "media-1").unwrap().unwrap().filename,
             "a.jpg"
+        );
+    }
+
+    #[test]
+    fn save_moves_the_backing_file_when_location_changes_to_local() {
+        let root_dir = tempfile::tempdir().unwrap();
+        let local_dir = tempfile::tempdir().unwrap();
+        let source_dir = tempfile::tempdir().unwrap();
+        let file_path = source_dir.path().join("clip.mp4");
+        fs::write(&file_path, b"video bytes").unwrap();
+        let root = root_dir.path();
+
+        let created = commit_imports(
+            root,
+            local_dir.path(),
+            vec![MediaImportCommit {
+                path: file_path.to_string_lossy().to_string(),
+                filename: "clip.mp4".to_string(),
+                title: "Clip".to_string(),
+                description: None,
+                tags: vec![],
+                location: "synced".to_string(),
+                duplicate_of_id: None,
+                id: None,
+                origin: None,
+            }],
+            "d",
+            "now",
+        )
+        .unwrap();
+        let mut item = created.into_iter().next().unwrap();
+        assert!(synced_media_dir(root).join("clip.mp4").exists());
+
+        item.location = "local".to_string();
+        let saved = save(root, local_dir.path(), item, "d", "later").unwrap();
+
+        assert_eq!(saved.location, "local");
+        assert!(local_dir.path().join("clip.mp4").exists());
+        assert!(!synced_media_dir(root).join("clip.mp4").exists());
+    }
+
+    #[test]
+    fn save_moves_the_backing_file_back_to_synced_and_dedupes_a_filename_collision() {
+        let root_dir = tempfile::tempdir().unwrap();
+        let local_dir = tempfile::tempdir().unwrap();
+        let root = root_dir.path();
+
+        // An unrelated synced item already occupies the destination filename — the moved file
+        // must not silently overwrite it.
+        fs::create_dir_all(synced_media_dir(root)).unwrap();
+        fs::write(
+            synced_media_dir(root).join("bg.jpg"),
+            b"unrelated existing file",
+        )
+        .unwrap();
+
+        fs::create_dir_all(local_dir.path()).unwrap();
+        fs::write(
+            local_dir.path().join("bg.jpg"),
+            b"the local file being moved",
+        )
+        .unwrap();
+        let mut item = sample("media-1", "bg.jpg", "local", "abc");
+        save(root, local_dir.path(), item.clone(), "d", "now").unwrap();
+
+        item.location = "synced".to_string();
+        let saved = save(root, local_dir.path(), item, "d", "later").unwrap();
+
+        assert_eq!(saved.filename, "bg (2).jpg");
+        assert_eq!(
+            fs::read(synced_media_dir(root).join("bg (2).jpg")).unwrap(),
+            b"the local file being moved"
+        );
+        assert_eq!(
+            fs::read(synced_media_dir(root).join("bg.jpg")).unwrap(),
+            b"unrelated existing file"
+        );
+        assert!(!local_dir.path().join("bg.jpg").exists());
+    }
+
+    #[test]
+    fn save_tolerates_a_missing_source_file_when_location_changes() {
+        let root_dir = tempfile::tempdir().unwrap();
+        let local_dir = tempfile::tempdir().unwrap();
+        let root = root_dir.path();
+        // No file actually written for this item — e.g. a 'local' record synced in from a
+        // device that never granted this machine access to its bytes.
+        let mut item = sample("media-1", "ghost.jpg", "local", "abc");
+        save(root, local_dir.path(), item.clone(), "d", "now").unwrap();
+
+        item.location = "synced".to_string();
+        let saved = save(root, local_dir.path(), item, "d", "later").unwrap();
+
+        assert_eq!(saved.location, "synced");
+        assert_eq!(get(root, "media-1").unwrap().unwrap().location, "synced");
+    }
+
+    #[test]
+    fn save_leaves_the_file_alone_when_location_is_unchanged() {
+        let root_dir = tempfile::tempdir().unwrap();
+        let local_dir = tempfile::tempdir().unwrap();
+        let root = root_dir.path();
+        fs::create_dir_all(synced_media_dir(root)).unwrap();
+        fs::write(synced_media_dir(root).join("a.jpg"), b"pixels").unwrap();
+        let item = sample("media-1", "a.jpg", "synced", "abc");
+        save(root, local_dir.path(), item.clone(), "d", "now").unwrap();
+
+        save(root, local_dir.path(), item, "d", "later").unwrap();
+
+        assert_eq!(
+            fs::read(synced_media_dir(root).join("a.jpg")).unwrap(),
+            b"pixels"
         );
     }
 
@@ -423,6 +575,7 @@ mod tests {
         let content_hash = hash_file(&file_path).unwrap();
 
         save(
+            root,
             root,
             sample("media-1", "cross-hill.jpg", "synced", &content_hash),
             "d",
@@ -465,6 +618,7 @@ mod tests {
         fs::write(synced_media_dir(root).join("canva-page.png"), b"old pixels").unwrap();
         save(
             root,
+            local_dir.path(),
             sample("media-canva", "canva-page.png", "synced", "old-hash"),
             "computer-a",
             "before",
@@ -656,7 +810,7 @@ mod tests {
         let local_dir = tempfile::tempdir().unwrap();
         let root = root_dir.path();
         let item = sample("media-canva", "locked.png", "synced", "hash");
-        save(root, item, "d", "now").unwrap();
+        save(root, local_dir.path(), item, "d", "now").unwrap();
 
         // A directory at the expected file path makes remove_file fail consistently on every
         // platform, standing in for a transient Dropbox/antivirus/WebView file lock.
@@ -673,9 +827,9 @@ mod tests {
         let a = sample("media-a", "a.jpg", "synced", "same-hash");
         let b = sample("media-b", "b.jpg", "synced", "same-hash");
         let c = sample("media-c", "c.jpg", "synced", "different-hash");
-        save(dir.path(), a.clone(), "d", "now").unwrap();
-        save(dir.path(), b.clone(), "d", "now").unwrap();
-        save(dir.path(), c, "d", "now").unwrap();
+        save(dir.path(), dir.path(), a.clone(), "d", "now").unwrap();
+        save(dir.path(), dir.path(), b.clone(), "d", "now").unwrap();
+        save(dir.path(), dir.path(), c, "d", "now").unwrap();
 
         let duplicates = detect_duplicates(dir.path(), &a).unwrap();
         assert_eq!(duplicates.len(), 1);
@@ -700,9 +854,9 @@ mod tests {
             design_id: "DESIGN2".to_string(),
             page_number: 1,
         });
-        save(dir.path(), page_one, "d", "now").unwrap();
-        save(dir.path(), page_two, "d", "now").unwrap();
-        save(dir.path(), other_design, "d", "now").unwrap();
+        save(dir.path(), dir.path(), page_one, "d", "now").unwrap();
+        save(dir.path(), dir.path(), page_two, "d", "now").unwrap();
+        save(dir.path(), dir.path(), other_design, "d", "now").unwrap();
 
         let found = find_by_canva_origin(dir.path(), "DESIGN1", 2).unwrap();
         assert_eq!(found.unwrap().id, "media-b");
@@ -712,6 +866,7 @@ mod tests {
     fn find_by_canva_origin_ignores_plain_imports_and_unmatched_pages() {
         let dir = tempfile::tempdir().unwrap();
         save(
+            dir.path(),
             dir.path(),
             sample("media-plain", "plain.jpg", "synced", "hash"),
             "d",
@@ -740,9 +895,9 @@ mod tests {
         other_design_video.origin = Some(MediaOrigin::CanvaVideo {
             design_id: "DESIGN2".to_string(),
         });
-        save(dir.path(), video, "d", "now").unwrap();
-        save(dir.path(), page, "d", "now").unwrap();
-        save(dir.path(), other_design_video, "d", "now").unwrap();
+        save(dir.path(), dir.path(), video, "d", "now").unwrap();
+        save(dir.path(), dir.path(), page, "d", "now").unwrap();
+        save(dir.path(), dir.path(), other_design_video, "d", "now").unwrap();
 
         let found = find_by_canva_video_origin(dir.path(), "DESIGN1").unwrap();
         assert_eq!(found.unwrap().id, "media-video");
@@ -756,7 +911,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut item = sample("media-1", "cross-hill-sunset.jpg", "synced", "abc");
         item.title = String::new();
-        save(dir.path(), item, "d", "now").unwrap();
+        save(dir.path(), dir.path(), item, "d", "now").unwrap();
 
         assert_eq!(
             get(dir.path(), "media-1").unwrap().unwrap().title,
@@ -770,7 +925,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut item = sample("media-1", "cross-hill-sunset.jpg", "synced", "abc");
         item.title = "Cross Hill at Sunset".to_string();
-        save(dir.path(), item, "d", "now").unwrap();
+        save(dir.path(), dir.path(), item, "d", "now").unwrap();
 
         assert_eq!(
             get(dir.path(), "media-1").unwrap().unwrap().title,

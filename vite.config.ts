@@ -3,6 +3,7 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vuetify from 'vite-plugin-vuetify'
+import { version } from './package.json'
 
 export default defineConfig({
   // Only the GitHub Pages static-demo deploy (release.yml) sets VITE_BASE_PATH — the demo is
@@ -11,6 +12,12 @@ export default defineConfig({
   // Tauri build and local dev leave this unset and get '/', since the app is served from its
   // own window there.
   base: process.env.VITE_BASE_PATH ?? '/',
+  // Tauri's own `getVersion()` API (AboutSection.vue/SplashScreen.vue) only resolves inside a
+  // real Tauri webview — it rejects in the web/mock builds, which otherwise have no version to
+  // show at all. package.json's version (kept in sync with tauri.conf.json/Cargo.toml as part
+  // of the release process, see notes/release-process.md) is baked in at build time as a real
+  // fallback for those builds instead.
+  define: { __APP_VERSION__: JSON.stringify(version) },
   plugins: [vue(), vuetify({ autoImport: true })],
   resolve: {
     alias: {

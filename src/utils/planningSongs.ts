@@ -2,8 +2,7 @@ import type { ServiceItem } from '@/models/service'
 import type { Song } from '@/models/song'
 
 export type PlanningSongSlot =
-  | Extract<ServiceItem, { type: 'song' }>
-  | Extract<ServiceItem, { type: 'placeholder' }>
+  Extract<ServiceItem, { type: 'song' }> | Extract<ServiceItem, { type: 'placeholder' }>
 
 export function isPlanningSongSlot(item: ServiceItem): item is PlanningSongSlot {
   return item.type === 'song' || (item.type === 'placeholder' && item.suggestedTab === 'songs')

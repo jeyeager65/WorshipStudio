@@ -136,7 +136,9 @@ function pushScriptureSlides(
   passageId?: string,
 ): number {
   const keyFor = (pageIndex: number) =>
-    passageId ? `${itemId}:passage:${passageId}:${pageIndex}` : `${keyPrefix}:${startSubIndex + pageIndex}`
+    passageId
+      ? `${itemId}:passage:${passageId}:${pageIndex}`
+      : `${keyPrefix}:${startSubIndex + pageIndex}`
 
   if (displayMode === 'reference-only') {
     const parsed = parseReference(reference)
@@ -331,12 +333,17 @@ export function flattenService(
       // Supporting passages stay in the ordered flow and must never be promoted implicitly.
       const mainPassage = item.passages.find((passage) => passage.id === item.mainPassageId)
       const legacyFlow = [
-        ...item.passages.filter((passage) => passage.id !== mainPassage?.id).map((passage) => ({ type: 'passage' as const, passageId: passage.id })),
+        ...item.passages
+          .filter((passage) => passage.id !== mainPassage?.id)
+          .map((passage) => ({ type: 'passage' as const, passageId: passage.id })),
         ...item.outline.map((block) => ({ type: 'outline' as const, outlineId: block.id })),
       ]
       const flow = item.flow ?? legacyFlow
       const presentPassage = (passage: (typeof item.passages)[number]) => {
-        const resolved = passage.displayMode === 'reference-only' ? undefined : scriptureById.get(`${item.id}:${passage.id}`)
+        const resolved =
+          passage.displayMode === 'reference-only'
+            ? undefined
+            : scriptureById.get(`${item.id}:${passage.id}`)
         // Passage slides use the default *scripture* theme (not the sermon theme) unless the
         // item has its own override — resolvePresentationTheme already checks the override
         // against this target first, so an override that isn't valid for 'scripture' still

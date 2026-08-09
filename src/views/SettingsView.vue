@@ -56,6 +56,7 @@ const canvaPortConflict = computed(
     machineSettings.value.remoteControlPort === machineSettings.value.canvaCallbackPort,
 )
 const canvaSectionRef = ref<InstanceType<typeof CanvaSection>>()
+const bibleTranslationsSectionRef = ref<InstanceType<typeof BibleTranslationsSection>>()
 
 type Section =
   | 'general'
@@ -200,6 +201,7 @@ async function saveSettings() {
   try {
     await store.save()
     await canvaSectionRef.value?.loadCanvaStatus()
+    await bibleTranslationsSectionRef.value?.refreshAvailability()
     savedLibraryPath.value = machineSettings.value?.libraryPath ?? savedLibraryPath.value
     savedRemoteControlPort.value = machineSettings.value?.remoteControlPort
     savedRemoteControlHostname.value = machineSettings.value?.remoteControlHostname
@@ -208,7 +210,8 @@ async function saveSettings() {
     if (
       (libraryPathChanged || remoteConnectionChanged || canvaCallbackChanged) &&
       (await confirmDialog.confirm(
-        [libraryPathChanged, remoteConnectionChanged, canvaCallbackChanged].filter(Boolean).length > 1
+        [libraryPathChanged, remoteConnectionChanged, canvaCallbackChanged].filter(Boolean).length >
+          1
           ? 'Connection or library settings that require a restart have changed. Reload Worship Studio now to apply them?'
           : libraryPathChanged
             ? 'The library folder has changed. Reload Worship Studio now to load its services and other library content?'
@@ -323,7 +326,10 @@ async function saveSettings() {
         </SettingsPanel>
       </template>
 
-      <BibleTranslationsSection v-show="activeSection === 'bible-translations'" />
+      <BibleTranslationsSection
+        v-show="activeSection === 'bible-translations'"
+        ref="bibleTranslationsSectionRef"
+      />
 
       <CanvaSection
         v-if="getAdapter().canva"

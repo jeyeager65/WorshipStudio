@@ -20,14 +20,7 @@ import type { ScripturePassage, ScriptureTranslation } from '@/adapters/types'
 // lives here, sharing one dialog shell and reset path so selecting a type doesn't duplicate any
 // add behavior or draft state.
 export type AddItemType =
-  | 'songs'
-  | 'scripture'
-  | 'slides'
-  | 'media'
-  | 'video'
-  | 'external-app'
-  | 'sermon'
-  | 'bulletin-note'
+  'songs' | 'scripture' | 'slides' | 'media' | 'video' | 'external-app' | 'sermon' | 'bulletin-note'
 
 function errorMessage(e: unknown, fallback: string): string {
   if (typeof e === 'string') return e
@@ -88,7 +81,8 @@ const filteredSongsForAdd = computed(() => {
   return songsStore.songs.filter(
     (song) =>
       !song.archived &&
-      (!q || [song.title, song.artist, song.author].some((field) => field?.toLowerCase().includes(q))),
+      (!q ||
+        [song.title, song.artist, song.author].some((field) => field?.toLowerCase().includes(q))),
   )
 })
 const addingSong = ref(false)
@@ -381,17 +375,20 @@ async function addSermonToService() {
       id: `item-${crypto.randomUUID()}`,
       type: 'sermon',
       title: sermonTitleDraft.value.trim() || undefined,
-        passages,
-        mainPassageId: sermonMainPassageId.value ?? '',
-        outline: sermonOutlineBlocks.value.map((block) => ({ ...block })),
-        presentMainPassage: true,
-        flow: [
-          ...passages
-            .filter((passage) => passage.id !== sermonMainPassageId.value)
-            .map((passage) => ({ type: 'passage' as const, passageId: passage.id })),
-          ...sermonOutlineBlocks.value.map((block) => ({ type: 'outline' as const, outlineId: block.id })),
-        ],
-      }
+      passages,
+      mainPassageId: sermonMainPassageId.value ?? '',
+      outline: sermonOutlineBlocks.value.map((block) => ({ ...block })),
+      presentMainPassage: true,
+      flow: [
+        ...passages
+          .filter((passage) => passage.id !== sermonMainPassageId.value)
+          .map((passage) => ({ type: 'passage' as const, passageId: passage.id })),
+        ...sermonOutlineBlocks.value.map((block) => ({
+          type: 'outline' as const,
+          outlineId: block.id,
+        })),
+      ],
+    }
     insertItem(item)
     for (const passage of sermonPassages.value) {
       const resolved = sermonPassagePickerRefs.value[passage.id]?.resolvedPassage
@@ -487,21 +484,6 @@ function closeAddDialog() {
               v-model="scriptureDraft"
               :translations="scriptureTranslations"
             />
-
-            <v-btn
-              variant="flat"
-              color="primary"
-              block
-              :disabled="
-                !scripturePickerRef?.isValid ||
-                (scriptureDraft.displayMode === 'full' &&
-                  (!scriptureDraft.translation || scripturePickerRef?.hasError))
-              "
-              :loading="addingScripture"
-              @click="addScriptureToService"
-            >
-              Add Scripture
-            </v-btn>
           </v-window-item>
 
           <v-window-item value="slides">
@@ -606,7 +588,10 @@ function closeAddDialog() {
           </v-window-item>
 
           <v-window-item value="external-app">
-            <p v-if="externalAppsStore.profiles.length === 0" class="text-medium-emphasis text-body-2">
+            <p
+              v-if="externalAppsStore.profiles.length === 0"
+              class="text-medium-emphasis text-body-2"
+            >
               No profiles configured yet — add one in Settings &gt; External Apps.
             </p>
             <v-select
@@ -634,7 +619,13 @@ function closeAddDialog() {
                   <v-btn variant="outlined" @click="pickExternalAppFile">Browse…</v-btn>
                 </template>
               </v-text-field>
-              <v-alert v-if="externalAppAddError" type="error" variant="tonal" density="compact" class="mb-3">
+              <v-alert
+                v-if="externalAppAddError"
+                type="error"
+                variant="tonal"
+                density="compact"
+                class="mb-3"
+              >
                 {{ externalAppAddError }}
               </v-alert>
               <v-btn
@@ -800,6 +791,23 @@ function closeAddDialog() {
       </v-card-text>
       <v-card-actions>
         <v-spacer />
+        <!-- Only the scripture tab's submit lives here rather than inline with its content —
+             unlike the other tabs' add buttons, a full-text passage can be long enough to push
+             the button below the fold, so it's pinned next to Cancel instead of scrolling away. -->
+        <v-btn
+          v-if="addTab === 'scripture'"
+          variant="flat"
+          color="primary"
+          :disabled="
+            !scripturePickerRef?.isValid ||
+            (scriptureDraft.displayMode === 'full' &&
+              (!scriptureDraft.translation || scripturePickerRef?.hasError))
+          "
+          :loading="addingScripture"
+          @click="addScriptureToService"
+        >
+          Add Scripture
+        </v-btn>
         <v-btn variant="flat" color="secondary" @click="closeAddDialog">Cancel</v-btn>
       </v-card-actions>
     </v-card>

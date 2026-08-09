@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { getAdapter } from '@/adapters'
-import { formatReference, getBookNames, getChapterCount, getVerseCount, isValidReference, parseReference } from '@/utils/scriptureReference'
+import {
+  formatReference,
+  getBookNames,
+  getChapterCount,
+  getVerseCount,
+  isValidReference,
+  parseReference,
+} from '@/utils/scriptureReference'
 import type { ScriptureReference } from '@/models/scripture'
 import type { ScripturePassage, ScriptureTranslation } from '@/adapters/types'
 
@@ -17,7 +24,10 @@ export interface ScriptureReferenceValue {
 // operator edits it; `isValid`/`resolvedPassage`/`hasError` are exposed (not emitted) so a
 // parent can gate its own "Add" button and seed a scripture-cache map on submit, same as before
 // this was extracted out of ServiceWorkspaceView.vue.
-const props = defineProps<{ modelValue: ScriptureReferenceValue; translations: ScriptureTranslation[] }>()
+const props = defineProps<{
+  modelValue: ScriptureReferenceValue
+  translations: ScriptureTranslation[]
+}>()
 const emit = defineEmits<{ 'update:modelValue': [ScriptureReferenceValue] }>()
 
 // A rejected Tauri invoke() surfaces its Rust Err(String) payload as a plain JS string, not an
@@ -39,22 +49,31 @@ const endVerse = ref<number>()
 const displayMode = ref<'full' | 'reference-only'>(props.modelValue.displayMode)
 const translationCode = ref<string | undefined>(props.modelValue.translation || undefined)
 const preview = ref<ScripturePassage>()
-const previewText = computed(() => (preview.value ? preview.value.verses.map((v) => `${v.number} ${v.text}`).join(' ') : ''))
+const previewText = computed(() =>
+  preview.value ? preview.value.verses.map((v) => `${v.number} ${v.text}`).join(' ') : '',
+)
 const previewError = ref<string>()
 const previewLoading = ref(false)
 
 const bookNames = getBookNames()
 
 onMounted(() => {
-  if (!translationCode.value && props.translations.length > 0) translationCode.value = props.translations[0].code
+  if (!translationCode.value && props.translations.length > 0)
+    translationCode.value = props.translations[0].code
 })
 
 function range(start: number, end: number): number[] {
   return Array.from({ length: Math.max(0, end - start + 1) }, (_, i) => start + i)
 }
-const startChapterOptions = computed(() => (book.value ? range(1, getChapterCount(book.value)) : []))
-const startVerseOptions = computed(() => (book.value && startChapter.value ? range(1, getVerseCount(book.value, startChapter.value)) : []))
-const endChapterOptions = computed(() => (book.value && startChapter.value ? range(startChapter.value, getChapterCount(book.value)) : []))
+const startChapterOptions = computed(() =>
+  book.value ? range(1, getChapterCount(book.value)) : [],
+)
+const startVerseOptions = computed(() =>
+  book.value && startChapter.value ? range(1, getVerseCount(book.value, startChapter.value)) : [],
+)
+const endChapterOptions = computed(() =>
+  book.value && startChapter.value ? range(startChapter.value, getChapterCount(book.value)) : [],
+)
 const endVerseOptions = computed(() => {
   if (!book.value || !endChapter.value) return []
   const minVerse = endChapter.value === startChapter.value ? (startVerse.value ?? 1) : 1
@@ -94,7 +113,9 @@ const activeReference = computed<ScriptureReference | undefined>(() => {
   }
 })
 const isValid = computed(() => !!activeReference.value && isValidReference(activeReference.value))
-const activeReferenceText = computed(() => (activeReference.value ? formatReference(activeReference.value) : ''))
+const activeReferenceText = computed(() =>
+  activeReference.value ? formatReference(activeReference.value) : '',
+)
 
 // Live preview, re-fetched whenever the resolved reference/translation changes. A request
 // token guards against an in-flight fetch for a since-superseded reference overwriting a
@@ -107,7 +128,10 @@ watch([activeReferenceText, translationCode, displayMode], async () => {
   const token = ++previewToken
   previewLoading.value = true
   try {
-    const passage = await getAdapter().scripture.resolve(activeReferenceText.value, translationCode.value)
+    const passage = await getAdapter().scripture.resolve(
+      activeReferenceText.value,
+      translationCode.value,
+    )
     if (token === previewToken) preview.value = passage
   } catch (e) {
     if (token === previewToken) previewError.value = errorMessage(e, 'Failed to load passage.')
@@ -117,7 +141,11 @@ watch([activeReferenceText, translationCode, displayMode], async () => {
 })
 
 watch([activeReferenceText, translationCode, displayMode], () => {
-  emit('update:modelValue', { reference: activeReferenceText.value, translation: translationCode.value ?? '', displayMode: displayMode.value })
+  emit('update:modelValue', {
+    reference: activeReferenceText.value,
+    translation: translationCode.value ?? '',
+    displayMode: displayMode.value,
+  })
 })
 
 defineExpose({
@@ -147,7 +175,13 @@ defineExpose({
     />
 
     <template v-else>
-      <v-select v-model="book" :items="bookNames" label="Book" variant="outlined" density="comfortable" />
+      <v-select
+        v-model="book"
+        :items="bookNames"
+        label="Book"
+        variant="outlined"
+        density="comfortable"
+      />
       <div class="d-flex ga-3">
         <v-select
           v-model="startChapter"
@@ -210,6 +244,8 @@ defineExpose({
         <p class="text-body-2">{{ previewText }}</p>
       </div>
     </div>
-    <p v-else-if="isValid" class="text-body-2 text-medium-emphasis mb-2">{{ activeReferenceText }} — reference only, no verse text shown.</p>
+    <p v-else-if="isValid" class="text-body-2 text-medium-emphasis mb-2">
+      {{ activeReferenceText }} — reference only, no verse text shown.
+    </p>
   </div>
 </template>

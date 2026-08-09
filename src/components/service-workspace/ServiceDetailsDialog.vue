@@ -95,10 +95,7 @@ function save() {
             <v-text-field v-model="editDate" type="date" label="Date" variant="outlined" />
           </v-col>
           <v-col cols="6">
-            <five-minute-time-picker
-              v-model="editTime"
-              label="Start Time"
-            />
+            <five-minute-time-picker v-model="editTime" label="Start Time" />
           </v-col>
         </v-row>
         <v-select

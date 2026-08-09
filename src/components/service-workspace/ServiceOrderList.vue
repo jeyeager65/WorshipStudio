@@ -94,7 +94,8 @@ function serviceOrderPrimaryLabel(item: ServiceItem): string {
 
 function serviceOrderSecondaryLabel(item: ServiceItem): string | undefined {
   if (item.type === 'sermon') return item.title?.trim() || sermonMainReference(item) || undefined
-  if (item.bulletinLabel && !BULLETIN_LABEL_DRIVEN_TYPES.has(item.type)) return props.itemLabel(item)
+  if (item.bulletinLabel && !BULLETIN_LABEL_DRIVEN_TYPES.has(item.type))
+    return props.itemLabel(item)
   return undefined
 }
 
@@ -180,12 +181,18 @@ async function removeServiceItem(index: number) {
           />
           <div class="service-item-copy flex-grow-1">
             <div class="service-item-title-row">
-              <span class="service-item-title" :class="{ 'font-italic': item.type === 'placeholder' }">
+              <span
+                class="service-item-title"
+                :class="{ 'font-italic': item.type === 'placeholder' }"
+              >
                 {{ serviceOrderPrimaryLabel(item) }}
               </span>
               <span v-if="itemHasLive(index)" class="service-item-live-badge"><i />Live</span>
             </div>
-            <div v-if="serviceOrderSecondaryLabel(item)" class="service-item-secondary text-caption text-medium-emphasis">
+            <div
+              v-if="serviceOrderSecondaryLabel(item)"
+              class="service-item-secondary text-caption text-medium-emphasis"
+            >
               {{ serviceOrderSecondaryLabel(item) }}
             </div>
           </div>
@@ -204,17 +211,26 @@ async function removeServiceItem(index: number) {
           @click="selectedItemIndex = index"
         >
           <span class="service-item-index">{{ index + 1 }}</span>
-          <span class="service-item-icon" :style="{ color: `rgb(var(--v-theme-${itemColor(item)}))` }">
+          <span
+            class="service-item-icon"
+            :style="{ color: `rgb(var(--v-theme-${itemColor(item)}))` }"
+          >
             <v-icon :icon="itemIcon(item)" size="17" />
           </span>
           <div class="service-item-copy flex-grow-1">
             <div class="service-item-title-row">
-              <span class="service-item-title" :class="{ 'font-italic': item.type === 'placeholder' }">
+              <span
+                class="service-item-title"
+                :class="{ 'font-italic': item.type === 'placeholder' }"
+              >
                 {{ serviceOrderPrimaryLabel(item) }}
               </span>
               <span v-if="itemHasLive(index)" class="service-item-live-badge"><i />Live</span>
             </div>
-            <div v-if="serviceOrderSecondaryLabel(item)" class="service-item-secondary text-caption text-medium-emphasis">
+            <div
+              v-if="serviceOrderSecondaryLabel(item)"
+              class="service-item-secondary text-caption text-medium-emphasis"
+            >
               {{ serviceOrderSecondaryLabel(item) }}
             </div>
           </div>

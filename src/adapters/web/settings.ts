@@ -13,6 +13,7 @@
 import type { LibrarySettings, MachineSettings } from '@/models/settings'
 import type { SettingsPort } from '@/adapters/types'
 import { readJsonFile, writeJsonFile } from './fsaStorage'
+import { storeLibraryHandle } from './handlePersistence'
 
 const LIBRARY_SETTINGS_PATH = 'library-settings.json'
 const MACHINE_SETTINGS_KEY = 'worship-studio:web:machine-settings'
@@ -87,10 +88,27 @@ export function createWebSettingsPort(root: FileSystemDirectoryHandle): Settings
     saveMachineSettings: async (settings) => {
       localStorage.setItem(MACHINE_SETTINGS_KEY, JSON.stringify(settings))
     },
-    // The folder is already picked once, up front, to construct this adapter at all (see
-    // adapters/web/index.ts) — there's no in-app "switch library folder" flow yet for the web
-    // build, unlike the Tauri build's Settings page. Matches the mock adapter's same undefined
-    // return for the same reason: no picker to open here yet.
-    pickLibraryFolder: async () => undefined,
+    // The Tauri build returns a path string here and relies on SettingsView.vue's existing
+    // "the library folder changed — reload now?" prompt (comparing it against the last-saved
+    // value) to actually apply a switch, since Rust re-resolves libraryPath from disk on
+    // startup. There's no path string in a browser, but the same reload is exactly what's
+    // needed here too — BootGate.vue re-reads whatever handlePersistence.ts has stored on
+    // every mount — so this stores the newly picked handle (replacing the one used to
+    // construct the *current* adapter instance, which keeps working until reload) and returns
+    // the folder's own name as the closest browser equivalent of a path, both for display and
+    // so SettingsView.vue's unchanged string-comparison reload prompt still fires correctly.
+    pickLibraryFolder: async () => {
+      if (!('showDirectoryPicker' in window)) return undefined
+      let handle: FileSystemDirectoryHandle
+      try {
+        handle = await window.showDirectoryPicker({ mode: 'readwrite' })
+      } catch (error) {
+        // AbortError: the user cancelled the native picker — not a real failure.
+        if ((error as DOMException)?.name === 'AbortError') return undefined
+        throw error
+      }
+      await storeLibraryHandle(handle)
+      return handle.name
+    },
   }
 }

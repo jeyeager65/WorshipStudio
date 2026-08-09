@@ -138,13 +138,8 @@ function assignmentBlocks(groups: PlanningRosterGroup[]): ReportBlock[] {
       style: 'heading',
       spacingAfter: 4,
     },
-    ...groups.map(
-      (group): ReportBlock =>
-        reportList(
-          group.category ?? '',
-          group.assignments.map(assignmentLabel),
-          '',
-        ),
+    ...groups.map((group): ReportBlock =>
+      reportList(group.category ?? '', group.assignments.map(assignmentLabel), ''),
     ),
   ]
 }

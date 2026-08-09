@@ -21,7 +21,7 @@ export const useSettingsStore = defineStore('settings', () => {
         // localStorage bypasses Rust. Normalize the legacy shape here too so every view sees
         // the same clean collection records and the next save persists the new format.
         collections: (library.collections as Array<SongCollectionDefinition | string>).map(
-          (collection) => typeof collection === 'string' ? { name: collection } : collection,
+          (collection) => (typeof collection === 'string' ? { name: collection } : collection),
         ),
         // Browser-demo localStorage and older library-settings.json files predate the shared
         // Canva integration block. Normalize once at the store boundary so every view can rely

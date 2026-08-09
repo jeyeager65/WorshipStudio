@@ -124,7 +124,9 @@ const PLAIN_CROSS_SVG = `<svg width="12" height="14" viewBox="0 0 12 14"><g stro
 
 function hairline(width = COLUMN_WIDTH, marginLeft = 0, marginBottom = 0): Content {
   return {
-    canvas: [{ type: 'line', x1: 0, y1: 0, x2: width, y2: 0, lineWidth: 0.75, lineColor: HAIRLINE }],
+    canvas: [
+      { type: 'line', x1: 0, y1: 0, x2: width, y2: 0, lineWidth: 0.75, lineColor: HAIRLINE },
+    ],
     margin: [marginLeft, 0, 0, marginBottom],
   }
 }
@@ -199,7 +201,11 @@ function iconForLine(line: OrderOfWorshipLine): string {
   if (label.includes('silent') || label.includes('prepar')) return iconHeart
   if (label.includes('prayer')) return iconPrayer
   if (label.includes('offering') || label.includes('tithe')) return iconGift
-  if (line.kind === 'scripture' || label.includes('scripture') || label.includes('call to worship')) {
+  if (
+    line.kind === 'scripture' ||
+    label.includes('scripture') ||
+    label.includes('call to worship')
+  ) {
     return iconBook
   }
   return iconGeneric
@@ -220,7 +226,8 @@ interface LineGroup {
 function lineGroups(lines: OrderOfWorshipLine[]): LineGroup[] {
   const groups: LineGroup[] = []
   for (const line of lines) {
-    const isSongContinuation = line.kind === 'song' && line.separatorBefore === false && groups.length > 0
+    const isSongContinuation =
+      line.kind === 'song' && line.separatorBefore === false && groups.length > 0
     if (isSongContinuation) {
       groups[groups.length - 1]!.extraSongTexts.push(line.text)
       continue
@@ -279,7 +286,15 @@ function renderGroup(group: LineGroup, isLast: boolean): Content[] {
           titleLine,
           ...extraSongTexts.map((text): Content => ({ text, fontSize: 10, margin: [0, 1, 0, 0] })),
           ...(first.note
-            ? [{ text: first.note, italics: true, fontSize: 9, color: MUTED, margin: [0, 1, 0, 0] } as Content]
+            ? [
+                {
+                  text: first.note,
+                  italics: true,
+                  fontSize: 9,
+                  color: MUTED,
+                  margin: [0, 1, 0, 0],
+                } as Content,
+              ]
             : []),
         ],
       },
@@ -288,9 +303,7 @@ function renderGroup(group: LineGroup, isLast: boolean): Content[] {
     margin: [0, 4, 0, 4] as [number, number, number, number],
   }
 
-  return isLast
-    ? [row]
-    : [row, hairline(COLUMN_WIDTH - LINE_DIVIDER_INSET, LINE_DIVIDER_INSET)]
+  return isLast ? [row] : [row, hairline(COLUMN_WIDTH - LINE_DIVIDER_INSET, LINE_DIVIDER_INSET)]
 }
 
 // The icon sits in a 16pt-tall box starting at its row's own top (no margin), so its visual
@@ -487,7 +500,8 @@ function page2Content(page2: BulletinPage2Doc): Content[] {
       // row, stopping short of the table's own outer top/bottom edge.
       layout: {
         vLineWidth: () => 0,
-        hLineWidth: (i: number, node: ContentTable) => (i > 0 && i < node.table.body.length ? 0.5 : 0),
+        hLineWidth: (i: number, node: ContentTable) =>
+          i > 0 && i < node.table.body.length ? 0.5 : 0,
         hLineColor: () => TABLE_RULE,
       },
     })

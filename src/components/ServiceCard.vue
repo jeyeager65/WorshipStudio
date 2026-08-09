@@ -47,7 +47,9 @@ const subtitle = computed(() => {
 })
 
 const songSlots = computed(() => props.service.items.filter(isPlanningSongSlot))
-const filledSongCount = computed(() => songSlots.value.filter((item) => item.type === 'song').length)
+const filledSongCount = computed(
+  () => songSlots.value.filter((item) => item.type === 'song').length,
+)
 const assignmentCount = computed(() => props.service.assignments?.length ?? 0)
 const filledAssignmentCount = computed(
   () => props.service.assignments?.filter((assignment) => !!assignment.personId).length ?? 0,
@@ -109,17 +111,37 @@ function openPlan() {
           <span v-if="badge" class="today-badge">{{ badge }}</span>
         </div>
         <p class="service-full-date">{{ dateLabel }} <span>·</span> {{ timeLabel }}</p>
-        <p v-if="subtitle" class="service-sermon"><v-icon icon="mdi-book-open-page-variant-outline" size="16" />{{ subtitle }}</p>
+        <p v-if="subtitle" class="service-sermon">
+          <v-icon icon="mdi-book-open-page-variant-outline" size="16" />{{ subtitle }}
+        </p>
         <p v-else class="service-sermon service-sermon--empty">No sermon details yet</p>
       </div>
       <div class="service-counts">
-        <span class="service-state" :class="`service-state--${dateStatus}`"><i />{{ statusLabel }}</span>
-        <span class="service-template-status" :title="service.serviceTemplateName || 'No template applied'"><v-icon icon="mdi-file-tree-outline" size="17" />{{ service.serviceTemplateName || 'No template applied' }}</span>
-        <span v-if="hasAppliedTemplate"><v-icon icon="mdi-music-note-outline" size="17" />{{ songProgressLabel }}</span>
-        <span v-if="hasAppliedTemplate"><v-icon icon="mdi-account-check-outline" size="17" />{{ assignmentProgressLabel }}</span>
+        <span class="service-state" :class="`service-state--${dateStatus}`"
+          ><i />{{ statusLabel }}</span
+        >
+        <span
+          class="service-template-status"
+          :title="service.serviceTemplateName || 'No template applied'"
+          ><v-icon icon="mdi-file-tree-outline" size="17" />{{
+            service.serviceTemplateName || 'No template applied'
+          }}</span
+        >
+        <span v-if="hasAppliedTemplate"
+          ><v-icon icon="mdi-music-note-outline" size="17" />{{ songProgressLabel }}</span
+        >
+        <span v-if="hasAppliedTemplate"
+          ><v-icon icon="mdi-account-check-outline" size="17" />{{ assignmentProgressLabel }}</span
+        >
       </div>
       <div class="service-actions">
-        <v-btn color="primary" variant="tonal" size="small" prepend-icon="mdi-calendar-edit-outline" @click.stop="openPlan">
+        <v-btn
+          color="primary"
+          variant="tonal"
+          size="small"
+          prepend-icon="mdi-calendar-edit-outline"
+          @click.stop="openPlan"
+        >
           Plan
         </v-btn>
       </div>

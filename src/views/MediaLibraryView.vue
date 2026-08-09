@@ -30,13 +30,12 @@ const canvaRefreshMode = ref<'pages' | 'video'>('pages')
 const editingItem = ref<MediaItem>()
 const editTitleInput = ref('')
 const editDescriptionInput = ref('')
-const editTagsInput = ref('')
+const editTagsInput = ref<string[]>([])
 const editLocation = ref<'synced' | 'local'>('synced')
 const editTitleInvalid = computed(() => !editTitleInput.value.trim())
 const editorPreviewLoading = ref(false)
 const editorPreviewUnavailable = ref(false)
 const deleteError = ref('')
-
 
 onMounted(() => {
   if (!store.loaded) store.load()
@@ -137,7 +136,7 @@ async function openEditor(item: MediaItem) {
   editingItem.value = item
   editTitleInput.value = item.title
   editDescriptionInput.value = item.description ?? ''
-  editTagsInput.value = item.tags.join(', ')
+  editTagsInput.value = [...item.tags]
   editLocation.value = item.location
   editorPreviewUnavailable.value = false
   editorPreviewLoading.value = !previewUrlById.has(item.id)
@@ -177,10 +176,7 @@ async function saveEdits() {
     ...editingItem.value,
     title: editTitleInput.value.trim(),
     description: editDescriptionInput.value.trim() || undefined,
-    tags: editTagsInput.value
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter(Boolean),
+    tags: editTagsInput.value,
     location: editLocation.value,
   })
   editingItem.value = undefined
@@ -569,10 +565,12 @@ async function saveEdits() {
           </div>
           <div class="editor-field-row">
             <label for="media-tags">Tags</label>
-            <v-text-field
+            <v-combobox
               id="media-tags"
               v-model="editTagsInput"
-              placeholder="Separate tags with commas"
+              multiple
+              chips
+              closable-chips
               variant="outlined"
               density="compact"
               hide-details

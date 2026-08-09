@@ -38,16 +38,22 @@ const selectionService = computed(() =>
   servicesStore.services.find((service) => service.id === selectionServiceId.value),
 )
 const selectedSongIds = computed(
-  () => new Set(selectionService.value?.items.filter((item) => item.type === 'song').map((item) => item.songId) ?? []),
+  () =>
+    new Set(
+      selectionService.value?.items
+        .filter((item) => item.type === 'song')
+        .map((item) => item.songId) ?? [],
+    ),
 )
 const selectedSongs = ref<Song[]>([])
 function syncSelectedSongs() {
   const service = selectionService.value
   selectedSongs.value = !service
     ? []
-    : service.items.filter((item) => item.type === 'song')
-    .map((item) => store.songs.find((song) => song.id === item.songId))
-    .filter((song): song is Song => !!song)
+    : service.items
+        .filter((item) => item.type === 'song')
+        .map((item) => store.songs.find((song) => song.id === item.songId))
+        .filter((song): song is Song => !!song)
 }
 watch([selectionService, () => store.songs], syncSelectedSongs, { immediate: true })
 
@@ -156,7 +162,9 @@ function collectionsLabel(song: Song): string {
 function firstCollectionLabel(song: Song): string | undefined {
   const collection = song.collections[0]
   if (!collection) return undefined
-  return collection.number ? `${collection.collectionId} #${collection.number}` : collection.collectionId
+  return collection.number
+    ? `${collection.collectionId} #${collection.number}`
+    : collection.collectionId
 }
 
 // The same usage data as the Song Editor, split into two aligned lines in this directory — see
@@ -263,8 +271,12 @@ async function saveSelectedSongOrder() {
   if (!service || selectingSongId.value) return
   selectingSongId.value = 'reordering'
   try {
-    const songItems = new Map(service.items.filter((item) => item.type === 'song').map((item) => [item.songId, item]))
-    const orderedSongItems = selectedSongs.value.map((song) => songItems.get(song.id)).filter((item) => !!item)
+    const songItems = new Map(
+      service.items.filter((item) => item.type === 'song').map((item) => [item.songId, item]),
+    )
+    const orderedSongItems = selectedSongs.value
+      .map((song) => songItems.get(song.id))
+      .filter((item) => !!item)
     let songIndex = 0
     const items = service.items.map((item) => {
       if (item.type !== 'song') return item
@@ -302,7 +314,11 @@ function finishSelection() {
         <div class="page-eyebrow">Content Library</div>
         <h1>{{ selectionMode ? 'Choose Songs' : 'Songs' }}</h1>
         <p>
-          {{ selectionMode ? 'Browse the full library and select songs for this service plan.' : 'Organize lyrics, arrangements, collections, and service usage in one searchable library.' }}
+          {{
+            selectionMode
+              ? 'Browse the full library and select songs for this service plan.'
+              : 'Organize lyrics, arrangements, collections, and service usage in one searchable library.'
+          }}
         </p>
       </div>
       <div class="songs-summary" aria-label="Song library summary">
@@ -321,9 +337,16 @@ function finishSelection() {
       </div>
     </header>
 
-    <section v-if="selectionMode" class="selected-set-panel" aria-label="Songs selected for this plan">
+    <section
+      v-if="selectionMode"
+      class="selected-set-panel"
+      aria-label="Songs selected for this plan"
+    >
       <header class="selected-set-heading">
-        <span><v-icon icon="mdi-playlist-music" size="20" /><strong>{{ selectedSongs.length }}</strong> selected for this plan</span>
+        <span
+          ><v-icon icon="mdi-playlist-music" size="20" /><strong>{{ selectedSongs.length }}</strong>
+          selected for this plan</span
+        >
         <v-btn color="primary" variant="flat" size="small" @click="finishSelection">Done</v-btn>
       </header>
       <VueDraggable
@@ -336,8 +359,17 @@ function finishSelection() {
       >
         <div v-for="song in selectedSongs" :key="song.id" class="selected-set-row">
           <v-icon icon="mdi-drag-vertical" size="18" class="selected-set-drag" />
-          <span><strong>{{ song.title }}</strong><small v-if="firstCollectionLabel(song)">{{ firstCollectionLabel(song) }}</small></span>
-          <v-btn icon="mdi-close" size="x-small" variant="text" aria-label="Remove from plan" @click="togglePlanSong(song)" />
+          <span
+            ><strong>{{ song.title }}</strong
+            ><small v-if="firstCollectionLabel(song)">{{ firstCollectionLabel(song) }}</small></span
+          >
+          <v-btn
+            icon="mdi-close"
+            size="x-small"
+            variant="text"
+            aria-label="Remove from plan"
+            @click="togglePlanSong(song)"
+          />
         </div>
       </VueDraggable>
       <p v-else class="selected-set-empty">Select songs from the library below.</p>
@@ -470,9 +502,9 @@ function finishSelection() {
             title="No Songs Yet"
             message="Create a song, or import an existing OpenSong library from Settings → Library & Sync."
           >
-              <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSong"
-                >New Song</v-btn
-              >
+            <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSong"
+              >New Song</v-btn
+            >
           </LibraryEmptyState>
           <LibraryEmptyState
             v-else-if="store.loaded && showArchived && visibleSongs.length === 0"

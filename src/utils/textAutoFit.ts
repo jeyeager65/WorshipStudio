@@ -42,7 +42,10 @@ function estimateBlockHeightPx(joined: string, fontSizePx: number): number {
   // distinct) — each one wraps independently rather than being treated as one long line.
   const lineCount = joined
     .split('\n')
-    .reduce((total, line) => total + estimateWrappedLineCount(line, fontSizePx, REFERENCE_BOX_WIDTH_PX), 0)
+    .reduce(
+      (total, line) => total + estimateWrappedLineCount(line, fontSizePx, REFERENCE_BOX_WIDTH_PX),
+      0,
+    )
   return lineCount * fontSizePx * LINE_HEIGHT_RATIO
 }
 
@@ -57,13 +60,18 @@ function estimateBlockHeightPx(joined: string, fontSizePx: number): number {
  * A single unit too long to fit even alone at the minimum size still becomes its own page
  * (never split mid-unit) — PresentationView's live shrink-to-fit does what it can with it.
  */
-export function paginateTextUnits(units: string[], range: FontSizeRange, separator: string = ' '): string[][] {
+export function paginateTextUnits(
+  units: string[],
+  range: FontSizeRange,
+  separator: string = ' ',
+): string[][] {
   if (units.length === 0) return [[]]
   const pages: string[][] = []
   let currentPage: string[] = []
   for (const unit of units) {
     const candidate = [...currentPage, unit]
-    const fits = estimateBlockHeightPx(candidate.join(separator), range.minPx) <= REFERENCE_BOX_HEIGHT_PX
+    const fits =
+      estimateBlockHeightPx(candidate.join(separator), range.minPx) <= REFERENCE_BOX_HEIGHT_PX
     if (currentPage.length === 0 || fits) {
       currentPage = candidate
     } else {
@@ -88,7 +96,11 @@ export function paginateTextUnits(units: string[], range: FontSizeRange, separat
  * `measureWidth` is injected (real canvas text measurement in PresentationView; jsdom's canvas
  * has no real measurement backend, so tests pass a synthetic character-count-based one).
  */
-export function wrapLineAtPunctuation(line: string, maxWidthPx: number, measureWidth: (text: string) => number): string[] {
+export function wrapLineAtPunctuation(
+  line: string,
+  maxWidthPx: number,
+  measureWidth: (text: string) => number,
+): string[] {
   if (measureWidth(line) <= maxWidthPx) return [line]
   const result: string[] = []
   let remaining = line

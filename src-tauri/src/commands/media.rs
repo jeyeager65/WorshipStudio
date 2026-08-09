@@ -12,7 +12,14 @@ pub fn list_media(app: AppHandle) -> Result<Vec<MediaItem>, String> {
 #[tauri::command]
 pub fn save_media(app: AppHandle, item: MediaItem) -> Result<(), String> {
     let root = library_root(&app);
-    media::save(&root, item, &this_device_name(&app), &now_iso()).map_err(|e| e.to_string())?;
+    media::save(
+        &root,
+        &local_media_root(&app),
+        item,
+        &this_device_name(&app),
+        &now_iso(),
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 

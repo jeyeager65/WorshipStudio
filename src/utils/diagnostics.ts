@@ -26,6 +26,9 @@ export function formatDiagnosticSummary(summary: DiagnosticSummary): string {
 }
 
 export function diagnosticBundleFilename(generatedAt = new Date()): string {
-  const stamp = generatedAt.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
+  const stamp = generatedAt
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}Z$/, 'Z')
   return `worship-studio-diagnostics-${stamp}.json`
 }

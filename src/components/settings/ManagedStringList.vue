@@ -40,7 +40,14 @@ async function remove(index: number) {
       <p v-if="modelValue.length === 0" class="text-medium-emphasis text-body-2">None yet.</p>
     </div>
     <div class="d-flex ga-2" style="max-width: 400px">
-      <v-text-field v-model="newValue" :label="addLabel" variant="outlined" density="compact" hide-details @keydown.enter="add" />
+      <v-text-field
+        v-model="newValue"
+        :label="addLabel"
+        variant="outlined"
+        density="compact"
+        hide-details
+        @keydown.enter="add"
+      />
       <v-btn variant="flat" color="primary" icon="mdi-plus" @click="add" />
     </div>
   </div>

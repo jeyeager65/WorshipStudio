@@ -1233,7 +1233,10 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
             <v-btn value="custom" size="small">Custom Time</v-btn>
             <v-btn value="days" size="small">Days Until</v-btn>
           </v-btn-toggle>
-          <p v-if="countdownElement.mode === 'service'" class="text-caption text-medium-emphasis mb-3">
+          <p
+            v-if="countdownElement.mode === 'service'"
+            class="text-caption text-medium-emphasis mb-3"
+          >
             Counts down to whichever service this slide is presented in. Shows a placeholder here
             since this slide isn't tied to a service yet.
           </p>

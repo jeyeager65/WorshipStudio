@@ -69,15 +69,9 @@ describe('buildOrderOfWorship', () => {
     const service = baseService({
       items: [{ id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: [] } }],
     })
-    const doc = buildOrderOfWorship(
-      service,
-      songs,
-      slides,
-      new Map(),
-      new Map(),
-      undefined,
-      [{ name: 'hymnal', abbreviation: 'WH' }],
-    )
+    const doc = buildOrderOfWorship(service, songs, slides, new Map(), new Map(), undefined, [
+      { name: 'hymnal', abbreviation: 'WH' },
+    ])
     expect(doc.lines[0]?.text).toBe('Come Behold the Wondrous Mystery WH 184')
   })
 
@@ -198,7 +192,13 @@ describe('buildOrderOfWorship', () => {
   it('includes a media/video item once it has a bulletinLabel, with the label as the line and no placeholder text', () => {
     const service = baseService({
       items: [
-        { id: 'item-1', type: 'media', mediaId: 'media-1', fit: 'cover', bulletinLabel: 'Offering Video' },
+        {
+          id: 'item-1',
+          type: 'media',
+          mediaId: 'media-1',
+          fit: 'cover',
+          bulletinLabel: 'Offering Video',
+        },
         { id: 'item-2', type: 'video', mediaId: 'media-2', bulletinLabel: 'Baptism Video' },
       ],
     })
@@ -228,7 +228,11 @@ describe('buildOrderOfWorship', () => {
       slides,
       new Map(),
       new Map(),
-      { page1Title: 'Order of Worship', page1FooterEnabled: true, page1FooterTitle: 'Heart Preparation' },
+      {
+        page1Title: 'Order of Worship',
+        page1FooterEnabled: true,
+        page1FooterTitle: 'Heart Preparation',
+      },
     )
     expect(withFooter.footer).toEqual({ title: 'Heart Preparation', text: 'Be still and know.' })
 
@@ -241,7 +245,11 @@ describe('buildOrderOfWorship', () => {
       slides,
       new Map(),
       new Map(),
-      { page1Title: 'Order of Worship', page1FooterEnabled: false, page1FooterTitle: 'Heart Preparation' },
+      {
+        page1Title: 'Order of Worship',
+        page1FooterEnabled: false,
+        page1FooterTitle: 'Heart Preparation',
+      },
     )
     expect(disabled.footer).toBeUndefined()
   })

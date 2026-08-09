@@ -1,11 +1,7 @@
 import 'vuetify/styles'
 import '@mdi/font/css/materialdesignicons.css'
 import { createVuetify } from 'vuetify'
-import {
-  worshipDarkColors,
-  worshipDarkVariables,
-  worshipLightColors,
-} from './themeTokens'
+import { worshipDarkColors, worshipDarkVariables, worshipLightColors } from './themeTokens'
 
 // This is a real, permanent preset theme, not a placeholder waiting for church-branding colors —
 // the plan going forward is a small set of well-designed built-in theme options (light + dark)

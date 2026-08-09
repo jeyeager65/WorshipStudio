@@ -52,148 +52,154 @@ function setBrandingColor(which: 'primaryColor' | 'secondaryColor', event: Event
   <!-- Single root element required so the parent's v-show can toggle this section's visibility
        (v-show can't attach to a multi-root/fragment component). -->
   <div>
-  <SettingsPanel
-    title="Church identity"
-    description="The name used on reports, bulletins, and exported documents."
-    icon="mdi-church-outline"
-  >
-    <v-text-field
-      v-model="librarySettings!.branding.churchName"
-      label="Church or ministry name"
-      placeholder="First Community Church"
-      variant="outlined"
-      density="comfortable"
-      hide-details
-      class="branding-name-field"
-    />
-  </SettingsPanel>
-
-  <SettingsPanel
-    title="Logo"
-    description="Choose a synced image so the logo is available on every computer using this library."
-    icon="mdi-image-outline"
-  >
-    <div class="branding-logo-layout">
-      <div class="branding-logo-preview">
-        <v-progress-circular v-if="brandingLogoLoading" indeterminate color="primary" size="28" />
-        <img
-          v-else-if="brandingLogoPreviewUrl"
-          :src="brandingLogoPreviewUrl"
-          :alt="`${librarySettings!.branding.churchName || 'Church'} logo`"
-        />
-        <template v-else>
-          <v-icon icon="mdi-image-outline" size="31" />
-          <span>{{
-            librarySettings!.branding.logoMediaId ? 'Logo preview unavailable' : 'No logo selected'
-          }}</span>
-        </template>
-      </div>
-      <div class="branding-logo-copy">
-        <strong>Church logo</strong>
-        <p>
-          A transparent PNG works best. The original image remains in the Media Library and can be
-          reused elsewhere.
-        </p>
-        <div>
-          <v-btn
-            variant="flat"
-            color="primary"
-            prepend-icon="mdi-image-search-outline"
-            @click="brandingLogoPickerOpen = true"
-          >
-            {{ librarySettings!.branding.logoMediaId ? 'Change Logo' : 'Choose Logo' }}
-          </v-btn>
-          <v-btn
-            v-if="librarySettings!.branding.logoMediaId"
-            variant="text"
-            color="error"
-            prepend-icon="mdi-close"
-            @click="removeBrandingLogo"
-          >
-            Remove Logo
-          </v-btn>
-        </div>
-      </div>
-    </div>
-  </SettingsPanel>
-
-  <SettingsPanel
-    title="Brand colors"
-    description="Reusable colors for report accents and audience themes."
-    icon="mdi-palette-outline"
-  >
-    <div class="branding-color-grid">
-      <label class="branding-color-field">
-        <span>Primary color</span>
-        <div>
-          <input
-            type="color"
-            :value="librarySettings!.branding.primaryColor"
-            aria-label="Choose primary brand color"
-            @input="setBrandingColor('primaryColor', $event)"
-          />
-          <v-text-field
-            v-model="librarySettings!.branding.primaryColor"
-            variant="outlined"
-            density="compact"
-            hide-details
-          />
-        </div>
-        <small>Headings and primary accents</small>
-      </label>
-      <label class="branding-color-field">
-        <span>Secondary color</span>
-        <div>
-          <input
-            type="color"
-            :value="librarySettings!.branding.secondaryColor"
-            aria-label="Choose secondary brand color"
-            @input="setBrandingColor('secondaryColor', $event)"
-          />
-          <v-text-field
-            v-model="librarySettings!.branding.secondaryColor"
-            variant="outlined"
-            density="compact"
-            hide-details
-          />
-        </div>
-        <small>Highlights and supporting accents</small>
-      </label>
-    </div>
-  </SettingsPanel>
-
-  <SettingsPanel
-    title="Preview"
-    description="A simplified example of how the identity appears on generated documents."
-    icon="mdi-file-eye-outline"
-  >
-    <div
-      class="branding-document-preview"
-      :style="{
-        '--preview-primary': librarySettings!.branding.primaryColor,
-        '--preview-secondary': librarySettings!.branding.secondaryColor,
-      }"
+    <SettingsPanel
+      title="Church identity"
+      description="The name used on reports, bulletins, and exported documents."
+      icon="mdi-church-outline"
     >
-      <header>
-        <span class="branding-preview-logo">
-          <img v-if="brandingLogoPreviewUrl" :src="brandingLogoPreviewUrl" alt="" />
-          <v-icon v-else icon="mdi-church-outline" size="22" />
-        </span>
-        <div>
-          <small>Worship Planning Report</small>
-          <strong>{{ librarySettings!.branding.churchName || 'Your Church Name' }}</strong>
-        </div>
-      </header>
-      <div class="branding-preview-rule" />
-      <section>
-        <span />
-        <span />
-        <span />
-      </section>
-    </div>
-  </SettingsPanel>
+      <v-text-field
+        v-model="librarySettings!.branding.churchName"
+        label="Church or ministry name"
+        placeholder="First Community Church"
+        variant="outlined"
+        density="comfortable"
+        hide-details
+        class="branding-name-field"
+      />
+    </SettingsPanel>
 
-  <MediaPickerDialog v-model="brandingLogoPickerOpen" purpose="logo" @select="selectBrandingLogo" />
+    <SettingsPanel
+      title="Logo"
+      description="Choose a synced image so the logo is available on every computer using this library."
+      icon="mdi-image-outline"
+    >
+      <div class="branding-logo-layout">
+        <div class="branding-logo-preview">
+          <v-progress-circular v-if="brandingLogoLoading" indeterminate color="primary" size="28" />
+          <img
+            v-else-if="brandingLogoPreviewUrl"
+            :src="brandingLogoPreviewUrl"
+            :alt="`${librarySettings!.branding.churchName || 'Church'} logo`"
+          />
+          <template v-else>
+            <v-icon icon="mdi-image-outline" size="31" />
+            <span>{{
+              librarySettings!.branding.logoMediaId
+                ? 'Logo preview unavailable'
+                : 'No logo selected'
+            }}</span>
+          </template>
+        </div>
+        <div class="branding-logo-copy">
+          <strong>Church logo</strong>
+          <p>
+            A transparent PNG works best. The original image remains in the Media Library and can be
+            reused elsewhere.
+          </p>
+          <div>
+            <v-btn
+              variant="flat"
+              color="primary"
+              prepend-icon="mdi-image-search-outline"
+              @click="brandingLogoPickerOpen = true"
+            >
+              {{ librarySettings!.branding.logoMediaId ? 'Change Logo' : 'Choose Logo' }}
+            </v-btn>
+            <v-btn
+              v-if="librarySettings!.branding.logoMediaId"
+              variant="text"
+              color="error"
+              prepend-icon="mdi-close"
+              @click="removeBrandingLogo"
+            >
+              Remove Logo
+            </v-btn>
+          </div>
+        </div>
+      </div>
+    </SettingsPanel>
+
+    <SettingsPanel
+      title="Brand colors"
+      description="Reusable colors for report accents and audience themes."
+      icon="mdi-palette-outline"
+    >
+      <div class="branding-color-grid">
+        <label class="branding-color-field">
+          <span>Primary color</span>
+          <div>
+            <input
+              type="color"
+              :value="librarySettings!.branding.primaryColor"
+              aria-label="Choose primary brand color"
+              @input="setBrandingColor('primaryColor', $event)"
+            />
+            <v-text-field
+              v-model="librarySettings!.branding.primaryColor"
+              variant="outlined"
+              density="compact"
+              hide-details
+            />
+          </div>
+          <small>Headings and primary accents</small>
+        </label>
+        <label class="branding-color-field">
+          <span>Secondary color</span>
+          <div>
+            <input
+              type="color"
+              :value="librarySettings!.branding.secondaryColor"
+              aria-label="Choose secondary brand color"
+              @input="setBrandingColor('secondaryColor', $event)"
+            />
+            <v-text-field
+              v-model="librarySettings!.branding.secondaryColor"
+              variant="outlined"
+              density="compact"
+              hide-details
+            />
+          </div>
+          <small>Highlights and supporting accents</small>
+        </label>
+      </div>
+    </SettingsPanel>
+
+    <SettingsPanel
+      title="Preview"
+      description="A simplified example of how the identity appears on generated documents."
+      icon="mdi-file-eye-outline"
+    >
+      <div
+        class="branding-document-preview"
+        :style="{
+          '--preview-primary': librarySettings!.branding.primaryColor,
+          '--preview-secondary': librarySettings!.branding.secondaryColor,
+        }"
+      >
+        <header>
+          <span class="branding-preview-logo">
+            <img v-if="brandingLogoPreviewUrl" :src="brandingLogoPreviewUrl" alt="" />
+            <v-icon v-else icon="mdi-church-outline" size="22" />
+          </span>
+          <div>
+            <small>Worship Planning Report</small>
+            <strong>{{ librarySettings!.branding.churchName || 'Your Church Name' }}</strong>
+          </div>
+        </header>
+        <div class="branding-preview-rule" />
+        <section>
+          <span />
+          <span />
+          <span />
+        </section>
+      </div>
+    </SettingsPanel>
+
+    <MediaPickerDialog
+      v-model="brandingLogoPickerOpen"
+      purpose="logo"
+      @select="selectBrandingLogo"
+    />
   </div>
 </template>
 

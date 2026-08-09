@@ -48,19 +48,43 @@ describe('getChapterCount / getVerseCount', () => {
 
 describe('parseReference', () => {
   it('parses a single verse', () => {
-    expect(parseReference('John 3:16')).toEqual({ book: 'John', startChapter: 3, startVerse: 16, endChapter: 3, endVerse: 16 })
+    expect(parseReference('John 3:16')).toEqual({
+      book: 'John',
+      startChapter: 3,
+      startVerse: 16,
+      endChapter: 3,
+      endVerse: 16,
+    })
   })
 
   it('parses a verse range within one chapter', () => {
-    expect(parseReference('John 3:16-17')).toEqual({ book: 'John', startChapter: 3, startVerse: 16, endChapter: 3, endVerse: 17 })
+    expect(parseReference('John 3:16-17')).toEqual({
+      book: 'John',
+      startChapter: 3,
+      startVerse: 16,
+      endChapter: 3,
+      endVerse: 17,
+    })
   })
 
   it('parses a range crossing chapters', () => {
-    expect(parseReference('John 3:16-4:2')).toEqual({ book: 'John', startChapter: 3, startVerse: 16, endChapter: 4, endVerse: 2 })
+    expect(parseReference('John 3:16-4:2')).toEqual({
+      book: 'John',
+      startChapter: 3,
+      startVerse: 16,
+      endChapter: 4,
+      endVerse: 2,
+    })
   })
 
   it('parses a whole-chapter reference with no verse given', () => {
-    expect(parseReference('Psalm 23')).toEqual({ book: 'Psalm', startChapter: 23, startVerse: 1, endChapter: 23, endVerse: 6 })
+    expect(parseReference('Psalm 23')).toEqual({
+      book: 'Psalm',
+      startChapter: 23,
+      startVerse: 1,
+      endChapter: 23,
+      endVerse: 6,
+    })
   })
 
   it('parses a multi-word numbered book name', () => {
@@ -84,23 +108,63 @@ describe('parseReference', () => {
 
 describe('isValidReference', () => {
   it('accepts a reference within bounds', () => {
-    expect(isValidReference({ book: 'John', startChapter: 3, startVerse: 16, endChapter: 3, endVerse: 17 })).toBe(true)
+    expect(
+      isValidReference({
+        book: 'John',
+        startChapter: 3,
+        startVerse: 16,
+        endChapter: 3,
+        endVerse: 17,
+      }),
+    ).toBe(true)
   })
 
   it('rejects a verse beyond the chapter length', () => {
-    expect(isValidReference({ book: 'John', startChapter: 3, startVerse: 1, endChapter: 3, endVerse: 999 })).toBe(false)
+    expect(
+      isValidReference({
+        book: 'John',
+        startChapter: 3,
+        startVerse: 1,
+        endChapter: 3,
+        endVerse: 999,
+      }),
+    ).toBe(false)
   })
 
   it('rejects a chapter beyond the book length', () => {
-    expect(isValidReference({ book: 'Jude', startChapter: 2, startVerse: 1, endChapter: 2, endVerse: 1 })).toBe(false)
+    expect(
+      isValidReference({
+        book: 'Jude',
+        startChapter: 2,
+        startVerse: 1,
+        endChapter: 2,
+        endVerse: 1,
+      }),
+    ).toBe(false)
   })
 
   it('rejects an end that comes before the start', () => {
-    expect(isValidReference({ book: 'John', startChapter: 3, startVerse: 20, endChapter: 3, endVerse: 16 })).toBe(false)
+    expect(
+      isValidReference({
+        book: 'John',
+        startChapter: 3,
+        startVerse: 20,
+        endChapter: 3,
+        endVerse: 16,
+      }),
+    ).toBe(false)
   })
 
   it('rejects an unknown book', () => {
-    expect(isValidReference({ book: 'Not A Book', startChapter: 1, startVerse: 1, endChapter: 1, endVerse: 1 })).toBe(false)
+    expect(
+      isValidReference({
+        book: 'Not A Book',
+        startChapter: 1,
+        startVerse: 1,
+        endChapter: 1,
+        endVerse: 1,
+      }),
+    ).toBe(false)
   })
 })
 
@@ -137,39 +201,97 @@ describe('getWayfindingBooks', () => {
 
 describe('getBibleProgress', () => {
   it('places Genesis 1:1 near the very start', () => {
-    const progress = getBibleProgress({ book: 'Genesis', startChapter: 1, startVerse: 1, endChapter: 1, endVerse: 1 })
+    const progress = getBibleProgress({
+      book: 'Genesis',
+      startChapter: 1,
+      startVerse: 1,
+      endChapter: 1,
+      endVerse: 1,
+    })
     expect(progress).toBeCloseTo(0, 3)
   })
 
   it('places the last verse of Malachi exactly at the Old Testament fraction', () => {
-    const progress = getBibleProgress({ book: 'Malachi', startChapter: 4, startVerse: 6, endChapter: 4, endVerse: 6 })
+    const progress = getBibleProgress({
+      book: 'Malachi',
+      startChapter: 4,
+      startVerse: 6,
+      endChapter: 4,
+      endVerse: 6,
+    })
     expect(progress).toBeCloseTo(OLD_TESTAMENT_FRACTION, 10)
   })
 
   it('places the last verse of Revelation at exactly 1', () => {
-    const progress = getBibleProgress({ book: 'Revelation', startChapter: 22, startVerse: 21, endChapter: 22, endVerse: 21 })
+    const progress = getBibleProgress({
+      book: 'Revelation',
+      startChapter: 22,
+      startVerse: 21,
+      endChapter: 22,
+      endVerse: 21,
+    })
     expect(progress).toBeCloseTo(1, 10)
   })
 
   it('returns undefined for an unknown book', () => {
-    expect(getBibleProgress({ book: 'Not A Book', startChapter: 1, startVerse: 1, endChapter: 1, endVerse: 1 })).toBeUndefined()
+    expect(
+      getBibleProgress({
+        book: 'Not A Book',
+        startChapter: 1,
+        startVerse: 1,
+        endChapter: 1,
+        endVerse: 1,
+      }),
+    ).toBeUndefined()
   })
 })
 
 describe('formatReference', () => {
   it('formats a single verse', () => {
-    expect(formatReference({ book: 'John', startChapter: 3, startVerse: 16, endChapter: 3, endVerse: 16 })).toBe('John 3:16')
+    expect(
+      formatReference({
+        book: 'John',
+        startChapter: 3,
+        startVerse: 16,
+        endChapter: 3,
+        endVerse: 16,
+      }),
+    ).toBe('John 3:16')
   })
 
   it('formats a range within one chapter', () => {
-    expect(formatReference({ book: 'John', startChapter: 3, startVerse: 16, endChapter: 3, endVerse: 17 })).toBe('John 3:16-17')
+    expect(
+      formatReference({
+        book: 'John',
+        startChapter: 3,
+        startVerse: 16,
+        endChapter: 3,
+        endVerse: 17,
+      }),
+    ).toBe('John 3:16-17')
   })
 
   it('formats a range crossing chapters', () => {
-    expect(formatReference({ book: 'John', startChapter: 3, startVerse: 16, endChapter: 4, endVerse: 2 })).toBe('John 3:16-4:2')
+    expect(
+      formatReference({
+        book: 'John',
+        startChapter: 3,
+        startVerse: 16,
+        endChapter: 4,
+        endVerse: 2,
+      }),
+    ).toBe('John 3:16-4:2')
   })
 
   it('formats a whole chapter without a verse range', () => {
-    expect(formatReference({ book: 'Psalm', startChapter: 23, startVerse: 1, endChapter: 23, endVerse: 6 })).toBe('Psalm 23')
+    expect(
+      formatReference({
+        book: 'Psalm',
+        startChapter: 23,
+        startVerse: 1,
+        endChapter: 23,
+        endVerse: 6,
+      }),
+    ).toBe('Psalm 23')
   })
 })

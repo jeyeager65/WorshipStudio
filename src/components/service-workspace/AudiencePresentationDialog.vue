@@ -106,7 +106,9 @@ defineEmits<{
               Identify
             </v-btn>
             <v-icon
-              :icon="selectedDisplayId === display.id ? 'mdi-radiobox-marked' : 'mdi-radiobox-blank'"
+              :icon="
+                selectedDisplayId === display.id ? 'mdi-radiobox-marked' : 'mdi-radiobox-blank'
+              "
               :color="selectedDisplayId === display.id ? 'primary' : undefined"
               size="20"
             />

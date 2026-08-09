@@ -23,7 +23,14 @@ function sampleService(overrides: Partial<Service> = {}): Service {
     serviceTemplateName: 'Sunday Worship',
     items: [
       { id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: [] } },
-      { id: 'item-sermon', type: 'sermon', title: 'Our Lord’s Prayer', passages: [], mainPassageId: '', outline: [] },
+      {
+        id: 'item-sermon',
+        type: 'sermon',
+        title: 'Our Lord’s Prayer',
+        passages: [],
+        mainPassageId: '',
+        outline: [],
+      },
     ],
     updatedAt: '',
     updatedByDevice: '',

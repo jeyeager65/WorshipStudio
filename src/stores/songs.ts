@@ -25,7 +25,9 @@ export const useSongsStore = defineStore('songs', () => {
   }
 
   async function importFromOpenSong() {
-    const imported = await asyncState.runMutation(() => getAdapter().songs.importFromOpenSongFiles())
+    const imported = await asyncState.runMutation(() =>
+      getAdapter().songs.importFromOpenSongFiles(),
+    )
     if (imported.length > 0) await load()
     return imported
   }

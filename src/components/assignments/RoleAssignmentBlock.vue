@@ -19,12 +19,21 @@ defineEmits<{ add: []; remove: [RoleAssignment] }>()
 </script>
 
 <template>
-  <article class="role-block" :style="{ '--role-color': color ? `rgb(var(--v-theme-${color}))` : 'rgb(var(--v-theme-primary))' }">
+  <article
+    class="role-block"
+    :style="{
+      '--role-color': color ? `rgb(var(--v-theme-${color}))` : 'rgb(var(--v-theme-primary))',
+    }"
+  >
     <header class="role-header">
       <div>
         <div class="role-title">{{ label }}</div>
         <div class="role-count">
-          {{ assignments.length === 0 ? 'No assignments' : `${assignments.length} assignment${assignments.length === 1 ? '' : 's'}` }}
+          {{
+            assignments.length === 0
+              ? 'No assignments'
+              : `${assignments.length} assignment${assignments.length === 1 ? '' : 's'}`
+          }}
         </div>
       </div>
       <v-spacer />
@@ -56,12 +65,30 @@ defineEmits<{ add: []; remove: [RoleAssignment] }>()
             clearable
           />
         </label>
-        <v-checkbox v-model="assignment.tentative" label="Tentative" density="compact" hide-details class="tentative-check" />
+        <v-checkbox
+          v-model="assignment.tentative"
+          label="Tentative"
+          density="compact"
+          hide-details
+          class="tentative-check"
+        />
         <div class="assignment-statuses">
-          <v-chip v-if="isConflicted(assignment)" color="warning" size="small" variant="tonal" prepend-icon="mdi-alert-outline">
+          <v-chip
+            v-if="isConflicted(assignment)"
+            color="warning"
+            size="small"
+            variant="tonal"
+            prepend-icon="mdi-alert-outline"
+          >
             CONFLICT
           </v-chip>
-          <v-chip v-if="isUnavailable(assignment)" color="error" size="small" variant="tonal" prepend-icon="mdi-calendar-remove-outline">
+          <v-chip
+            v-if="isUnavailable(assignment)"
+            color="error"
+            size="small"
+            variant="tonal"
+            prepend-icon="mdi-calendar-remove-outline"
+          >
             Unavailable
           </v-chip>
         </div>
@@ -87,7 +114,8 @@ defineEmits<{ add: []; remove: [RoleAssignment] }>()
 .role-block {
   margin-bottom: 11px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--role-color) 15%, rgba(var(--v-theme-on-surface), 0.075));
+  border: 1px solid
+    color-mix(in srgb, var(--role-color) 15%, rgba(var(--v-theme-on-surface), 0.075));
   border-radius: 8px;
   background: rgba(var(--v-theme-background), 0.34);
 }

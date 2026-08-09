@@ -41,7 +41,14 @@ describe('flattenService', () => {
   it('expands a song item into one flat slide per arrangement entry, including repeats', () => {
     const song = makeSong()
     const service = makeService({
-      items: [{ id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: ['v1', 'c', 'c'] } }],
+      items: [
+        {
+          id: 'item-1',
+          type: 'song',
+          songId: 'song-1',
+          arrangement: { sequence: ['v1', 'c', 'c'] },
+        },
+      ],
     })
     const flat = flattenService(service, new Map([['song-1', song]]))
     expect(flat).toHaveLength(3)
@@ -118,7 +125,9 @@ describe('flattenService', () => {
   it('omits the collection number when the entry has none, and returns an empty footer when there are no collections', () => {
     const withoutNumber = flattenService(
       makeService({
-        items: [{ id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: ['v1'] } }],
+        items: [
+          { id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: ['v1'] } },
+        ],
       }),
       new Map([['song-1', makeSong({ collections: [{ collectionId: 'Hymns of Grace' }] })]]),
     )
@@ -126,7 +135,9 @@ describe('flattenService', () => {
 
     const withoutCollections = flattenService(
       makeService({
-        items: [{ id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: ['v1'] } }],
+        items: [
+          { id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: ['v1'] } },
+        ],
       }),
       new Map([['song-1', makeSong({ collections: [] })]]),
     )
@@ -136,12 +147,22 @@ describe('flattenService', () => {
   it('applies the configured song font range to every block', () => {
     const song = makeSong()
     const service = makeService({
-      items: [{ id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: ['v1', 'c'] } }],
+      items: [
+        { id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: ['v1', 'c'] } },
+      ],
     })
-    const flat = flattenService(service, new Map([['song-1', song]]), new Map(), new Map(), new Map(), undefined, {
-      minPx: 20,
-      maxPx: 60,
-    })
+    const flat = flattenService(
+      service,
+      new Map([['song-1', song]]),
+      new Map(),
+      new Map(),
+      new Map(),
+      undefined,
+      {
+        minPx: 20,
+        maxPx: 60,
+      },
+    )
     expect(flat.every((s) => s.fontRange?.maxPx === 60 && s.fontRange?.minPx === 20)).toBe(true)
     // Song lines shouldn't wrap unless necessary, and should never break at a plain word
     // boundary when they do — only at a comma/semicolon (see PresentationView's use of lineWrap).
@@ -150,7 +171,13 @@ describe('flattenService', () => {
 
   it('never splits a song block across multiple slides, however long its text', () => {
     const longSong = makeSong({
-      blocks: [{ id: 'v1', label: 'Verse 1', text: Array.from({ length: 50 }, (_, i) => `Line ${i + 1} of the song.`).join('\n') }],
+      blocks: [
+        {
+          id: 'v1',
+          label: 'Verse 1',
+          text: Array.from({ length: 50 }, (_, i) => `Line ${i + 1} of the song.`).join('\n'),
+        },
+      ],
     })
     const service = makeService({
       items: [{ id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: ['v1'] } }],
@@ -172,7 +199,9 @@ describe('flattenService', () => {
 
   it('falls back gracefully when the referenced song cannot be resolved', () => {
     const service = makeService({
-      items: [{ id: 'item-1', type: 'song', songId: 'missing-song', arrangement: { sequence: ['v1'] } }],
+      items: [
+        { id: 'item-1', type: 'song', songId: 'missing-song', arrangement: { sequence: ['v1'] } },
+      ],
     })
     const flat = flattenService(service, new Map())
     expect(flat).toHaveLength(1)
@@ -196,7 +225,11 @@ describe('flattenService', () => {
     })
     const flat = flattenService(service, new Map())
     expect(flat).toHaveLength(2)
-    expect(flat[0]).toMatchObject({ itemLabel: 'Text Slide', subLabel: 'Sermon Point 1', text: 'Point one text' })
+    expect(flat[0]).toMatchObject({
+      itemLabel: 'Text Slide',
+      subLabel: 'Sermon Point 1',
+      text: 'Point one text',
+    })
   })
 
   it('treats not-yet-fully-built item types as a single placeholder slide', () => {
@@ -215,7 +248,12 @@ describe('flattenService', () => {
     })
     const flat = flattenService(service, new Map())
     expect(flat).toHaveLength(1)
-    expect(flat[0]).toMatchObject({ itemLabel: 'Media', mediaId: 'media-1', mediaKind: 'image', mediaFit: 'contain' })
+    expect(flat[0]).toMatchObject({
+      itemLabel: 'Media',
+      mediaId: 'media-1',
+      mediaKind: 'image',
+      mediaFit: 'contain',
+    })
   })
 
   it('carries a video item through, defaulting to a Contain fit', () => {
@@ -224,12 +262,24 @@ describe('flattenService', () => {
     })
     const flat = flattenService(service, new Map())
     expect(flat).toHaveLength(1)
-    expect(flat[0]).toMatchObject({ itemLabel: 'Video', mediaId: 'media-1', mediaKind: 'video', mediaFit: 'contain' })
+    expect(flat[0]).toMatchObject({
+      itemLabel: 'Video',
+      mediaId: 'media-1',
+      mediaKind: 'video',
+      mediaFit: 'contain',
+    })
   })
 
   it('carries an external-app item through with its profile name and chosen file', () => {
     const service = makeService({
-      items: [{ id: 'item-1', type: 'external-app', profileId: 'profile-1', file: 'C:\\Services\\slides.pptx' }],
+      items: [
+        {
+          id: 'item-1',
+          type: 'external-app',
+          profileId: 'profile-1',
+          file: 'C:\\Services\\slides.pptx',
+        },
+      ],
     })
     const profiles = new Map([
       [
@@ -257,7 +307,10 @@ describe('flattenService', () => {
       items: [{ id: 'item-1', type: 'external-app', profileId: 'missing-profile' }],
     })
     const flat = flattenService(service, new Map())
-    expect(flat[0]).toMatchObject({ itemLabel: 'External App', externalApp: { profileId: 'missing-profile' } })
+    expect(flat[0]).toMatchObject({
+      itemLabel: 'External App',
+      externalApp: { profileId: 'missing-profile' },
+    })
   })
 
   it('falls back gracefully when a slide-ref cannot be resolved', () => {
@@ -275,7 +328,13 @@ describe('flattenService', () => {
       items: [
         { id: 'item-1', type: 'text-slide', slides: [{ id: 'w', label: 'Welcome', text: 'Hi!' }] },
         { id: 'item-2', type: 'song', songId: 'song-1', arrangement: { sequence: ['v1'] } },
-        { id: 'item-3', type: 'scripture', reference: 'John 3:16', translation: 'KJV', displayMode: 'full' },
+        {
+          id: 'item-3',
+          type: 'scripture',
+          reference: 'John 3:16',
+          translation: 'KJV',
+          displayMode: 'full',
+        },
       ],
     })
     const flat = flattenService(service, new Map([['song-1', song]]))
@@ -303,7 +362,15 @@ describe('flattenService — scripture', () => {
 
   it('falls back to the raw reference as a placeholder before the passage resolves', () => {
     const service = makeService({
-      items: [{ id: 'item-1', type: 'scripture', reference: 'John 3:16-17', translation: 'KJV', displayMode: 'full' }],
+      items: [
+        {
+          id: 'item-1',
+          type: 'scripture',
+          reference: 'John 3:16-17',
+          translation: 'KJV',
+          displayMode: 'full',
+        },
+      ],
     })
     const flat = flattenService(service, new Map(), new Map())
     expect(flat).toHaveLength(1)
@@ -312,7 +379,15 @@ describe('flattenService — scripture', () => {
 
   it('renders resolved verse text with verse numbers on a single slide', () => {
     const service = makeService({
-      items: [{ id: 'item-1', type: 'scripture', reference: 'John 3:16-17', translation: 'KJV', displayMode: 'full' }],
+      items: [
+        {
+          id: 'item-1',
+          type: 'scripture',
+          reference: 'John 3:16-17',
+          translation: 'KJV',
+          displayMode: 'full',
+        },
+      ],
     })
     const flat = flattenService(service, new Map(), new Map([['item-1', makePassage()]]))
     expect(flat).toHaveLength(1)
@@ -323,12 +398,27 @@ describe('flattenService — scripture', () => {
 
   it('applies the configured font range to a resolved full-text scripture slide', () => {
     const service = makeService({
-      items: [{ id: 'item-1', type: 'scripture', reference: 'John 3:16-17', translation: 'KJV', displayMode: 'full' }],
+      items: [
+        {
+          id: 'item-1',
+          type: 'scripture',
+          reference: 'John 3:16-17',
+          translation: 'KJV',
+          displayMode: 'full',
+        },
+      ],
     })
-    const flat = flattenService(service, new Map(), new Map([['item-1', makePassage()]]), new Map(), new Map(), {
-      minPx: 30,
-      maxPx: 60,
-    })
+    const flat = flattenService(
+      service,
+      new Map(),
+      new Map([['item-1', makePassage()]]),
+      new Map(),
+      new Map(),
+      {
+        minPx: 30,
+        maxPx: 60,
+      },
+    )
     expect(flat[0].fontRange).toEqual({ minPx: 30, maxPx: 60 })
   })
 
@@ -338,7 +428,15 @@ describe('flattenService — scripture', () => {
       text: 'This is a reasonably long verse of scripture text meant to force pagination across several slides.',
     }))
     const service = makeService({
-      items: [{ id: 'item-1', type: 'scripture', reference: 'Psalm 119:1-30', translation: 'KJV', displayMode: 'full' }],
+      items: [
+        {
+          id: 'item-1',
+          type: 'scripture',
+          reference: 'Psalm 119:1-30',
+          translation: 'KJV',
+          displayMode: 'full',
+        },
+      ],
     })
     const flat = flattenService(
       service,
@@ -353,22 +451,44 @@ describe('flattenService — scripture', () => {
     // exactly once across the whole run (no verse dropped, none duplicated, none split).
     expect(new Set(flat.map((s) => s.key)).size).toBe(flat.length)
     expect(flat.every((s) => /\(\d+\/\d+\)$/.test(s.subLabel))).toBe(true)
-    const allNumbers = flat.flatMap((s) => [...s.text.matchAll(/(?:^|\s)(\d+)\s/g)].map((m) => Number(m[1])))
+    const allNumbers = flat.flatMap((s) =>
+      [...s.text.matchAll(/(?:^|\s)(\d+)\s/g)].map((m) => Number(m[1])),
+    )
     expect(allNumbers).toEqual(longVerses.map((v) => v.number))
   })
 
   it('shows no verse text in reference-only mode, even if a passage happens to be resolved', () => {
     const service = makeService({
-      items: [{ id: 'item-1', type: 'scripture', reference: 'John 3:16-17', translation: 'KJV', displayMode: 'reference-only' }],
+      items: [
+        {
+          id: 'item-1',
+          type: 'scripture',
+          reference: 'John 3:16-17',
+          translation: 'KJV',
+          displayMode: 'reference-only',
+        },
+      ],
     })
     const flat = flattenService(service, new Map(), new Map([['item-1', makePassage()]]))
     expect(flat).toHaveLength(1)
-    expect(flat[0]).toMatchObject({ itemLabel: 'John 3:16-17', subLabel: 'Reference Only', text: '' })
+    expect(flat[0]).toMatchObject({
+      itemLabel: 'John 3:16-17',
+      subLabel: 'Reference Only',
+      text: '',
+    })
   })
 
   it('includes the surrounding-books wayfinding list in reference-only mode', () => {
     const service = makeService({
-      items: [{ id: 'item-1', type: 'scripture', reference: 'John 3:16-17', translation: 'KJV', displayMode: 'reference-only' }],
+      items: [
+        {
+          id: 'item-1',
+          type: 'scripture',
+          reference: 'John 3:16-17',
+          translation: 'KJV',
+          displayMode: 'reference-only',
+        },
+      ],
     })
     const flat = flattenService(service, new Map())
     expect(flat[0]?.wayfindingBooks?.map((b) => [b.name, b.distance])).toEqual([
@@ -382,7 +502,15 @@ describe('flattenService — scripture', () => {
 
   it('omits the wayfinding list in full-text mode', () => {
     const service = makeService({
-      items: [{ id: 'item-1', type: 'scripture', reference: 'John 3:16-17', translation: 'KJV', displayMode: 'full' }],
+      items: [
+        {
+          id: 'item-1',
+          type: 'scripture',
+          reference: 'John 3:16-17',
+          translation: 'KJV',
+          displayMode: 'full',
+        },
+      ],
     })
     const flat = flattenService(service, new Map())
     expect(flat[0]?.wayfindingBooks).toBeUndefined()
@@ -390,7 +518,15 @@ describe('flattenService — scripture', () => {
 
   it('gives a New Testament reference-only passage a bibleProgress past the Old Testament fraction', () => {
     const service = makeService({
-      items: [{ id: 'item-1', type: 'scripture', reference: 'John 3:16-17', translation: 'KJV', displayMode: 'reference-only' }],
+      items: [
+        {
+          id: 'item-1',
+          type: 'scripture',
+          reference: 'John 3:16-17',
+          translation: 'KJV',
+          displayMode: 'reference-only',
+        },
+      ],
     })
     const flat = flattenService(service, new Map())
     expect(flat[0]?.bibleProgress).toBeGreaterThan(OLD_TESTAMENT_FRACTION)
@@ -398,7 +534,15 @@ describe('flattenService — scripture', () => {
 
   it('gives an Old Testament reference-only passage a bibleProgress before the Old Testament fraction', () => {
     const service = makeService({
-      items: [{ id: 'item-1', type: 'scripture', reference: 'Psalm 23', translation: 'KJV', displayMode: 'reference-only' }],
+      items: [
+        {
+          id: 'item-1',
+          type: 'scripture',
+          reference: 'Psalm 23',
+          translation: 'KJV',
+          displayMode: 'reference-only',
+        },
+      ],
     })
     const flat = flattenService(service, new Map())
     expect(flat[0]?.bibleProgress).toBeLessThan(OLD_TESTAMENT_FRACTION)
@@ -413,8 +557,18 @@ describe('flattenService — slide-ref', () => {
       tags: [],
       documentVersion: 2,
       slides: [
-        { id: 'a', label: 'Slide 1', scene: { ...createBlankScene(), elements: [createTextElement('Welcome!')] }, source: { type: 'native' } },
-        { id: 'b', label: 'Slide 2', scene: { ...createBlankScene(), elements: [createTextElement('Potluck this Friday')] }, source: { type: 'native' } },
+        {
+          id: 'a',
+          label: 'Slide 1',
+          scene: { ...createBlankScene(), elements: [createTextElement('Welcome!')] },
+          source: { type: 'native' },
+        },
+        {
+          id: 'b',
+          label: 'Slide 2',
+          scene: { ...createBlankScene(), elements: [createTextElement('Potluck this Friday')] },
+          source: { type: 'native' },
+        },
       ],
       usage: { usesPastYear: 0 },
       updatedAt: '',
@@ -427,7 +581,12 @@ describe('flattenService — slide-ref', () => {
     const service = makeService({
       items: [{ id: 'item-1', type: 'slide-ref', slideId: 'slide-1' }],
     })
-    const flat = flattenService(service, new Map(), new Map(), new Map([['slide-1', makeSlideItem()]]))
+    const flat = flattenService(
+      service,
+      new Map(),
+      new Map(),
+      new Map([['slide-1', makeSlideItem()]]),
+    )
     expect(flat).toHaveLength(2)
     expect(flat.every((s) => s.itemLabel === 'Announcements')).toBe(true)
     expect(flat.map((s) => s.subLabel)).toEqual(['Slide 1', 'Slide 2'])
@@ -438,7 +597,12 @@ describe('flattenService — slide-ref', () => {
     const service = makeService({
       items: [{ id: 'item-1', type: 'slide-ref', slideId: 'slide-1' }],
     })
-    const flat = flattenService(service, new Map(), new Map(), new Map([['slide-1', makeSlideItem({ slides: [] })]]))
+    const flat = flattenService(
+      service,
+      new Map(),
+      new Map(),
+      new Map([['slide-1', makeSlideItem({ slides: [] })]]),
+    )
     expect(flat).toHaveLength(1)
     expect(flat[0]).toMatchObject({ itemLabel: 'Announcements', subLabel: '(empty)' })
   })
@@ -449,7 +613,12 @@ describe('flattenService — slide-ref', () => {
       time: '10:30',
       items: [{ id: 'item-1', type: 'slide-ref', slideId: 'slide-1' }],
     })
-    const flat = flattenService(service, new Map(), new Map(), new Map([['slide-1', makeSlideItem()]]))
+    const flat = flattenService(
+      service,
+      new Map(),
+      new Map(),
+      new Map([['slide-1', makeSlideItem()]]),
+    )
     expect(flat[0].serviceDateTime).toBeDefined()
     expect(new Date(flat[0].serviceDateTime!).getHours()).toBe(10)
     expect(new Date(flat[0].serviceDateTime!).getMinutes()).toBe(30)
@@ -459,7 +628,12 @@ describe('flattenService — slide-ref', () => {
     const service = makeService({
       items: [{ id: 'item-1', type: 'slide-ref', slideId: 'slide-1' }],
     })
-    const flat = flattenService(service, new Map(), new Map(), new Map([['slide-1', makeSlideItem()]]))
+    const flat = flattenService(
+      service,
+      new Map(),
+      new Map(),
+      new Map([['slide-1', makeSlideItem()]]),
+    )
     expect(flat[0].serviceDateTime).toBeUndefined()
   })
 })
@@ -503,7 +677,12 @@ describe('flattenService — sermon', () => {
           id: 'item-1',
           type: 'sermon',
           passages: [
-            { id: 'p1', reference: 'Romans 8:28', translation: 'ESV', displayMode: 'reference-only' },
+            {
+              id: 'p1',
+              reference: 'Romans 8:28',
+              translation: 'ESV',
+              displayMode: 'reference-only',
+            },
             { id: 'p2', reference: 'Mark 5:1-20', translation: 'ESV', displayMode: 'full' },
           ],
           mainPassageId: 'p2',
@@ -518,7 +697,12 @@ describe('flattenService — sermon', () => {
     const flat = flattenService(service, new Map(), scriptureById)
 
     expect(flat).toHaveLength(4)
-    expect(flat.map((s) => s.itemLabel)).toEqual(['Mark 5:1-20', 'Romans 8:28', 'Sermon Outline', 'Sermon Outline'])
+    expect(flat.map((s) => s.itemLabel)).toEqual([
+      'Mark 5:1-20',
+      'Romans 8:28',
+      'Sermon Outline',
+      'Sermon Outline',
+    ])
     expect(flat.map((s) => s.subLabel)).toEqual(['ESV', 'Reference Only', 'The Setup', 'The Turn'])
     expect(flat[3].text).toBe('Point two')
     expect(new Set(flat.map((s) => s.key)).size).toBe(4)
@@ -534,20 +718,32 @@ describe('flattenService — sermon', () => {
 
   it('interleaves supporting scripture and outline points in sermon flow order', () => {
     const service = makeService({
-      items: [{
-        id: 'item-1',
-        type: 'sermon',
-        passages: [
-          { id: 'main', reference: 'John 1:1-4', translation: 'ESV', displayMode: 'reference-only' },
-          { id: 'support', reference: 'Romans 8:28', translation: 'ESV', displayMode: 'reference-only' },
-        ],
-        mainPassageId: 'main',
-        outline: [{ id: 'point', label: 'God is faithful', text: '' }],
-        flow: [
-          { type: 'outline', outlineId: 'point' },
-          { type: 'passage', passageId: 'support' },
-        ],
-      }],
+      items: [
+        {
+          id: 'item-1',
+          type: 'sermon',
+          passages: [
+            {
+              id: 'main',
+              reference: 'John 1:1-4',
+              translation: 'ESV',
+              displayMode: 'reference-only',
+            },
+            {
+              id: 'support',
+              reference: 'Romans 8:28',
+              translation: 'ESV',
+              displayMode: 'reference-only',
+            },
+          ],
+          mainPassageId: 'main',
+          outline: [{ id: 'point', label: 'God is faithful', text: '' }],
+          flow: [
+            { type: 'outline', outlineId: 'point' },
+            { type: 'passage', passageId: 'support' },
+          ],
+        },
+      ],
     })
 
     const flat = flattenService(service, new Map())
@@ -560,19 +756,26 @@ describe('flattenService — sermon', () => {
 
   it('keeps supporting scripture in flow order when the sermon has no main passage', () => {
     const service = makeService({
-      items: [{
-        id: 'item-1',
-        type: 'sermon',
-        passages: [
-          { id: 'support', reference: 'Romans 8:28', translation: 'ESV', displayMode: 'reference-only' },
-        ],
-        mainPassageId: '',
-        outline: [{ id: 'point', label: 'God is faithful', text: '' }],
-        flow: [
-          { type: 'outline', outlineId: 'point' },
-          { type: 'passage', passageId: 'support' },
-        ],
-      }],
+      items: [
+        {
+          id: 'item-1',
+          type: 'sermon',
+          passages: [
+            {
+              id: 'support',
+              reference: 'Romans 8:28',
+              translation: 'ESV',
+              displayMode: 'reference-only',
+            },
+          ],
+          mainPassageId: '',
+          outline: [{ id: 'point', label: 'God is faithful', text: '' }],
+          flow: [
+            { type: 'outline', outlineId: 'point' },
+            { type: 'passage', passageId: 'support' },
+          ],
+        },
+      ],
     })
 
     const flat = flattenService(service, new Map())
@@ -613,7 +816,14 @@ describe('flattenService — sermon', () => {
           {
             id: 'item-1',
             type: 'sermon',
-            passages: [{ id: 'p1', reference: 'Romans 8:28', translation: 'ESV', displayMode: 'reference-only' }],
+            passages: [
+              {
+                id: 'p1',
+                reference: 'Romans 8:28',
+                translation: 'ESV',
+                displayMode: 'reference-only',
+              },
+            ],
             mainPassageId: 'p1',
             outline: [{ id: 'o1', label: 'The Setup', text: 'Point one' }],
           },
@@ -635,7 +845,12 @@ describe('flattenService — sermon', () => {
             id: 'item-1',
             type: 'sermon',
             passages: [
-              { id: 'p1', reference: 'Romans 8:28', translation: 'ESV', displayMode: 'reference-only' },
+              {
+                id: 'p1',
+                reference: 'Romans 8:28',
+                translation: 'ESV',
+                displayMode: 'reference-only',
+              },
               { id: 'p2', reference: '', translation: 'ESV', displayMode: 'full' },
             ],
             mainPassageId: 'p1',
@@ -659,7 +874,9 @@ describe('flattenService — sermon', () => {
         {
           id: 'item-1',
           type: 'sermon',
-          passages: [{ id: 'p1', reference: 'Mark 5:1-20', translation: 'ESV', displayMode: 'full' }],
+          passages: [
+            { id: 'p1', reference: 'Mark 5:1-20', translation: 'ESV', displayMode: 'full' },
+          ],
           mainPassageId: 'p1',
           outline: [{ id: 'o1', label: 'The Setup', text: 'Point one' }],
         },
@@ -687,6 +904,10 @@ describe('flattenService — placeholder (unreplaced service template slot)', ()
     })
     const flat = flattenService(service, new Map())
     expect(flat).toHaveLength(1)
-    expect(flat[0]).toMatchObject({ itemLabel: 'Opening Song', subLabel: '(placeholder — not yet filled in)', text: '' })
+    expect(flat[0]).toMatchObject({
+      itemLabel: 'Opening Song',
+      subLabel: '(placeholder — not yet filled in)',
+      text: '',
+    })
   })
 })

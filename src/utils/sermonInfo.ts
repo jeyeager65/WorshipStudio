@@ -18,7 +18,10 @@ export function sermonMainReference(item: SermonItem): string {
 
 /** The sermon's preacher is resolved the same way as every other item's "who" — a role name
  *  pointing into `service.assignments` — rather than a direct Person id of its own. */
-export function sermonPreacherId(service: Service, sermonItem = findSermonItem(service)): string | undefined {
+export function sermonPreacherId(
+  service: Service,
+  sermonItem = findSermonItem(service),
+): string | undefined {
   if (!sermonItem?.role) return undefined
   return service.assignments?.find((a) => a.role === sermonItem.role)?.personId
 }
@@ -26,8 +29,13 @@ export function sermonPreacherId(service: Service, sermonItem = findSermonItem(s
 /** Whatever role a church's ServiceTemplate assigns to this service type's sermon row, if any —
  *  the same role-resolution priority used by the Rust migration for pre-existing services
  *  (existing item/placeholder role wins first; this is only the fallback). */
-export function defaultSermonRole(serviceTemplates: ServiceTemplate[] | undefined, serviceType: string): string | undefined {
-  return defaultServiceTemplate(serviceTemplates, serviceType)?.items.find((i) => i.kind === 'sermon')?.role
+export function defaultSermonRole(
+  serviceTemplates: ServiceTemplate[] | undefined,
+  serviceType: string,
+): string | undefined {
+  return defaultServiceTemplate(serviceTemplates, serviceType)?.items.find(
+    (i) => i.kind === 'sermon',
+  )?.role
 }
 
 export interface SermonEditInput {
@@ -51,7 +59,9 @@ export function applySermonEdit(
 ): void {
   const existingIndex = service.items.findIndex((i) => i.type === 'sermon')
   const placeholderIndex =
-    existingIndex === -1 ? service.items.findIndex((i) => i.type === 'placeholder' && i.suggestedTab === 'sermon') : -1
+    existingIndex === -1
+      ? service.items.findIndex((i) => i.type === 'placeholder' && i.suggestedTab === 'sermon')
+      : -1
 
   let index = existingIndex
   if (index === -1 && placeholderIndex !== -1) {
@@ -89,7 +99,12 @@ export function applySermonEdit(
       mainPassage.reference = input.passageReference
     } else {
       const passageId = `passage-${crypto.randomUUID()}`
-      item.passages.push({ id: passageId, reference: input.passageReference, translation: defaultTranslationCode, displayMode: 'full' })
+      item.passages.push({
+        id: passageId,
+        reference: input.passageReference,
+        translation: defaultTranslationCode,
+        displayMode: 'full',
+      })
       item.mainPassageId = passageId
     }
     item.presentMainPassage = true

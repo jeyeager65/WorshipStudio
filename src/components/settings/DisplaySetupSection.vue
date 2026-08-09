@@ -67,8 +67,8 @@ onMounted(loadDisplays)
       </v-btn>
     </template>
     <v-alert v-if="needsSingleMonitorFallback(displays)" type="info" variant="tonal" class="mb-4">
-      Only one display detected. You can plan services and use 16:9 previews on this computer,
-      but presenting requires a separate audience display in extended-desktop mode.
+      Only one display detected. You can plan services and use 16:9 previews on this computer, but
+      presenting requires a separate audience display in extended-desktop mode.
     </v-alert>
     <div v-if="displays.length === 0" class="settings-empty">
       <v-icon icon="mdi-monitor-off" size="28" />

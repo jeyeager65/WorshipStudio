@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { buildSampleServices, sampleSongs, sampleThemes, samplePeople, sampleRoleGroups } from '@/utils/sampleData'
+import {
+  buildSampleServices,
+  sampleSongs,
+  sampleThemes,
+  samplePeople,
+  sampleRoleGroups,
+} from '@/utils/sampleData'
 import { findRoleConflicts } from '@/utils/rosterConflicts'
 import { parseReference } from '@/utils/scriptureReference'
 
@@ -12,7 +18,10 @@ describe('sample data', () => {
     for (const song of sampleSongs) {
       const blockIds = new Set(song.blocks.map((b) => b.id))
       for (const id of song.defaultArrangement.sequence) {
-        expect(blockIds.has(id), `${song.title}: default arrangement references missing block "${id}"`).toBe(true)
+        expect(
+          blockIds.has(id),
+          `${song.title}: default arrangement references missing block "${id}"`,
+        ).toBe(true)
       }
     }
   })
@@ -25,7 +34,10 @@ describe('sample data', () => {
         expect(song, `${service.id}/${item.id}: unknown songId "${item.songId}"`).toBeDefined()
         const blockIds = new Set(song!.blocks.map((b) => b.id))
         for (const id of item.arrangement.sequence) {
-          expect(blockIds.has(id), `${service.id}/${item.id}: arrangement references missing block "${id}" on "${song!.title}"`).toBe(true)
+          expect(
+            blockIds.has(id),
+            `${service.id}/${item.id}: arrangement references missing block "${id}" on "${song!.title}"`,
+          ).toBe(true)
         }
       }
     }
@@ -35,7 +47,10 @@ describe('sample data', () => {
     for (const service of services) {
       for (const assignment of service.assignments ?? []) {
         if (!assignment.personId) continue
-        expect(personIds.has(assignment.personId), `${service.id}: unknown personId "${assignment.personId}"`).toBe(true)
+        expect(
+          personIds.has(assignment.personId),
+          `${service.id}: unknown personId "${assignment.personId}"`,
+        ).toBe(true)
       }
     }
   })
@@ -44,7 +59,10 @@ describe('sample data', () => {
     for (const service of services) {
       for (const item of service.items) {
         if (item.type !== 'scripture') continue
-        expect(parseReference(item.reference), `${service.id}/${item.id}: unparseable reference "${item.reference}"`).toBeDefined()
+        expect(
+          parseReference(item.reference),
+          `${service.id}/${item.id}: unparseable reference "${item.reference}"`,
+        ).toBeDefined()
       }
     }
   })
@@ -83,7 +101,10 @@ describe('sample data', () => {
     const availableRoles = new Set(sampleRoleGroups.flatMap((g) => g.roles))
     const usedRoles = new Set(services.flatMap((s) => (s.assignments ?? []).map((r) => r.role)))
     for (const role of usedRoles) {
-      expect(availableRoles, `roster uses role "${role}" not present in sampleRoleGroups`).toContain(role)
+      expect(
+        availableRoles,
+        `roster uses role "${role}" not present in sampleRoleGroups`,
+      ).toContain(role)
     }
   })
 })

@@ -5,7 +5,11 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import LibraryEmptyState from '@/components/LibraryEmptyState.vue'
 import type { Announcement } from '@/models/announcement'
-import { effectiveStopDate, isEventDated, requiresExplicitStopDate } from '@/utils/announcementVisibility'
+import {
+  effectiveStopDate,
+  isEventDated,
+  requiresExplicitStopDate,
+} from '@/utils/announcementVisibility'
 
 const announcementsStore = useAnnouncementsStore()
 const confirmDialog = useConfirmDialogStore()
@@ -197,7 +201,8 @@ async function save() {
 }
 
 async function remove(announcement: Announcement) {
-  const label = announcement.text.length > 60 ? `${announcement.text.slice(0, 60)}…` : announcement.text
+  const label =
+    announcement.text.length > 60 ? `${announcement.text.slice(0, 60)}…` : announcement.text
   if (!(await confirmDialog.confirm(`Delete "${label}"?`, 'Delete'))) return
   await announcementsStore.remove(announcement.id)
 }
@@ -231,9 +236,8 @@ function stopDateLabel(a: Announcement): string {
         <div class="page-eyebrow">Bulletin</div>
         <h1>Announcements</h1>
         <p>
-          Upcoming events and ongoing notices for the printed bulletin — separate from Slide
-          Library announcement slides, since print entries usually say more than an on-screen
-          slide does.
+          Upcoming events and ongoing notices for the printed bulletin — separate from Slide Library
+          announcement slides, since print entries usually say more than an on-screen slide does.
         </p>
       </div>
       <div class="announcements-summary" aria-label="Announcements summary">
@@ -279,7 +283,12 @@ function stopDateLabel(a: Announcement): string {
             clearable
             class="announcement-search"
           />
-          <v-btn variant="flat" color="primary" prepend-icon="mdi-bullhorn-outline" @click="openAdd">
+          <v-btn
+            variant="flat"
+            color="primary"
+            prepend-icon="mdi-bullhorn-outline"
+            @click="openAdd"
+          >
             Add Announcement
           </v-btn>
         </div>
@@ -528,9 +537,7 @@ function stopDateLabel(a: Announcement): string {
         <v-card-actions>
           <v-spacer />
           <v-btn variant="text" @click="dialogOpen = false">Cancel</v-btn>
-          <v-btn variant="flat" color="primary" :loading="saving" @click="save">
-            Save
-          </v-btn>
+          <v-btn variant="flat" color="primary" :loading="saving" @click="save"> Save </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

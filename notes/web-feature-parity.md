@@ -2,6 +2,8 @@
 
 **Status update (August 8, 2026): the §7 split is now committed pre-1.0 scope.** A prep-only web build — File System Access API storage reading/writing the same Dropbox-synced folder, with manifest-rebuild and conflict-detection logic ported to TypeScript, Bible API key wiring, and the Window Management API for monitor-identify labeling — is planned before 1.0. The live presentation machine stays on the Tauri desktop app; second-monitor fullscreen output, External App Hand-off, and Remote Control remain desktop-only, as this document's own research concludes they must. A real hosted backend (§8 tier 5) remains explicitly out of scope. See `notes/completion-audit.md`.
 
+**Status update (August 9, 2026): the web build reached full feature parity with its committed scope.** The four remaining gaps from the August 8 implementation passes — backup-on-write for the web build's own saves, ESV/api.bible key wiring (§3's CORS finding, now actually wired into `createWebAdapter()`), `SettingsPort.pickLibraryFolder()` (in-app folder switch), and a real second local-only media folder (§5's noted `'local'`-lands-in-the-synced-folder simplification) — are all implemented and tested. See `notes/completion-audit.md`'s "Web-based prep build" section for specifics; the table in §6 below still reads as it did the day it was written and shouldn't be treated as current status.
+
 The rest of this document was written before that decision, as exploratory research answering "how close could a web-only build get to the Tauri app, and what would it take?" It remains accurate background for how the committed scope above was arrived at.
 
 ## TL;DR

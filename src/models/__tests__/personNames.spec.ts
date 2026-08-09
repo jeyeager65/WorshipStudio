@@ -17,9 +17,7 @@ function person(overrides: Partial<Person> = {}): Person {
 
 describe('person names', () => {
   it('uses the preferred name in ordinary contexts', () => {
-    expect(personDisplayName(person({ preferredName: 'Dan', title: 'Pastor' }))).toBe(
-      'Dan Sanders',
-    )
+    expect(personDisplayName(person({ preferredName: 'Dan', title: 'Pastor' }))).toBe('Dan Sanders')
   })
 
   it('includes the title only in formal contexts', () => {

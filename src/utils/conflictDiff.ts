@@ -15,14 +15,22 @@ export interface DiffedField {
 // plain diff rows would be redundant and, for id, is never a meaningful "difference" anyway.
 const OMITTED_FIELDS = new Set(['id', 'updatedAt', 'updatedByDevice'])
 
-export function diffFields(thisVersion: Record<string, unknown>, otherVersion: Record<string, unknown>): DiffedField[] {
+export function diffFields(
+  thisVersion: Record<string, unknown>,
+  otherVersion: Record<string, unknown>,
+): DiffedField[] {
   const keys = new Set([...Object.keys(thisVersion), ...Object.keys(otherVersion)])
   const fields: DiffedField[] = []
   for (const key of [...keys].sort()) {
     if (OMITTED_FIELDS.has(key)) continue
     const thisValue = thisVersion[key]
     const otherValue = otherVersion[key]
-    fields.push({ key, changed: JSON.stringify(thisValue) !== JSON.stringify(otherValue), thisValue, otherValue })
+    fields.push({
+      key,
+      changed: JSON.stringify(thisValue) !== JSON.stringify(otherValue),
+      thisValue,
+      otherValue,
+    })
   }
   return fields
 }

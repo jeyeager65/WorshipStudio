@@ -17,7 +17,10 @@ describe('mock adapter', () => {
   it('importStockBackgrounds adds every stock image and theme with a real resolvable preview', async () => {
     const adapter = createMockAdapter()
     const summary = await adapter.media.importStockBackgrounds()
-    expect(summary).toEqual({ mediaAdded: stockBackgrounds.length, themesAdded: stockThemes.length })
+    expect(summary).toEqual({
+      mediaAdded: stockBackgrounds.length,
+      themesAdded: stockThemes.length,
+    })
 
     const media = await adapter.media.list()
     for (const background of stockBackgrounds) {
@@ -155,7 +158,9 @@ describe('mock adapter', () => {
       id: 'service-usage-test',
       date: '2026-01-15',
       type: 'Sunday Morning Worship',
-      items: [{ id: 'item-1', type: 'song', songId: 'song-usage-test', arrangement: { sequence: [] } }],
+      items: [
+        { id: 'item-1', type: 'song', songId: 'song-usage-test', arrangement: { sequence: [] } },
+      ],
       updatedAt: '',
       updatedByDevice: '',
     })
@@ -181,7 +186,9 @@ describe('mock adapter', () => {
       id: 'service-usage-test-2',
       date: '2026-01-15',
       type: 'Sunday Morning Worship',
-      items: [{ id: 'item-1', type: 'song', songId: 'song-usage-test-2', arrangement: { sequence: [] } }],
+      items: [
+        { id: 'item-1', type: 'song', songId: 'song-usage-test-2', arrangement: { sequence: [] } },
+      ],
       updatedAt: '',
       updatedByDevice: '',
     })
@@ -211,7 +218,9 @@ describe('mock adapter', () => {
       id: 'service-usage-future',
       date: farFuture.toISOString().slice(0, 10),
       type: 'Sunday Morning Worship',
-      items: [{ id: 'item-1', type: 'song', songId: 'song-usage-future', arrangement: { sequence: [] } }],
+      items: [
+        { id: 'item-1', type: 'song', songId: 'song-usage-future', arrangement: { sequence: [] } },
+      ],
       updatedAt: '',
       updatedByDevice: '',
     })

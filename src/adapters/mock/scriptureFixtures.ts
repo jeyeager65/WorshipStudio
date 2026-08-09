@@ -16,7 +16,9 @@ export interface AvailableTranslation {
   name: string
 }
 
-export const availableTranslations: AvailableTranslation[] = [{ code: 'KJV', name: 'King James Version' }]
+export const availableTranslations: AvailableTranslation[] = [
+  { code: 'KJV', name: 'King James Version' },
+]
 
 type VersesByChapter = Record<string, Record<string, string>>
 type KjvData = Record<string, VersesByChapter>

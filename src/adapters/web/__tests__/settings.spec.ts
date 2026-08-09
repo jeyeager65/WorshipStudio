@@ -1,9 +1,17 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createWebSettingsPort } from '../settings'
 import { createFakeRoot } from './fakeFsa'
 
+const { storeLibraryHandle } = vi.hoisted(() => ({ storeLibraryHandle: vi.fn() }))
+vi.mock('../handlePersistence', () => ({ storeLibraryHandle }))
+
 beforeEach(() => {
   localStorage.clear()
+  storeLibraryHandle.mockClear()
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 describe('createWebSettingsPort', () => {
@@ -48,5 +56,41 @@ describe('createWebSettingsPort', () => {
     localStorage.setItem('worship-studio:web:machine-settings', '{not json')
     const port = createWebSettingsPort(createFakeRoot())
     await expect(port.getMachineSettings()).resolves.toMatchObject({ hasCompletedSetup: false })
+  })
+
+  describe('pickLibraryFolder', () => {
+    it('stores the newly picked handle and returns its name', async () => {
+      const newHandle = { name: 'Church Library' } as FileSystemDirectoryHandle
+      vi.stubGlobal('showDirectoryPicker', vi.fn().mockResolvedValue(newHandle))
+      const port = createWebSettingsPort(createFakeRoot())
+
+      const result = await port.pickLibraryFolder()
+
+      expect(result).toBe('Church Library')
+      expect(storeLibraryHandle).toHaveBeenCalledWith(newHandle)
+    })
+
+    it('returns undefined without storing anything when the user cancels the picker', async () => {
+      const abortError = new DOMException('The user aborted a request.', 'AbortError')
+      vi.stubGlobal('showDirectoryPicker', vi.fn().mockRejectedValue(abortError))
+      const port = createWebSettingsPort(createFakeRoot())
+
+      await expect(port.pickLibraryFolder()).resolves.toBeUndefined()
+      expect(storeLibraryHandle).not.toHaveBeenCalled()
+    })
+
+    it('propagates non-cancellation errors', async () => {
+      vi.stubGlobal('showDirectoryPicker', vi.fn().mockRejectedValue(new Error('boom')))
+      const port = createWebSettingsPort(createFakeRoot())
+
+      await expect(port.pickLibraryFolder()).rejects.toThrow('boom')
+      expect(storeLibraryHandle).not.toHaveBeenCalled()
+    })
+
+    it('returns undefined when the browser has no File System Access support', async () => {
+      const port = createWebSettingsPort(createFakeRoot())
+      await expect(port.pickLibraryFolder()).resolves.toBeUndefined()
+      expect(storeLibraryHandle).not.toHaveBeenCalled()
+    })
   })
 })

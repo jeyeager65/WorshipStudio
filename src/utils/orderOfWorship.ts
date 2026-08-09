@@ -265,7 +265,10 @@ export function buildOrderOfWorship(
     lines: buildLines(service, songs, slides, formalPersonNames, collectionDefinitions),
     footer:
       footerEnabled && service.bulletinPage1Footer
-        ? { title: bulletin?.page1FooterTitle ?? 'Heart Preparation', text: service.bulletinPage1Footer }
+        ? {
+            title: bulletin?.page1FooterTitle ?? 'Heart Preparation',
+            text: service.bulletinPage1Footer,
+          }
         : undefined,
   }
 }

@@ -67,10 +67,7 @@ async function initialize() {
     isDirty.value = false
   }
 
-  documentHistory.start(
-    (dirty) => (isDirty.value = dirty),
-    route.name === 'service-template-new',
-  )
+  documentHistory.start((dirty) => (isDirty.value = dirty), route.name === 'service-template-new')
   saveHandler.value = saveTemplate
 }
 

@@ -307,8 +307,8 @@ watch(
         <template v-if="step === 'designs'">
           <template v-if="!connection.status.value?.connected">
             <p class="text-body-2 text-medium-emphasis mb-4">
-              Connect this machine to Canva. Authorization opens in your browser and returns
-              through Worship Studio's local server.
+              Connect this machine to Canva. Authorization opens in your browser and returns through
+              Worship Studio's local server.
             </p>
             <v-btn
               color="primary"
@@ -321,8 +321,8 @@ watch(
           </template>
           <template v-else>
             <p class="text-body-2 text-medium-emphasis mb-4">
-              Editing opens in your browser so Canva and Google can use your existing secure
-              login. Return here and choose a design to pick which pages to import.
+              Editing opens in your browser so Canva and Google can use your existing secure login.
+              Return here and choose a design to pick which pages to import.
             </p>
             <div class="d-flex ga-2 mb-4">
               <v-btn
@@ -421,9 +421,7 @@ watch(
                   />
                 </div>
                 <v-card-text>
-                  <div class="text-caption text-medium-emphasis">
-                    Page {{ page.pageNumber }}
-                  </div>
+                  <div class="text-caption text-medium-emphasis">Page {{ page.pageNumber }}</div>
                 </v-card-text>
               </v-card>
             </div>
@@ -443,8 +441,9 @@ watch(
               density="compact"
               class="mb-4"
             >
-              This video is larger than this church's synced-file limit
-              ({{ formatSize(videoMaxSyncedBytes) }}).
+              This video is larger than this church's synced-file limit ({{
+                formatSize(videoMaxSyncedBytes)
+              }}).
             </v-alert>
             <v-checkbox
               v-model="videoLocalOnly"
@@ -454,9 +453,9 @@ watch(
               class="mb-2"
             />
             <p class="text-caption text-medium-emphasis mb-4">
-              If you choose Local Only, this video won't sync to your shared library folder —
-              other computers, including the one running the service, won't have it unless you
-              also import it there (or switch this back to synced later from the Media Library).
+              If you choose Local Only, this video won't sync to your shared library folder — other
+              computers, including the one running the service, won't have it unless you also import
+              it there (or switch this back to synced later from the Media Library).
             </p>
             <div class="d-flex ga-2">
               <v-spacer />

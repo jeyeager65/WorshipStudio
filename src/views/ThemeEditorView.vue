@@ -18,7 +18,11 @@ import {
   presentationThemeAppliesTo,
   presentationThemeDefaults,
 } from '@/utils/presentationTheme'
-import { bundledPresentationFonts, resolvePresentationFontFamily } from '@/utils/presentationFonts'
+import {
+  bundledPresentationFonts,
+  cssFontFamily,
+  resolvePresentationFontFamily,
+} from '@/utils/presentationFonts'
 import {
   DEFAULT_PRESENTATION_TEXT_EFFECT,
   presentationTextEffect,
@@ -677,7 +681,7 @@ function setTextEffectColor(event: Event) {
                 class="preview-text"
                 :style="{
                   color: draft.textColor,
-                  fontFamily: draft.font,
+                  fontFamily: cssFontFamily(draft.font),
                   textShadow: presentationTextShadow(draft.textEffect),
                 }"
               >
@@ -748,7 +752,7 @@ function setTextEffectColor(event: Event) {
               class="preview-text"
               :style="{
                 color: draft.textColor,
-                fontFamily: draft.font,
+                fontFamily: cssFontFamily(draft.font),
                 textShadow: presentationTextShadow(draft.textEffect),
               }"
             >
@@ -970,6 +974,7 @@ function setTextEffectColor(event: Event) {
 .text-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: 11px;
 }
 .text-effect-settings {

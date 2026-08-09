@@ -135,7 +135,9 @@ watch(
 
 // Countdown elements need a live-ticking clock — only run the interval when the scene actually
 // has one, same "don't do work nothing needs" reasoning as the QR fetching above.
-const hasCountdownElements = computed(() => props.scene.elements.some((e) => e.type === 'countdown'))
+const hasCountdownElements = computed(() =>
+  props.scene.elements.some((e) => e.type === 'countdown'),
+)
 const nowTick = ref(new Date())
 let nowTickInterval: ReturnType<typeof setInterval> | undefined
 watch(
@@ -150,7 +152,8 @@ onUnmounted(() => clearInterval(nowTickInterval))
 
 function countdownLabel(element: SlideCountdownElement): string | undefined {
   if (element.label) return element.label
-  if (element.mode === 'service' && !props.serviceDateTime) return 'Add this slide to a service to preview'
+  if (element.mode === 'service' && !props.serviceDateTime)
+    return 'Add this slide to a service to preview'
   return undefined
 }
 

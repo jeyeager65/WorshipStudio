@@ -36,7 +36,11 @@ describe('findNextWeekService', () => {
   const current = service({ id: 'this-week', date: '2026-06-07', type: 'Sunday Morning Worship' })
 
   it('finds the same-type service dated exactly 7 days later', () => {
-    const nextWeek = service({ id: 'next-week', date: '2026-06-14', type: 'Sunday Morning Worship' })
+    const nextWeek = service({
+      id: 'next-week',
+      date: '2026-06-14',
+      type: 'Sunday Morning Worship',
+    })
     expect(findNextWeekService([current, nextWeek], current)?.id).toBe('next-week')
   })
 
@@ -55,7 +59,11 @@ describe('findNextWeekService', () => {
     // wrong calendar day in timezones ahead of UTC (see calendarDate.ts). date-math to
     // localCalendarDate instead, so this must land on Jan 4, 2027, not Jan 3 or Jan 5.
     const yearEnd = service({ id: 'year-end', date: '2026-12-28', type: 'Sunday Morning Worship' })
-    const nextYear = service({ id: 'next-year', date: '2027-01-04', type: 'Sunday Morning Worship' })
+    const nextYear = service({
+      id: 'next-year',
+      date: '2027-01-04',
+      type: 'Sunday Morning Worship',
+    })
     expect(findNextWeekService([yearEnd, nextYear], yearEnd)?.id).toBe('next-year')
   })
 
@@ -87,7 +95,13 @@ describe('buildBulletinPage2', () => {
         updatedAt: '',
         updatedByDevice: '',
       },
-      { id: 'a2', text: 'Standing notice', showUntil: '2026-12-31', updatedAt: '', updatedByDevice: '' },
+      {
+        id: 'a2',
+        text: 'Standing notice',
+        showUntil: '2026-12-31',
+        updatedAt: '',
+        updatedByDevice: '',
+      },
     ]
     const doc = buildBulletinPage2(
       service({ date: '2026-06-01' }),
@@ -118,7 +132,9 @@ describe('buildBulletinPage2', () => {
       bulletinDefaults,
       personNames,
     )
-    expect(doc.upcoming).toEqual([{ dateLabel: 'Starting August 24', text: 'VBS registration open' }])
+    expect(doc.upcoming).toEqual([
+      { dateLabel: 'Starting August 24', text: 'VBS registration open' },
+    ])
   })
 
   it('a range of exactly 7 days still prints as a range, not "Starting"', () => {
@@ -142,11 +158,11 @@ describe('buildBulletinPage2', () => {
     expect(doc.upcoming).toEqual([{ dateLabel: 'June 14–June 21', text: 'VBS week' }])
   })
 
-  it('includes the year when the event falls outside the bulletin service\'s own year', () => {
+  it("includes the year when the event falls outside the bulletin service's own year", () => {
     const announcements: Announcement[] = [
       {
         id: 'a1',
-        text: 'New Year\'s Eve Service',
+        text: "New Year's Eve Service",
         eventDate: '2027-01-01',
         updatedAt: '',
         updatedByDevice: '',
@@ -159,10 +175,10 @@ describe('buildBulletinPage2', () => {
       bulletinDefaults,
       personNames,
     )
-    expect(doc.upcoming).toEqual([{ dateLabel: 'January 1, 2027', text: 'New Year\'s Eve Service' }])
+    expect(doc.upcoming).toEqual([{ dateLabel: 'January 1, 2027', text: "New Year's Eve Service" }])
   })
 
-  it('omits the year (both ends) for a range fully within the bulletin service\'s own year', () => {
+  it("omits the year (both ends) for a range fully within the bulletin service's own year", () => {
     const announcements: Announcement[] = [
       {
         id: 'a1',
@@ -201,7 +217,9 @@ describe('buildBulletinPage2', () => {
       bulletinDefaults,
       personNames,
     )
-    expect(doc.upcoming).toEqual([{ dateLabel: 'December 30–January 2, 2027', text: "New Year's retreat" }])
+    expect(doc.upcoming).toEqual([
+      { dateLabel: 'December 30–January 2, 2027', text: "New Year's retreat" },
+    ])
   })
 
   it('omits announcements entirely when showAnnouncements is off', () => {
