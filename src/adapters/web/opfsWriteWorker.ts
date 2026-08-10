@@ -23,11 +23,22 @@
  * have this problem (fsaStorage.ts's own doc comment: its swap-file write only replaces the real
  * file on close(), confirmed atomic-enough) — this brings the WebKit fallback path to the same
  * guarantee via move(), which OPFS specifies as an atomic rename/replace within the same
- * directory. move() feature-detected rather than assumed available, since it's newer than
- * createSyncAccessHandle() itself and this project has already been burned once by assuming a
- * capability without checking it directly on a real device (see fsaStorage.ts's own history) —
- * falls back to the previous write-in-place behavior if it's missing, same risk as before rather
- * than a new failure mode.
+ * directory.
+ *
+ * move() feature-detection and its exact call signature both had to be corrected against a real
+ * iPad after first shipping this: WebKit's move() rejects a single-argument same-directory rename
+ * with "Not enough arguments" — it needs the (newParent, newName) form even when newParent is the
+ * handle's own current parent — so the earlier `tempHandle.move(name)` never actually moved
+ * anything, and the *first* attempt to feature-detect move() (calling getFileHandle(name,
+ * {create:true}) on the real target path, before ever touching the temp file) left an empty
+ * 0-byte file at every target this ran against, since {create:true} creates the file immediately
+ * regardless of whether anything is ever written to it — the same failure mode as the
+ * createWritable() absence this whole worker exists to route around in the first place. Now the
+ * probe runs against the *temp* file (which gets written and moved or removed either way, never
+ * left stranded at a real content path), and any failure of the atomic path for any reason —
+ * missing move(), a signature this browser doesn't accept, anything — falls back to writing the
+ * target directly instead of failing the whole write, so a future WebKit surprise degrades to the
+ * previously-shipped, already-working behavior rather than corrupting a sync outright.
  */
 
 interface FileSystemSyncAccessHandle {
@@ -39,9 +50,10 @@ interface FileSystemSyncAccessHandle {
 
 interface SyncAccessCapableFileHandle extends FileSystemFileHandle {
   createSyncAccessHandle(): Promise<FileSystemSyncAccessHandle>
-  /** Renames/replaces this handle's entry within its current parent directory — not yet in this
-   *  project's installed DOM types, hence the local declaration (see this file's doc comment). */
-  move?(newName: string): Promise<void>
+  /** Moves/renames this handle's entry to `newName` inside `newParent` — not yet in this
+   *  project's installed DOM types, hence the local declaration. WebKit requires both arguments
+   *  even for a same-directory rename (see this file's doc comment). */
+  move?(newParent: FileSystemDirectoryHandle, newName: string): Promise<void>
 }
 
 interface WriteRequest {
@@ -85,35 +97,44 @@ async function writeToSyncAccessHandle(
   }
 }
 
+/** The atomic path: write into a private temp file (never a real content path, so a failure here
+ *  never leaves a stray/empty file where a real record is expected), then move() it over the
+ *  real target. Throws on any problem — missing move() support, an unexpected signature, a write
+ *  failure — leaving cleanup and any fallback to the caller. */
+async function writeAtomically(dir: FileSystemDirectoryHandle, name: string, data: ArrayBuffer): Promise<void> {
+  // Suffix, not prefix — matches fsaStorage.ts's own .backup/.damaged-<stamp> convention, so a
+  // temp file that somehow survives a crash before its move() still reads as "not a real record"
+  // to every existing ".json"-suffix listing filter, the same way those already do.
+  const tempName = `${name}.tmp-${crypto.randomUUID()}`
+  const tempHandle = (await dir.getFileHandle(tempName, {
+    create: true,
+  })) as SyncAccessCapableFileHandle
+  try {
+    if (typeof tempHandle.move !== 'function') throw new Error('move() is not supported')
+    await writeToSyncAccessHandle(tempHandle, data)
+    await tempHandle.move(dir, name)
+  } catch (error) {
+    await dir.removeEntry(tempName).catch(() => {})
+    throw error
+  }
+}
+
 addEventListener('message', (event: MessageEvent<WriteRequest>) => {
   const { id, path, data } = event.data
   void (async () => {
     try {
       const { dir, name } = await resolveParentAndName(path)
-      const targetHandle = (await dir.getFileHandle(name, {
-        create: true,
-      })) as SyncAccessCapableFileHandle
-
-      if (typeof targetHandle.move !== 'function') {
-        // No move() support — write in place, same behavior (and same race window) as before.
-        await writeToSyncAccessHandle(targetHandle, data)
-        postMessage({ id } satisfies WriteResponse)
-        return
-      }
-
-      // Suffix, not prefix — matches fsaStorage.ts's own .backup/.damaged-<stamp> convention, so
-      // a temp file that somehow survives a crash before its move() still reads as "not a real
-      // record" to every existing ".json"-suffix listing filter, the same way those already do.
-      const tempName = `${name}.tmp-${crypto.randomUUID()}`
-      const tempHandle = (await dir.getFileHandle(tempName, {
-        create: true,
-      })) as SyncAccessCapableFileHandle
       try {
-        await writeToSyncAccessHandle(tempHandle, data)
-        await tempHandle.move!(name)
-      } catch (error) {
-        await dir.removeEntry(tempName).catch(() => {})
-        throw error
+        await writeAtomically(dir, name, data)
+      } catch {
+        // Falls back to writing the real target directly — the same behavior (and the same race
+        // window this file's doc comment describes) this project already shipped and validated
+        // before move() was introduced, so any surprise in the atomic path degrades to a
+        // known-working write instead of failing outright.
+        const targetHandle = (await dir.getFileHandle(name, {
+          create: true,
+        })) as SyncAccessCapableFileHandle
+        await writeToSyncAccessHandle(targetHandle, data)
       }
       postMessage({ id } satisfies WriteResponse)
     } catch (error) {
