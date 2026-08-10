@@ -1,7 +1,7 @@
 /**
  * Line-icon badges for the "Modern" bulletin style — real path data from Material Design Icons
  * (`@mdi/js`, the same icon set already used everywhere else in this app via `mdi-*` names),
- * not hand-drawn. Each badge wraps one icon's 24x24 path in a soft circular background.
+ * not hand-drawn. Each badge wraps one icon's 24x24 path in a soft rounded-square background.
  * Monochrome only (this prints on a black-and-white laser printer).
  */
 import {
@@ -31,9 +31,11 @@ const INK = '#000000'
 const BADGE_FILL = '#F2F2F2'
 const BADGE_STROKE = '#CCCCCC'
 
+const BADGE_CORNER_RADIUS = 9
+
 function badge(path: string): string {
   return `<svg width="${SIZE}" height="${SIZE}" viewBox="0 0 ${SIZE} ${SIZE}" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="20" cy="20" r="19" fill="${BADGE_FILL}" stroke="${BADGE_STROKE}" stroke-width="1"/>
+    <rect x="0.5" y="0.5" width="${SIZE - 1}" height="${SIZE - 1}" rx="${BADGE_CORNER_RADIUS}" ry="${BADGE_CORNER_RADIUS}" fill="${BADGE_FILL}" stroke="${BADGE_STROKE}" stroke-width="1"/>
     <g transform="translate(${ICON_OFFSET}, ${ICON_OFFSET}) scale(${ICON_SCALE})">
       <path d="${path}" fill="${INK}"/>
     </g>
