@@ -41,17 +41,16 @@ function respondToCall(callIndex: number, error?: string) {
 }
 
 describe('writeViaSyncAccessHandle', () => {
-  it('posts the file handle and a transferred copy of the data to the worker', async () => {
-    const fileHandle = {} as FileSystemFileHandle
+  it('posts the relative path and a transferred copy of the data to the worker', async () => {
     const data = new TextEncoder().encode('hello').buffer as ArrayBuffer
 
-    const promise = writeViaSyncAccessHandle(fileHandle, data)
+    const promise = writeViaSyncAccessHandle('songs/song-1.json', data)
     respondToCall(0)
     await promise
 
     expect(lastWorker!.postMessage).toHaveBeenCalledTimes(1)
     const [message, transferList] = lastWorker!.postMessage.mock.calls[0]!
-    expect(message.fileHandle).toBe(fileHandle)
+    expect(message.path).toBe('songs/song-1.json')
     expect(new TextDecoder().decode(message.data)).toBe('hello')
     // A copy, not the original buffer — the caller's own buffer must never end up detached.
     expect(message.data).not.toBe(data)
@@ -59,20 +58,20 @@ describe('writeViaSyncAccessHandle', () => {
   })
 
   it('resolves once the worker responds with no error', async () => {
-    const promise = writeViaSyncAccessHandle({} as FileSystemFileHandle, new ArrayBuffer(0))
+    const promise = writeViaSyncAccessHandle('songs/song-1.json', new ArrayBuffer(0))
     respondToCall(0)
     await expect(promise).resolves.toBeUndefined()
   })
 
   it('rejects with the worker-reported error message', async () => {
-    const promise = writeViaSyncAccessHandle({} as FileSystemFileHandle, new ArrayBuffer(0))
+    const promise = writeViaSyncAccessHandle('songs/song-1.json', new ArrayBuffer(0))
     respondToCall(0, 'disk full')
     await expect(promise).rejects.toThrow('disk full')
   })
 
   it('matches concurrent writes to their own response, not response order', async () => {
-    const first = writeViaSyncAccessHandle({} as FileSystemFileHandle, new ArrayBuffer(1))
-    const second = writeViaSyncAccessHandle({} as FileSystemFileHandle, new ArrayBuffer(2))
+    const first = writeViaSyncAccessHandle('songs/song-1.json', new ArrayBuffer(1))
+    const second = writeViaSyncAccessHandle('songs/song-2.json', new ArrayBuffer(2))
 
     // Respond out of order — the second call's response arrives before the first's.
     respondToCall(1)
@@ -83,11 +82,11 @@ describe('writeViaSyncAccessHandle', () => {
   })
 
   it('reuses one worker instance across multiple writes', async () => {
-    const first = writeViaSyncAccessHandle({} as FileSystemFileHandle, new ArrayBuffer(0))
+    const first = writeViaSyncAccessHandle('songs/song-1.json', new ArrayBuffer(0))
     respondToCall(0)
     await first
 
-    const second = writeViaSyncAccessHandle({} as FileSystemFileHandle, new ArrayBuffer(0))
+    const second = writeViaSyncAccessHandle('songs/song-1.json', new ArrayBuffer(0))
     respondToCall(1)
     await second
 

@@ -8,10 +8,13 @@
  * await its result, transparently to every port built on writeTextFile/writeBytes — none of them
  * need to know this fallback exists.
  *
- * FileSystemFileHandle is structured-cloneable by design specifically to support handing it off
- * to a worker like this one; createSyncAccessHandle()/FileSystemSyncAccessHandle aren't in this
- * project's installed DOM types yet (newer than @types/wicg-file-system-access covers), hence
- * the local interface below rather than an ambient declaration.
+ * Takes a root-relative OPFS path, not a FileSystemFileHandle — an earlier version posted the
+ * handle itself, on the (Chromium-shaped) assumption that FileSystemFileHandle is generally
+ * structured-cloneable across a postMessage boundary. Confirmed wrong on a real iPad: WebKit
+ * rejects it with "The object can not be cloned." OPFS is per-origin rather than tied to the
+ * handle that reached it, so instead this worker just calls navigator.storage.getDirectory()
+ * itself and walks the same relative path fsaStorage.ts already resolved on the main thread —
+ * sidesteps the clonability question entirely rather than depending on it.
  */
 
 interface FileSystemSyncAccessHandle {
@@ -27,7 +30,7 @@ interface SyncAccessCapableFileHandle extends FileSystemFileHandle {
 
 interface WriteRequest {
   id: number
-  fileHandle: FileSystemFileHandle
+  path: string
   data: ArrayBuffer
 }
 
@@ -36,11 +39,23 @@ interface WriteResponse {
   error?: string
 }
 
+async function resolveFileHandle(path: string): Promise<SyncAccessCapableFileHandle> {
+  const parts = path.split('/').filter((part) => part.length > 0)
+  const name = parts.at(-1)
+  if (!name) throw new Error(`Empty path: "${path}"`)
+  let dir = await navigator.storage.getDirectory()
+  for (const part of parts.slice(0, -1)) {
+    dir = await dir.getDirectoryHandle(part, { create: true })
+  }
+  return (await dir.getFileHandle(name, { create: true })) as SyncAccessCapableFileHandle
+}
+
 addEventListener('message', (event: MessageEvent<WriteRequest>) => {
-  const { id, fileHandle, data } = event.data
+  const { id, path, data } = event.data
   void (async () => {
     try {
-      const accessHandle = await (fileHandle as SyncAccessCapableFileHandle).createSyncAccessHandle()
+      const fileHandle = await resolveFileHandle(path)
+      const accessHandle = await fileHandle.createSyncAccessHandle()
       try {
         // Explicit truncate first: a sync access handle doesn't shrink the file to match shorter
         // new content on its own, so without this a write of a smaller file over a larger

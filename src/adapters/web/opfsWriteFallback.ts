@@ -5,6 +5,9 @@
  * caller, and only on the fallback path (Chrome/Edge/Firefox never need this — they get the
  * fast, direct createWritable() path unchanged).
  *
+ * Takes the root-relative OPFS path rather than a FileSystemFileHandle — see opfsWriteWorker.ts's
+ * doc comment for why a handle can't cross this boundary on WebKit.
+ *
  * One shared worker instance for the page's lifetime, requests matched to responses by an
  * incrementing id rather than one worker per call — multiple writes can legitimately be in
  * flight at once (e.g. cloudSync.ts applying several pulled files back to back).
@@ -34,7 +37,7 @@ function getWorker(): Worker {
 }
 
 export function writeViaSyncAccessHandle(
-  fileHandle: FileSystemFileHandle,
+  relativePath: string,
   data: ArrayBuffer,
 ): Promise<void> {
   const id = nextId++
@@ -45,6 +48,6 @@ export function writeViaSyncAccessHandle(
     // existing (and future) writeBytes/writeTextFile caller can keep treating the buffer they
     // passed in as still theirs afterward, same contract as the direct createWritable() path.
     const transferable = data.slice(0)
-    getWorker().postMessage({ id, fileHandle, data: transferable }, [transferable])
+    getWorker().postMessage({ id, path: relativePath, data: transferable }, [transferable])
   })
 }

@@ -27,11 +27,11 @@
  * some callers see, so hiding it here to reflect WebKit's real lack of createWritable() isn't an
  * option. Instead, this always returns a working writable-shaped object, whose close()
  * internally calls fsaStorage.ts's writeFileHandleData (the same createWritable-vs-worker-
- * fallback detection, but run against the *real* unwrapped `target`, not this Proxy — required
- * either way, since a Proxy can't be handed to opfsWriteFallback.ts's postMessage call: only a
- * genuine native FileSystemFileHandle is structured-cloneable). Every real call site in this
- * codebase (fsaStorage.ts's writeTextFile/writeBytes) only ever makes one write() call before
- * close(), so this doesn't implement arbitrary incremental streaming — just enough to match that.
+ * fallback detection, but run against the *real* unwrapped `target`, not this Proxy — the
+ * feature-detection itself would otherwise always see this Proxy's own always-present
+ * createWritable and take the wrong branch). Every real call site in this codebase
+ * (fsaStorage.ts's writeTextFile/writeBytes) only ever makes one write() call before close(), so
+ * this doesn't implement arbitrary incremental streaming — just enough to match that.
  */
 
 import { writeFileHandleData } from '@/adapters/web/fsaStorage'
@@ -87,7 +87,7 @@ function fallbackWritable(
     },
     close: async () => {
       if (pendingData === undefined) return
-      await writeFileHandleData(target, pendingData)
+      await writeFileHandleData(target, path, pendingData)
       onChange(path, 'write')
     },
   } as unknown as FileSystemWritableFileStream
