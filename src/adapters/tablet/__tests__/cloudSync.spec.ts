@@ -236,6 +236,45 @@ describe('pull', () => {
     await expect(sync.pull()).rejects.toThrow('reconnect please')
     expect((await sync.getSyncStatus()).needsReconnect).toBe(true)
   })
+
+  it('stops the batch cleanly on a rate limit, without advancing the cursor, and resumes on a later pull', async () => {
+    const root = createFakeRoot()
+    vi.mocked(provider.listChanges).mockResolvedValue({
+      entries: [
+        { tag: 'file', path: 'songs/a.json', rev: 'rev-a', sizeBytes: 10 },
+        { tag: 'file', path: 'songs/b.json', rev: 'rev-b', sizeBytes: 10 },
+      ],
+      cursor: 'cursor-1',
+    })
+    vi.mocked(provider.download).mockImplementation(async (_token, path) => {
+      if (path === 'songs/b.json') {
+        throw new ProviderApiError('rate limited', 'rate-limit', 30)
+      }
+      // Matches the entry's own declared rev (listChanges above) — otherwise the second pull()
+      // below wouldn't recognize this path as already-applied and would re-download it too.
+      return { bytes: jsonBytes({ id: 'a' }), rev: 'rev-a', sizeBytes: 10 }
+    })
+
+    await makeSync(root).pull()
+
+    // The path that succeeded before the rate limit hit was still applied and its rev recorded —
+    // only the cursor (which would mark the *whole batch* as done) is held back.
+    expect(await readJsonFile(root, 'songs/a.json')).not.toBeNull()
+    expect(await syncStore.getCursor()).toBeUndefined()
+
+    // A later pull re-fetches the same (unadvanced) cursor. The already-applied path is
+    // rev-matched and skipped; only the one that failed gets retried.
+    vi.mocked(provider.download).mockReset().mockResolvedValue({
+      bytes: jsonBytes({ id: 'b' }),
+      rev: 'rev-b-retry',
+      sizeBytes: 10,
+    })
+    await makeSync(root).pull()
+
+    expect(provider.download).toHaveBeenCalledTimes(1)
+    expect(provider.download).toHaveBeenCalledWith('token-1', 'songs/b.json')
+    expect(await syncStore.getCursor()).toBe('cursor-1')
+  })
 })
 
 describe('push', () => {

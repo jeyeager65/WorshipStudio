@@ -106,15 +106,21 @@ async function refreshSyncStatus() {
   }
 }
 
+// Its own error ref, separate from cloudActionError (Cloud connection panel's disconnect()) —
+// they used to share one, which meant a Sync Now/Clear & Re-sync failure rendered in the Cloud
+// connection panel above (wherever that alert happened to sit), nowhere near the button that
+// actually triggered it. This one renders in Sync health, next to syncNow/clearAndResync.
+const syncActionError = ref('')
+
 // syncStore.runSync() (not the adapter directly) so this button shares the exact same `syncing`
 // flag useTabletSync.ts's automatic triggers set — App.vue's app-bar indicator reflects either
 // one, and status.lastSyncedAt/pendingPushCount always refresh afterward, success or failure.
 async function syncNow() {
-  cloudActionError.value = ''
+  syncActionError.value = ''
   try {
     await syncStore.runSync()
   } catch (error) {
-    cloudActionError.value = error instanceof Error ? error.message : 'Sync failed.'
+    syncActionError.value = error instanceof Error ? error.message : 'Sync failed.'
   }
 }
 
@@ -130,11 +136,11 @@ async function clearAndResync() {
     ))
   )
     return
-  cloudActionError.value = ''
+  syncActionError.value = ''
   try {
     await syncStore.resetAndResync()
   } catch (error) {
-    cloudActionError.value = error instanceof Error ? error.message : 'Reset failed.'
+    syncActionError.value = error instanceof Error ? error.message : 'Reset failed.'
   }
 }
 
@@ -620,6 +626,10 @@ async function pickLibraryFolder() {
             the cloud and every other device are unaffected.
           </p>
         </template>
+
+        <v-alert v-if="syncActionError" type="error" variant="tonal" density="compact" class="mt-3">
+          {{ syncActionError }}
+        </v-alert>
       </div>
     </SettingsPanel>
 

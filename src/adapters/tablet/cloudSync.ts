@@ -141,10 +141,10 @@ export function createCloudSync(config: CloudSyncConfig) {
   // (the common case: songs/services/slides are all tiny JSON), the dominant cost per file is
   // pure network round-trip latency, not bandwidth, so doing them strictly sequentially meant
   // wall-clock time scaled directly with file count (observed as ~1s per tiny file on a real
-  // device). 6 matches the concurrent-connections-per-origin limit most browsers already impose,
-  // so it's roughly the most this can help without the provider's own rate limiting becoming the
-  // next bottleneck instead.
-  const PULL_CONCURRENCY = 6
+  // device). Kept modest — confirmed on a real device that 6 was enough to trip Microsoft Graph's
+  // rate limiting for OneDrive (whose download() makes two requests per file, content plus a
+  // separate metadata read, so 6 concurrent files was already up to 12 simultaneous requests).
+  const PULL_CONCURRENCY = 3
 
   async function pull(): Promise<void> {
     const token = await requireToken()
@@ -154,13 +154,27 @@ export function createCloudSync(config: CloudSyncConfig) {
     const total = page.entries.length
     let nextIndex = 0
     let completed = 0
+    // Set the moment any worker hits a rate limit, checked by every worker (including ones
+    // already mid-loop) before starting their next entry — stops the whole batch from continuing
+    // to hammer the provider once one request has already been throttled, rather than letting
+    // Promise.all's rejection just cut the *caller* loose while other workers keep firing.
+    let rateLimitedAt: number | undefined
+
     async function runWorker(): Promise<void> {
       for (;;) {
+        if (rateLimitedAt !== undefined) return
         const index = nextIndex++
         if (index >= total) return
         const entry = page.entries[index]!
         progress = { phase: 'pull', completed, total, currentPath: entry.path }
-        await applyEntry(token, entry)
+        try {
+          await applyEntry(token, entry)
+        } catch (error) {
+          if (!(error instanceof ProviderApiError) || error.kind !== 'rate-limit') throw error
+          cooldownUntil = Date.now() + (error.retryAfterSeconds ?? 60) * 1000
+          rateLimitedAt = Date.now()
+          return
+        }
         completed++
       }
     }
@@ -169,8 +183,14 @@ export function createCloudSync(config: CloudSyncConfig) {
     )
 
     progress = undefined
-    await syncStore.setCursor(page.cursor)
-    await syncStore.setLastSyncedAt(new Date().toISOString())
+    // A rate limit mid-batch leaves the cursor unadvanced on purpose — the next pull (the
+    // automatic 5-minute retry, or the next app launch) re-fetches the same page with the same
+    // cursor, but every entry already applied this time round is now rev-matched and skipped
+    // without re-downloading, so only whatever didn't finish actually gets retried.
+    if (rateLimitedAt === undefined) {
+      await syncStore.setCursor(page.cursor)
+      await syncStore.setLastSyncedAt(new Date().toISOString())
+    }
   }
 
   /** A push landed a conflict (the remote rev moved since this device last saw it). Downloads the
