@@ -78,10 +78,13 @@ already-trusted church machine needs to re-run `install-trust-windows.ps1` with 
    git tag v0.2.0
    git push origin v0.2.0
    ```
-4. `release.yml` builds a signed Windows installer, an unsigned macOS build, and republishes
-   the GitHub Pages site (help site + demo, see "Static browser demo" below). The Windows/macOS
-   builds land as a **draft** GitHub Release — review it and hit Publish when ready; the Pages
-   site goes live immediately with no review step.
+4. `release.yml` builds a signed Windows installer and republishes the GitHub Pages site (help
+   site + demo, see "Static browser demo" below). macOS was dropped from the release matrix
+   (no one currently runs live presentation from a Mac, and the web build already covers
+   Mac-based prep work) — the Tauri config, signing rationale, and install instructions below
+   are left in place in case that's revisited. The Windows build lands as a **draft** GitHub
+   Release — review it and hit Publish when ready; the Pages site goes live immediately with no
+   review step.
 
 ## First install on a given machine
 

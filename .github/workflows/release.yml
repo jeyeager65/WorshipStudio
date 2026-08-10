@@ -15,7 +15,11 @@ jobs:
       matrix:
         include:
           - platform: windows-latest
-          - platform: macos-latest
+          # macOS dropped from the release matrix (decided August 9, 2026 — see
+          # notes/release-process.md): no one runs live presentation from a Mac, and the web
+          # build already covers Mac-based prep work. The Tauri config, signing rationale, and
+          # install docs are left in place; add `- platform: macos-latest` back here if this
+          # gets revisited.
     runs-on: ${{ matrix.platform }}
     # tauri-action creates/updates the GitHub Release and uploads build artifacts to it via
     # the REST API — needs write access, which the default GITHUB_TOKEN doesn't grant unless
@@ -41,8 +45,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # Windows builds are signed with the self-signed certificate documented in
-      # notes/release-process.md — imported here from secrets, never committed. macOS builds
-      # are intentionally unsigned for now (see the same doc); no equivalent step runs there.
+      # notes/release-process.md — imported here from secrets, never committed.
       - name: Import Windows code-signing certificate
         if: matrix.platform == 'windows-latest'
         shell: pwsh
@@ -78,8 +81,7 @@ jobs:
           releaseBody: |
             See the commit history for what changed. Windows builds are signed — see the
             "install-trust-windows.ps1" note in notes/release-process.md if this is the first
-            install on a given machine. macOS builds are unsigned; see the same doc for the
-            one-time Gatekeeper bypass.
+            install on a given machine.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.platform == 'windows-latest' && '--config windows-signing.json' || '' }}
