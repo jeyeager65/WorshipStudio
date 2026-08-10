@@ -36,9 +36,9 @@ const confirmDialog = useConfirmDialogStore()
 
 // This one page now covers every adapter kind's idea of "where the library lives" — a real
 // folder (tauri/web) or a cloud provider connection (tablet, over whichever of
-// adapters/tablet/providers/*.ts this device connected through). Data tools stays gated off for
-// tablet: those act through the songs/services/media/... ports, which are still throw-on-call
-// stubs (adapters/tablet/index.ts) until Phase 4 wires them up.
+// adapters/tablet/providers/*.ts this device connected through). Data tools works identically
+// for tablet now too — the songs/services/media/... ports it acts through are real there
+// (adapters/tablet/index.ts, Phase 4 of the design).
 const adapterKind = getAdapter().kind
 const isCloudConnected = adapterKind === 'tablet'
 const cloudProvider = computed(() => machineSettings.value?.tabletCloudProvider ?? 'dropbox')
@@ -544,7 +544,6 @@ async function pickLibraryFolder() {
     </SettingsPanel>
 
     <SettingsPanel
-      v-if="adapterKind !== 'tablet'"
       title="Data tools"
       description="Demo and maintenance actions for the selected library folder."
       icon="mdi-database-cog-outline"

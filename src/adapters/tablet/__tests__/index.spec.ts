@@ -4,6 +4,9 @@ import { createFakeRoot } from '@/adapters/web/__tests__/fakeFsa'
 const { getOpfsRoot } = vi.hoisted(() => ({ getOpfsRoot: vi.fn() }))
 vi.mock('../opfs', () => ({ getOpfsRoot }))
 
+vi.mock('@/adapters/mock/pickFiles', () => ({ pickFilesInBrowser: vi.fn() }))
+import { pickFilesInBrowser } from '@/adapters/mock/pickFiles'
+
 function makeFakeSyncStore() {
   const dirty = new Map<string, { deleted: boolean; attempts: number; nextRetryAt: number }>()
   return {
@@ -44,6 +47,7 @@ const { createTabletAdapter } = await import('../index')
 beforeEach(() => {
   Object.assign(syncStore, makeFakeSyncStore())
   getOpfsRoot.mockReset().mockResolvedValue(createFakeRoot())
+  vi.mocked(pickFilesInBrowser).mockReset()
 })
 
 describe('createTabletAdapter', () => {
@@ -63,9 +67,43 @@ describe('createTabletAdapter', () => {
     expect(reloaded.branding.churchName).toBe('Test Church')
   })
 
-  it('a not-yet-implemented storage port throws a specific, honest error rather than behaving like an empty library', async () => {
+  it('every storage-shaped port is real and works against the OPFS root', async () => {
     const adapter = await createTabletAdapter({ provider: 'dropbox', clientId: 'k', libraryFolderPath: '/Library' })
-    await expect(adapter.songs.list()).rejects.toThrow(/songs\.list\(\).*tablet build/)
+
+    await adapter.songs.save({
+      id: 'song-1',
+      title: 'Amazing Grace',
+      collections: [],
+      tags: [],
+      blocks: [],
+      defaultArrangement: { sequence: [] },
+      usage: { usesPastYear: 0 },
+      updatedAt: '',
+      updatedByDevice: '',
+    })
+
+    const songs = await adapter.songs.list()
+    expect(songs.map((s) => s.id)).toContain('song-1')
+  })
+
+  it('diagnostics.getSummary reports real library counts and installationMode "tablet"', async () => {
+    const adapter = await createTabletAdapter({ provider: 'dropbox', clientId: 'k', libraryFolderPath: '/Library' })
+    const summary = await adapter.diagnostics.getSummary()
+    expect(summary.installationMode).toBe('tablet')
+    expect(summary.libraryItems.songs).toBe(0)
+  })
+
+  it("media's local-only items land in a separate OPFS subfolder never marked dirty for push", async () => {
+    const adapter = await createTabletAdapter({ provider: 'dropbox', clientId: 'k', libraryFolderPath: '/Library' })
+    vi.mocked(pickFilesInBrowser).mockResolvedValueOnce([new File(['bytes'], 'clip.mp4')])
+    const [staged] = await adapter.media.pickFilesToImport()
+
+    await adapter.media.commitImport([
+      { path: staged!.path, filename: 'clip.mp4', title: 'Clip', tags: [], location: 'local' },
+    ])
+
+    const dirtyPaths = [...syncStore._dirty.keys()]
+    expect(dirtyPaths.some((path) => path.startsWith('local-media/'))).toBe(false)
   })
 
   it('writing through the settings port marks the path dirty for the sync engine', async () => {

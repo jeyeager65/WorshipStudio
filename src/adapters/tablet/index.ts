@@ -6,17 +6,20 @@
  * desktop app itself. See notes/completion-audit.md for the design discussion this was built
  * from.
  *
- * Walking skeleton, matching exactly how the original web adapter itself was built (see that
- * file's "Web-based prep build" entries: a proven settings-only slice first, then mechanical
- * expansion). settings/sync/scripture/live/exports/help are real and reuse the *unmodified*
- * web/*.ts implementations wherever they're already storage-generic — they only ever depend on
- * the plain FileSystemDirectoryHandle interface, which the (dirty-tracking-wrapped) OPFS root
- * satisfies identically to a real picked folder. The ten storage-shaped ports songs/services/
- * slides/media/themes/people/announcements/diagnostics still depend on are honest throw-on-call
- * stubs for now, not silent fakes — filled in mechanically next.
+ * Every storage-shaped port (songs/services/slides/media/themes/people/announcements/diagnostics)
+ * is now real, reusing the *unmodified* web/*.ts implementations against the dirty-tracking-
+ * wrapped OPFS root — the same mechanical-reuse strategy the web adapter itself is built on,
+ * since every one of those ports only ever depends on the plain FileSystemDirectoryHandle
+ * interface. Media's local-only side gets its own OPFS subfolder (localMediaRoot.ts) built off
+ * the *raw*, untracked root, so 'local' items structurally cannot leak into a push.
  */
 
-import type { ScripturePassage, StudioAdapter, SyncStatus } from '@/adapters/types'
+import type {
+  DiagnosticSummary,
+  ScripturePassage,
+  StudioAdapter,
+  SyncStatus,
+} from '@/adapters/types'
 import { loadKjv } from '@/adapters/mock/scriptureFixtures'
 import {
   formatReference,
@@ -25,11 +28,19 @@ import {
   parseReference,
 } from '@/utils/scriptureReference'
 import { createLiveAudienceWindowPort } from '@/utils/liveAudienceWindow'
+import { createWebAnnouncementsPort } from '@/adapters/web/announcements'
+import { createWebMediaPort } from '@/adapters/web/media'
+import { createWebPeoplePort } from '@/adapters/web/people'
 import { listApiBibleCatalog, resolveApiBible, resolveEsv } from '@/adapters/web/scripture'
+import { createWebServicesPort } from '@/adapters/web/services'
 import { createWebSettingsPort } from '@/adapters/web/settings'
+import { createWebSlidesPort } from '@/adapters/web/slides'
+import { createWebSongsPort } from '@/adapters/web/songs'
+import { createWebThemesPort } from '@/adapters/web/themes'
 import * as sync from '@/adapters/web/sync'
 import { createCloudSync } from './cloudSync'
 import { wrapWithDirtyTracking } from './dirtyTrackingRoot'
+import { createTabletLocalMediaRoot } from './localMediaRoot'
 import { getOpfsRoot } from './opfs'
 import { createDropboxProvider } from './providers/dropbox'
 import { createOneDriveProvider } from './providers/onedrive'
@@ -37,27 +48,6 @@ import type { CloudSyncProvider } from './providers/types'
 import { syncStore } from './syncStore'
 
 const DEFAULT_MAX_CACHED_FILE_SIZE_MB = 200
-
-/** A port whose every method throws — used for the storage-shaped ports this walking skeleton
- *  doesn't implement yet, so an unbuilt feature fails loudly and specifically rather than
- *  silently behaving like an always-empty library. Proxy-based so it satisfies whatever port
- *  interface shape TypeScript expects it to without hand-writing every method. */
-function notImplementedPort<T extends object>(portName: string): T {
-  return new Proxy(
-    {},
-    {
-      get(_target, prop) {
-        if (typeof prop !== 'string') return undefined
-        // Every real port method returns a Promise (they're all async) — rejecting rather than
-        // throwing synchronously matches that contract, so a caller chaining .catch() (not just
-        // one using try/await) still catches this the same way it would a real failure.
-        return async () => {
-          throw new Error(`${portName}.${prop}() isn't implemented for the tablet build yet.`)
-        }
-      },
-    },
-  ) as T
-}
 
 export interface TabletAdapterConfig {
   provider: 'dropbox' | 'onedrive'
@@ -88,6 +78,13 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
   })
 
   const settings = createWebSettingsPort(trackedRoot)
+  const songs = createWebSongsPort(trackedRoot, settings)
+  const themes = createWebThemesPort(trackedRoot, settings)
+  const services = createWebServicesPort(trackedRoot, settings, songs)
+  const slides = createWebSlidesPort(trackedRoot, settings)
+  const media = createWebMediaPort(trackedRoot, settings, themes, createTabletLocalMediaRoot(rawRoot))
+  const people = createWebPeoplePort(trackedRoot, settings)
+  const announcements = createWebAnnouncementsPort(trackedRoot, settings)
 
   const cloudSync = createCloudSync({
     provider: createProvider(config),
@@ -98,13 +95,13 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
 
   return {
     kind: 'tablet',
-    songs: notImplementedPort('songs'),
-    services: notImplementedPort('services'),
-    slides: notImplementedPort('slides'),
-    media: notImplementedPort('media'),
-    themes: notImplementedPort('themes'),
-    people: notImplementedPort('people'),
-    announcements: notImplementedPort('announcements'),
+    songs,
+    services,
+    slides,
+    media,
+    themes,
+    people,
+    announcements,
     settings,
     // Identical to adapters/web/index.ts's scripture port — storage-independent (KJV lookup and
     // reference parsing are pure; ESV/api.bible are plain network calls), so it's reused
@@ -204,9 +201,67 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
       },
       runSync: () => cloudSync.runSync(),
     },
-    // Depends on songs/services/slides/media/themes/people above, which are still stubs — real
-    // once those are (Phase 4 of the design), not worth a half-correct version before then.
-    diagnostics: notImplementedPort('diagnostics'),
+    // Identical shape to adapters/web/index.ts's diagnostics port, plus the cloud-sync-specific
+    // counts sync.getStatus() above already surfaces separately.
+    diagnostics: {
+      getSummary: async (): Promise<DiagnosticSummary> => {
+        const [
+          songCount,
+          serviceCount,
+          slideCount,
+          mediaCount,
+          themeCount,
+          peopleCount,
+          conflicts,
+          recovery,
+        ] = await Promise.all([
+          songs.list().then((list) => list.length),
+          services.list().then((list) => list.length),
+          slides.list().then((list) => list.length),
+          media.list().then((list) => list.length),
+          themes.list().then((list) => list.length),
+          people.list().then((list) => list.length),
+          sync.detectConflicts(trackedRoot),
+          sync.detectRecoveryIssues(trackedRoot),
+        ])
+        return {
+          generatedAt: new Date().toISOString(),
+          appVersion: 'Tablet build',
+          buildProfile: 'development',
+          platform: navigator.platform || 'browser',
+          architecture: 'browser',
+          installationMode: 'tablet',
+          setupComplete: (await settings.getMachineSettings()).hasCompletedSetup,
+          libraryReadable: true,
+          libraryItems: {
+            songs: songCount,
+            services: serviceCount,
+            slides: slideCount,
+            media: mediaCount,
+            themes: themeCount,
+            people: peopleCount,
+          },
+          syncConflictCount: conflicts.length,
+          recoveryIssueCount: recovery.length,
+          displayAssignmentCount: 0,
+          remotePortMode: 'unavailable',
+          logFileCount: 0,
+          logBytes: 0,
+        }
+      },
+      createBundle: async () => {
+        return JSON.stringify(
+          {
+            privacyNotice:
+              'Tablet build diagnostics contain operational summary data only. No local logs are available.',
+            summary: {},
+            logs: [],
+          },
+          null,
+          2,
+        )
+      },
+    },
     // Identical to adapters/web/index.ts's exports port — a plain browser download, genuinely
     // storage-independent.
     exports: {
