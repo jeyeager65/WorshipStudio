@@ -520,6 +520,21 @@ export interface SyncStatus {
   needsReconnect?: boolean
 }
 
+/** Tablet-only — live progress for a pull/push cycle currently in flight
+ *  (adapters/tablet/cloudSync.ts). Polled by stores/sync.ts while a sync is running so the UI can
+ *  show real numbers instead of just a spinner; undefined once nothing is in flight. */
+export interface SyncProgress {
+  phase: 'pull' | 'push'
+  /** Items fully applied/uploaded so far this phase. */
+  completed: number
+  /** Total items in this phase's batch — known upfront, since a concrete provider's listChanges()
+   *  and the locally-tracked dirty set are both already-resolved, complete batches. */
+  total: number
+  /** Root-relative path of the item currently being applied/uploaded, e.g. "songs/song-1.json" —
+   *  absent for the brief moment right when a phase starts or finishes. */
+  currentPath?: string
+}
+
 export interface RecoveryIssue {
   relativePath: string
   /** Opaque, validated handle passed back to the recovery commands. */
@@ -560,6 +575,9 @@ export interface SyncPort {
    *  desktop/web builds' "sync" is just Dropbox's own desktop client, running outside this app
    *  entirely). */
   runSync?(): Promise<void>
+  /** Tablet-only — a snapshot of the currently in-flight pull/push cycle, or undefined when none
+   *  is running. Absent on every other adapter kind. */
+  getProgress?(): Promise<SyncProgress | undefined>
 }
 
 export interface DiagnosticSummary {

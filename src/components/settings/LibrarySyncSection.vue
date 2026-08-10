@@ -44,6 +44,27 @@ const isCloudConnected = adapterKind === 'tablet'
 const cloudProvider = computed(() => machineSettings.value?.tabletCloudProvider ?? 'dropbox')
 const cloudProviderLabel = computed(() => (cloudProvider.value === 'onedrive' ? 'OneDrive' : 'Dropbox'))
 
+// Same top-dir convention as App.vue's app-bar indicator and SyncConflictsView.vue's
+// recoveryKind() — kept as its own small copy here rather than a shared import, matching how
+// this codebase already treats this exact mapping as cheap enough to duplicate per view.
+const SYNC_KIND_LABELS: Record<string, string> = {
+  songs: 'songs',
+  slides: 'slides',
+  'media-items': 'media',
+  themes: 'themes',
+  people: 'people',
+  services: 'services',
+}
+const syncProgressLabel = computed(() => {
+  const progress = syncStore.progress
+  if (!progress || progress.total === 0) return ''
+  const verb = progress.phase === 'pull' ? 'Downloading' : 'Uploading'
+  const top = progress.currentPath?.split('/')[0]
+  const kind = (top !== undefined && SYNC_KIND_LABELS[top]) || 'files'
+  const position = Math.min(progress.completed + 1, progress.total)
+  return `${verb} ${kind} — ${position} of ${progress.total}`
+})
+
 const cloudConnected = ref(false)
 const disconnectingCloud = ref(false)
 const cloudActionError = ref('')
@@ -140,6 +161,10 @@ watch(
   },
   { immediate: true },
 )
+// The inline QR is sized to sit next to the link field, too small to scan reliably at a glance —
+// clicking/tapping it shows the same image full-size in a dialog instead of needing a second,
+// separately-generated large rendering.
+const addDeviceQrDialog = ref(false)
 const addDeviceLinkCopied = ref(false)
 async function copyAddDeviceLink() {
   await navigator.clipboard.writeText(addDeviceUrl.value)
@@ -417,7 +442,15 @@ async function pickLibraryFolder() {
           it's the same {{ cloudProviderLabel }} connection as this device.
         </p>
         <div class="add-device-row">
-          <img v-if="addDeviceQr" :src="addDeviceQr" alt="Connect a new device QR code" class="add-device-qr" />
+          <button
+            v-if="addDeviceQr"
+            type="button"
+            class="add-device-qr-button"
+            @click="addDeviceQrDialog = true"
+          >
+            <img :src="addDeviceQr" alt="Connect a new device QR code" class="add-device-qr" />
+            <span class="text-caption text-medium-emphasis">Tap to enlarge</span>
+          </button>
           <div class="add-device-link">
             <v-text-field
               :model-value="addDeviceUrl"
@@ -425,6 +458,7 @@ async function pickLibraryFolder() {
               variant="outlined"
               density="compact"
               readonly
+              hide-details
               @focus="selectAddDeviceLink"
             />
             <v-btn variant="tonal" prepend-icon="mdi-content-copy" @click="copyAddDeviceLink">
@@ -433,6 +467,28 @@ async function pickLibraryFolder() {
           </div>
         </div>
       </div>
+
+      <v-dialog v-model="addDeviceQrDialog" max-width="420">
+        <v-card>
+          <v-card-title>Connect a New Device</v-card-title>
+          <v-card-text class="add-device-qr-dialog-body">
+            <img
+              v-if="addDeviceQr"
+              :src="addDeviceQr"
+              alt="Connect a new device QR code"
+              class="add-device-qr-large"
+            />
+            <p class="text-body-2 text-medium-emphasis">
+              Scan this with the new device's camera to connect it to the same
+              {{ cloudProviderLabel }} library — no typing required.
+            </p>
+          </v-card-text>
+          <v-card-actions>
+            <v-spacer />
+            <v-btn variant="text" @click="addDeviceQrDialog = false">Close</v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
 
       <v-alert v-if="cloudActionError" type="error" variant="tonal" density="compact" class="mt-3">
         {{ cloudActionError }}
@@ -513,6 +569,10 @@ async function pickLibraryFolder() {
                 waiting to push
               </template>
             </span>
+          </div>
+          <div v-if="syncStore.syncing && syncProgressLabel" class="d-flex align-center ga-2 mb-2">
+            <v-progress-circular indeterminate size="16" width="2" color="primary" />
+            <span class="text-body-2 text-medium-emphasis">{{ syncProgressLabel }}</span>
           </div>
         </template>
         <div
@@ -680,14 +740,30 @@ async function pickLibraryFolder() {
 .add-device-row {
   display: grid;
   grid-template-columns: auto minmax(280px, 1fr);
-  align-items: center;
+  align-items: start;
   gap: 16px;
   max-width: 760px;
 }
+.add-device-qr-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-radius: 10px;
+  background: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.add-device-qr-button:hover,
+.add-device-qr-button:focus-visible {
+  border-color: rgb(var(--v-theme-primary));
+}
 .add-device-qr {
-  width: 96px;
-  height: 96px;
-  border-radius: 8px;
+  width: 128px;
+  height: 128px;
+  border-radius: 6px;
   background: #fff;
   padding: 6px;
 }
@@ -695,9 +771,24 @@ async function pickLibraryFolder() {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding-top: 8px;
 }
 .add-device-link .v-text-field {
   flex: 1;
+}
+.add-device-qr-dialog-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+.add-device-qr-large {
+  width: min(320px, 100%);
+  height: min(320px, 100%);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
 }
 @media (max-width: 700px) {
   .path-setting {

@@ -25,6 +25,7 @@ import {
 } from './providers/types'
 import { syncStore, type ConflictEntry, type DirtyEntry } from './syncStore'
 import { readBytes, removeFile, writeBytes, writeJsonFile } from '@/adapters/web/fsaStorage'
+import type { SyncProgress } from '@/adapters/types'
 
 /** Mirrors web/sync.ts's CONFLICT_PATTERN scope exactly — only paths under these top-level
  *  folders are ever scanned by detectConflicts(), so only pushes to these are worth
@@ -75,6 +76,11 @@ export function createCloudSync(config: CloudSyncConfig) {
   // getSyncStatus() so the UI can prompt a visible reconnect instead of pulls/pushes silently
   // failing forever.
   let needsReconnect = false
+  // Live snapshot of whichever phase is currently running — set at the top of each loop
+  // iteration in pull()/push() below and cleared once that phase finishes, so getProgress() (and
+  // by extension stores/sync.ts's poll while syncing) always reflects real numbers rather than
+  // just "a sync is happening somewhere."
+  let progress: SyncProgress | undefined
 
   async function requireToken(): Promise<string> {
     try {
@@ -137,9 +143,12 @@ export function createCloudSync(config: CloudSyncConfig) {
     const cursor = await syncStore.getCursor()
     const page = await provider.listChanges(token, cursor)
 
-    for (const entry of page.entries) {
+    for (let index = 0; index < page.entries.length; index++) {
+      const entry = page.entries[index]!
+      progress = { phase: 'pull', completed: index, total: page.entries.length, currentPath: entry.path }
       await applyEntry(entry)
     }
+    progress = undefined
     await syncStore.setCursor(page.cursor)
     await syncStore.setLastSyncedAt(new Date().toISOString())
   }
@@ -240,11 +249,20 @@ export function createCloudSync(config: CloudSyncConfig) {
     if (Date.now() < cooldownUntil) return
     const token = await requireToken()
     const now = Date.now()
-    for (const [relativePath, entry] of await syncStore.getAllDirty()) {
-      if (entry.nextRetryAt > now) continue
-      if (await syncStore.getConflict(relativePath)) continue // waiting on resolveConflict()
+    const allDirty = await syncStore.getAllDirty()
+    let completed = 0
+    for (const [relativePath, entry] of allDirty) {
+      if (entry.nextRetryAt > now) {
+        completed++
+        continue
+      }
+      if (await syncStore.getConflict(relativePath)) {
+        completed++
+        continue // waiting on resolveConflict()
+      }
       if (Date.now() < cooldownUntil) break
 
+      progress = { phase: 'push', completed, total: allDirty.length, currentPath: relativePath }
       try {
         await pushOne(token, relativePath)
       } catch (error) {
@@ -256,7 +274,9 @@ export function createCloudSync(config: CloudSyncConfig) {
         const retried: DirtyEntry = { ...entry, attempts, nextRetryAt: Date.now() + backoffMs(attempts) }
         await syncStore.setDirty(relativePath, retried)
       }
+      completed++
     }
+    progress = undefined
   }
 
   /** Applies the user's keep/discard choice from the (unmodified) web conflict-resolution UI back
@@ -307,5 +327,9 @@ export function createCloudSync(config: CloudSyncConfig) {
     return { lastSyncedAt, pendingPushCount: dirty.length, needsReconnect }
   }
 
-  return { pull, push, runSync, getSyncStatus, resolveConflict }
+  async function getProgress(): Promise<SyncProgress | undefined> {
+    return progress
+  }
+
+  return { pull, push, runSync, getSyncStatus, getProgress, resolveConflict }
 }

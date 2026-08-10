@@ -32,6 +32,43 @@ const historyStore = useHistoryStore()
 const isTabletBuild = getAdapter().kind === 'tablet'
 const hasDesktopBackend = getAdapter().kind === 'tauri'
 
+// Coarse content kind from a sync progress path's top-level folder — mirrors the same top-dir
+// convention SyncConflictsView.vue's recoveryKind() uses, just for display rather than routing a
+// store refresh.
+const SYNC_KIND_LABELS: Record<string, string> = {
+  songs: 'songs',
+  slides: 'slides',
+  'media-items': 'media',
+  themes: 'themes',
+  people: 'people',
+  services: 'services',
+}
+function syncKindLabel(path: string): string {
+  const top = path.split('/')[0]
+  return (top !== undefined && SYNC_KIND_LABELS[top]) || 'files'
+}
+
+// The app-bar sync icon is the only always-visible feedback that an automatic background sync
+// (useTabletSync.ts) is even running — a bare spinner gave no sense of whether it was doing
+// anything or stuck, especially over a slow connection with a large pending batch. Built from
+// syncStore.progress, which stores/sync.ts polls from cloudSync.ts's in-memory state while a sync
+// is in flight.
+const syncProgressLabel = computed(() => {
+  const progress = syncStore.progress
+  if (!progress || progress.total === 0) return ''
+  const verb = progress.phase === 'pull' ? 'Downloading' : 'Uploading'
+  const kind = progress.currentPath ? syncKindLabel(progress.currentPath) : 'files'
+  const position = Math.min(progress.completed + 1, progress.total)
+  return `${verb} ${kind} — ${position} of ${progress.total}`
+})
+
+const syncTooltipText = computed(() => {
+  if (syncStore.syncing) return syncProgressLabel.value || 'Syncing…'
+  if (syncStore.status?.lastSyncedAt)
+    return `Last synced ${new Date(syncStore.status.lastSyncedAt).toLocaleTimeString()}`
+  return 'Not synced yet'
+})
+
 // The presentation window (see src/adapters/tauri/index.ts's `live` port) loads this same
 // app bundle in a second native window labeled "presentation" — never reached through
 // routing, since it isn't the main window at all. Everything else below (app-bar, nav,
@@ -621,23 +658,19 @@ onUnmounted(() => {
             <v-icon v-bind="props" icon="mdi-cloud-alert-outline" color="warning" class="mr-3" />
           </template>
         </v-tooltip>
-        <v-tooltip
-          v-else-if="isTabletBuild"
-          :text="
-            syncStore.syncing
-              ? 'Syncing…'
-              : syncStore.status?.lastSyncedAt
-                ? `Last synced ${new Date(syncStore.status.lastSyncedAt).toLocaleTimeString()}`
-                : 'Not synced yet'
-          "
-        >
+        <v-tooltip v-else-if="isTabletBuild" :text="syncTooltipText">
           <template #activator="{ props }">
-            <v-icon
-              v-bind="props"
-              :icon="syncStore.syncing ? 'mdi-cloud-sync-outline' : 'mdi-cloud-check-outline'"
-              :class="{ 'sync-spin': syncStore.syncing }"
-              class="mr-3"
-            />
+            <!-- Progress text is shown inline, not just in the tooltip — this runs on touchscreen
+                 tablets, where a hover-only tooltip is effectively invisible. -->
+            <div v-bind="props" class="sync-indicator mr-3">
+              <v-icon
+                :icon="syncStore.syncing ? 'mdi-cloud-sync-outline' : 'mdi-cloud-check-outline'"
+                :class="{ 'sync-spin': syncStore.syncing }"
+              />
+              <span v-if="syncStore.syncing && syncProgressLabel" class="sync-progress-text">{{
+                syncProgressLabel
+              }}</span>
+            </div>
           </template>
         </v-tooltip>
         <v-tooltip
@@ -781,6 +814,16 @@ onUnmounted(() => {
 .app-bar {
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.09);
   background: rgba(var(--v-theme-surface), 0.97);
+}
+.sync-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sync-progress-text {
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.68rem;
+  white-space: nowrap;
 }
 .sync-spin {
   animation: sync-spin-rotate 1.4s linear infinite;

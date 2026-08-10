@@ -2,7 +2,14 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { getAdapter } from '@/adapters'
 import { useAsyncStoreState } from '@/composables/useAsyncStoreState'
-import type { ConflictedItem, RecoveryIssue, SyncStatus } from '@/adapters/types'
+import type { ConflictedItem, RecoveryIssue, SyncProgress, SyncStatus } from '@/adapters/types'
+
+// How often to re-poll getProgress() while a sync is running — cloudSync.ts has no push channel
+// of its own (SyncPort is a plain Promise-based adapter interface, not an event emitter), so this
+// is the only way the app-bar indicator can show live numbers instead of just a spinner for
+// however long the in-flight pull/push cycle takes. Frequent enough to feel live, cheap enough
+// not to matter (getProgress() just reads an in-memory variable, no I/O).
+const PROGRESS_POLL_MS = 400
 
 export const useSyncStore = defineStore('sync', () => {
   const status = ref<SyncStatus>()
@@ -15,6 +22,10 @@ export const useSyncStore = defineStore('sync', () => {
   // shared "is a sync running right now" signal, visible anywhere in the app (App.vue's app-bar
   // indicator), not just wherever the button that started it happens to be mounted.
   const syncing = ref(false)
+  // Tablet-only — live pull/push progress for whichever sync is currently running, polled while
+  // syncing.value is true. undefined on every other adapter kind (getProgress is absent there)
+  // and whenever no sync is in flight.
+  const progress = ref<SyncProgress>()
 
   async function load() {
     return asyncState.runLoad(async () => {
@@ -57,9 +68,16 @@ export const useSyncStore = defineStore('sync', () => {
   async function runSync() {
     if (syncing.value) return
     syncing.value = true
+    const pollHandle = getAdapter().sync.getProgress
+      ? window.setInterval(async () => {
+          progress.value = await getAdapter().sync.getProgress?.()
+        }, PROGRESS_POLL_MS)
+      : undefined
     try {
       await getAdapter().sync.runSync?.()
     } finally {
+      if (pollHandle !== undefined) window.clearInterval(pollHandle)
+      progress.value = undefined
       syncing.value = false
       await load()
     }
@@ -71,6 +89,7 @@ export const useSyncStore = defineStore('sync', () => {
     recoveryIssues,
     ...asyncState,
     syncing,
+    progress,
     load,
     resolve,
     recover,
