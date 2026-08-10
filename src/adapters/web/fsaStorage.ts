@@ -10,6 +10,8 @@
  * walk outside the picked folder via a crafted relative path.
  */
 
+import { writeViaSyncAccessHandle } from './opfsWriteFallback'
+
 function segments(relativePath: string): string[] {
   const parts = relativePath.split('/').filter((part) => part.length > 0)
   if (parts.some((part) => part === '.' || part === '..')) {
@@ -77,6 +79,33 @@ export async function readFileText(
   return (await fileHandle.getFile()).text()
 }
 
+/** WebKit (Safari/iOS) doesn't implement FileSystemFileHandle.createWritable() at all — confirmed
+ *  directly against WebKit's own engineering blog, not assumed. Its OPFS implementation only
+ *  supports writing through FileSystemSyncAccessHandle.write(), which is exclusive to Worker
+ *  contexts, so that path is routed through opfsWriteFallback.ts's dedicated worker instead.
+ *  Chrome/Edge/Firefox all support createWritable() directly and take the fast, direct path
+ *  below unchanged. Centralized here so every caller (writeTextFile, writeBytes) — and by
+ *  extension every port built on them — gets this transparently, with nothing to change on
+ *  their end. */
+async function writeFileHandle(
+  fileHandle: FileSystemFileHandle,
+  data: ArrayBuffer | Blob | string,
+): Promise<void> {
+  if (typeof fileHandle.createWritable === 'function') {
+    const writable = await fileHandle.createWritable()
+    await writable.write(data)
+    await writable.close()
+    return
+  }
+  const bytes =
+    typeof data === 'string'
+      ? new TextEncoder().encode(data).buffer
+      : data instanceof Blob
+        ? await data.arrayBuffer()
+        : data
+  await writeViaSyncAccessHandle(fileHandle, bytes)
+}
+
 /** createWritable()'s swap-file write only replaces the real file on close() — confirmed
  *  atomic-enough in the August 2026 File System Access spike. Creates parent folders as needed. */
 export async function writeTextFile(
@@ -87,9 +116,7 @@ export async function writeTextFile(
   const located = await resolveParentDir(root, relativePath, true)
   if (!located) throw new Error(`Could not resolve path: ${relativePath}`)
   const fileHandle = await located.dir.getFileHandle(located.name, { create: true })
-  const writable = await fileHandle.createWritable()
-  await writable.write(text)
-  await writable.close()
+  await writeFileHandle(fileHandle, text)
 }
 
 export function backupPath(relativePath: string): string {
@@ -148,9 +175,7 @@ export async function writeBytes(
   const located = await resolveParentDir(root, relativePath, true)
   if (!located) throw new Error(`Could not resolve path: ${relativePath}`)
   const fileHandle = await located.dir.getFileHandle(located.name, { create: true })
-  const writable = await fileHandle.createWritable()
-  await writable.write(bytes)
-  await writable.close()
+  await writeFileHandle(fileHandle, bytes)
 }
 
 export async function removeFile(

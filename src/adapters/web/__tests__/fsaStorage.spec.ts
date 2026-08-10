@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest'
-import { backupPath, readFileText, readJsonFile, writeJsonFile } from '../fsaStorage'
+import { describe, expect, it, vi } from 'vitest'
+import { backupPath, readFileText, readJsonFile, writeBytes, writeJsonFile, writeTextFile } from '../fsaStorage'
 import { createFakeRoot } from './fakeFsa'
+
+const { writeViaSyncAccessHandle } = vi.hoisted(() => ({ writeViaSyncAccessHandle: vi.fn() }))
+vi.mock('../opfsWriteFallback', () => ({ writeViaSyncAccessHandle }))
 
 describe('writeJsonFile backup-on-write', () => {
   it('does not create a .backup on the first write of a new file', async () => {
@@ -51,5 +54,51 @@ describe('writeJsonFile backup-on-write', () => {
     const current = await readJsonFile<{ title: string }>(root, 'songs/song-1.json')
     expect(current?.title).toBe('Untouched')
     expect(await readFileText(root, backupPath('songs/song-1.json'))).toBeNull()
+  })
+})
+
+// WebKit (Safari/iOS) doesn't implement FileSystemFileHandle.createWritable() at all — these
+// simulate that by handing back a file handle missing the method entirely, same as what a real
+// WebKit OPFS handle looks like, rather than trying to run a real Worker in jsdom (which has no
+// Worker implementation to run one in anyway — see opfsWriteFallback.spec.ts for that piece).
+function createFakeRootWithoutCreateWritable(): FileSystemDirectoryHandle {
+  const fileHandle = { getFile: async () => new File([], 'stub') }
+  const dir: Record<string, unknown> = {
+    getFileHandle: async () => fileHandle,
+  }
+  dir.getDirectoryHandle = async () => dir
+  return dir as unknown as FileSystemDirectoryHandle
+}
+
+describe('falling back to the sync-access-handle worker when createWritable is unavailable', () => {
+  it('writeTextFile encodes the string to bytes and routes through the fallback', async () => {
+    writeViaSyncAccessHandle.mockReset().mockResolvedValue(undefined)
+    const root = createFakeRootWithoutCreateWritable()
+
+    await writeTextFile(root, 'songs/song-1.json', 'hello')
+
+    expect(writeViaSyncAccessHandle).toHaveBeenCalledTimes(1)
+    const [, bytes] = writeViaSyncAccessHandle.mock.calls[0]!
+    expect(new TextDecoder().decode(bytes)).toBe('hello')
+  })
+
+  it('writeBytes passes an ArrayBuffer straight through to the fallback', async () => {
+    writeViaSyncAccessHandle.mockReset().mockResolvedValue(undefined)
+    const root = createFakeRootWithoutCreateWritable()
+    const bytes = new TextEncoder().encode('raw bytes').buffer as ArrayBuffer
+
+    await writeBytes(root, 'media/photo.jpg', bytes)
+
+    expect(writeViaSyncAccessHandle).toHaveBeenCalledWith(expect.anything(), bytes)
+  })
+
+  it('writeBytes converts a Blob to an ArrayBuffer before handing it to the fallback', async () => {
+    writeViaSyncAccessHandle.mockReset().mockResolvedValue(undefined)
+    const root = createFakeRootWithoutCreateWritable()
+
+    await writeBytes(root, 'media/photo.jpg', new Blob(['blob content']))
+
+    const [, bytes] = writeViaSyncAccessHandle.mock.calls[0]!
+    expect(new TextDecoder().decode(bytes)).toBe('blob content')
   })
 })
