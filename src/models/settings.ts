@@ -44,6 +44,30 @@ export interface LibrarySettings {
     clientSecret: string
   }
   /**
+   * One Dropbox app registration owned by the church, used by the tablet (adapters/tablet/)
+   * build to sync directly against the church's Dropbox library over the Dropbox API — synced
+   * so every tablet uses the same app registration. Church-scoped rather than a single
+   * WorshipStudio-wide key for the same reason canvaIntegration is: Dropbox's review posture for
+   * full-account access expects one registration per requesting organization, and a shared key
+   * risks one bad actor getting every church rate-limited. Unlike canvaIntegration, there's no
+   * secret here at all — the Dropbox app is a PKCE "public client," which by design has none;
+   * see adapters/tablet/providers/dropboxAuth.ts. The OAuth access/refresh tokens produced when a tablet
+   * connects remain device-local, same reasoning as Canva's.
+   */
+  dropboxIntegration: {
+    appKey: string
+  }
+  /**
+   * One Microsoft Entra app registration owned by the church, used the same way
+   * dropboxIntegration is — but for a tablet connecting to the church's OneDrive instead. Same
+   * church-scoped reasoning, same "no secret" story (registered as the `spa` platform type,
+   * which by design accepts none — see adapters/tablet/providers/onedriveAuth.ts), same
+   * device-local token storage.
+   */
+  oneDriveIntegration: {
+    clientId: string
+  }
+  /**
    * Church-chosen api.bible editions (e.g. NIV) — synced so every machine agrees on what
    * "NIV" refers to. The api.bible *key* needed to actually resolve these lives per-machine
    * in MachineSettings.apiBibleKey, since keys must never sync.
@@ -142,4 +166,40 @@ export interface MachineSettings {
    * Control, this cannot change automatically because Canva requires an exact allow-listed URL.
    */
   canvaCallbackPort?: number
+  /**
+   * Tablet-only (adapters/tablet/). Files at or above this size are never pulled into this
+   * device's local OPFS cache during a Dropbox sync — deliberately a *separate* threshold from
+   * LibrarySettings.mediaMaxSyncedFileSizeMb, which governs whether a file syncs to every
+   * desktop machine at all. That setting answers "is this worth syncing to the church at large";
+   * this one answers "is this worth this specific tablet's local storage," which varies by
+   * device (an older 32GB iPad vs. a fresh 256GB Android tablet) — hence per-machine, not synced.
+   */
+  tabletMediaMaxCachedFileSizeMb?: number
+  /**
+   * Tablet-only. Which cloud provider this device is connected through — picks which of
+   * providers/dropbox.ts / providers/onedrive.ts createTabletAdapter() builds. Per-machine since
+   * different devices could plausibly connect through different providers even for the same
+   * church (unusual, but nothing prevents it — each provider's library folder path below is its
+   * own independent setting).
+   */
+  tabletCloudProvider?: 'dropbox' | 'onedrive'
+  /**
+   * Tablet-only. Path within the connected cloud account (relative to its root) where the
+   * library lives — full account access (not an isolated app-created folder) is required to
+   * reach the church's *existing* synced folder, so this identifies which of potentially many
+   * folders in that account is the actual library. Per-machine like libraryPath, even though
+   * every device normally points at the same real folder.
+   */
+  tabletCloudLibraryFolderPath?: string
+  /**
+   * Tablet-only. A device-local *cache* of the app key/client ID used to connect — not the
+   * canonical value (that's LibrarySettings.dropboxIntegration.appKey or
+   * .oneDriveIntegration.clientId, synced church-wide). Needed purely to bootstrap: on a
+   * brand-new device, nothing has been pulled from the cloud yet, so there's no synced
+   * LibrarySettings to read the real key from at all — the very first connection on any device
+   * has to come from a human typing it in, or scanning a same-church device's "Add Another
+   * Device" link/QR code (BootGate.vue's connect screen). This just means a device that's
+   * already connected doesn't have to ask again after a reload.
+   */
+  tabletCloudClientId?: string
 }

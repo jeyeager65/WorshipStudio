@@ -31,6 +31,7 @@ import { createLiveAudienceWindowPort } from '@/utils/liveAudienceWindow'
 import { createWebAnnouncementsPort } from './announcements'
 import { createWebMediaPort } from './media'
 import { createWebPeoplePort } from './people'
+import { createPickedLocalMediaRoot } from './pickedLocalMediaRoot'
 import { listApiBibleCatalog, resolveApiBible, resolveEsv } from './scripture'
 import { createWebServicesPort } from './services'
 import { createWebSettingsPort } from './settings'
@@ -45,7 +46,7 @@ export function createWebAdapter(root: FileSystemDirectoryHandle): StudioAdapter
   const themes = createWebThemesPort(root, settings)
   const services = createWebServicesPort(root, settings, songs)
   const slides = createWebSlidesPort(root, settings)
-  const media = createWebMediaPort(root, settings, themes)
+  const media = createWebMediaPort(root, settings, themes, createPickedLocalMediaRoot())
   const people = createWebPeoplePort(root, settings)
   const announcements = createWebAnnouncementsPort(root, settings)
 

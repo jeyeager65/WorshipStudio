@@ -43,6 +43,9 @@ export const seedLibrarySettings: LibrarySettings = {
     secondaryColor: '#C9A227',
   },
   canvaIntegration: { clientId: '', clientSecret: '' },
+  // The demo build never resolves the 'tablet' adapter kind — no cloud app registration to seed.
+  dropboxIntegration: { appKey: '' },
+  oneDriveIntegration: { clientId: '' },
   // The mock/demo adapter only ever resolves KJV (see scriptureFixtures.ts) — an ESV/api.bible
   // entry here would be exactly the disconnected-Settings-vs-real-picker bug this model shape
   // exists to prevent, so the demo's seed data doesn't pretend otherwise.

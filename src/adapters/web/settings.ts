@@ -26,6 +26,8 @@ function defaultLibrarySettings(): LibrarySettings {
     serviceTemplates: [],
     branding: { churchName: '', primaryColor: '#1F3A5F', secondaryColor: '#C9A227' },
     canvaIntegration: { clientId: '', clientSecret: '' },
+    dropboxIntegration: { appKey: '' },
+    oneDriveIntegration: { clientId: '' },
     apiBibleTranslations: [],
     defaultTranslationCode: 'KJV',
     mediaMaxSyncedFileSizeMb: 50,

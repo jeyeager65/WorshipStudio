@@ -618,6 +618,29 @@ pub struct CanvaIntegration {
     pub client_secret: String,
 }
 
+/// A Dropbox app registration owned by the church, used by the tablet (PWA) build to sync
+/// directly against the church's Dropbox library over the Dropbox API — see the frontend's
+/// adapters/tablet/ for the actual sync client, which this repo's Rust code never talks to
+/// itself (only the tablet build does, entirely client-side). Unlike CanvaIntegration, there's
+/// no secret field at all: the Dropbox app is registered as a PKCE "public client," which by
+/// design has none.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DropboxIntegration {
+    #[serde(default)]
+    pub app_key: String,
+}
+
+/// A Microsoft Entra app registration owned by the church, used the same way DropboxIntegration
+/// is — but for a tablet connecting to the church's OneDrive instead. Same "no secret field"
+/// story: registered as the `spa` platform type, which by design accepts none.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct OneDriveIntegration {
+    #[serde(default)]
+    pub client_id: String,
+}
+
 /// A church-chosen api.bible edition (e.g. NIV) — synced via LibrarySettings so every machine
 /// agrees on what "NIV" refers to, even though the api.bible *key* needed to actually resolve
 /// it lives per-machine in MachineSettings (see MachineSettings::api_bible_key).
@@ -645,6 +668,10 @@ pub struct LibrarySettings {
     pub branding: Branding,
     #[serde(default)]
     pub canva_integration: CanvaIntegration,
+    #[serde(default)]
+    pub dropbox_integration: DropboxIntegration,
+    #[serde(default)]
+    pub one_drive_integration: OneDriveIntegration,
     #[serde(default)]
     pub api_bible_translations: Vec<ApiBibleTranslation>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -906,6 +933,18 @@ pub struct MachineSettings {
     /// Missing selects an installation-mode default (47823 installed, 47824 portable).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub canva_callback_port: Option<u16>,
+    /// Tablet-only (the PWA build's adapters/tablet/) — never read or written by this desktop
+    /// app, which never has anything to sync into an OPFS cache. Present here only so the
+    /// shared MachineSettings shape stays one-to-one with the frontend's TS model, same as
+    /// remote_control_port/etc. already being desktop-only-meaningful fields on this struct.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tablet_media_max_cached_file_size_mb: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tablet_cloud_provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tablet_cloud_library_folder_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tablet_cloud_client_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

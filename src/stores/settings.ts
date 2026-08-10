@@ -27,6 +27,9 @@ export const useSettingsStore = defineStore('settings', () => {
         // Canva integration block. Normalize once at the store boundary so every view can rely
         // on the current shape.
         canvaIntegration: library.canvaIntegration ?? { clientId: '', clientSecret: '' },
+        // Same story for the Dropbox/OneDrive integration blocks, added after canvaIntegration.
+        dropboxIntegration: library.dropboxIntegration ?? { appKey: '' },
+        oneDriveIntegration: library.oneDriveIntegration ?? { clientId: '' },
         // Same story for the bulletin block — browser-demo localStorage saved before it existed
         // has no `bulletin` key at all, which crashed BulletinView's render (every field access
         // assumes librarySettings.bulletin itself, not just librarySettings, is always present).

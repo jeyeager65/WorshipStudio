@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MediaItem } from '@/models/library'
 import { createWebMediaPort } from '../media'
+import { createPickedLocalMediaRoot } from '../pickedLocalMediaRoot'
 import { createWebSettingsPort } from '../settings'
 import { createWebThemesPort } from '../themes'
 import { readBytes, readJsonFile } from '../fsaStorage'
@@ -32,7 +33,7 @@ afterEach(() => {
 function makePort(root: FileSystemDirectoryHandle) {
   const settings = createWebSettingsPort(root)
   const themes = createWebThemesPort(root, settings)
-  return createWebMediaPort(root, settings, themes)
+  return createWebMediaPort(root, settings, themes, createPickedLocalMediaRoot())
 }
 
 /** Attaches a fake queryPermission so a fake root can stand in for a previously-granted handle

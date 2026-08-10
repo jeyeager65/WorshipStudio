@@ -2,7 +2,8 @@ use tauri::AppHandle;
 
 use crate::domain::{read_json_file, write_json_file};
 use crate::models::{
-    Branding, BulletinSettings, CanvaIntegration, LibrarySettings, MachineSettings,
+    Branding, BulletinSettings, CanvaIntegration, DropboxIntegration, LibrarySettings,
+    MachineSettings, OneDriveIntegration,
 };
 use crate::paths::{self, library_root, load_machine_settings};
 
@@ -31,6 +32,8 @@ fn default_library_settings() -> LibrarySettings {
             secondary_color: "#C9A227".to_string(),
         },
         canva_integration: CanvaIntegration::default(),
+        dropbox_integration: DropboxIntegration::default(),
+        one_drive_integration: OneDriveIntegration::default(),
         api_bible_translations: vec![],
         // KJV is bundled and always resolvable with zero configuration, so it's the sensible
         // default for a brand-new library rather than leaving the picker with nothing selected.
@@ -150,6 +153,10 @@ mod tests {
             remote_control_hostname: None,
             last_remote_control_port: None,
             canva_callback_port: None,
+            tablet_media_max_cached_file_size_mb: None,
+            tablet_cloud_provider: None,
+            tablet_cloud_library_folder_path: None,
+            tablet_cloud_client_id: None,
         }
     }
 

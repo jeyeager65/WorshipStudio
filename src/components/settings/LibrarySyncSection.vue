@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { getAdapter } from '@/adapters'
 import { useSettingsStore } from '@/stores/settings'
@@ -9,6 +9,10 @@ import { useServicesStore } from '@/stores/services'
 import { usePeopleStore } from '@/stores/people'
 import { useThemesStore } from '@/stores/themes'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
+import { clearStoredLibraryHandle } from '@/adapters/web/handlePersistence'
+import { disconnect as disconnectDropbox, isConnected as isDropboxConnected } from '@/adapters/tablet/providers/dropboxAuth'
+import { disconnect as disconnectOneDrive, isConnected as isOneDriveConnected } from '@/adapters/tablet/providers/onedriveAuth'
+import { generateQrCodeDataUrl } from '@/utils/qrCode'
 import {
   buildSampleServices,
   sampleSongs,
@@ -30,6 +34,65 @@ const peopleStore = usePeopleStore()
 const themesStore = useThemesStore()
 const confirmDialog = useConfirmDialogStore()
 
+// This one page now covers every adapter kind's idea of "where the library lives" — a real
+// folder (tauri/web) or a cloud provider connection (tablet, over whichever of
+// adapters/tablet/providers/*.ts this device connected through). Data tools stays gated off for
+// tablet: those act through the songs/services/media/... ports, which are still throw-on-call
+// stubs (adapters/tablet/index.ts) until Phase 4 wires them up.
+const adapterKind = getAdapter().kind
+const isCloudConnected = adapterKind === 'tablet'
+const cloudProvider = computed(() => machineSettings.value?.tabletCloudProvider ?? 'dropbox')
+const cloudProviderLabel = computed(() => (cloudProvider.value === 'onedrive' ? 'OneDrive' : 'Dropbox'))
+
+const cloudConnected = ref(false)
+const disconnectingCloud = ref(false)
+const cloudActionError = ref('')
+onMounted(async () => {
+  if (!isCloudConnected) return
+  cloudConnected.value = await (cloudProvider.value === 'onedrive' ? isOneDriveConnected() : isDropboxConnected())
+})
+
+// The app key/client ID this device connected with isn't editable here: it's bound to the OAuth
+// tokens already held for that specific app registration (pasting in a different one without
+// redoing sign-in would just break the connection), and the library folder path is baked into
+// this device's already-running sync cursor (adapters/tablet/cloudSync.ts) — changing it needs a
+// fresh cursor, not just a reload. "Switch..." below (disconnect + back through the chooser) is
+// the supported way to change any of it.
+async function switchConnectionMethod() {
+  if (
+    !(await confirmDialog.confirm(
+      "Switch how this device connects to the library? You'll be taken back to the setup screen to choose again.",
+      'Continue',
+    ))
+  )
+    return
+  if (adapterKind === 'tablet') {
+    await (cloudProvider.value === 'onedrive' ? disconnectOneDrive() : disconnectDropbox()).catch(() => {})
+  } else if (adapterKind === 'web') {
+    await clearStoredLibraryHandle().catch(() => {})
+  }
+  window.location.reload()
+}
+
+async function disconnectCloud() {
+  if (
+    !(await confirmDialog.confirm(
+      `Disconnect this device from ${cloudProviderLabel.value}? You'll need to reconnect to use Worship Studio on this device afterward. Nothing already synced is affected.`,
+      'Disconnect',
+    ))
+  )
+    return
+  disconnectingCloud.value = true
+  cloudActionError.value = ''
+  try {
+    await (cloudProvider.value === 'onedrive' ? disconnectOneDrive() : disconnectDropbox())
+    window.location.reload()
+  } catch (error) {
+    cloudActionError.value = error instanceof Error ? error.message : 'Could not disconnect.'
+    disconnectingCloud.value = false
+  }
+}
+
 const refreshingSync = ref(false)
 async function refreshSyncStatus() {
   refreshingSync.value = true
@@ -39,6 +102,62 @@ async function refreshSyncStatus() {
     refreshingSync.value = false
   }
 }
+
+const syncingNow = ref(false)
+async function syncNow() {
+  syncingNow.value = true
+  cloudActionError.value = ''
+  try {
+    await getAdapter().sync.runSync?.()
+    await syncStore.load()
+  } catch (error) {
+    cloudActionError.value = error instanceof Error ? error.message : 'Sync failed.'
+  } finally {
+    syncingNow.value = false
+  }
+}
+
+// A link (and, for anything with a camera, the same link as a QR code) that pre-fills and
+// immediately starts BootGate.vue's connect flow on another device — see that file's own
+// onMounted for the `?connect=` handling this produces. The app key/client ID isn't a secret (see
+// LibrarySettings.dropboxIntegration's own doc comment — PKCE public clients don't have one), so
+// carrying it in a plain link is the same reasoning Remote Control's own pairing link/QR already
+// relies on. This is what turns "type in a raw app key" from a per-device chore into a one-time
+// setup task done only for the very first device.
+const addDeviceUrl = computed(() => {
+  const clientId = machineSettings.value?.tabletCloudClientId
+  if (!isCloudConnected || !clientId) return ''
+  const params = new URLSearchParams()
+  params.set('connect', cloudProvider.value)
+  params.set('key', clientId)
+  const folderPath = machineSettings.value?.tabletCloudLibraryFolderPath
+  if (folderPath) params.set('path', folderPath)
+  return `${window.location.origin}${window.location.pathname}?${params.toString()}`
+})
+const addDeviceQr = ref('')
+watch(
+  addDeviceUrl,
+  async (url) => {
+    addDeviceQr.value = url ? await generateQrCodeDataUrl(url) : ''
+  },
+  { immediate: true },
+)
+const addDeviceLinkCopied = ref(false)
+async function copyAddDeviceLink() {
+  await navigator.clipboard.writeText(addDeviceUrl.value)
+  addDeviceLinkCopied.value = true
+  setTimeout(() => (addDeviceLinkCopied.value = false), 2000)
+}
+function selectAddDeviceLink(event: FocusEvent) {
+  ;(event.target as HTMLInputElement)?.select()
+}
+
+const tabletMediaMaxCachedFileSizeMb = computed<number | null>({
+  get: () => machineSettings.value?.tabletMediaMaxCachedFileSizeMb ?? null,
+  set: (value) => {
+    if (machineSettings.value) machineSettings.value.tabletMediaMaxCachedFileSizeMb = value ?? undefined
+  },
+})
 
 const loadingSampleData = ref(false)
 const sampleDataLoaded = ref(false)
@@ -193,6 +312,7 @@ async function pickLibraryFolder() {
        (v-show can't attach to a multi-root/fragment component). -->
   <div>
     <SettingsPanel
+      v-if="adapterKind !== 'tablet'"
       title="Library folder"
       description="The shared location containing services, songs, people, themes, and settings."
       icon="mdi-folder-sync-outline"
@@ -231,46 +351,172 @@ async function pickLibraryFolder() {
           </v-btn>
         </div>
       </div>
+      <v-btn
+        v-if="adapterKind === 'web'"
+        variant="text"
+        size="small"
+        class="mt-3"
+        prepend-icon="mdi-cloud-sync-outline"
+        @click="switchConnectionMethod"
+      >
+        Connect Dropbox or OneDrive Instead
+      </v-btn>
+    </SettingsPanel>
+
+    <SettingsPanel
+      v-if="isCloudConnected"
+      title="Cloud connection"
+      :description="`This device syncs directly with your church's ${cloudProviderLabel} account.`"
+      icon="mdi-cloud-sync-outline"
+    >
+      <div class="cloud-connection-status">
+        <span class="cloud-connection-icon">
+          <v-icon :icon="cloudConnected ? 'mdi-check-circle-outline' : 'mdi-link-off'" size="22" />
+        </span>
+        <div>
+          <strong>{{ cloudConnected ? `Connected to ${cloudProviderLabel}` : 'Not connected' }}</strong>
+          <small>OAuth tokens are stored only on this device.</small>
+        </div>
+        <v-btn
+          variant="outlined"
+          color="error"
+          :loading="disconnectingCloud"
+          @click="disconnectCloud"
+        >
+          Disconnect This Device
+        </v-btn>
+      </div>
+      <v-btn
+        variant="text"
+        size="small"
+        class="mt-3"
+        prepend-icon="mdi-swap-horizontal"
+        @click="switchConnectionMethod"
+      >
+        Switch Provider or Folder
+      </v-btn>
+
+      <v-divider class="my-4" />
+
+      <v-number-input
+        v-model="tabletMediaMaxCachedFileSizeMb"
+        label="Skip caching media files larger than (MB)"
+        variant="outlined"
+        density="comfortable"
+        control-variant="stacked"
+        :min="1"
+        hint="Files at or above this size are never downloaded to this device — still listed, just not previewable here."
+        persistent-hint
+        class="settings-form-field"
+      />
+
+      <v-divider class="my-4" />
+
+      <div class="mb-2">
+        <strong class="text-body-2">Add Another Device</strong>
+        <p class="text-caption text-medium-emphasis mb-2">
+          Scan this on a new device (or open the link) to connect it without typing anything —
+          it's the same {{ cloudProviderLabel }} connection as this device.
+        </p>
+        <div class="add-device-row">
+          <img v-if="addDeviceQr" :src="addDeviceQr" alt="Connect a new device QR code" class="add-device-qr" />
+          <div class="add-device-link">
+            <v-text-field
+              :model-value="addDeviceUrl"
+              label="Connect link"
+              variant="outlined"
+              density="compact"
+              readonly
+              @focus="selectAddDeviceLink"
+            />
+            <v-btn variant="tonal" prepend-icon="mdi-content-copy" @click="copyAddDeviceLink">
+              {{ addDeviceLinkCopied ? 'Copied' : 'Copy Link' }}
+            </v-btn>
+          </div>
+        </div>
+      </div>
+
+      <v-alert v-if="cloudActionError" type="error" variant="tonal" density="compact" class="mt-3">
+        {{ cloudActionError }}
+      </v-alert>
     </SettingsPanel>
 
     <SettingsPanel
       title="Sync health"
-      description="Folder access, Dropbox availability, and conflicted-copy files."
+      description="Folder access, sync availability, and conflicted-copy files."
       icon="mdi-cloud-check-outline"
     >
       <template #action>
-        <v-btn variant="text" size="small" :loading="refreshingSync" @click="refreshSyncStatus">
+        <v-btn
+          v-if="isCloudConnected"
+          variant="text"
+          size="small"
+          color="primary"
+          :loading="syncingNow"
+          prepend-icon="mdi-sync"
+          @click="syncNow"
+        >
+          Sync Now
+        </v-btn>
+        <v-btn v-else variant="text" size="small" :loading="refreshingSync" @click="refreshSyncStatus">
           Check Now
         </v-btn>
       </template>
 
       <div v-if="syncStore.status" class="status-list">
-        <div class="d-flex align-center ga-2 mb-2">
-          <v-icon
-            :icon="syncStore.status.folderReadable ? 'mdi-check-circle' : 'mdi-alert-circle'"
-            :color="syncStore.status.folderReadable ? 'success' : 'error'"
-            size="small"
-          />
-          <span class="text-body-2"
-            >Library folder
-            {{ syncStore.status.folderReadable ? 'readable' : 'not readable' }}</span
-          >
-        </div>
-        <div class="d-flex align-center ga-2 mb-2">
-          <v-icon
-            :icon="syncStore.status.syncClientRunning ? 'mdi-check-circle' : 'mdi-alert-circle'"
-            :color="syncStore.status.syncClientRunning ? 'success' : 'warning'"
-            size="small"
-          />
-          <span class="text-body-2">
-            Dropbox
-            {{
-              syncStore.status.syncClientRunning
-                ? 'appears to be running'
-                : "doesn't appear to be running"
-            }}
-          </span>
-        </div>
+        <template v-if="!isCloudConnected">
+          <div class="d-flex align-center ga-2 mb-2">
+            <v-icon
+              :icon="syncStore.status.folderReadable ? 'mdi-check-circle' : 'mdi-alert-circle'"
+              :color="syncStore.status.folderReadable ? 'success' : 'error'"
+              size="small"
+            />
+            <span class="text-body-2"
+              >Library folder
+              {{ syncStore.status.folderReadable ? 'readable' : 'not readable' }}</span
+            >
+          </div>
+          <div class="d-flex align-center ga-2 mb-2">
+            <v-icon
+              :icon="syncStore.status.syncClientRunning ? 'mdi-check-circle' : 'mdi-alert-circle'"
+              :color="syncStore.status.syncClientRunning ? 'success' : 'warning'"
+              size="small"
+            />
+            <span class="text-body-2">
+              Dropbox
+              {{
+                syncStore.status.syncClientRunning
+                  ? 'appears to be running'
+                  : "doesn't appear to be running"
+              }}
+            </span>
+          </div>
+        </template>
+        <template v-else>
+          <div v-if="syncStore.status.needsReconnect" class="d-flex align-center ga-2 mb-2">
+            <v-icon icon="mdi-alert-circle" color="warning" size="small" />
+            <span class="text-body-2"
+              >This device needs to reconnect to {{ cloudProviderLabel }} — use Disconnect above,
+              then connect again.</span
+            >
+          </div>
+          <div class="d-flex align-center ga-2 mb-2">
+            <v-icon icon="mdi-sync" color="success" size="small" />
+            <span class="text-body-2">
+              {{
+                syncStore.status.lastSyncedAt
+                  ? `Last synced ${new Date(syncStore.status.lastSyncedAt).toLocaleString()}`
+                  : 'Not synced yet'
+              }}
+              <template v-if="syncStore.status.pendingPushCount">
+                — {{ syncStore.status.pendingPushCount }} change{{
+                  syncStore.status.pendingPushCount === 1 ? '' : 's'
+                }}
+                waiting to push
+              </template>
+            </span>
+          </div>
+        </template>
         <div
           v-if="syncStore.status.lastLibraryChangeAt"
           class="text-caption text-medium-emphasis mb-4"
@@ -298,6 +544,7 @@ async function pickLibraryFolder() {
     </SettingsPanel>
 
     <SettingsPanel
+      v-if="adapterKind !== 'tablet'"
       title="Data tools"
       description="Demo and maintenance actions for the selected library folder."
       icon="mdi-database-cog-outline"
@@ -400,8 +647,60 @@ async function pickLibraryFolder() {
   gap: 8px;
   padding-top: 2px;
 }
+.settings-form-field {
+  max-width: 420px;
+}
 .status-list {
   max-width: 620px;
+}
+.cloud-connection-status {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  max-width: 760px;
+  padding: 14px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+  border-radius: 10px;
+}
+.cloud-connection-status > div {
+  display: grid;
+  gap: 2px;
+}
+.cloud-connection-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-primary), 0.13);
+  color: rgb(var(--v-theme-primary));
+}
+.cloud-connection-status small {
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.78rem;
+}
+.add-device-row {
+  display: grid;
+  grid-template-columns: auto minmax(280px, 1fr);
+  align-items: center;
+  gap: 16px;
+  max-width: 760px;
+}
+.add-device-qr {
+  width: 96px;
+  height: 96px;
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px;
+}
+.add-device-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.add-device-link .v-text-field {
+  flex: 1;
 }
 @media (max-width: 700px) {
   .path-setting {
@@ -410,6 +709,16 @@ async function pickLibraryFolder() {
   }
   .path-setting-actions {
     flex-wrap: wrap;
+  }
+  .cloud-connection-status {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  .cloud-connection-status .v-btn {
+    grid-column: 1 / -1;
+  }
+  .add-device-row {
+    grid-template-columns: 1fr;
+    justify-items: center;
   }
 }
 </style>

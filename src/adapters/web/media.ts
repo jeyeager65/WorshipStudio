@@ -10,15 +10,14 @@
  *   the same reasoning applied to what's actually built into this platform; hashes are only ever
  *   compared within one adapter's own records, so cross-implementation hash equality was never a
  *   requirement.
- * - The local media folder is granted lazily rather than up front like Rust's local_media_root
- *   (which paths.rs resolves automatically, no picker needed, since Tauri can just use an
- *   OS-appdata subfolder). A browser has no such implicit writable location — the first commit
- *   of a 'local' item prompts showDirectoryPicker() (only there, since that's the one call in
- *   this file guaranteed to run inside the user gesture the API requires) and the resulting
- *   handle is cached for the rest of the session and persisted (handlePersistence.ts) so it
- *   isn't asked for again next launch. Other entry points (getPreviewUrl, delete) only use an
- *   already-granted handle and never prompt, since they can be reached from contexts (rendering,
- *   background cleanup) that aren't a fresh user gesture.
+ * - Where the local media folder actually lives is injected as a LocalMediaRootPort (see below)
+ *   rather than hardcoded to a picker — this file only ever calls .granted()/.ensure() on it, so
+ *   the same port code runs unchanged for both the ordinary web build (pickedLocalMediaRoot.ts,
+ *   a second showDirectoryPicker() grant) and the tablet/OPFS build (adapters/tablet/), which has
+ *   no picker concept at all. Only .ensure() is allowed to prompt, and only commitImport below
+ *   calls it — the one path in this file guaranteed to run inside a real user gesture (a click on
+ *   an "Import" button). getPreviewUrl/delete only ever call .granted(), since they can be
+ *   reached from contexts (rendering, background cleanup) that aren't a fresh user gesture.
  */
 
 import type { MediaItem, Theme } from '@/models/library'
@@ -34,10 +33,26 @@ import { presentationThemeDefaults } from '@/utils/presentationTheme'
 import { pickFilesInBrowser } from '@/adapters/mock/pickFiles'
 import { createFsaCollection } from './collection'
 import { joinPath, listEntries, readBytes, removeFile, writeBytes } from './fsaStorage'
-import { loadStoredLocalMediaHandle, storeLocalMediaHandle } from './handlePersistence'
 
 const MEDIA_ITEMS_DIR = 'media-items'
 const MEDIA_FILES_DIR = 'media'
+
+/** Where 'local' (never-synced) media's bytes actually live — a second FileSystemDirectoryHandle
+ *  root distinct from the picked/synced library folder. Two real implementations: the ordinary
+ *  web build grants this via a second showDirectoryPicker() call (pickedLocalMediaRoot.ts); the
+ *  tablet build (adapters/tablet/) points it at an OPFS subdirectory instead, with no picker
+ *  prompt at all. Both share this same contract so createWebMediaPort below never needs to know
+ *  which one it's talking to. */
+export interface LocalMediaRootPort {
+  /** The folder if it's already been granted access this session (or a previously stored handle
+   *  still has live permission) — never prompts, so it's safe to call from contexts (rendering,
+   *  delete) that aren't a fresh user gesture. */
+  granted(): Promise<FileSystemDirectoryHandle | undefined>
+  /** The folder, prompting/creating one if it hasn't been granted yet. Only safe to call from a
+   *  path that's guaranteed to run inside a real user gesture (see each implementation's own
+   *  doc comment for which callers that is). */
+  ensure(): Promise<FileSystemDirectoryHandle>
+}
 
 function titleFromFilename(filename: string): string {
   return filename.replace(/\.[^./]+$/, '')
@@ -82,6 +97,7 @@ export function createWebMediaPort(
   root: FileSystemDirectoryHandle,
   settings: SettingsPort,
   themes: ThemePort,
+  localMediaRoot: LocalMediaRootPort,
 ): MediaPort {
   const items = createFsaCollection<MediaItem>(root, MEDIA_ITEMS_DIR, settings)
   // Staged-but-not-yet-committed File objects from pickFilesToImport, keyed by a synthetic path —
@@ -92,37 +108,6 @@ export function createWebMediaPort(
   // path the first time it's asked for — same idea as MediaLibraryView's committed-item preview
   // caching, just keyed by the staged map's synthetic path instead of a MediaItem id.
   const stagedPreviewUrls = new Map<string, string>()
-  // Cached for this adapter instance once granted/picked, so a whole session never needs more
-  // than one prompt (or, once handlePersistence.ts has it, zero prompts across sessions).
-  let localMediaRoot: FileSystemDirectoryHandle | undefined
-
-  /** The local media folder if one has already been granted access — checks the in-memory cache,
-   *  then a previously stored handle's still-live permission. Never prompts, so it's safe to call
-   *  from contexts (rendering, delete) that aren't a fresh user gesture. */
-  async function grantedLocalMediaRoot(): Promise<FileSystemDirectoryHandle | undefined> {
-    if (localMediaRoot) return localMediaRoot
-    const stored = await loadStoredLocalMediaHandle().catch(() => undefined)
-    if (!stored) return undefined
-    const permission = await stored.queryPermission({ mode: 'readwrite' }).catch(() => 'prompt')
-    if (permission !== 'granted') return undefined
-    localMediaRoot = stored
-    return stored
-  }
-
-  /** The local media folder, prompting for one if it hasn't been granted yet — only called from
-   *  commitImport, the one path in this file that's always reached via a click on an "Import"
-   *  button, so it still carries the user gesture showDirectoryPicker() requires. */
-  async function ensureLocalMediaRoot(): Promise<FileSystemDirectoryHandle> {
-    const granted = await grantedLocalMediaRoot()
-    if (granted) return granted
-    const handle = await window.showDirectoryPicker({
-      mode: 'readwrite',
-      id: 'worship-studio-local-media',
-    })
-    await storeLocalMediaHandle(handle)
-    localMediaRoot = handle
-    return handle
-  }
 
   async function listNormalized(): Promise<MediaItem[]> {
     return (await items.list()).map(normalizeTitle)
@@ -136,7 +121,7 @@ export function createWebMediaPort(
     item: MediaItem,
   ): Promise<{ dirRoot: FileSystemDirectoryHandle | undefined; relativeDir: string }> {
     return item.location === 'local'
-      ? { dirRoot: await grantedLocalMediaRoot(), relativeDir: '' }
+      ? { dirRoot: await localMediaRoot.granted(), relativeDir: '' }
       : { dirRoot: root, relativeDir: MEDIA_FILES_DIR }
   }
 
@@ -152,7 +137,7 @@ export function createWebMediaPort(
         const bytes = srcRoot && (await readBytes(srcRoot, joinPath(srcDir, previous.filename)))
         if (srcRoot && bytes) {
           const isMovingToLocal = item.location === 'local'
-          const destRoot = isMovingToLocal ? await ensureLocalMediaRoot() : root
+          const destRoot = isMovingToLocal ? await localMediaRoot.ensure() : root
           const destDir = isMovingToLocal ? '' : MEDIA_FILES_DIR
           const destFilename = await uniqueFilename(destRoot, destDir, item.filename)
           await writeBytes(destRoot, joinPath(destDir, destFilename), bytes)
@@ -208,7 +193,7 @@ export function createWebMediaPort(
         // local_media_root.join(filename), no subfolder); 'synced' files stay under this
         // library's media/ subfolder, same as before.
         const isLocal = commit.location === 'local'
-        const dirRoot = isLocal ? await ensureLocalMediaRoot() : root
+        const dirRoot = isLocal ? await localMediaRoot.ensure() : root
         const relativeDir = isLocal ? '' : MEDIA_FILES_DIR
         const destFilename = await uniqueFilename(dirRoot, relativeDir, commit.filename)
         const bytes = await file.arrayBuffer()

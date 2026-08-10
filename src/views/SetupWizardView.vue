@@ -643,7 +643,9 @@ async function skipSetup() {
 
               <article
                 class="import-card"
-                :class="{ 'import-card--disabled': adapter.kind === 'mock' }"
+                :class="{
+                  'import-card--disabled': adapter.kind === 'mock' || adapter.kind === 'tablet',
+                }"
               >
                 <span class="import-icon"><v-icon icon="mdi-folder-sync-outline" size="23" /></span>
                 <div class="import-copy">
@@ -655,7 +657,9 @@ async function skipSetup() {
                         ? 'Choose a Dropbox, OneDrive, or other synced folder.'
                         : adapter.kind === 'web'
                           ? 'Already using the folder you opened this library from.'
-                          : 'The browser demo uses temporary local data.')
+                          : adapter.kind === 'tablet'
+                            ? 'Already connected to your Dropbox library — see Settings to manage the connection.'
+                            : 'The browser demo uses temporary local data.')
                     }}
                   </p>
                 </div>
@@ -664,7 +668,7 @@ async function skipSetup() {
                     variant="outlined"
                     prepend-icon="mdi-folder-cog-outline"
                     :loading="pickingLibraryFolder"
-                    :disabled="adapter.kind === 'mock'"
+                    :disabled="adapter.kind === 'mock' || adapter.kind === 'tablet'"
                     @click="pickLibraryFolder"
                     >{{
                       store.machineSettings.libraryPath ? 'Change Folder' : 'Choose Folder'

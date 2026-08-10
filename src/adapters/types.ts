@@ -507,6 +507,17 @@ export interface SyncStatus {
   lastLibraryChangeAt?: string
   conflictCount: number
   recoveryCount: number
+  /** Tablet-only (adapters/tablet/cloudSync.ts) — when the last Dropbox pull/push cycle
+   *  completed. Left undefined by every other adapter kind. */
+  lastSyncedAt?: string
+  /** Tablet-only — local edits not yet pushed to Dropbox. Left undefined by every other
+   *  adapter kind. */
+  pendingPushCount?: number
+  /** Tablet-only — this device's cloud provider connection can't be silently renewed (e.g.
+   *  OneDrive's 24h refresh-token cap once a silent reauth attempt itself fails) and needs a
+   *  visible reconnect. Left undefined/false by every other adapter kind and by Dropbox, whose
+   *  refresh tokens don't expire on their own. */
+  needsReconnect?: boolean
 }
 
 export interface RecoveryIssue {
@@ -544,6 +555,11 @@ export interface SyncPort {
    * section.
    */
   resolveConflict(conflictFilePath: string, keep: 'mine' | 'theirs'): Promise<void>
+  /** Tablet-only (adapters/tablet/cloudSync.ts) — triggers an immediate pull+push cycle
+   *  against Dropbox. Absent on every other adapter kind, which have nothing to trigger (the
+   *  desktop/web builds' "sync" is just Dropbox's own desktop client, running outside this app
+   *  entirely). */
+  runSync?(): Promise<void>
 }
 
 export interface DiagnosticSummary {
@@ -552,7 +568,7 @@ export interface DiagnosticSummary {
   buildProfile: string
   platform: string
   architecture: string
-  installationMode: 'installed' | 'portable' | 'browser-demo' | 'web'
+  installationMode: 'installed' | 'portable' | 'browser-demo' | 'web' | 'tablet'
   setupComplete: boolean
   libraryReadable: boolean
   libraryItems: {
@@ -605,7 +621,11 @@ export interface ExportPort {
 }
 
 export interface StudioAdapter {
-  readonly kind: 'tauri' | 'mock' | 'web'
+  /** 'tablet' is the OPFS + Dropbox-API-backed PWA build (see adapters/tablet/) — a distinct
+   *  storage substrate and sync transport from 'web' (a real picked folder via
+   *  showDirectoryPicker), for platforms where that picker doesn't exist (no tablet browser
+   *  supports it) but still reaching the same on-disk file format the desktop app uses. */
+  readonly kind: 'tauri' | 'mock' | 'web' | 'tablet'
   songs: SongPort
   services: ServicePort
   slides: SlideLibraryPort

@@ -101,6 +101,10 @@ fn default_machine_settings(app: &AppHandle) -> MachineSettings {
         remote_control_hostname: None,
         last_remote_control_port: None,
         canva_callback_port: Some(default_canva_callback_port(portable)),
+        tablet_media_max_cached_file_size_mb: None,
+        tablet_cloud_provider: None,
+        tablet_cloud_library_folder_path: None,
+        tablet_cloud_client_id: None,
     }
 }
 
