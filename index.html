@@ -3,8 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Same icon as the Tauri desktop build (src-tauri/icons/icon.ico), not a separate asset. -->
-    <link rel="icon" href="/favicon.ico" />
+    <!-- Same source artwork as the Tauri desktop build's icon, generated alongside the PWA icon
+         set (see scripts/generate-pwa-icons.mjs) rather than reused as a raw .ico — PNG is fully
+         supported by every evergreen browser and needed the same solid-background/rounded-corner
+         treatment the PWA icons got (a transparent favicon can disappear against a similarly
+         colored browser tab background, same bug that prompted this whole icon pass). -->
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <title>Worship Studio</title>
     <!-- Tablet (PWA) build only meaningfully reads these, but they're harmless everywhere else
          — see scripts/generate-pwa-icons.mjs and public/manifest.webmanifest. -->
