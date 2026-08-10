@@ -90,9 +90,11 @@ export const useSyncStore = defineStore('sync', () => {
     })
   }
 
-  /** Tablet-only — wipes this device's local cache and bookkeeping, then re-pulls the whole
-   *  library from scratch. Discards any not-yet-pushed local edit on this device; callers must
-   *  confirm that with the operator first (see LibrarySyncSection.vue). */
+  /** Tablet-only — clears this device's sync bookkeeping and re-pulls the whole library, fresh
+   *  from the cloud, overwriting whatever's already cached (see cloudSync.ts's resetAndResync for
+   *  why this deliberately doesn't delete local files first or push afterward). Discards any
+   *  not-yet-pushed local edit on this device; callers must confirm that with the operator first
+   *  (see LibrarySyncSection.vue). */
   async function resetAndResync() {
     await runWithProgress(async () => {
       await getAdapter().sync.resetAndResync?.()

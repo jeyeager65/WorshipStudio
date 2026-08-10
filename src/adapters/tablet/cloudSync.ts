@@ -355,25 +355,37 @@ export function createCloudSync(config: CloudSyncConfig) {
     }
   }
 
-  /** Wipes this device's entire local cache (every synced file, plus the cursor/dirty/rev/
-   *  conflict bookkeeping that decides what a pull/push would otherwise skip as unchanged) and
-   *  re-pulls the whole library from scratch, as if this were a brand-new device. Exists for two
-   *  real cases: making the from-scratch sync path (BootGate.vue's initial-sync screen)
-   *  repeatable for testing without reconnecting a fresh device each time, and as a deliberate
-   *  "trust the cloud, discard whatever's wrong locally" recovery lever if this device's cache
-   *  ever ends up in a bad state. Any not-yet-pushed local edit on this device is discarded, not
-   *  pushed first — callers must make that destructive tradeoff explicit to the operator before
-   *  calling this (see LibrarySyncSection.vue's confirmation dialog). */
+  /** Clears this device's sync bookkeeping (cursor/dirty/rev/conflict) and re-pulls the whole
+   *  library, overwriting every file this device already has with a fresh copy from the cloud —
+   *  as close to "as if this were a brand-new device" as it's safe to get. Exists for two real
+   *  cases: making the from-scratch sync path (BootGate.vue's initial-sync screen) repeatable for
+   *  testing without reconnecting a fresh device each time, and as a deliberate "trust the cloud,
+   *  discard whatever's wrong locally" recovery lever if this device's cache ever ends up in a
+   *  bad state.
+   *
+   *  Deliberately does NOT delete local files before pulling (an earlier version did) and does
+   *  NOT push afterward (ditto) — confirmed on a real device that pre-deleting created a window
+   *  where library-settings.json was genuinely missing on disk, long enough for another
+   *  already-open page to read it, get defaultLibrarySettings() back, and save that default over
+   *  the real thing; the trailing push() then happily uploaded it, clobbering the shared library
+   *  config for every device with no conflict UI ever catching it (library-settings.json sits
+   *  outside CONFLICT_SCANNED_TOP_DIRS, so a push "conflict" there is last-write-wins by design).
+   *  Clearing the cursor/revs alone already forces pull() to treat every remote entry as changed
+   *  and overwrite it via the same atomic temp-file-then-move write fsaStorage.ts's fallback path
+   *  uses — a concurrent reader sees the old content or the new content, never a missing file. The
+   *  one thing this no longer does that the old version did: a file this device deleted from the
+   *  cloud *before* this reset, and never resynced, won't get locally cleaned up (a full listing
+   *  has no way to report a deletion that already happened) — an accepted, far smaller gap than
+   *  the corruption risk it replaces. Any not-yet-pushed local edit on this device is still
+   *  discarded (its dirty flag is cleared along with everything else, and nothing is pushed) —
+   *  callers must make that tradeoff explicit to the operator before calling this (see
+   *  LibrarySyncSection.vue's confirmation dialog). */
   async function resetAndResync(): Promise<void> {
     if (syncing) return
     syncing = true
     try {
-      for await (const [name] of config.root.entries()) {
-        await config.root.removeEntry(name, { recursive: true })
-      }
       await syncStore.clearAll()
       await pull()
-      await push()
     } finally {
       syncing = false
     }

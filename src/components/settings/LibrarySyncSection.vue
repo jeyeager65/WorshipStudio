@@ -131,7 +131,7 @@ async function syncNow() {
 async function clearAndResync() {
   if (
     !(await confirmDialog.confirm(
-      "This deletes every file this device has cached locally and re-downloads the entire library fresh from the cloud. Any change made on this device that hasn't finished pushing yet will be lost — nothing on the cloud or on any other device is affected. Use this if this device's local copy seems broken.",
+      "This re-downloads the entire library fresh from the cloud, overwriting this device's local copy of everything. Any change made on this device that hasn't finished pushing yet will be lost — nothing on the cloud or on any other device is affected. Use this if this device's local copy seems broken.",
       'Clear & Re-sync This Device',
     ))
   )
@@ -621,9 +621,9 @@ async function pickLibraryFolder() {
             Clear & Re-sync This Device
           </v-btn>
           <p class="text-caption text-medium-emphasis mt-2">
-            Deletes this device's local cache and re-downloads everything fresh from
-            {{ cloudProviderLabel }}. Use this if this device's copy of the library seems broken —
-            the cloud and every other device are unaffected.
+            Re-downloads everything fresh from {{ cloudProviderLabel }}, overwriting this device's
+            local copy. Use this if this device's copy of the library seems broken — the cloud and
+            every other device are unaffected.
           </p>
         </template>
 

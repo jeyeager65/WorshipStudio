@@ -71,6 +71,13 @@ function makeFakeSyncStore() {
       conflicts.delete(path)
     },
     getAllConflicts: async () => [...conflicts.entries()],
+    clearAll: async () => {
+      cursor = undefined
+      lastSyncedAt = undefined
+      dirty.clear()
+      revs.clear()
+      conflicts.clear()
+    },
     // Test-only helpers, not part of the real syncStore shape.
     _dirty: dirty,
     _revs: revs,
@@ -419,6 +426,63 @@ describe('push', () => {
     const entry = await syncStore.getDirty('songs/a.json')
     expect(entry?.attempts).toBe(1)
     expect(entry?.nextRetryAt).toBeGreaterThan(Date.now())
+  })
+})
+
+describe('resetAndResync', () => {
+  it('overwrites existing local content with a fresh pull rather than deleting files upfront', async () => {
+    const root = createFakeRoot()
+    // Pre-existing local content, as if this device had synced before.
+    await writeJsonFile(root, 'songs/a.json', { id: 'a', title: 'Stale local copy' })
+    await syncStore.setRev('songs/a.json', { rev: 'rev-old', sizeBytes: 10 })
+    await syncStore.setCursor('cursor-old')
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({
+      entries: [{ tag: 'file', path: 'songs/a.json', rev: 'rev-new', sizeBytes: 10 }],
+      cursor: 'cursor-new',
+    })
+    vi.mocked(provider.download).mockResolvedValueOnce({
+      bytes: jsonBytes({ id: 'a', title: 'Fresh from the cloud' }),
+      rev: 'rev-new',
+      sizeBytes: 10,
+    })
+
+    await makeSync(root).resetAndResync()
+
+    // Cleared bookkeeping meant the cached rev no longer matched, so the file was re-downloaded
+    // and overwritten in place — never absent from disk at any point a concurrent reader could
+    // observe (see this function's own doc comment for why that distinction is the whole point).
+    const record = await readJsonFile<{ title: string }>(root, 'songs/a.json')
+    expect(record?.title).toBe('Fresh from the cloud')
+    expect(await syncStore.getCursor()).toBe('cursor-new')
+  })
+
+  it('never pushes — an earlier version did, which is exactly how a stray local write during the reset window once got uploaded and clobbered the shared library-settings.json for every device', async () => {
+    const root = createFakeRoot()
+    // Simulates the exact failure mode this is guarding against: something (a still-mounted
+    // settings page, in the real bug) wrote a dirty change during the reset.
+    await writeJsonFile(root, 'library-settings.json', { serviceTypes: [] })
+    await syncStore.setDirty('library-settings.json', { deleted: false, attempts: 0, nextRetryAt: 0 })
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({ entries: [], cursor: 'cursor-new' })
+
+    await makeSync(root).resetAndResync()
+
+    expect(provider.upload).not.toHaveBeenCalled()
+  })
+
+  it("clears stale bookkeeping (dirty/revs/conflicts) so it can't block or skip the fresh pull", async () => {
+    const root = createFakeRoot()
+    await syncStore.setDirty('songs/orphaned.json', { deleted: false, attempts: 0, nextRetryAt: 0 })
+    await syncStore.setConflict('songs/orphaned.json', {
+      conflictFilePath: 'songs/orphaned (conflicted copy).json',
+      remoteRev: 'r',
+      remoteSizeBytes: 1,
+    })
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({ entries: [], cursor: 'cursor-new' })
+
+    await makeSync(root).resetAndResync()
+
+    expect(await syncStore.getDirty('songs/orphaned.json')).toBeUndefined()
+    expect(await syncStore.getConflict('songs/orphaned.json')).toBeUndefined()
   })
 })
 
