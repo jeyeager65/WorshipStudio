@@ -21,7 +21,20 @@
  * fsaStorage.ts's own helpers always re-resolve a path from `root` fresh via getDirectoryHandle
  * (see resolveParentDir), never by reusing a handle obtained from entries() to write through —
  * so entries()'s yielded children can safely pass through unwrapped.
+ *
+ * The wrapped createWritable() below always looks present to fsaStorage.ts's own feature
+ * detection, on every browser — a Proxy trap can't make a property genuinely "missing" only
+ * some callers see, so hiding it here to reflect WebKit's real lack of createWritable() isn't an
+ * option. Instead, this always returns a working writable-shaped object, whose close()
+ * internally calls fsaStorage.ts's writeFileHandleData (the same createWritable-vs-worker-
+ * fallback detection, but run against the *real* unwrapped `target`, not this Proxy — required
+ * either way, since a Proxy can't be handed to opfsWriteFallback.ts's postMessage call: only a
+ * genuine native FileSystemFileHandle is structured-cloneable). Every real call site in this
+ * codebase (fsaStorage.ts's writeTextFile/writeBytes) only ever makes one write() call before
+ * close(), so this doesn't implement arbitrary incremental streaming — just enough to match that.
  */
+
+import { writeFileHandleData } from '@/adapters/web/fsaStorage'
 
 export type DirtyChangeKind = 'write' | 'remove'
 export type OnDirtyChange = (relativePath: string, kind: DirtyChangeKind) => void
@@ -57,6 +70,29 @@ function wrapWritable(
   })
 }
 
+/** A minimal writable-shaped stand-in for browsers (WebKit/Safari) with no real createWritable()
+ *  at all — buffers the one write() call fsaStorage.ts's callers always make, then performs the
+ *  actual write (via writeFileHandleData's own createWritable-or-worker-fallback detection) on
+ *  close(), same as the real path does but through fsaStorage.ts's fallback instead of a real
+ *  FileSystemWritableFileStream. */
+function fallbackWritable(
+  target: FileSystemFileHandle,
+  path: string,
+  onChange: OnDirtyChange,
+): FileSystemWritableFileStream {
+  let pendingData: string | ArrayBuffer | Blob | undefined
+  return {
+    write: async (data: string | ArrayBuffer | Blob) => {
+      pendingData = data
+    },
+    close: async () => {
+      if (pendingData === undefined) return
+      await writeFileHandleData(target, pendingData)
+      onChange(path, 'write')
+    },
+  } as unknown as FileSystemWritableFileStream
+}
+
 function wrapFileHandle(
   target: FileSystemFileHandle,
   path: string,
@@ -65,6 +101,12 @@ function wrapFileHandle(
   return new Proxy(target, {
     get(target, prop, receiver) {
       if (prop === 'createWritable') {
+        // See this module's own doc comment for why the real-vs-fallback decision has to happen
+        // here, against `target` (the genuine native handle), rather than deferring to
+        // fsaStorage.ts's identical feature-detection running against this Proxy itself.
+        if (typeof target.createWritable !== 'function') {
+          return async () => fallbackWritable(target, path, onChange)
+        }
         return async (options?: FileSystemCreateWritableOptions) =>
           wrapWritable(await target.createWritable(options), path, onChange)
       }

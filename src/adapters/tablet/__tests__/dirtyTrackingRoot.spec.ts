@@ -9,6 +9,23 @@ import {
 } from '@/adapters/web/fsaStorage'
 import { createFakeRoot } from '@/adapters/web/__tests__/fakeFsa'
 
+const { writeViaSyncAccessHandle } = vi.hoisted(() => ({ writeViaSyncAccessHandle: vi.fn() }))
+vi.mock('@/adapters/web/opfsWriteFallback', () => ({ writeViaSyncAccessHandle }))
+
+// Simulates WebKit, where the real handle has no createWritable at all — used to prove the
+// wrapped createWritable trap detects this against the *real* target (not itself) and routes
+// through fsaStorage.ts's writeFileHandleData fallback instead of throwing. See this codebase's
+// own fsaStorage.spec.ts for the equivalent non-wrapped test (the Worker itself is stubbed out
+// there too — see opfsWriteFallback.spec.ts for that piece).
+function createFakeRootWithoutCreateWritable(): FileSystemDirectoryHandle {
+  const fileHandle = { getFile: async () => new File([], 'stub') }
+  const dir: Record<string, unknown> = {
+    getFileHandle: async () => fileHandle,
+  }
+  dir.getDirectoryHandle = async () => dir
+  return dir as unknown as FileSystemDirectoryHandle
+}
+
 describe('wrapWithDirtyTracking', () => {
   it('fires onChange with the relative path on a successful write', async () => {
     const onChange = vi.fn()
@@ -68,5 +85,16 @@ describe('wrapWithDirtyTracking', () => {
     const record = await readJsonFile<{ title: string }>(root, 'songs/song-1.json')
 
     expect(record?.title).toBe('A')
+  })
+
+  it('falls back to the sync-access-handle worker (and still fires onChange) when the real handle has no createWritable', async () => {
+    writeViaSyncAccessHandle.mockReset().mockResolvedValue(undefined)
+    const onChange = vi.fn()
+    const root = wrapWithDirtyTracking(createFakeRootWithoutCreateWritable(), onChange)
+
+    await writeJsonFile(root, 'songs/song-1.json', { id: 'song-1' })
+
+    expect(writeViaSyncAccessHandle).toHaveBeenCalledTimes(1)
+    expect(onChange).toHaveBeenCalledWith('songs/song-1.json', 'write')
   })
 })

@@ -86,8 +86,19 @@ export async function readFileText(
  *  Chrome/Edge/Firefox all support createWritable() directly and take the fast, direct path
  *  below unchanged. Centralized here so every caller (writeTextFile, writeBytes) — and by
  *  extension every port built on them — gets this transparently, with nothing to change on
- *  their end. */
-async function writeFileHandle(
+ *  their end.
+ *
+ *  Exported (not just used internally) because adapters/tablet/dirtyTrackingRoot.ts needs this
+ *  exact same feature-detection, run against the *real* underlying handle it wraps — its own
+ *  Proxy has to always expose a `createWritable` property so callers never see it as "missing"
+ *  (a Proxy trap can't un-expose a method some callers need while looking normal to others), so
+ *  the actual createWritable-vs-fallback decision has to happen at this lower level instead,
+ *  against a genuine native handle in both cases. See that file's own doc comment for the full
+ *  reasoning — and why a wrapped (Proxy) handle could never be passed to writeViaSyncAccessHandle
+ *  directly even if the detection worked: FileSystemFileHandle is structured-cloneable for a
+ *  postMessage transfer specifically because it's a recognized native platform object, a Proxy
+ *  wrapping one is not. */
+export async function writeFileHandleData(
   fileHandle: FileSystemFileHandle,
   data: ArrayBuffer | Blob | string,
 ): Promise<void> {
@@ -116,7 +127,7 @@ export async function writeTextFile(
   const located = await resolveParentDir(root, relativePath, true)
   if (!located) throw new Error(`Could not resolve path: ${relativePath}`)
   const fileHandle = await located.dir.getFileHandle(located.name, { create: true })
-  await writeFileHandle(fileHandle, text)
+  await writeFileHandleData(fileHandle, text)
 }
 
 export function backupPath(relativePath: string): string {
@@ -175,7 +186,7 @@ export async function writeBytes(
   const located = await resolveParentDir(root, relativePath, true)
   if (!located) throw new Error(`Could not resolve path: ${relativePath}`)
   const fileHandle = await located.dir.getFileHandle(located.name, { create: true })
-  await writeFileHandle(fileHandle, bytes)
+  await writeFileHandleData(fileHandle, bytes)
 }
 
 export async function removeFile(
