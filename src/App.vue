@@ -19,6 +19,7 @@ import { useServicesStore } from '@/stores/services'
 import { useHistoryStore } from '@/stores/history'
 import { useRemoteServiceSelection } from '@/composables/useRemoteServiceSelection'
 import { useTabletSync } from '@/composables/useTabletSync'
+import appIcon from '@/assets/app-icon.png'
 
 useTabletSync()
 
@@ -28,6 +29,7 @@ const syncStore = useSyncStore()
 const settingsStore = useSettingsStore()
 const servicesStore = useServicesStore()
 const historyStore = useHistoryStore()
+const isTabletBuild = getAdapter().kind === 'tablet'
 const hasDesktopBackend = getAdapter().kind === 'tauri'
 
 // The presentation window (see src/adapters/tauri/index.ts's `live` port) loads this same
@@ -387,7 +389,7 @@ onUnmounted(() => {
           rounded="lg"
           class="mx-2 mb-1 sidebar-item"
         >
-          <template #prepend><v-icon icon="mdi-home" color="primary" /></template>
+          <template #prepend><v-icon icon="mdi-church-outline" color="primary" /></template>
         </v-list-item>
         <v-list-item
           v-tooltip:end="navigationCollapsed ? 'Songs' : false"
@@ -396,7 +398,7 @@ onUnmounted(() => {
           rounded="lg"
           class="mx-2 mb-1 sidebar-item"
         >
-          <template #prepend><v-icon icon="mdi-bookshelf" color="teal" /></template>
+          <template #prepend><v-icon icon="mdi-music-note" color="teal" /></template>
         </v-list-item>
         <v-list-item
           v-tooltip:end="navigationCollapsed ? 'Slides' : false"
@@ -511,7 +513,10 @@ onUnmounted(() => {
         "
         @click="manualNavCollapsed = !manualNavCollapsed"
       />
-      <span class="app-brand" :class="{ 'ml-4': isSetupWizard }">Worship Studio</span>
+      <span class="app-brand" :class="{ 'ml-4': isSetupWizard }">
+        <img :src="appIcon" alt="" class="app-brand-icon" />
+        Worship Studio
+      </span>
       <v-divider v-if="pageTitle" vertical inset class="app-brand-divider mx-3" />
       <span v-if="pageTitle" class="page-title">{{ pageTitle }}</span>
       <!-- data-tauri-drag-region only takes effect on the exact element it's applied to (no
@@ -604,6 +609,37 @@ onUnmounted(() => {
           </template>
         </v-tooltip>
         <v-divider v-if="saveHandler" vertical inset class="mr-3" />
+        <!-- Tablet-only — the only build where sync is something happening in the background the
+             operator can't otherwise see. Automatic syncs (useTabletSync.ts) are invisible
+             without this: no other feedback exists that one is even running, and this is the one
+             place visible from every page, not just Settings > Library & Sync. -->
+        <v-tooltip
+          v-if="isTabletBuild && syncStore.status?.needsReconnect"
+          text="This device needs to reconnect — see Settings > Library & Sync"
+        >
+          <template #activator="{ props }">
+            <v-icon v-bind="props" icon="mdi-cloud-alert-outline" color="warning" class="mr-3" />
+          </template>
+        </v-tooltip>
+        <v-tooltip
+          v-else-if="isTabletBuild"
+          :text="
+            syncStore.syncing
+              ? 'Syncing…'
+              : syncStore.status?.lastSyncedAt
+                ? `Last synced ${new Date(syncStore.status.lastSyncedAt).toLocaleTimeString()}`
+                : 'Not synced yet'
+          "
+        >
+          <template #activator="{ props }">
+            <v-icon
+              v-bind="props"
+              :icon="syncStore.syncing ? 'mdi-cloud-sync-outline' : 'mdi-cloud-check-outline'"
+              :class="{ 'sync-spin': syncStore.syncing }"
+              class="mr-3"
+            />
+          </template>
+        </v-tooltip>
         <v-tooltip
           v-if="syncStore.status && !syncStore.status.folderReadable"
           text="Library folder isn't readable — check the sync setup in Settings"
@@ -727,15 +763,35 @@ onUnmounted(() => {
   text-transform: uppercase;
 }
 .app-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-shrink: 0;
   color: rgba(var(--v-theme-on-surface), 0.94);
   font-size: 0.95rem;
   font-weight: 700;
   letter-spacing: -0.012em;
 }
+.app-brand-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
 .app-bar {
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.09);
   background: rgba(var(--v-theme-surface), 0.97);
+}
+.sync-spin {
+  animation: sync-spin-rotate 1.4s linear infinite;
+}
+@keyframes sync-spin-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 /* Light mode only, same as .app-nav above, but the neutral surface-variant gray rather than the
  * primary tint the sidebar uses (swapped per feedback) — the two chrome regions still read as

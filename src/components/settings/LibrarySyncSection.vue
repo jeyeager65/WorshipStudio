@@ -103,17 +103,15 @@ async function refreshSyncStatus() {
   }
 }
 
-const syncingNow = ref(false)
+// syncStore.runSync() (not the adapter directly) so this button shares the exact same `syncing`
+// flag useTabletSync.ts's automatic triggers set — App.vue's app-bar indicator reflects either
+// one, and status.lastSyncedAt/pendingPushCount always refresh afterward, success or failure.
 async function syncNow() {
-  syncingNow.value = true
   cloudActionError.value = ''
   try {
-    await getAdapter().sync.runSync?.()
-    await syncStore.load()
+    await syncStore.runSync()
   } catch (error) {
     cloudActionError.value = error instanceof Error ? error.message : 'Sync failed.'
-  } finally {
-    syncingNow.value = false
   }
 }
 
@@ -452,7 +450,7 @@ async function pickLibraryFolder() {
           variant="text"
           size="small"
           color="primary"
-          :loading="syncingNow"
+          :loading="syncStore.syncing"
           prepend-icon="mdi-sync"
           @click="syncNow"
         >

@@ -5,6 +5,12 @@
  * adapter kind, so it's safe to call unconditionally from App.vue regardless of which build is
  * running.
  *
+ * Goes through useSyncStore's runSync() rather than calling the adapter directly, so every
+ * trigger here — not just the manual "Sync Now" button — sets the shared `syncing` flag
+ * (App.vue's app-bar indicator) and refreshes status.lastSyncedAt/pendingPushCount afterward.
+ * Before this, an automatic background sync ran completely invisibly: no UI feedback anywhere
+ * that it was happening, and the "Last synced" display only ever updated after a manual sync.
+ *
  * Triggers: once on mount, on every tab-visible transition (covers switching back after minutes
  * away), on window focus (covers alt-tabbing back within the same visible tab), and a timer that
  * only runs while the tab is actually visible (paused otherwise, restarted on the next
@@ -18,14 +24,16 @@
  */
 import { onMounted, onUnmounted } from 'vue'
 import { getAdapter } from '@/adapters'
+import { useSyncStore } from '@/stores/sync'
 
 const SYNC_INTERVAL_MS = 5 * 60 * 1000
 
 export function useTabletSync(): void {
+  const syncStore = useSyncStore()
   let intervalId: ReturnType<typeof setInterval> | undefined
 
   function runSync() {
-    void getAdapter().sync.runSync?.()
+    void syncStore.runSync()
   }
 
   function stopInterval() {
