@@ -133,10 +133,19 @@ const filteredAnnouncements = computed(() => {
   })
 })
 
+// Every optional field is listed explicitly (even though the type would allow omitting them) —
+// Object.assign only overwrites keys actually present on its source object, so a field left out
+// here would leave whatever value the *previous* dialog session set still sitting on the
+// reactive `draft` object below, silently carrying over into the next Add/Edit.
 function newDraft(): Announcement {
   return {
     id: crypto.randomUUID(),
     text: '',
+    eventDate: undefined,
+    eventEndDate: undefined,
+    eventTime: undefined,
+    showFrom: undefined,
+    showUntil: undefined,
     updatedAt: '',
     updatedByDevice: '',
   }
@@ -161,7 +170,10 @@ function openAdd() {
 
 function openEdit(announcement: Announcement) {
   isNew.value = false
-  Object.assign(draft, announcement)
+  // Reset to blank first, same reasoning as openAdd — otherwise a field the announcement being
+  // edited doesn't itself have (e.g. no eventTime) could still show a stale value left over from
+  // whatever the dialog was last used for.
+  Object.assign(draft, newDraft(), announcement)
   pattern.value = isEventDated(announcement) ? 'event' : 'ongoing'
   saveError.value = ''
   dialogOpen.value = true
