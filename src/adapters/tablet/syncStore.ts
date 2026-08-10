@@ -43,19 +43,34 @@ const CONFLICTS_STORE = 'conflicts'
 const CURSOR_KEY = 'cursor'
 const LAST_SYNCED_AT_KEY = 'lastSyncedAt'
 
+// Cached rather than opened fresh per call — every getValue/putValue/deleteValue/getAllEntries
+// below used to call this independently, meaning a single pull() applying a few hundred small
+// files (each touching this 2-3 times) opened a fresh IndexedDB connection that many times in a
+// row. One shared connection, reused for the whole page's lifetime, is both the standard
+// IndexedDB usage pattern and a real, measurable chunk of that per-file overhead removed —
+// multiple concurrent transactions against one open connection are already well-supported and is
+// exactly what pull()'s own concurrent downloads need.
+let dbPromise: Promise<IDBDatabase> | undefined
+
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1)
-    request.onupgradeneeded = () => {
-      const db = request.result
-      db.createObjectStore(META_STORE)
-      db.createObjectStore(DIRTY_STORE)
-      db.createObjectStore(REVS_STORE)
-      db.createObjectStore(CONFLICTS_STORE)
-    }
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error as Error)
-  })
+  if (!dbPromise) {
+    dbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, 1)
+      request.onupgradeneeded = () => {
+        const db = request.result
+        db.createObjectStore(META_STORE)
+        db.createObjectStore(DIRTY_STORE)
+        db.createObjectStore(REVS_STORE)
+        db.createObjectStore(CONFLICTS_STORE)
+      }
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => {
+        dbPromise = undefined // let a later call retry rather than staying stuck on this rejection
+        reject(request.error as Error)
+      }
+    })
+  }
+  return dbPromise
 }
 
 async function getValue<T>(store: string, key: string): Promise<T | undefined> {
@@ -104,6 +119,16 @@ async function getAllEntries<T>(store: string): Promise<[string, T][]> {
   })
 }
 
+async function clearStore(store: string): Promise<void> {
+  const db = await openDb()
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite')
+    tx.objectStore(store).clear()
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error as Error)
+  })
+}
+
 export const syncStore = {
   getCursor: (): Promise<string | undefined> => getValue<string>(META_STORE, CURSOR_KEY),
   setCursor: (cursor: string): Promise<void> => putValue(META_STORE, CURSOR_KEY, cursor),
@@ -127,4 +152,15 @@ export const syncStore = {
     putValue(CONFLICTS_STORE, path, entry),
   clearConflict: (path: string): Promise<void> => deleteValue(CONFLICTS_STORE, path),
   getAllConflicts: (): Promise<[string, ConflictEntry][]> => getAllEntries(CONFLICTS_STORE),
+
+  /** Wipes every bookkeeping store (cursor/dirty/revs/conflicts) — used by cloudSync.ts's
+   *  resetAndResync() to force a truly from-scratch pull, as if this device had never synced. */
+  clearAll: async (): Promise<void> => {
+    await Promise.all([
+      clearStore(META_STORE),
+      clearStore(DIRTY_STORE),
+      clearStore(REVS_STORE),
+      clearStore(CONFLICTS_STORE),
+    ])
+  },
 }

@@ -15,6 +15,19 @@
  * handle that reached it, so instead this worker just calls navigator.storage.getDirectory()
  * itself and walks the same relative path fsaStorage.ts already resolved on the main thread —
  * sidesteps the clonability question entirely rather than depending on it.
+ *
+ * Writes to a private temp file first, then moves it over the real target, rather than
+ * truncating and writing the target file in place — confirmed on a real device that writing in
+ * place lets a concurrent reader (another page's own store load, mid-sync) observe a truncated or
+ * partially-written file and fail to parse it. Chrome/Edge/Firefox's createWritable() doesn't
+ * have this problem (fsaStorage.ts's own doc comment: its swap-file write only replaces the real
+ * file on close(), confirmed atomic-enough) — this brings the WebKit fallback path to the same
+ * guarantee via move(), which OPFS specifies as an atomic rename/replace within the same
+ * directory. move() feature-detected rather than assumed available, since it's newer than
+ * createSyncAccessHandle() itself and this project has already been burned once by assuming a
+ * capability without checking it directly on a real device (see fsaStorage.ts's own history) —
+ * falls back to the previous write-in-place behavior if it's missing, same risk as before rather
+ * than a new failure mode.
  */
 
 interface FileSystemSyncAccessHandle {
@@ -26,6 +39,9 @@ interface FileSystemSyncAccessHandle {
 
 interface SyncAccessCapableFileHandle extends FileSystemFileHandle {
   createSyncAccessHandle(): Promise<FileSystemSyncAccessHandle>
+  /** Renames/replaces this handle's entry within its current parent directory — not yet in this
+   *  project's installed DOM types, hence the local declaration (see this file's doc comment). */
+  move?(newName: string): Promise<void>
 }
 
 interface WriteRequest {
@@ -39,7 +55,9 @@ interface WriteResponse {
   error?: string
 }
 
-async function resolveFileHandle(path: string): Promise<SyncAccessCapableFileHandle> {
+async function resolveParentAndName(
+  path: string,
+): Promise<{ dir: FileSystemDirectoryHandle; name: string }> {
   const parts = path.split('/').filter((part) => part.length > 0)
   const name = parts.at(-1)
   if (!name) throw new Error(`Empty path: "${path}"`)
@@ -47,24 +65,55 @@ async function resolveFileHandle(path: string): Promise<SyncAccessCapableFileHan
   for (const part of parts.slice(0, -1)) {
     dir = await dir.getDirectoryHandle(part, { create: true })
   }
-  return (await dir.getFileHandle(name, { create: true })) as SyncAccessCapableFileHandle
+  return { dir, name }
+}
+
+async function writeToSyncAccessHandle(
+  fileHandle: SyncAccessCapableFileHandle,
+  data: ArrayBuffer,
+): Promise<void> {
+  const accessHandle = await fileHandle.createSyncAccessHandle()
+  try {
+    // Explicit truncate first: a sync access handle doesn't shrink the file to match shorter new
+    // content on its own, so without this a write of a smaller file over a larger previous
+    // version would leave stale bytes trailing at the end.
+    accessHandle.truncate(data.byteLength)
+    accessHandle.write(data, { at: 0 })
+    accessHandle.flush()
+  } finally {
+    accessHandle.close()
+  }
 }
 
 addEventListener('message', (event: MessageEvent<WriteRequest>) => {
   const { id, path, data } = event.data
   void (async () => {
     try {
-      const fileHandle = await resolveFileHandle(path)
-      const accessHandle = await fileHandle.createSyncAccessHandle()
+      const { dir, name } = await resolveParentAndName(path)
+      const targetHandle = (await dir.getFileHandle(name, {
+        create: true,
+      })) as SyncAccessCapableFileHandle
+
+      if (typeof targetHandle.move !== 'function') {
+        // No move() support — write in place, same behavior (and same race window) as before.
+        await writeToSyncAccessHandle(targetHandle, data)
+        postMessage({ id } satisfies WriteResponse)
+        return
+      }
+
+      // Suffix, not prefix — matches fsaStorage.ts's own .backup/.damaged-<stamp> convention, so
+      // a temp file that somehow survives a crash before its move() still reads as "not a real
+      // record" to every existing ".json"-suffix listing filter, the same way those already do.
+      const tempName = `${name}.tmp-${crypto.randomUUID()}`
+      const tempHandle = (await dir.getFileHandle(tempName, {
+        create: true,
+      })) as SyncAccessCapableFileHandle
       try {
-        // Explicit truncate first: a sync access handle doesn't shrink the file to match shorter
-        // new content on its own, so without this a write of a smaller file over a larger
-        // previous version would leave stale bytes trailing at the end.
-        accessHandle.truncate(data.byteLength)
-        accessHandle.write(data, { at: 0 })
-        accessHandle.flush()
-      } finally {
-        accessHandle.close()
+        await writeToSyncAccessHandle(tempHandle, data)
+        await tempHandle.move!(name)
+      } catch (error) {
+        await dir.removeEntry(tempName).catch(() => {})
+        throw error
       }
       postMessage({ id } satisfies WriteResponse)
     } catch (error) {

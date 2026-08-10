@@ -93,7 +93,7 @@ export function createCloudSync(config: CloudSyncConfig) {
     }
   }
 
-  async function applyEntry(entry: ProviderEntry): Promise<void> {
+  async function applyEntry(token: string, entry: ProviderEntry): Promise<void> {
     const relativePath = entry.path
 
     if (entry.tag === 'deleted') {
@@ -123,7 +123,6 @@ export function createCloudSync(config: CloudSyncConfig) {
       return
     }
 
-    const token = await requireToken()
     const downloaded = await provider.download(token, relativePath)
     if (relativePath.endsWith('.json')) {
       const text = new TextDecoder().decode(downloaded.bytes)
@@ -138,16 +137,37 @@ export function createCloudSync(config: CloudSyncConfig) {
     })
   }
 
+  // A handful of concurrent downloads rather than one file at a time — for many small files
+  // (the common case: songs/services/slides are all tiny JSON), the dominant cost per file is
+  // pure network round-trip latency, not bandwidth, so doing them strictly sequentially meant
+  // wall-clock time scaled directly with file count (observed as ~1s per tiny file on a real
+  // device). 6 matches the concurrent-connections-per-origin limit most browsers already impose,
+  // so it's roughly the most this can help without the provider's own rate limiting becoming the
+  // next bottleneck instead.
+  const PULL_CONCURRENCY = 6
+
   async function pull(): Promise<void> {
     const token = await requireToken()
     const cursor = await syncStore.getCursor()
     const page = await provider.listChanges(token, cursor)
 
-    for (let index = 0; index < page.entries.length; index++) {
-      const entry = page.entries[index]!
-      progress = { phase: 'pull', completed: index, total: page.entries.length, currentPath: entry.path }
-      await applyEntry(entry)
+    const total = page.entries.length
+    let nextIndex = 0
+    let completed = 0
+    async function runWorker(): Promise<void> {
+      for (;;) {
+        const index = nextIndex++
+        if (index >= total) return
+        const entry = page.entries[index]!
+        progress = { phase: 'pull', completed, total, currentPath: entry.path }
+        await applyEntry(token, entry)
+        completed++
+      }
     }
+    await Promise.all(
+      Array.from({ length: Math.min(PULL_CONCURRENCY, total) }, () => runWorker()),
+    )
+
     progress = undefined
     await syncStore.setCursor(page.cursor)
     await syncStore.setLastSyncedAt(new Date().toISOString())
@@ -315,6 +335,30 @@ export function createCloudSync(config: CloudSyncConfig) {
     }
   }
 
+  /** Wipes this device's entire local cache (every synced file, plus the cursor/dirty/rev/
+   *  conflict bookkeeping that decides what a pull/push would otherwise skip as unchanged) and
+   *  re-pulls the whole library from scratch, as if this were a brand-new device. Exists for two
+   *  real cases: making the from-scratch sync path (BootGate.vue's initial-sync screen)
+   *  repeatable for testing without reconnecting a fresh device each time, and as a deliberate
+   *  "trust the cloud, discard whatever's wrong locally" recovery lever if this device's cache
+   *  ever ends up in a bad state. Any not-yet-pushed local edit on this device is discarded, not
+   *  pushed first — callers must make that destructive tradeoff explicit to the operator before
+   *  calling this (see LibrarySyncSection.vue's confirmation dialog). */
+  async function resetAndResync(): Promise<void> {
+    if (syncing) return
+    syncing = true
+    try {
+      for await (const [name] of config.root.entries()) {
+        await config.root.removeEntry(name, { recursive: true })
+      }
+      await syncStore.clearAll()
+      await pull()
+      await push()
+    } finally {
+      syncing = false
+    }
+  }
+
   async function getSyncStatus(): Promise<{
     lastSyncedAt?: string
     pendingPushCount: number
@@ -331,5 +375,5 @@ export function createCloudSync(config: CloudSyncConfig) {
     return progress
   }
 
-  return { pull, push, runSync, getSyncStatus, getProgress, resolveConflict }
+  return { pull, push, runSync, resetAndResync, getSyncStatus, getProgress, resolveConflict }
 }

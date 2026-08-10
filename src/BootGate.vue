@@ -41,18 +41,27 @@ import * as onedrive from '@/adapters/tablet/providers/onedriveAuth'
 import { getOpfsRoot } from '@/adapters/tablet/opfs'
 import { createWebSettingsPort } from '@/adapters/web/settings'
 import { usePwaInstall } from '@/composables/usePwaInstall'
+import { formatSyncProgressLabel } from '@/utils/syncProgress'
 import logoDark from '@/assets/logo-dark.png'
 
 const pwaInstall = usePwaInstall()
 
 export type CloudProviderId = 'dropbox' | 'onedrive'
 
-type Phase = 'resolving' | 'chooser' | 'resuming' | 'cloud-connect' | 'connecting-cloud' | 'ready'
+type Phase =
+  | 'resolving'
+  | 'chooser'
+  | 'resuming'
+  | 'cloud-connect'
+  | 'connecting-cloud'
+  | 'initial-sync'
+  | 'ready'
 
 const phase = ref<Phase>('resolving')
 const errorText = ref('')
 const pendingHandle = ref<FileSystemDirectoryHandle>()
 const fsaSupported = typeof window !== 'undefined' && 'showDirectoryPicker' in window
+const initialSyncLabel = ref('')
 
 const connectProvider = ref<CloudProviderId>('dropbox')
 const cloudClientIdInput = ref('')
@@ -142,8 +151,42 @@ async function finishTabletBoot(
     tabletCloudProvider: provider,
     tabletCloudClientId: clientId,
     tabletCloudLibraryFolderPath: libraryFolderPath,
+    // A tablet joins (or occasionally sets up) a shared cloud library, not a per-device blank
+    // slate — App.vue's own first-run redirect otherwise fires here every time based on this
+    // device's own never-used-before state, which is meaningless for a device joining a library
+    // someone else already fully configured (the desktop-oriented wizard steps — display roles,
+    // OpenSong file imports — mostly don't even apply to a tablet either; several are already
+    // disabled for adapter.kind === 'tablet' in SetupWizardView.vue). Church branding/service
+    // types remain reachable any time from Settings, wizard or not.
+    hasCompletedSetup: true,
   })
   setAdapterInstance(adapter)
+
+  // The very first sync on a brand-new device pulls the entire shared library — potentially
+  // hundreds of files — before anything reads it. Letting the operator wander into pages that
+  // race that initial pull (Songs/Media/etc. enumerating the same OPFS folders the sync is still
+  // populating) is exactly what looked like "most pages won't navigate" in practice. A device
+  // that has synced before (lastSyncedAt already set) skips this and boots straight in, same as
+  // today — only the one-time initial pull is worth blocking on.
+  const status = await adapter.sync.getStatus()
+  if (!status.lastSyncedAt) {
+    phase.value = 'initial-sync'
+    initialSyncLabel.value = ''
+    const pollHandle = window.setInterval(async () => {
+      initialSyncLabel.value = formatSyncProgressLabel(await adapter.sync.getProgress?.())
+    }, 400)
+    try {
+      await adapter.sync.runSync?.()
+    } catch (error) {
+      // A failed first sync (e.g. a transient network blip) shouldn't strand the operator on
+      // this screen forever — they still get into the app below, same as if this device had
+      // simply not synced yet. The in-app sync indicator (App.vue's app-bar) already surfaces an
+      // ongoing "not synced"/needs-reconnect state for them to retry from there.
+      console.error('Initial tablet sync failed:', error)
+    } finally {
+      window.clearInterval(pollHandle)
+    }
+  }
   phase.value = 'ready'
 }
 
@@ -458,6 +501,13 @@ function showCloudConnectForm(provider: CloudProviderId) {
 
         <template v-else-if="phase === 'connecting-cloud'">
           <p class="boot-status">Finishing sign-in…</p>
+        </template>
+
+        <template v-else-if="phase === 'initial-sync'">
+          <p class="boot-status">Downloading your church's library…</p>
+          <v-progress-circular indeterminate color="primary" size="32" class="mb-2" />
+          <p v-if="initialSyncLabel" class="boot-note">{{ initialSyncLabel }}</p>
+          <p class="boot-note">This only happens once on this device.</p>
         </template>
 
         <p v-if="errorText" class="boot-error" role="alert">{{ errorText }}</p>

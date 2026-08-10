@@ -13,6 +13,7 @@ import { clearStoredLibraryHandle } from '@/adapters/web/handlePersistence'
 import { disconnect as disconnectDropbox, isConnected as isDropboxConnected } from '@/adapters/tablet/providers/dropboxAuth'
 import { disconnect as disconnectOneDrive, isConnected as isOneDriveConnected } from '@/adapters/tablet/providers/onedriveAuth'
 import { generateQrCodeDataUrl } from '@/utils/qrCode'
+import { formatSyncProgressLabel } from '@/utils/syncProgress'
 import {
   buildSampleServices,
   sampleSongs,
@@ -44,26 +45,7 @@ const isCloudConnected = adapterKind === 'tablet'
 const cloudProvider = computed(() => machineSettings.value?.tabletCloudProvider ?? 'dropbox')
 const cloudProviderLabel = computed(() => (cloudProvider.value === 'onedrive' ? 'OneDrive' : 'Dropbox'))
 
-// Same top-dir convention as App.vue's app-bar indicator and SyncConflictsView.vue's
-// recoveryKind() — kept as its own small copy here rather than a shared import, matching how
-// this codebase already treats this exact mapping as cheap enough to duplicate per view.
-const SYNC_KIND_LABELS: Record<string, string> = {
-  songs: 'songs',
-  slides: 'slides',
-  'media-items': 'media',
-  themes: 'themes',
-  people: 'people',
-  services: 'services',
-}
-const syncProgressLabel = computed(() => {
-  const progress = syncStore.progress
-  if (!progress || progress.total === 0) return ''
-  const verb = progress.phase === 'pull' ? 'Downloading' : 'Uploading'
-  const top = progress.currentPath?.split('/')[0]
-  const kind = (top !== undefined && SYNC_KIND_LABELS[top]) || 'files'
-  const position = Math.min(progress.completed + 1, progress.total)
-  return `${verb} ${kind} — ${position} of ${progress.total}`
-})
+const syncProgressLabel = computed(() => formatSyncProgressLabel(syncStore.progress))
 
 const cloudConnected = ref(false)
 const disconnectingCloud = ref(false)
@@ -133,6 +115,26 @@ async function syncNow() {
     await syncStore.runSync()
   } catch (error) {
     cloudActionError.value = error instanceof Error ? error.message : 'Sync failed.'
+  }
+}
+
+// A deliberate "discard this device's local cache and trust the cloud" lever — real recovery
+// tool if this device's cache ever ends up in a bad state, not an everyday action, hence the
+// explicit confirmation spelling out exactly what's discarded (unpushed edits) versus what isn't
+// (nothing changes on the cloud itself; every other device is unaffected).
+async function clearAndResync() {
+  if (
+    !(await confirmDialog.confirm(
+      "This deletes every file this device has cached locally and re-downloads the entire library fresh from the cloud. Any change made on this device that hasn't finished pushing yet will be lost — nothing on the cloud or on any other device is affected. Use this if this device's local copy seems broken.",
+      'Clear & Re-sync This Device',
+    ))
+  )
+    return
+  cloudActionError.value = ''
+  try {
+    await syncStore.resetAndResync()
+  } catch (error) {
+    cloudActionError.value = error instanceof Error ? error.message : 'Reset failed.'
   }
 }
 
@@ -598,6 +600,26 @@ async function pickLibraryFolder() {
         <p v-else class="text-medium-emphasis text-body-2">
           No damaged files or sync conflicts right now.
         </p>
+
+        <template v-if="isCloudConnected">
+          <v-divider class="my-4" />
+          <v-btn
+            variant="outlined"
+            color="error"
+            size="small"
+            prepend-icon="mdi-delete-clock-outline"
+            :loading="syncStore.syncing"
+            :disabled="syncStore.syncing"
+            @click="clearAndResync"
+          >
+            Clear & Re-sync This Device
+          </v-btn>
+          <p class="text-caption text-medium-emphasis mt-2">
+            Deletes this device's local cache and re-downloads everything fresh from
+            {{ cloudProviderLabel }}. Use this if this device's copy of the library seems broken —
+            the cloud and every other device are unaffected.
+          </p>
+        </template>
       </div>
     </SettingsPanel>
 

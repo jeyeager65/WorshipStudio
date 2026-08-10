@@ -19,6 +19,7 @@ import { useServicesStore } from '@/stores/services'
 import { useHistoryStore } from '@/stores/history'
 import { useRemoteServiceSelection } from '@/composables/useRemoteServiceSelection'
 import { useTabletSync } from '@/composables/useTabletSync'
+import { formatSyncProgressLabel } from '@/utils/syncProgress'
 import appIcon from '@/assets/app-icon.png'
 
 useTabletSync()
@@ -32,35 +33,12 @@ const historyStore = useHistoryStore()
 const isTabletBuild = getAdapter().kind === 'tablet'
 const hasDesktopBackend = getAdapter().kind === 'tauri'
 
-// Coarse content kind from a sync progress path's top-level folder — mirrors the same top-dir
-// convention SyncConflictsView.vue's recoveryKind() uses, just for display rather than routing a
-// store refresh.
-const SYNC_KIND_LABELS: Record<string, string> = {
-  songs: 'songs',
-  slides: 'slides',
-  'media-items': 'media',
-  themes: 'themes',
-  people: 'people',
-  services: 'services',
-}
-function syncKindLabel(path: string): string {
-  const top = path.split('/')[0]
-  return (top !== undefined && SYNC_KIND_LABELS[top]) || 'files'
-}
-
 // The app-bar sync icon is the only always-visible feedback that an automatic background sync
 // (useTabletSync.ts) is even running — a bare spinner gave no sense of whether it was doing
 // anything or stuck, especially over a slow connection with a large pending batch. Built from
 // syncStore.progress, which stores/sync.ts polls from cloudSync.ts's in-memory state while a sync
 // is in flight.
-const syncProgressLabel = computed(() => {
-  const progress = syncStore.progress
-  if (!progress || progress.total === 0) return ''
-  const verb = progress.phase === 'pull' ? 'Downloading' : 'Uploading'
-  const kind = progress.currentPath ? syncKindLabel(progress.currentPath) : 'files'
-  const position = Math.min(progress.completed + 1, progress.total)
-  return `${verb} ${kind} — ${position} of ${progress.total}`
-})
+const syncProgressLabel = computed(() => formatSyncProgressLabel(syncStore.progress))
 
 const syncTooltipText = computed(() => {
   if (syncStore.syncing) return syncProgressLabel.value || 'Syncing…'

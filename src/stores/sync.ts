@@ -58,14 +58,13 @@ export const useSyncStore = defineStore('sync', () => {
     return destination
   }
 
-  /** Tablet-only (SyncPort.runSync is undefined on every other adapter kind, so this silently
-   *  no-ops there) — triggers one pull+push cycle and refreshes status.lastSyncedAt/
-   *  pendingPushCount afterward either way, success or failure, so a stuck sync doesn't leave a
-   *  stale "syncing" indicator on screen. A concurrent call while one is already running is a
-   *  no-op rather than queuing a second overlapping run — cloudSync.ts's own runSync() already
-   *  guards against overlap, but skipping here too avoids two callers double-refreshing status
-   *  needlessly. */
-  async function runSync() {
+  /** Shared by runSync/resetAndResync below — sets syncing/progress around whichever adapter
+   *  call actually does the work, refreshing status afterward either way, success or failure, so
+   *  a stuck or failed run doesn't leave a stale "syncing" indicator on screen. A concurrent call
+   *  while one is already running is a no-op rather than queuing a second overlapping run —
+   *  cloudSync.ts's own syncing guard already protects against overlap, but skipping here too
+   *  avoids two callers double-refreshing status needlessly. */
+  async function runWithProgress(run: () => Promise<void>) {
     if (syncing.value) return
     syncing.value = true
     const pollHandle = getAdapter().sync.getProgress
@@ -74,13 +73,30 @@ export const useSyncStore = defineStore('sync', () => {
         }, PROGRESS_POLL_MS)
       : undefined
     try {
-      await getAdapter().sync.runSync?.()
+      await run()
     } finally {
       if (pollHandle !== undefined) window.clearInterval(pollHandle)
       progress.value = undefined
       syncing.value = false
       await load()
     }
+  }
+
+  /** Tablet-only (SyncPort.runSync is undefined on every other adapter kind, so this silently
+   *  no-ops there) — triggers one pull+push cycle. */
+  async function runSync() {
+    await runWithProgress(async () => {
+      await getAdapter().sync.runSync?.()
+    })
+  }
+
+  /** Tablet-only — wipes this device's local cache and bookkeeping, then re-pulls the whole
+   *  library from scratch. Discards any not-yet-pushed local edit on this device; callers must
+   *  confirm that with the operator first (see LibrarySyncSection.vue). */
+  async function resetAndResync() {
+    await runWithProgress(async () => {
+      await getAdapter().sync.resetAndResync?.()
+    })
   }
 
   return {
@@ -95,5 +111,6 @@ export const useSyncStore = defineStore('sync', () => {
     recover,
     quarantine,
     runSync,
+    resetAndResync,
   }
 })

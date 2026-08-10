@@ -578,6 +578,11 @@ export interface SyncPort {
   /** Tablet-only — a snapshot of the currently in-flight pull/push cycle, or undefined when none
    *  is running. Absent on every other adapter kind. */
   getProgress?(): Promise<SyncProgress | undefined>
+  /** Tablet-only — wipes this device's entire local cache and sync bookkeeping, then re-pulls
+   *  the whole library from scratch. Discards any not-yet-pushed local edit on this device rather
+   *  than pushing it first — a deliberate "trust the cloud" recovery lever, not an ordinary sync.
+   *  Absent on every other adapter kind. */
+  resetAndResync?(): Promise<void>
 }
 
 export interface DiagnosticSummary {
