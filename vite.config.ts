@@ -3,6 +3,7 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vuetify from 'vite-plugin-vuetify'
+import { VitePWA } from 'vite-plugin-pwa'
 import { version } from './package.json'
 
 export default defineConfig({
@@ -18,7 +19,31 @@ export default defineConfig({
   // of the release process, see notes/release-process.md) is baked in at build time as a real
   // fallback for those builds instead.
   define: { __APP_VERSION__: JSON.stringify(version) },
-  plugins: [vue(), vuetify({ autoImport: true })],
+  plugins: [
+    vue(),
+    vuetify({ autoImport: true }),
+    // Tablet (PWA) build only — installs a service worker scoped strictly to the app shell
+    // (JS/CSS/HTML/fonts/icons). Deliberately no `runtimeCaching` entries for
+    // api.dropboxapi.com/content.dropboxapi.com/graph.microsoft.com/login.microsoftonline.com:
+    // the sync engine's own cursor/rev state (adapters/tablet/cloudSync.ts) is the real source
+    // of truth for what's synced, not an HTTP cache, and a service worker silently serving a
+    // stale cached API response would be actively wrong here, not just unhelpful. `manifest:
+    // false` because index.html already links public/manifest.webmanifest directly — this
+    // plugin only handles the service worker, not manifest generation.
+    VitePWA({
+      registerType: 'autoUpdate',
+      manifest: false,
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        // The bundled KJV text dataset (~4.4MB) is lazily loaded only once scripture lookup is
+        // actually used, same as before this plugin existed — precaching it during SW install
+        // would slow down the initial "install this app" experience for no benefit, since it's
+        // fetched at runtime (uncached by the SW, same as any other non-precached request) the
+        // first time it's genuinely needed either way.
+        globIgnores: ['**/kjvFull-*.js'],
+      },
+    }),
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

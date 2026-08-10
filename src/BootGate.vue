@@ -40,7 +40,10 @@ import * as dropbox from '@/adapters/tablet/providers/dropboxAuth'
 import * as onedrive from '@/adapters/tablet/providers/onedriveAuth'
 import { getOpfsRoot } from '@/adapters/tablet/opfs'
 import { createWebSettingsPort } from '@/adapters/web/settings'
+import { usePwaInstall } from '@/composables/usePwaInstall'
 import logoDark from '@/assets/logo-dark.png'
+
+const pwaInstall = usePwaInstall()
 
 export type CloudProviderId = 'dropbox' | 'onedrive'
 
@@ -388,6 +391,21 @@ function showCloudConnectForm(provider: CloudProviderId) {
           <v-btn variant="text" size="large" block class="mt-2" @click="chooseDemo">
             Try the Demo
           </v-btn>
+
+          <v-btn
+            v-if="pwaInstall.canInstall.value"
+            variant="tonal"
+            size="small"
+            block
+            class="mt-3"
+            prepend-icon="mdi-cellphone-arrow-down"
+            @click="pwaInstall.promptInstall"
+          >
+            Install as an App
+          </v-btn>
+          <p v-else-if="pwaInstall.isIos.value" class="boot-note mt-3">
+            On an iPhone/iPad: tap Share, then "Add to Home Screen" to install this as an app.
+          </p>
         </template>
 
         <template v-else-if="phase === 'resuming'">

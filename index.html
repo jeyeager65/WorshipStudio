@@ -6,6 +6,16 @@
     <!-- Same icon as the Tauri desktop build (src-tauri/icons/icon.ico), not a separate asset. -->
     <link rel="icon" href="/favicon.ico" />
     <title>Worship Studio</title>
+    <!-- Tablet (PWA) build only meaningfully reads these, but they're harmless everywhere else
+         — see scripts/generate-pwa-icons.mjs and public/manifest.webmanifest. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/pwa-icons/apple-touch-icon.png" />
+    <meta name="theme-color" content="#151b23" />
+    <!-- iOS ignores manifest.webmanifest's display:"standalone" — these are what actually make
+         "Add to Home Screen" launch without Safari's chrome there. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Worship Studio" />
     <!-- Matches the splash window's native background_color (src-tauri/src/lib.rs) and
          SplashScreen.vue's .splash-bg — set synchronously here so there's no default-white
          paint in the gap between this raw HTML parsing and Vue mounting/applying its own CSS. -->

@@ -18,6 +18,9 @@ import { useSettingsStore } from '@/stores/settings'
 import { useServicesStore } from '@/stores/services'
 import { useHistoryStore } from '@/stores/history'
 import { useRemoteServiceSelection } from '@/composables/useRemoteServiceSelection'
+import { useTabletSync } from '@/composables/useTabletSync'
+
+useTabletSync()
 
 const { blockedMessage } = storeToRefs(useLiveSessionStore())
 const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsavedChangesStore())
