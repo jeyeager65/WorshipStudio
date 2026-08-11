@@ -161,11 +161,24 @@ const addDeviceCode = computed(() => {
     libraryFolderPath: machineSettings.value?.tabletCloudLibraryFolderPath ?? '',
   })
 })
+// The QR image encodes a real URL wrapping the same code, not the plain text directly — confirmed
+// on a real device that scanning plain text just prompts "Search the web for ...", with no copy
+// option at all. A real https:// link, by contrast, gets iOS's camera to reliably offer "Open in
+// Safari" (its one genuinely solid QR heuristic). BootGate.vue's own `connectCode` param handling
+// deliberately doesn't auto-connect anything from that Safari tab — it just re-displays this exact
+// code with a Copy button under our own control, sidestepping Apple's flaky text-recognition UI
+// entirely. The text field below still shows the plain code directly for copying without a camera.
+const addDeviceQrUrl = computed(() => {
+  if (!addDeviceCode.value) return ''
+  const params = new URLSearchParams()
+  params.set('connectCode', addDeviceCode.value)
+  return `${window.location.origin}${window.location.pathname}?${params.toString()}`
+})
 const addDeviceQr = ref('')
 watch(
-  addDeviceCode,
-  async (code) => {
-    addDeviceQr.value = code ? await generateQrCodeDataUrl(code) : ''
+  addDeviceQrUrl,
+  async (url) => {
+    addDeviceQr.value = url ? await generateQrCodeDataUrl(url) : ''
   },
   { immediate: true },
 )
@@ -446,10 +459,10 @@ async function pickLibraryFolder() {
       <div class="mb-2">
         <strong class="text-body-2">Add Another Device</strong>
         <p class="text-caption text-medium-emphasis mb-2">
-          On the new device, scan this QR code with its regular camera app and copy the text it
-          recognizes (or just copy the code below directly) — then paste it into Worship Studio's
-          setup screen there. It's the same {{ cloudProviderLabel }} connection as this device, no
-          typing required.
+          On the new device, scan this QR code with its regular camera app — it opens a page with
+          a Copy Code button (or just copy the code below directly) — then paste it into Worship
+          Studio's setup screen there. It's the same {{ cloudProviderLabel }} connection as this
+          device, no typing required.
         </p>
         <div class="add-device-row">
           <button
@@ -490,8 +503,9 @@ async function pickLibraryFolder() {
               class="add-device-qr-large"
             />
             <p class="text-body-2 text-medium-emphasis">
-              Scan this with the new device's regular camera app, then copy the text it recognizes
-              and paste it into Worship Studio's setup screen there — no typing required.
+              Scan this with the new device's regular camera app — it opens a page with a Copy
+              Code button — then paste it into Worship Studio's setup screen there. No typing
+              required.
             </p>
           </v-card-text>
           <v-card-actions>
