@@ -13,6 +13,7 @@ import { clearStoredLibraryHandle } from '@/adapters/web/handlePersistence'
 import { disconnect as disconnectDropbox, isConnected as isDropboxConnected } from '@/adapters/tablet/providers/dropboxAuth'
 import { disconnect as disconnectOneDrive, isConnected as isOneDriveConnected } from '@/adapters/tablet/providers/onedriveAuth'
 import { generateQrCodeDataUrl } from '@/utils/qrCode'
+import { buildConnectCode } from '@/utils/connectCode'
 import { formatSyncProgressLabel } from '@/utils/syncProgress'
 import {
   buildSampleServices,
@@ -144,42 +145,41 @@ async function clearAndResync() {
   }
 }
 
-// A link (and, for anything with a camera, the same link as a QR code) that pre-fills and
-// immediately starts BootGate.vue's connect flow on another device — see that file's own
-// onMounted for the `?connect=` handling this produces. The app key/client ID isn't a secret (see
-// LibrarySettings.dropboxIntegration's own doc comment — PKCE public clients don't have one), so
-// carrying it in a plain link is the same reasoning Remote Control's own pairing link/QR already
-// relies on. This is what turns "type in a raw app key" from a per-device chore into a one-time
-// setup task done only for the very first device.
-const addDeviceUrl = computed(() => {
+// A short block of plain text (see connectCode.ts's own doc comment for why it's deliberately not
+// a link) that pre-fills and immediately starts BootGate.vue's connect flow on another device once
+// pasted there. The app key/client ID isn't a secret (see LibrarySettings.dropboxIntegration's own
+// doc comment — PKCE public clients don't have one), so carrying it in plain text is the same
+// reasoning Remote Control's own pairing link/QR already relies on. This is what turns "type in a
+// raw app key" from a per-device chore into a one-time setup task done only for the very first
+// device.
+const addDeviceCode = computed(() => {
   const clientId = machineSettings.value?.tabletCloudClientId
   if (!isCloudConnected || !clientId) return ''
-  const params = new URLSearchParams()
-  params.set('connect', cloudProvider.value)
-  params.set('key', clientId)
-  const folderPath = machineSettings.value?.tabletCloudLibraryFolderPath
-  if (folderPath) params.set('path', folderPath)
-  return `${window.location.origin}${window.location.pathname}?${params.toString()}`
+  return buildConnectCode({
+    provider: cloudProvider.value,
+    clientId,
+    libraryFolderPath: machineSettings.value?.tabletCloudLibraryFolderPath ?? '',
+  })
 })
 const addDeviceQr = ref('')
 watch(
-  addDeviceUrl,
-  async (url) => {
-    addDeviceQr.value = url ? await generateQrCodeDataUrl(url) : ''
+  addDeviceCode,
+  async (code) => {
+    addDeviceQr.value = code ? await generateQrCodeDataUrl(code) : ''
   },
   { immediate: true },
 )
-// The inline QR is sized to sit next to the link field, too small to scan reliably at a glance —
+// The inline QR is sized to sit next to the code field, too small to scan reliably at a glance —
 // clicking/tapping it shows the same image full-size in a dialog instead of needing a second,
 // separately-generated large rendering.
 const addDeviceQrDialog = ref(false)
-const addDeviceLinkCopied = ref(false)
-async function copyAddDeviceLink() {
-  await navigator.clipboard.writeText(addDeviceUrl.value)
-  addDeviceLinkCopied.value = true
-  setTimeout(() => (addDeviceLinkCopied.value = false), 2000)
+const addDeviceCodeCopied = ref(false)
+async function copyAddDeviceCode() {
+  await navigator.clipboard.writeText(addDeviceCode.value)
+  addDeviceCodeCopied.value = true
+  setTimeout(() => (addDeviceCodeCopied.value = false), 2000)
 }
-function selectAddDeviceLink(event: FocusEvent) {
+function selectAddDeviceCode(event: FocusEvent) {
   ;(event.target as HTMLInputElement)?.select()
 }
 
@@ -446,8 +446,10 @@ async function pickLibraryFolder() {
       <div class="mb-2">
         <strong class="text-body-2">Add Another Device</strong>
         <p class="text-caption text-medium-emphasis mb-2">
-          Scan this on a new device (or open the link) to connect it without typing anything —
-          it's the same {{ cloudProviderLabel }} connection as this device.
+          On the new device, scan this QR code with its regular camera app and copy the text it
+          recognizes (or just copy the code below directly) — then paste it into Worship Studio's
+          setup screen there. It's the same {{ cloudProviderLabel }} connection as this device, no
+          typing required.
         </p>
         <div class="add-device-row">
           <button
@@ -460,17 +462,18 @@ async function pickLibraryFolder() {
             <span class="text-caption text-medium-emphasis">Tap to enlarge</span>
           </button>
           <div class="add-device-link">
-            <v-text-field
-              :model-value="addDeviceUrl"
-              label="Connect link"
+            <v-textarea
+              :model-value="addDeviceCode"
+              label="Connect code"
               variant="outlined"
               density="compact"
+              rows="3"
               readonly
               hide-details
-              @focus="selectAddDeviceLink"
+              @focus="selectAddDeviceCode"
             />
-            <v-btn variant="tonal" prepend-icon="mdi-content-copy" @click="copyAddDeviceLink">
-              {{ addDeviceLinkCopied ? 'Copied' : 'Copy Link' }}
+            <v-btn variant="tonal" prepend-icon="mdi-content-copy" @click="copyAddDeviceCode">
+              {{ addDeviceCodeCopied ? 'Copied' : 'Copy Code' }}
             </v-btn>
           </div>
         </div>
@@ -487,8 +490,8 @@ async function pickLibraryFolder() {
               class="add-device-qr-large"
             />
             <p class="text-body-2 text-medium-emphasis">
-              Scan this with the new device's camera to connect it to the same
-              {{ cloudProviderLabel }} library — no typing required.
+              Scan this with the new device's regular camera app, then copy the text it recognizes
+              and paste it into Worship Studio's setup screen there — no typing required.
             </p>
           </v-card-text>
           <v-card-actions>
@@ -801,11 +804,11 @@ async function pickLibraryFolder() {
 }
 .add-device-link {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   padding-top: 8px;
 }
-.add-device-link .v-text-field {
+.add-device-link .v-textarea {
   flex: 1;
 }
 .add-device-qr-dialog-body {
