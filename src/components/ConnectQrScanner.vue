@@ -28,12 +28,16 @@
  * camera naturally via onUnmounted below.
  *
  * TEMPORARY: on a real installed-iPad PWA, this has never once painted a visible camera frame
- * across three prior fix attempts, despite the OS camera-in-use indicator confirming the stream
- * itself is acquired — i.e. getUserMedia() and play() both resolve without error, yet nothing
- * paints. The debug line below and the non-black video background exist only to tell apart "no
- * frames are rendering at all" (video area stays the debug background color) from "frames are
- * rendering but something else covers them" (video area goes solid black despite the background
- * being a different color) — remove both once the real cause is found.
+ * across four prior fix attempts, despite the OS camera-in-use indicator confirming the stream
+ * itself is acquired. The previous debug round proved something new: no debug line ever
+ * appeared either, even though it's only gated behind `await videoEl.value.play()` succeeding —
+ * meaning that await never returns at all (not even via the catch block, so it isn't rejecting
+ * either). That matches a documented category of WebKit bug where HTMLMediaElement.play()'s
+ * returned promise can simply hang forever on a MediaStream <video> even when playback would
+ * otherwise proceed fine. So play() is no longer awaited or allowed to gate anything else in
+ * this component; the debug line below (now driven by real lifecycle events fired on the video
+ * element, not just a poll) and the non-black video background exist only to nail down exactly
+ * what state the element reaches — remove all of it once the real cause is confirmed fixed.
  */
 import { onMounted, onUnmounted, ref } from 'vue'
 import QrScanner from 'qr-scanner'
@@ -50,6 +54,7 @@ let stream: MediaStream | undefined
 let qrEngine: Awaited<ReturnType<typeof QrScanner.createQrEngine>> | undefined
 let scanIntervalId: ReturnType<typeof setInterval> | undefined
 let debugIntervalId: ReturnType<typeof setInterval> | undefined
+const eventLog: string[] = []
 
 // Frequent enough to feel instant, cheap enough not to matter — the actual decode work runs in
 // qrEngine (a Worker, or the native BarcodeDetector where available), never on the main thread.
@@ -68,11 +73,16 @@ async function scanOnce() {
   }
 }
 
+function logEvent(name: string) {
+  eventLog.push(name)
+  updateDebugText()
+}
+
 function updateDebugText() {
   const video = videoEl.value
   const track = stream?.getVideoTracks()[0]
   const settings = track?.getSettings()
-  debugText.value = video
+  const stats = video
     ? [
         `readyState=${video.readyState}`,
         `paused=${video.paused}`,
@@ -83,6 +93,7 @@ function updateDebugText() {
         `settings=${settings ? `${settings.width}x${settings.height}` : 'n/a'}`,
       ].join(' ')
     : 'no video element'
+  debugText.value = `${stats} | events=${eventLog.join(',') || 'none'}`
 }
 
 onMounted(async () => {
@@ -90,19 +101,40 @@ onMounted(async () => {
     errorText.value = "This device doesn't have a usable camera."
     return
   }
-  if (!videoEl.value) return
+  const video = videoEl.value
+  if (!video) return
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment' },
       audio: false,
     })
-    videoEl.value.srcObject = stream
+    logEvent('getUserMedia-resolved')
+
+    video.addEventListener('loadedmetadata', () => logEvent('loadedmetadata'))
+    video.addEventListener('loadeddata', () => logEvent('loadeddata'))
+    video.addEventListener('canplay', () => logEvent('canplay'))
+    video.addEventListener('playing', () => logEvent('playing'))
+    video.addEventListener('stalled', () => logEvent('stalled'))
+    video.addEventListener('waiting', () => logEvent('waiting'))
+    video.addEventListener('suspend', () => logEvent('suspend'))
+    video.addEventListener('error', () => logEvent(`error:${video.error?.message ?? 'unknown'}`))
+
+    video.srcObject = stream
     // Belt-and-suspenders: setting `muted`/`playsInline` as HTML attributes doesn't always
     // reliably reach the DOM property in time for iOS Safari's autoplay gate, especially when
     // srcObject is assigned programmatically after the element already exists.
-    videoEl.value.muted = true
-    videoEl.value.playsInline = true
-    await videoEl.value.play()
+    video.muted = true
+    video.playsInline = true
+
+    // Deliberately NOT awaited: a prior debug round proved this promise can hang forever on a
+    // real device without ever resolving or rejecting, which was silently blocking every bit of
+    // setup below it. Fire it and let events (above) report what actually happens.
+    video.play().then(
+      () => logEvent('play-resolved'),
+      (playError: unknown) =>
+        logEvent(`play-rejected:${playError instanceof Error ? playError.message : String(playError)}`),
+    )
+
     qrEngine = await QrScanner.createQrEngine()
     scanIntervalId = setInterval(() => void scanOnce(), SCAN_INTERVAL_MS)
     updateDebugText()
