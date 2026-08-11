@@ -32,10 +32,16 @@ onMounted(async () => {
     return
   }
   if (!videoEl.value) return
+  // highlightScanRegion/highlightCodeOutline deliberately left off (they default to false) —
+  // both make qr-scanner create and inject its own overlay <div> directly into the DOM outside
+  // Vue's tracking, positioned over the video. Confirmed on a real device that this is worth
+  // avoiding: the video was visibly live for a moment, then went solid black and stayed that
+  // way on every attempt, including ones needing no fresh permission prompt — consistent with a
+  // wrongly-sized/positioned overlay sitting on top of a camera feed that was never actually
+  // interrupted, not the stream itself stopping. The plain video-only view loses the nice
+  // scan-region outline but removes that entire class of DOM/CSS integration risk.
   scanner = new QrScanner(videoEl.value, (result) => emit('decoded', result.data), {
     preferredCamera: 'environment',
-    highlightScanRegion: true,
-    highlightCodeOutline: true,
   })
   try {
     await scanner.start()

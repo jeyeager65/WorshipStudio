@@ -740,12 +740,13 @@ onUnmounted(() => {
     <v-snackbar
       v-if="!hasDesktopBackend"
       :model-value="pwaUpdate.needRefresh.value"
+      color="info"
       timeout="-1"
       location="bottom"
     >
       A new version of Worship Studio is available.
       <template #actions>
-        <v-btn variant="text" color="primary" @click="pwaUpdate.applyUpdate">Update Now</v-btn>
+        <v-btn variant="text" @click="pwaUpdate.applyUpdate">Update Now</v-btn>
       </template>
     </v-snackbar>
 
