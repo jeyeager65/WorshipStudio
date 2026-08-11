@@ -81,19 +81,43 @@ export function createCloudSync(config: CloudSyncConfig) {
   // by extension stores/sync.ts's poll while syncing) always reflects real numbers rather than
   // just "a sync is happening somewhere."
   let progress: SyncProgress | undefined
+  // De-duplicates concurrent requireToken() calls into the single in-flight request, rather than
+  // each of pull()'s concurrent workers independently deciding a refresh is needed and firing its
+  // own — confirmed on a real device this was a real risk, not theoretical: a 401 partway through
+  // a sync that looked like a garbled/invalid token is consistent with two refresh_token grants
+  // racing (Microsoft rotates the refresh token on every use, so the loser of that race is left
+  // holding tokens the server already considers stale).
+  let inFlightTokenRequest: Promise<string> | undefined
 
+  /** Every call gets a currently-valid token, checked fresh — not just fetched once and reused for
+   *  an entire pull()/push() batch, which is exactly how a long-running sync (rate-limit backoff
+   *  especially can stretch one out) let the token quietly expire partway through on a real
+   *  device, since nothing re-checked it until the *next* whole pull()/push() call. Cheap to call
+   *  this often: provider.getValidAccessToken() only makes a network call when actually near
+   *  expiry, otherwise it's just a local storage read (also cached now — see
+   *  onedriveAuthStorage.ts/dropboxAuthStorage.ts). */
   async function requireToken(): Promise<string> {
+    if (!inFlightTokenRequest) {
+      inFlightTokenRequest = (async () => {
+        try {
+          const token = await provider.getValidAccessToken()
+          needsReconnect = false
+          return token
+        } catch (error) {
+          if (error instanceof ProviderReauthRequiredError) needsReconnect = true
+          throw error
+        }
+      })()
+    }
+    const request = inFlightTokenRequest
     try {
-      const token = await provider.getValidAccessToken()
-      needsReconnect = false
-      return token
-    } catch (error) {
-      if (error instanceof ProviderReauthRequiredError) needsReconnect = true
-      throw error
+      return await request
+    } finally {
+      if (inFlightTokenRequest === request) inFlightTokenRequest = undefined
     }
   }
 
-  async function applyEntry(token: string, entry: ProviderEntry): Promise<void> {
+  async function applyEntry(entry: ProviderEntry): Promise<void> {
     const relativePath = entry.path
 
     if (entry.tag === 'deleted') {
@@ -123,6 +147,7 @@ export function createCloudSync(config: CloudSyncConfig) {
       return
     }
 
+    const token = await requireToken()
     const downloaded = await provider.download(token, relativePath)
     if (relativePath.endsWith('.json')) {
       const text = new TextDecoder().decode(downloaded.bytes)
@@ -168,7 +193,7 @@ export function createCloudSync(config: CloudSyncConfig) {
         const entry = page.entries[index]!
         progress = { phase: 'pull', completed, total, currentPath: entry.path }
         try {
-          await applyEntry(token, entry)
+          await applyEntry(entry)
         } catch (error) {
           if (!(error instanceof ProviderApiError) || error.kind !== 'rate-limit') throw error
           cooldownUntil = Date.now() + (error.retryAfterSeconds ?? 60) * 1000
@@ -242,9 +267,10 @@ export function createCloudSync(config: CloudSyncConfig) {
     await syncStore.clearDirty(relativePath)
   }
 
-  async function pushOne(token: string, relativePath: string): Promise<void> {
+  async function pushOne(relativePath: string): Promise<void> {
     const entry = await syncStore.getDirty(relativePath)
     if (!entry) return
+    const token = await requireToken()
 
     if (entry.deleted) {
       // The provider already treats "already gone" as success, so a real conflict here (someone
@@ -287,7 +313,6 @@ export function createCloudSync(config: CloudSyncConfig) {
 
   async function push(): Promise<void> {
     if (Date.now() < cooldownUntil) return
-    const token = await requireToken()
     const now = Date.now()
     const allDirty = await syncStore.getAllDirty()
     let completed = 0
@@ -304,7 +329,7 @@ export function createCloudSync(config: CloudSyncConfig) {
 
       progress = { phase: 'push', completed, total: allDirty.length, currentPath: relativePath }
       try {
-        await pushOne(token, relativePath)
+        await pushOne(relativePath)
       } catch (error) {
         if (error instanceof ProviderApiError && error.kind === 'rate-limit') {
           cooldownUntil = Date.now() + (error.retryAfterSeconds ?? 60) * 1000

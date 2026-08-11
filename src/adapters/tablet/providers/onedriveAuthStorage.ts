@@ -24,13 +24,26 @@ const DB_NAME = 'worship-studio-tablet-auth-onedrive'
 const STORE_NAME = 'onedrive'
 const TOKENS_KEY = 'tokens'
 
+// Cached rather than opened fresh per call — cloudSync.ts's requireToken() now checks the token
+// once per file during a sync (see that file's own doc comment for why once-per-batch let a
+// long-running sync's token quietly expire mid-way through), so this can be called many times in
+// one sync; a fresh IndexedDB connection every time would be the exact same needless overhead
+// syncStore.ts's own openDb() had before it was fixed for the same reason.
+let dbPromise: Promise<IDBDatabase> | undefined
+
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1)
-    request.onupgradeneeded = () => request.result.createObjectStore(STORE_NAME)
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error as Error)
-  })
+  if (!dbPromise) {
+    dbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, 1)
+      request.onupgradeneeded = () => request.result.createObjectStore(STORE_NAME)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => {
+        dbPromise = undefined
+        reject(request.error as Error)
+      }
+    })
+  }
+  return dbPromise
 }
 
 export async function loadOneDriveTokens(): Promise<OneDriveTokens | undefined> {

@@ -23,13 +23,24 @@ const DB_NAME = 'worship-studio-tablet-auth'
 const STORE_NAME = 'dropbox'
 const TOKENS_KEY = 'tokens'
 
+// Cached rather than opened fresh per call — see onedriveAuthStorage.ts's identical fix for why
+// (cloudSync.ts's requireToken() now checks the token once per file during a sync, so this can be
+// called many times in one sync).
+let dbPromise: Promise<IDBDatabase> | undefined
+
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1)
-    request.onupgradeneeded = () => request.result.createObjectStore(STORE_NAME)
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error as Error)
-  })
+  if (!dbPromise) {
+    dbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, 1)
+      request.onupgradeneeded = () => request.result.createObjectStore(STORE_NAME)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => {
+        dbPromise = undefined
+        reject(request.error as Error)
+      }
+    })
+  }
+  return dbPromise
 }
 
 export async function loadDropboxTokens(): Promise<DropboxTokens | undefined> {

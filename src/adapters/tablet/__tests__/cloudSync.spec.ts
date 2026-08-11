@@ -244,6 +244,61 @@ describe('pull', () => {
     expect((await sync.getSyncStatus()).needsReconnect).toBe(true)
   })
 
+  it('re-checks the token per file rather than reusing one fetched at the start of the batch', async () => {
+    const root = createFakeRoot()
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({
+      entries: [
+        { tag: 'file', path: 'songs/a.json', rev: 'rev-a', sizeBytes: 10 },
+        { tag: 'file', path: 'songs/b.json', rev: 'rev-b', sizeBytes: 10 },
+      ],
+      cursor: 'cursor-1',
+    })
+    vi.mocked(provider.download).mockResolvedValue({
+      bytes: jsonBytes({ id: 'x' }),
+      rev: 'rev-x',
+      sizeBytes: 10,
+    })
+
+    await makeSync(root).pull()
+
+    // Once for listChanges, plus at least once more for the files themselves — concurrent
+    // in-flight requests correctly collapse into one shared call (see the de-duplication test
+    // below), but applyEntry() must still be checking the token itself rather than trusting a
+    // single value fetched once at the very start of pull() and reused unchanged for however long
+    // the whole batch takes (rate-limit backoff especially can stretch that out considerably).
+    expect(vi.mocked(provider.getValidAccessToken).mock.calls.length).toBeGreaterThan(1)
+  })
+
+  it('de-duplicates concurrent token requests into a single in-flight call', async () => {
+    const root = createFakeRoot()
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({
+      entries: [
+        { tag: 'file', path: 'songs/a.json', rev: 'rev-a', sizeBytes: 10 },
+        { tag: 'file', path: 'songs/b.json', rev: 'rev-b', sizeBytes: 10 },
+        { tag: 'file', path: 'songs/c.json', rev: 'rev-c', sizeBytes: 10 },
+      ],
+      cursor: 'cursor-1',
+    })
+    vi.mocked(provider.download).mockResolvedValue({
+      bytes: jsonBytes({ id: 'x' }),
+      rev: 'rev-x',
+      sizeBytes: 10,
+    })
+    let concurrentCalls = 0
+    let maxConcurrentCalls = 0
+    vi.mocked(provider.getValidAccessToken).mockImplementation(async () => {
+      concurrentCalls++
+      maxConcurrentCalls = Math.max(maxConcurrentCalls, concurrentCalls)
+      await Promise.resolve() // yield, so truly-concurrent callers would overlap here if unguarded
+      concurrentCalls--
+      return 'token-1'
+    })
+
+    await makeSync(root).pull()
+
+    expect(maxConcurrentCalls).toBe(1)
+  })
+
   it('stops the batch cleanly on a rate limit, without advancing the cursor, and resumes on a later pull', async () => {
     const root = createFakeRoot()
     vi.mocked(provider.listChanges).mockResolvedValue({
