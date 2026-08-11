@@ -30,8 +30,14 @@ export default defineConfig({
     // stale cached API response would be actively wrong here, not just unhelpful. `manifest:
     // false` because index.html already links public/manifest.webmanifest directly — this
     // plugin only handles the service worker, not manifest generation.
+    //
+    // registerType 'prompt', not 'autoUpdate': a new service worker still installs and waits in
+    // the background, but never activates/reloads on its own — App.vue's usePwaUpdate composable
+    // surfaces a banner instead and only applies it (and reloads) once the operator taps it.
+    // 'autoUpdate' would reload the page the instant an update is detected, with no way to know
+    // whether that's mid-edit on a service or, worse, mid-presentation on a Sunday.
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       manifest: false,
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],

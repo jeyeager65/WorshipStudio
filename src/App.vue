@@ -19,10 +19,12 @@ import { useServicesStore } from '@/stores/services'
 import { useHistoryStore } from '@/stores/history'
 import { useRemoteServiceSelection } from '@/composables/useRemoteServiceSelection'
 import { useTabletSync } from '@/composables/useTabletSync'
+import { usePwaUpdate } from '@/composables/usePwaUpdate'
 import { formatSyncProgressLabel } from '@/utils/syncProgress'
 import appIcon from '@/assets/app-icon.png'
 
 useTabletSync()
+const pwaUpdate = usePwaUpdate()
 
 const { blockedMessage } = storeToRefs(useLiveSessionStore())
 const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsavedChangesStore())
@@ -730,6 +732,21 @@ onUnmounted(() => {
       @update:model-value="(open: boolean) => !open && (blockedMessage = undefined)"
     >
       {{ blockedMessage }}
+    </v-snackbar>
+
+    <!-- Never auto-applies (timeout="-1", no dismiss-on-click-away) — an update reloads the page,
+         which would lose an in-progress edit or interrupt a live presentation if it happened on
+         its own. The operator applies it when it's actually a safe moment to. -->
+    <v-snackbar
+      v-if="!hasDesktopBackend"
+      :model-value="pwaUpdate.needRefresh.value"
+      timeout="-1"
+      location="bottom"
+    >
+      A new version of Worship Studio is available.
+      <template #actions>
+        <v-btn variant="text" color="primary" @click="pwaUpdate.applyUpdate">Update Now</v-btn>
+      </template>
     </v-snackbar>
 
     <ConfirmDialog />

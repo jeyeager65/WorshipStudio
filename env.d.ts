@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+/// <reference types="vite-plugin-pwa/vue" />
 
 // Injected by vite.config.ts's `define` from package.json's version — see AboutSection.vue/
 // SplashScreen.vue for why the web/mock builds need this rather than relying solely on Tauri's
