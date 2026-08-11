@@ -8,6 +8,19 @@
  * WICG/pwa-url-handler#43). Scanning in-app means the whole connect flow stays in one JS session
  * with no navigation and no storage boundary to cross.
  *
+ * Deliberately manages the camera stream itself (plain getUserMedia) and only uses qr-scanner's
+ * *static* scanImage() on a timer, rather than constructing a full QrScanner instance and using
+ * its own start()/pause() lifecycle. Confirmed on a real device this had to change: qr-scanner's
+ * instance-level start() bails out silently whenever `document.hidden` is true, and it attaches
+ * its own visibilitychange listener that pauses the stream the same way — the video was visibly
+ * live for a moment, then went solid black and stayed that way, on every attempt, including ones
+ * needing no fresh permission prompt. That's consistent with `document.hidden`/visibilitychange
+ * behaving unreliably in an installed iOS PWA (a previously-documented category of iOS bug) and
+ * the library's own pause firing without its matching resume ever following. A full QrScanner
+ * instance only wires up that listener in its constructor, so simply never constructing one —
+ * using only the stateless static methods (hasCamera, scanImage, createQrEngine) — removes the
+ * entire dependency on that behaving correctly.
+ *
  * Deliberately keeps scanning after every decode rather than stopping itself — an invalid QR code
  * (BootGate.vue's parseConnectLink rejecting it) should let the operator just try again without
  * this component needing to know why it failed or explicitly restart anything; a valid one causes
@@ -24,7 +37,26 @@ const emit = defineEmits<{
 
 const videoEl = ref<HTMLVideoElement>()
 const errorText = ref('')
-let scanner: QrScanner | undefined
+let stream: MediaStream | undefined
+let qrEngine: Awaited<ReturnType<typeof QrScanner.createQrEngine>> | undefined
+let scanIntervalId: ReturnType<typeof setInterval> | undefined
+
+// Frequent enough to feel instant, cheap enough not to matter — the actual decode work runs in
+// qrEngine (a Worker, or the native BarcodeDetector where available), never on the main thread.
+const SCAN_INTERVAL_MS = 350
+
+async function scanOnce() {
+  const video = videoEl.value
+  if (!video || video.readyState < video.HAVE_CURRENT_DATA) return
+  try {
+    const result = await QrScanner.scanImage(video, { qrEngine, returnDetailedScanResult: true })
+    emit('decoded', result.data)
+  } catch {
+    // No QR code in this particular frame — the overwhelmingly common case on every tick, not a
+    // real error worth surfacing (scanImage's documented behavior is to throw when it finds
+    // nothing).
+  }
+}
 
 onMounted(async () => {
   if (!(await QrScanner.hasCamera())) {
@@ -32,19 +64,15 @@ onMounted(async () => {
     return
   }
   if (!videoEl.value) return
-  // highlightScanRegion/highlightCodeOutline deliberately left off (they default to false) —
-  // both make qr-scanner create and inject its own overlay <div> directly into the DOM outside
-  // Vue's tracking, positioned over the video. Confirmed on a real device that this is worth
-  // avoiding: the video was visibly live for a moment, then went solid black and stayed that
-  // way on every attempt, including ones needing no fresh permission prompt — consistent with a
-  // wrongly-sized/positioned overlay sitting on top of a camera feed that was never actually
-  // interrupted, not the stream itself stopping. The plain video-only view loses the nice
-  // scan-region outline but removes that entire class of DOM/CSS integration risk.
-  scanner = new QrScanner(videoEl.value, (result) => emit('decoded', result.data), {
-    preferredCamera: 'environment',
-  })
   try {
-    await scanner.start()
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' },
+      audio: false,
+    })
+    videoEl.value.srcObject = stream
+    await videoEl.value.play()
+    qrEngine = await QrScanner.createQrEngine()
+    scanIntervalId = setInterval(() => void scanOnce(), SCAN_INTERVAL_MS)
   } catch (error) {
     errorText.value =
       error instanceof Error
@@ -54,8 +82,9 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  scanner?.destroy()
-  scanner = undefined
+  if (scanIntervalId !== undefined) clearInterval(scanIntervalId)
+  stream?.getTracks().forEach((track) => track.stop())
+  stream = undefined
 })
 </script>
 
