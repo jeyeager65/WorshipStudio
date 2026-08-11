@@ -68,15 +68,21 @@ export interface LibrarySettings {
     clientId: string
   }
   /**
-   * Church-chosen api.bible editions (e.g. NIV) — synced so every machine agrees on what
-   * "NIV" refers to. The api.bible *key* needed to actually resolve these lives per-machine
-   * in MachineSettings.apiBibleKey, since keys must never sync.
+   * Church-chosen api.bible editions (e.g. NIV) — synced, same as the api.bible key needed to
+   * actually resolve them (apiBibleKey below). Both are church-wide, not per-machine.
    */
   apiBibleTranslations: {
     code: string
     label: string
     bibleId: string
   }[]
+  /** ESV API key (api.esv.org) — church-wide, synced, entered once in Settings > Bible
+   *  Translations. Moved here from MachineSettings (pre-0.9) since the key belongs to the
+   *  church's own api.esv.org account, not to any one device — see MachineSettings.esvApiKey
+   *  for the migration of an already-configured older device's key. */
+  esvApiKey?: string
+  /** api.bible key (scripture.api.bible) — church-wide, synced, same reasoning as esvApiKey. */
+  apiBibleKey?: string
   defaultTranslationCode?: string
   mediaMaxSyncedFileSizeMb: number
   /**
@@ -151,9 +157,11 @@ export interface MachineSettings {
    * importing that type keeps this model layer independent of the adapters layer.
    */
   displayRoles: Record<string, string>
-  /** ESV API key (api.esv.org) — per-machine, never synced. Entered in Settings > Bible Translations. */
+  /** Legacy ESV/api.bible keys, kept only so an already-configured device can migrate to the
+   *  real, synced fields (LibrarySettings.esvApiKey/apiBibleKey) the first time its settings
+   *  load after upgrading — see adapters/web/settings.ts's getLibrarySettings(). New saves
+   *  always clear these; nothing should read them for actual scripture resolution anymore. */
   esvApiKey?: string
-  /** api.bible key (scripture.api.bible) — per-machine, never synced. Same reasoning as esvApiKey. */
   apiBibleKey?: string
   /** Explicit Remote Control LAN port. Undefined selects and remembers one automatically. */
   remoteControlPort?: number

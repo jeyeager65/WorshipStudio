@@ -116,18 +116,17 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
     scripture: {
       resolve: async (reference, translationCode): Promise<ScripturePassage> => {
         if (translationCode === 'ESV') {
-          const machineSettings = await settings.getMachineSettings()
-          const apiKey = machineSettings.esvApiKey
-          if (!apiKey) throw new Error("The ESV API isn't configured on this machine.")
+          const librarySettings = await settings.getLibrarySettings()
+          const apiKey = librarySettings.esvApiKey
+          if (!apiKey) throw new Error("The ESV API isn't configured for this church.")
           return resolveEsv(reference, apiKey)
         }
         if (translationCode !== 'KJV') {
           const librarySettings = await settings.getLibrarySettings()
           const entry = librarySettings.apiBibleTranslations.find((t) => t.code === translationCode)
           if (entry) {
-            const machineSettings = await settings.getMachineSettings()
-            const apiKey = machineSettings.apiBibleKey
-            if (!apiKey) throw new Error("The api.bible API isn't configured on this machine.")
+            const apiKey = librarySettings.apiBibleKey
+            if (!apiKey) throw new Error("The api.bible API isn't configured for this church.")
             return resolveApiBible(reference, entry.bibleId, translationCode, apiKey)
           }
         }
@@ -153,15 +152,12 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
       },
       getBookList: async () => getBookNames(),
       listTranslations: async () => {
-        const [machineSettings, librarySettings] = await Promise.all([
-          settings.getMachineSettings(),
-          settings.getLibrarySettings(),
-        ])
+        const librarySettings = await settings.getLibrarySettings()
         const translations = [{ code: 'KJV', name: 'King James Version' }]
-        if (machineSettings.esvApiKey) {
+        if (librarySettings.esvApiKey) {
           translations.push({ code: 'ESV', name: 'English Standard Version' })
         }
-        if (machineSettings.apiBibleKey) {
+        if (librarySettings.apiBibleKey) {
           for (const t of librarySettings.apiBibleTranslations) {
             translations.push({ code: t.code, name: t.label })
           }
@@ -169,8 +165,8 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
         return translations
       },
       listApiBibleCatalog: async (apiKey) => {
-        const key = apiKey || (await settings.getMachineSettings()).apiBibleKey
-        if (!key) throw new Error("The api.bible API isn't configured on this machine.")
+        const key = apiKey || (await settings.getLibrarySettings()).apiBibleKey
+        if (!key) throw new Error("The api.bible API isn't configured for this church.")
         return listApiBibleCatalog(key)
       },
     },

@@ -65,23 +65,23 @@ export function createWebAdapter(root: FileSystemDirectoryHandle): StudioAdapter
     // nothing localStorage-specific"). ESV/api.bible network calls are confirmed CORS-open (§3)
     // and now wired up for real (see ./scripture.ts, a TS port of the same Rust domain logic
     // src-tauri/src/commands/scripture.rs dispatches to) — same dispatch rules as the Rust
-    // resolve_scripture command: ESV needs machineSettings.esvApiKey, any other non-KJV code
-    // must be a library-configured api.bible translation and needs machineSettings.apiBibleKey.
+    // resolve_scripture command: ESV needs librarySettings.esvApiKey, any other non-KJV code
+    // must be a library-configured api.bible translation and needs librarySettings.apiBibleKey.
+    // Both keys are church-wide/synced, not per-machine — see models/settings.ts's doc comments.
     scripture: {
       resolve: async (reference, translationCode): Promise<ScripturePassage> => {
         if (translationCode === 'ESV') {
-          const machineSettings = await settings.getMachineSettings()
-          const apiKey = machineSettings.esvApiKey
-          if (!apiKey) throw new Error("The ESV API isn't configured on this machine.")
+          const librarySettings = await settings.getLibrarySettings()
+          const apiKey = librarySettings.esvApiKey
+          if (!apiKey) throw new Error("The ESV API isn't configured for this church.")
           return resolveEsv(reference, apiKey)
         }
         if (translationCode !== 'KJV') {
           const librarySettings = await settings.getLibrarySettings()
           const entry = librarySettings.apiBibleTranslations.find((t) => t.code === translationCode)
           if (entry) {
-            const machineSettings = await settings.getMachineSettings()
-            const apiKey = machineSettings.apiBibleKey
-            if (!apiKey) throw new Error("The api.bible API isn't configured on this machine.")
+            const apiKey = librarySettings.apiBibleKey
+            if (!apiKey) throw new Error("The api.bible API isn't configured for this church.")
             return resolveApiBible(reference, entry.bibleId, translationCode, apiKey)
           }
         }
@@ -107,15 +107,12 @@ export function createWebAdapter(root: FileSystemDirectoryHandle): StudioAdapter
       },
       getBookList: async () => getBookNames(),
       listTranslations: async () => {
-        const [machineSettings, librarySettings] = await Promise.all([
-          settings.getMachineSettings(),
-          settings.getLibrarySettings(),
-        ])
+        const librarySettings = await settings.getLibrarySettings()
         const translations = [{ code: 'KJV', name: 'King James Version' }]
-        if (machineSettings.esvApiKey) {
+        if (librarySettings.esvApiKey) {
           translations.push({ code: 'ESV', name: 'English Standard Version' })
         }
-        if (machineSettings.apiBibleKey) {
+        if (librarySettings.apiBibleKey) {
           for (const t of librarySettings.apiBibleTranslations) {
             translations.push({ code: t.code, name: t.label })
           }
@@ -123,8 +120,8 @@ export function createWebAdapter(root: FileSystemDirectoryHandle): StudioAdapter
         return translations
       },
       listApiBibleCatalog: async (apiKey) => {
-        const key = apiKey || (await settings.getMachineSettings()).apiBibleKey
-        if (!key) throw new Error("The api.bible API isn't configured on this machine.")
+        const key = apiKey || (await settings.getLibrarySettings()).apiBibleKey
+        if (!key) throw new Error("The api.bible API isn't configured for this church.")
         return listApiBibleCatalog(key)
       },
     },

@@ -7,13 +7,13 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 import type { ApiBibleCatalogEntry } from '@/adapters/types'
 
-const { librarySettings, machineSettings } = storeToRefs(useSettingsStore())
+const { librarySettings } = storeToRefs(useSettingsStore())
 const confirmDialog = useConfirmDialogStore()
 
 // KJV is bundled (always resolvable, no config). ESV and api.bible editions (e.g. NIV) each
-// need their own API key, entered below and stored per-machine in MachineSettings (never
-// synced — see models/settings.ts) since a key is only meaningful on the machine it's
-// configured on. `availableTranslationEntries` below is built from exactly the same rules
+// need their own API key, entered below and stored church-wide in LibrarySettings (synced —
+// see models/settings.ts) since the key belongs to the church's own account, not to any one
+// computer. `availableTranslationEntries` below is built from exactly the same rules
 // commands::scripture::list_scripture_translations uses on the Rust side, so this list can
 // never show something as "available" that the real picker wouldn't also offer.
 const ESV_COPYRIGHT_NOTICE =
@@ -26,9 +26,9 @@ const pickedCatalogEntry = ref<ApiBibleCatalogEntry>()
 let catalogLoadedForKey = ''
 
 async function loadApiBibleCatalog() {
-  const key = machineSettings.value?.apiBibleKey
+  const key = librarySettings.value?.apiBibleKey
   // Pass the draft key directly rather than relying on the Rust side re-reading
-  // machine-settings.json — that file only has last Save's value, so without this the catalog
+  // library-settings.json — that file only has last Save's value, so without this the catalog
   // would silently fail to load until Save was pressed at least once.
   if (!key || catalogLoadedForKey === key || loadingApiBibleCatalog.value) return
   loadingApiBibleCatalog.value = true
@@ -112,7 +112,7 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
       needsKey: false,
     })
   }
-  const apiBibleKeyConfigured = !!machineSettings.value?.apiBibleKey
+  const apiBibleKeyConfigured = !!librarySettings.value?.apiBibleKey
   for (const t of librarySettings.value?.apiBibleTranslations ?? []) {
     entries.push({ code: t.code, name: t.label, removable: true, needsKey: !apiBibleKeyConfigured })
   }
@@ -126,7 +126,7 @@ function translationSource(entry: AvailableTranslationEntry): string {
 }
 
 // Whether the ESV copyright notice below needs to show is a question of whether ESV is
-// actually resolvable right now (an esvApiKey configured on this machine — see
+// actually resolvable right now (an esvApiKey configured for this church — see
 // commands::scripture on the Rust side), which can lag one Save behind the draft key typed
 // into the field below. Exposed so SettingsView.vue's saveSettings() can re-run this right
 // after a successful save (same pattern as CanvaSection.vue's loadCanvaStatus) — without it,
@@ -150,17 +150,17 @@ defineExpose({ refreshAvailability })
   <div>
     <SettingsPanel
       title="English Standard Version"
-      description="Connect an api.esv.org account to make the ESV available on this computer."
+      description="Connect an api.esv.org account to make the ESV available for this church."
       icon="mdi-key-outline"
     >
       <v-text-field
-        v-model="machineSettings!.esvApiKey"
+        v-model="librarySettings!.esvApiKey"
         label="ESV API key"
         type="password"
         variant="outlined"
         density="compact"
         autocomplete="off"
-        hint="Free account at api.esv.org."
+        hint="Free account at api.esv.org. Shared with every device once saved — no need to enter it again elsewhere."
         persistent-hint
         class="settings-form-field mb-3"
       />
@@ -168,14 +168,14 @@ defineExpose({ refreshAvailability })
         {{ ESV_COPYRIGHT_NOTICE }}
       </v-alert>
       <v-alert
-        v-else-if="machineSettings!.esvApiKey"
+        v-else-if="librarySettings!.esvApiKey"
         type="warning"
         variant="tonal"
         density="compact"
       >
         Save Settings to verify this key.
       </v-alert>
-      <p v-else class="settings-muted">Not configured on this machine.</p>
+      <p v-else class="settings-muted">Not configured for this church yet.</p>
     </SettingsPanel>
 
     <SettingsPanel
@@ -184,17 +184,17 @@ defineExpose({ refreshAvailability })
       icon="mdi-book-plus-outline"
     >
       <v-text-field
-        v-model="machineSettings!.apiBibleKey"
+        v-model="librarySettings!.apiBibleKey"
         label="api.bible API key"
         type="password"
         variant="outlined"
         density="compact"
         autocomplete="off"
-        hint="Free account at scripture.api.bible."
+        hint="Free account at scripture.api.bible. Shared with every device once saved — no need to enter it again elsewhere."
         persistent-hint
         class="settings-form-field mb-3"
       />
-      <div v-if="machineSettings!.apiBibleKey">
+      <div v-if="librarySettings!.apiBibleKey">
         <div class="translation-picker">
           <v-autocomplete
             v-model="pickedCatalogEntry"
@@ -223,7 +223,7 @@ defineExpose({ refreshAvailability })
           {{ addTranslationError }}
         </p>
       </div>
-      <p v-else class="settings-muted">Not configured on this machine.</p>
+      <p v-else class="settings-muted">Not configured for this church yet.</p>
     </SettingsPanel>
 
     <SettingsPanel

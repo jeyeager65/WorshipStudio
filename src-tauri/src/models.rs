@@ -641,9 +641,10 @@ pub struct OneDriveIntegration {
     pub client_id: String,
 }
 
-/// A church-chosen api.bible edition (e.g. NIV) — synced via LibrarySettings so every machine
-/// agrees on what "NIV" refers to, even though the api.bible *key* needed to actually resolve
-/// it lives per-machine in MachineSettings (see MachineSettings::api_bible_key).
+/// A church-chosen api.bible edition (e.g. NIV) — synced via LibrarySettings, same as the
+/// api.bible *key* needed to actually resolve it (LibrarySettings::api_bible_key). Both are
+/// church-wide, not per-machine — every device planning or presenting for the same church should
+/// resolve translations the same way.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiBibleTranslation {
@@ -674,6 +675,18 @@ pub struct LibrarySettings {
     pub one_drive_integration: OneDriveIntegration,
     #[serde(default)]
     pub api_bible_translations: Vec<ApiBibleTranslation>,
+    /// ESV API key (api.esv.org) — church-wide, synced, entered once in Settings > Bible
+    /// Translations. `None`/missing means ESV isn't configured for this church; falls back to
+    /// the ESV_API_KEY env var for local-dev convenience (see commands::scripture). Moved here
+    /// from MachineSettings (pre-0.9) since the key belongs to the church's own api.esv.org
+    /// account, not to any one computer — see MachineSettings::esv_api_key for the migration of
+    /// an already-configured older install's key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub esv_api_key: Option<String>,
+    /// api.bible key (scripture.api.bible) — church-wide, synced, same reasoning as
+    /// esv_api_key above.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_bible_key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_translation_code: Option<String>,
     pub media_max_synced_file_size_mb: u32,
@@ -903,13 +916,13 @@ pub struct MachineSettings {
     /// "not-used" in the UI.
     #[serde(default)]
     pub display_roles: std::collections::HashMap<String, String>,
-    /// ESV API key (api.esv.org) — per-machine, never synced, entered in Settings > Bible
-    /// Translations. `None`/missing means ESV isn't configured on this machine; falls back to
-    /// the ESV_API_KEY env var for local-dev convenience (see commands::scripture).
+    /// Legacy ESV/api.bible keys, retained only so Settings can migrate installations that
+    /// configured a key back when it was (mistakenly) treated as per-machine rather than
+    /// church-wide — see LibrarySettings::esv_api_key/api_bible_key for the real, synced
+    /// fields, and commands::settings::migrate_legacy_bible_api_keys for the one-time move.
+    /// New saves always clear these.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub esv_api_key: Option<String>,
-    /// api.bible key (scripture.api.bible) — per-machine, never synced, same reasoning as
-    /// esv_api_key above.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_bible_key: Option<String>,
     /// Legacy Canva Connect credentials retained only so Settings can migrate installations

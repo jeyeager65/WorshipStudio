@@ -3,20 +3,21 @@ use tauri::AppHandle;
 use crate::commands::settings::get_library_settings;
 use crate::domain::scripture;
 use crate::models::{ApiBibleCatalogEntry, ScripturePassage, ScriptureTranslation};
-use crate::paths::load_machine_settings;
 
 fn esv_api_key(app: &AppHandle) -> Option<String> {
-    load_machine_settings(app)
-        .esv_api_key
+    get_library_settings(app.clone())
+        .ok()
+        .and_then(|library| library.esv_api_key)
         .filter(|k| !k.is_empty())
         // Local-dev convenience only (see notes/release-process.md) — never overrides a real
-        // per-machine key configured in Settings.
+        // church-wide key configured in Settings.
         .or_else(|| std::env::var("ESV_API_KEY").ok().filter(|k| !k.is_empty()))
 }
 
 fn api_bible_key(app: &AppHandle) -> Option<String> {
-    load_machine_settings(app)
-        .api_bible_key
+    get_library_settings(app.clone())
+        .ok()
+        .and_then(|library| library.api_bible_key)
         .filter(|k| !k.is_empty())
         .or_else(|| {
             std::env::var("API_BIBLE_KEY")
@@ -32,7 +33,7 @@ pub async fn resolve_scripture(
     translation_code: String,
 ) -> Result<ScripturePassage, String> {
     if translation_code == "ESV" {
-        let api_key = esv_api_key(&app).ok_or("The ESV API isn't configured on this machine.")?;
+        let api_key = esv_api_key(&app).ok_or("The ESV API isn't configured for this church.")?;
         return scripture::resolve_esv(&reference, &api_key).await;
     }
     if translation_code != "KJV" {
@@ -46,7 +47,7 @@ pub async fn resolve_scripture(
             .find(|t| t.code == translation_code)
         {
             let api_key =
-                api_bible_key(&app).ok_or("The api.bible API isn't configured on this machine.")?;
+                api_bible_key(&app).ok_or("The api.bible API isn't configured for this church.")?;
             return scripture::resolve_api_bible(
                 &reference,
                 &entry.bible_id,
@@ -94,11 +95,11 @@ pub async fn list_api_bible_catalog(
     api_key: Option<String>,
 ) -> Result<Vec<ApiBibleCatalogEntry>, String> {
     // Prefer whatever key the caller just typed (Settings passes its unsaved draft field) over
-    // machine-settings.json — otherwise browsing the catalog would only work after Save, since
+    // library-settings.json — otherwise browsing the catalog would only work after Save, since
     // api_bible_key() below reads from disk.
     let api_key = api_key
         .filter(|k| !k.is_empty())
         .or_else(|| api_bible_key(&app))
-        .ok_or("The api.bible API isn't configured on this machine.")?;
+        .ok_or("The api.bible API isn't configured for this church.")?;
     scripture::list_api_bible_catalog(&api_key).await
 }
