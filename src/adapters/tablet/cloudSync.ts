@@ -120,6 +120,12 @@ export function createCloudSync(config: CloudSyncConfig) {
   async function applyEntry(entry: ProviderEntry): Promise<void> {
     const relativePath = entry.path
 
+    // A .backup file, wherever it came from (another device, or this one before it stopped
+    // uploading its own — see adapters/tablet/index.ts's matching skip on the push side) — never
+    // downloaded. It's a local recovery artifact for whichever device wrote it, not shared
+    // content this device needs a copy of.
+    if (relativePath.endsWith('.backup')) return
+
     if (entry.tag === 'deleted') {
       const dirty = await syncStore.getDirty(relativePath)
       if (dirty) return // an unpushed local edit wins over a remote delete

@@ -115,6 +115,18 @@ describe('createTabletAdapter', () => {
     expect(syncStore._dirty.has('library-settings.json')).toBe(true)
   })
 
+  it('never marks a .backup file dirty — a local recovery artifact, never pushed', async () => {
+    const adapter = await createTabletAdapter({ provider: 'dropbox', clientId: 'k', libraryFolderPath: '/Library' })
+    const settings = await adapter.settings.getLibrarySettings()
+    await adapter.settings.saveLibrarySettings(settings)
+    // The *second* write is what actually creates library-settings.json.backup
+    // (fsaStorage.ts's writeJsonFile only backs up a version that already existed).
+    await adapter.settings.saveLibrarySettings(settings)
+
+    expect(syncStore._dirty.has('library-settings.json')).toBe(true)
+    expect(syncStore._dirty.has('library-settings.json.backup')).toBe(false)
+  })
+
   it('sync.getStatus reflects a clean, freshly-created cache', async () => {
     const adapter = await createTabletAdapter({ provider: 'dropbox', clientId: 'k', libraryFolderPath: '/Library' })
     const status = await adapter.sync.getStatus()

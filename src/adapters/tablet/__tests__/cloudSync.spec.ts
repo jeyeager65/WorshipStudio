@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCloudSync } from '../cloudSync'
 import { ProviderApiError, ProviderReauthRequiredError, type CloudSyncProvider } from '../providers/types'
 import { createFakeRoot } from '@/adapters/web/__tests__/fakeFsa'
-import { readBytes, readJsonFile, writeJsonFile } from '@/adapters/web/fsaStorage'
+import { readBytes, readFileText, readJsonFile, writeJsonFile } from '@/adapters/web/fsaStorage'
 
 // A fully mocked CloudSyncProvider — this file is only about cloudSync.ts's own orchestration
 // (dirty-path protection, size-gating, backoff, conflict routing), never about how any specific
@@ -104,6 +104,19 @@ beforeEach(() => {
 })
 
 describe('pull', () => {
+  it('never downloads a .backup file — a local recovery artifact, not shared content', async () => {
+    const root = createFakeRoot()
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({
+      entries: [{ tag: 'file', path: 'songs/song-1.json.backup', rev: 'rev-1', sizeBytes: 10 }],
+      cursor: 'c',
+    })
+
+    await makeSync(root).pull()
+
+    expect(provider.download).not.toHaveBeenCalled()
+    expect(await readFileText(root, 'songs/song-1.json.backup')).toBeNull()
+  })
+
   it('applies a new file returned by the provider and persists the returned cursor', async () => {
     vi.mocked(provider.listChanges).mockResolvedValueOnce({
       entries: [{ tag: 'file', path: 'songs/song-1.json', rev: 'rev-1', sizeBytes: 10 }],

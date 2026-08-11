@@ -74,6 +74,13 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
   // rawRoot instead (see that file's own doc comment for why: applying a pulled remote change,
   // or writing a conflict artifact, must never itself register as a local edit needing push).
   const trackedRoot = wrapWithDirtyTracking(rawRoot, (path, kind) => {
+    // .backup files (fsaStorage.ts's writeJsonFile) are this device's own local protection
+    // against a bad write, not shared library content — never pushed. See cloudSync.ts's
+    // matching skip on the pull side for why a cloud copy (from another device, or from before
+    // this device stopped uploading its own) is never downloaded either. Cloud providers already
+    // keep real version history, which covers "recover an older version" more robustly than one
+    // extra synced file per edited record ever could.
+    if (path.endsWith('.backup')) return
     void syncStore.setDirty(path, { deleted: kind === 'remove', attempts: 0, nextRetryAt: 0 })
   })
 
