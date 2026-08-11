@@ -26,6 +26,14 @@
  * this component needing to know why it failed or explicitly restart anything; a valid one causes
  * the parent to navigate away to a different phase, which unmounts this component and stops the
  * camera naturally via onUnmounted below.
+ *
+ * TEMPORARY: on a real installed-iPad PWA, this has never once painted a visible camera frame
+ * across three prior fix attempts, despite the OS camera-in-use indicator confirming the stream
+ * itself is acquired — i.e. getUserMedia() and play() both resolve without error, yet nothing
+ * paints. The debug line below and the non-black video background exist only to tell apart "no
+ * frames are rendering at all" (video area stays the debug background color) from "frames are
+ * rendering but something else covers them" (video area goes solid black despite the background
+ * being a different color) — remove both once the real cause is found.
  */
 import { onMounted, onUnmounted, ref } from 'vue'
 import QrScanner from 'qr-scanner'
@@ -37,9 +45,11 @@ const emit = defineEmits<{
 
 const videoEl = ref<HTMLVideoElement>()
 const errorText = ref('')
+const debugText = ref('')
 let stream: MediaStream | undefined
 let qrEngine: Awaited<ReturnType<typeof QrScanner.createQrEngine>> | undefined
 let scanIntervalId: ReturnType<typeof setInterval> | undefined
+let debugIntervalId: ReturnType<typeof setInterval> | undefined
 
 // Frequent enough to feel instant, cheap enough not to matter — the actual decode work runs in
 // qrEngine (a Worker, or the native BarcodeDetector where available), never on the main thread.
@@ -58,6 +68,23 @@ async function scanOnce() {
   }
 }
 
+function updateDebugText() {
+  const video = videoEl.value
+  const track = stream?.getVideoTracks()[0]
+  const settings = track?.getSettings()
+  debugText.value = video
+    ? [
+        `readyState=${video.readyState}`,
+        `paused=${video.paused}`,
+        `size=${video.videoWidth}x${video.videoHeight}`,
+        `muted=${video.muted}`,
+        `trackState=${track?.readyState ?? 'n/a'}`,
+        `trackEnabled=${track?.enabled ?? 'n/a'}`,
+        `settings=${settings ? `${settings.width}x${settings.height}` : 'n/a'}`,
+      ].join(' ')
+    : 'no video element'
+}
+
 onMounted(async () => {
   if (!(await QrScanner.hasCamera())) {
     errorText.value = "This device doesn't have a usable camera."
@@ -70,9 +97,16 @@ onMounted(async () => {
       audio: false,
     })
     videoEl.value.srcObject = stream
+    // Belt-and-suspenders: setting `muted`/`playsInline` as HTML attributes doesn't always
+    // reliably reach the DOM property in time for iOS Safari's autoplay gate, especially when
+    // srcObject is assigned programmatically after the element already exists.
+    videoEl.value.muted = true
+    videoEl.value.playsInline = true
     await videoEl.value.play()
     qrEngine = await QrScanner.createQrEngine()
     scanIntervalId = setInterval(() => void scanOnce(), SCAN_INTERVAL_MS)
+    updateDebugText()
+    debugIntervalId = setInterval(updateDebugText, 500)
   } catch (error) {
     errorText.value =
       error instanceof Error
@@ -83,6 +117,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (scanIntervalId !== undefined) clearInterval(scanIntervalId)
+  if (debugIntervalId !== undefined) clearInterval(debugIntervalId)
   stream?.getTracks().forEach((track) => track.stop())
   stream = undefined
 })
@@ -93,6 +128,7 @@ onUnmounted(() => {
     <template v-if="!errorText">
       <video ref="videoEl" class="qr-scanner-video" muted playsinline></video>
       <p class="qr-scanner-hint">Point the camera at the QR code shown on the other device.</p>
+      <p class="qr-scanner-debug">{{ debugText }}</p>
     </template>
     <v-alert v-else type="error" variant="tonal" density="compact" class="qr-scanner-error">
       {{ errorText }}
@@ -111,8 +147,17 @@ onUnmounted(() => {
   width: 100%;
   aspect-ratio: 1;
   border-radius: 10px;
-  background: black;
+  /* TEMPORARY: not black, on purpose — see the doc comment above the script block. */
+  background: #7a1fa2;
   object-fit: cover;
+}
+.qr-scanner-debug {
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-size: 0.7rem;
+  font-family: monospace;
+  text-align: center;
+  word-break: break-all;
 }
 .qr-scanner-hint {
   margin: 0;
