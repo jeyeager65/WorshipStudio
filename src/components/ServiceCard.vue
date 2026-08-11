@@ -165,6 +165,12 @@ function openPlan() {
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   border-left: 3px solid var(--date-color);
   background: rgba(var(--v-theme-background), 0.34);
+  /* Without this, iOS Safari treats the card's :hover rule below as a sign it needs a hover
+     state before a real click — the first tap only simulates :hover, and a second tap is needed
+     to actually fire the click handler. cursor: pointer is WebKit's documented signal that an
+     element is clickable, not hoverable-then-clickable, since this <v-card> renders as a plain
+     div rather than a native <a>/<button> that would already imply that on its own. */
+  cursor: pointer;
   transition:
     border-color var(--ws-transition-fast),
     background-color var(--ws-transition-fast),
