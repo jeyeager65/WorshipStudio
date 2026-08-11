@@ -42,6 +42,8 @@ import { getOpfsRoot } from '@/adapters/tablet/opfs'
 import { createWebSettingsPort } from '@/adapters/web/settings'
 import { usePwaInstall } from '@/composables/usePwaInstall'
 import { formatSyncProgressLabel } from '@/utils/syncProgress'
+import { parseConnectLink } from '@/utils/connectLink'
+import ConnectQrScanner from '@/components/ConnectQrScanner.vue'
 import logoDark from '@/assets/logo-dark.png'
 
 const pwaInstall = usePwaInstall()
@@ -54,6 +56,7 @@ type Phase =
   | 'resuming'
   | 'cloud-connect'
   | 'connecting-cloud'
+  | 'scanning'
   | 'initial-sync'
   | 'ready'
 
@@ -264,6 +267,38 @@ async function handleCloudRedirect(params: URLSearchParams) {
   }
 }
 
+// A link/QR code from another already-connected device's Settings page ("Add Another Device") —
+// pre-fills and immediately starts the connect flow so this device never needs the app
+// key/client ID typed in by hand. The value isn't secret (see LibrarySyncSection.vue's own
+// comment on this), so carrying it in a URL is the same reasoning Remote Control's own pairing
+// link/QR already relies on. Shared by both the URL-param path below (onMounted, reached when a
+// tapped link opens straight into this page — e.g. Android's better link-capturing sometimes
+// routes it into an already-installed instance) and handleScannedText below (the in-app camera
+// scanner, which decodes the exact same link's text without ever navigating at all).
+async function applyConnectParams(params: URLSearchParams): Promise<void> {
+  connectProvider.value = params.get('connect') === 'onedrive' ? 'onedrive' : 'dropbox'
+  cloudClientIdInput.value = params.get('key') ?? ''
+  cloudLibraryFolderPathInput.value = params.get('path') ?? ''
+  phase.value = 'cloud-connect'
+  if (cloudClientIdInput.value) await beginCloudConnect()
+}
+
+/** ConnectQrScanner's `decoded` handler — see that component's own doc comment for why scanning
+ *  happens entirely in-app rather than via the OS camera app (iOS Safari has no way to route a
+ *  scanned link into an already-installed PWA, and a plain browser tab and the installed app have
+ *  completely separate storage anyway). parseConnectLink rejects anything that isn't actually one
+ *  of this app's own connect links (a Remote Control pairing QR scanned by mistake, someone
+ *  else's QR entirely) — the scanner keeps running either way, so the operator just tries again. */
+async function handleScannedText(text: string): Promise<void> {
+  const params = parseConnectLink(text, window.location.origin, window.location.pathname)
+  if (!params) {
+    errorText.value = "That doesn't look like a Worship Studio connect code. Try scanning again."
+    return
+  }
+  errorText.value = ''
+  await applyConnectParams(params)
+}
+
 onMounted(async () => {
   const params = new URLSearchParams(window.location.search)
   if (params.has('code') && params.has('state')) {
@@ -271,18 +306,9 @@ onMounted(async () => {
     return
   }
 
-  // A link/QR code from another already-connected device's Settings page ("Add Another Device")
-  // — pre-fills and immediately starts the connect flow so this device never needs the app
-  // key/client ID typed in by hand. The value isn't secret (see LibrarySyncSection.vue's own
-  // comment on this), so carrying it in a URL is the same reasoning Remote Control's own pairing
-  // link/QR already relies on.
   if (params.has('connect')) {
     window.history.replaceState({}, '', window.location.pathname)
-    connectProvider.value = params.get('connect') === 'onedrive' ? 'onedrive' : 'dropbox'
-    cloudClientIdInput.value = params.get('key') ?? ''
-    cloudLibraryFolderPathInput.value = params.get('path') ?? ''
-    phase.value = 'cloud-connect'
-    if (cloudClientIdInput.value) await beginCloudConnect()
+    await applyConnectParams(params)
     return
   }
 
@@ -384,6 +410,16 @@ function showCloudConnectForm(provider: CloudProviderId) {
   connectProvider.value = provider
   phase.value = 'cloud-connect'
 }
+
+function showScanner() {
+  errorText.value = ''
+  phase.value = 'scanning'
+}
+
+// "Connect Dropbox"/"Connect OneDrive" (typed app key/client ID) is now truly a one-time,
+// once-per-church setup step — every device after the first should use Scan to Connect instead,
+// so the manual form is demoted behind this disclosure rather than shown by default.
+const showAdvancedConnect = ref(false)
 </script>
 
 <template>
@@ -408,29 +444,20 @@ function showCloudConnectForm(provider: CloudProviderId) {
             This browser doesn't support opening a real folder — try Chrome or Edge. You can still
             try the demo below.
           </p>
-          <v-btn
-            variant="outlined"
-            size="large"
-            block
-            class="mt-2"
-            @click="showCloudConnectForm('dropbox')"
-          >
-            Connect Dropbox
-          </v-btn>
-          <v-btn
-            variant="outlined"
-            size="large"
-            block
-            class="mt-2"
-            @click="showCloudConnectForm('onedrive')"
-          >
-            Connect OneDrive
-          </v-btn>
-          <p class="boot-note">
-            For tablets and phones, where opening a real folder isn't possible — syncs directly
-            with your church's Dropbox or OneDrive instead. If another device is already
-            connected, use its Settings page to scan a link instead of typing anything below.
+
+          <v-divider class="my-2" />
+
+          <p class="boot-lead">
+            On a tablet or phone — join your church's library, already synced on another device.
           </p>
+          <v-btn color="primary" size="large" block prepend-icon="mdi-qrcode-scan" @click="showScanner">
+            Scan to Connect
+          </v-btn>
+          <p v-if="!pwaInstall.isStandalone.value" class="boot-note">
+            For the smoothest experience, install this as an app first (below), then come back
+            and scan.
+          </p>
+
           <v-btn variant="text" size="large" block class="mt-2" @click="chooseDemo">
             Try the Demo
           </v-btn>
@@ -449,6 +476,40 @@ function showCloudConnectForm(provider: CloudProviderId) {
           <p v-else-if="pwaInstall.isIos.value" class="boot-note mt-3">
             On an iPhone/iPad: tap Share, then "Add to Home Screen" to install this as an app.
           </p>
+
+          <v-btn
+            variant="text"
+            size="small"
+            block
+            class="mt-3"
+            @click="showAdvancedConnect = !showAdvancedConnect"
+          >
+            {{ showAdvancedConnect ? 'Hide Advanced Options' : 'Advanced: First Device Setup' }}
+          </v-btn>
+          <template v-if="showAdvancedConnect">
+            <p class="boot-note">
+              Only needed once per church, to connect the very first device — every device after
+              that should use Scan to Connect above instead.
+            </p>
+            <v-btn
+              variant="outlined"
+              size="large"
+              block
+              class="mt-2"
+              @click="showCloudConnectForm('dropbox')"
+            >
+              Connect Dropbox
+            </v-btn>
+            <v-btn
+              variant="outlined"
+              size="large"
+              block
+              class="mt-2"
+              @click="showCloudConnectForm('onedrive')"
+            >
+              Connect OneDrive
+            </v-btn>
+          </template>
         </template>
 
         <template v-else-if="phase === 'resuming'">
@@ -457,6 +518,14 @@ function showCloudConnectForm(provider: CloudProviderId) {
           <v-btn variant="text" size="large" block class="mt-2" @click="pickDifferentFolder">
             Pick a Different Folder
           </v-btn>
+        </template>
+
+        <template v-else-if="phase === 'scanning'">
+          <p class="boot-lead">
+            Scan the QR code from Settings &gt; Library &amp; Sync &gt; Add Another Device on the
+            already-connected device.
+          </p>
+          <ConnectQrScanner @decoded="handleScannedText" @cancel="phase = 'chooser'" />
         </template>
 
         <template v-else-if="phase === 'cloud-connect'">

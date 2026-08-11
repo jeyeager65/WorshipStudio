@@ -16,6 +16,10 @@ interface BeforeInstallPromptEvent extends Event {
 export function usePwaInstall() {
   const canInstall = ref(false)
   const isIos = ref(false)
+  // Exposed (not just used internally to gate isIos) so BootGate.vue's chooser can nudge
+  // "install first" more prominently for the QR scanner specifically when it isn't already
+  // running installed — see that file's own reasoning for why installing first matters there.
+  const isStandalone = ref(false)
   let deferredPrompt: BeforeInstallPromptEvent | undefined
 
   function onBeforeInstallPrompt(event: Event) {
@@ -27,8 +31,8 @@ export function usePwaInstall() {
   onMounted(() => {
     window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
     // Already-installed (standalone display mode) never needs either UI.
-    const standalone = window.matchMedia?.('(display-mode: standalone)')?.matches ?? false
-    isIos.value = !standalone && /iphone|ipad|ipod/i.test(navigator.userAgent)
+    isStandalone.value = window.matchMedia?.('(display-mode: standalone)')?.matches ?? false
+    isIos.value = !isStandalone.value && /iphone|ipad|ipod/i.test(navigator.userAgent)
   })
 
   onUnmounted(() => {
@@ -43,5 +47,5 @@ export function usePwaInstall() {
     canInstall.value = false
   }
 
-  return { canInstall, isIos, promptInstall }
+  return { canInstall, isIos, isStandalone, promptInstall }
 }
