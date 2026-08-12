@@ -247,14 +247,18 @@ describe('pull', () => {
     expect(new TextDecoder().decode(bytes!)).toBe('abc')
   })
 
-  it('sets needsReconnect and stops cleanly when the provider cannot silently produce a token', async () => {
+  it('stops cleanly when the provider cannot silently produce a token, without itself deciding needsReconnect', async () => {
+    // needsReconnect is decided at runSync()'s level now (consecutive whole-attempt failures —
+    // see the "runSync" describe block below), not by a single requireToken() call inside pull()
+    // — a lone pull() failure (e.g. resetAndResync(), which calls pull() directly) shouldn't flip
+    // the shared flag on its own.
     vi.mocked(provider.getValidAccessToken).mockRejectedValueOnce(
       new ProviderReauthRequiredError('reconnect please'),
     )
     const sync = makeSync(createFakeRoot())
 
     await expect(sync.pull()).rejects.toThrow('reconnect please')
-    expect((await sync.getSyncStatus()).needsReconnect).toBe(true)
+    expect((await sync.getSyncStatus()).needsReconnect).toBe(false)
   })
 
   it('re-checks the token per file rather than reusing one fetched at the start of the batch', async () => {
@@ -349,6 +353,46 @@ describe('pull', () => {
     expect(provider.download).toHaveBeenCalledTimes(1)
     expect(provider.download).toHaveBeenCalledWith('token-1', 'songs/b.json')
     expect(await syncStore.getCursor()).toBe('cursor-1')
+  })
+})
+
+describe('runSync', () => {
+  it('does not set needsReconnect after a single reauth failure — a lone attempt could be a one-off blip', async () => {
+    vi.mocked(provider.getValidAccessToken).mockRejectedValueOnce(
+      new ProviderReauthRequiredError('reconnect please'),
+    )
+    const sync = makeSync(createFakeRoot())
+
+    await expect(sync.runSync()).rejects.toThrow('reconnect please')
+    expect((await sync.getSyncStatus()).needsReconnect).toBe(false)
+  })
+
+  it('sets needsReconnect once two consecutive runSync() attempts both fail the same way', async () => {
+    vi.mocked(provider.getValidAccessToken).mockRejectedValue(
+      new ProviderReauthRequiredError('reconnect please'),
+    )
+    const sync = makeSync(createFakeRoot())
+
+    await expect(sync.runSync()).rejects.toThrow('reconnect please')
+    expect((await sync.getSyncStatus()).needsReconnect).toBe(false)
+    await expect(sync.runSync()).rejects.toThrow('reconnect please')
+    expect((await sync.getSyncStatus()).needsReconnect).toBe(true)
+  })
+
+  it('clears needsReconnect and resets the failure count the moment a later attempt succeeds', async () => {
+    vi.mocked(provider.getValidAccessToken).mockRejectedValue(
+      new ProviderReauthRequiredError('reconnect please'),
+    )
+    const sync = makeSync(createFakeRoot())
+    await expect(sync.runSync()).rejects.toThrow('reconnect please')
+    await expect(sync.runSync()).rejects.toThrow('reconnect please')
+    expect((await sync.getSyncStatus()).needsReconnect).toBe(true)
+
+    vi.mocked(provider.getValidAccessToken).mockResolvedValue('token-1')
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({ entries: [], cursor: 'c' })
+    await sync.runSync()
+
+    expect((await sync.getSyncStatus()).needsReconnect).toBe(false)
   })
 })
 

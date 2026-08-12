@@ -657,13 +657,15 @@ async function applyTemplate() {
             </div>
           </div>
           <v-row class="sermon-details-row"
-            ><v-col cols="12" md="5"
+            ><v-col cols="12"
               ><v-text-field
                 v-model="sermonTitle"
                 label="Sermon Title"
                 variant="outlined"
                 hide-details /></v-col
-            ><v-col cols="12" md="3"
+          ></v-row>
+          <v-row class="sermon-details-row"
+            ><v-col cols="12" lg="6"
               ><v-select
                 v-model="preacherId"
                 :items="preacherOptions"
@@ -671,7 +673,7 @@ async function applyTemplate() {
                 variant="outlined"
                 clearable
                 hide-details /></v-col
-            ><v-col cols="12" md="4"
+            ><v-col cols="12" lg="6"
               ><v-text-field
                 v-model="passage"
                 label="Main Passage"
@@ -684,7 +686,6 @@ async function applyTemplate() {
           <div class="plan-team-heading">
             <div>
               <h2>Sermon Flow</h2>
-              <p>Build and order the sermon’s supporting scripture and outline points.</p>
             </div>
             <div class="sermon-flow-actions">
               <v-btn
@@ -1012,400 +1013,15 @@ async function applyTemplate() {
 </template>
 
 <style scoped>
-.service-plan-page {
-  min-height: calc(100vh - 49px);
-  padding: 24px clamp(24px, 3vw, 48px) 56px;
-  background: rgb(var(--v-theme-background));
-}
-.plan-header,
-.plan-card,
-.plan-missing {
-  max-width: 1100px;
-  margin: 0 auto;
-}
-.plan-header > .v-btn {
-  margin-left: -12px;
-  text-transform: none;
-}
-.plan-heading {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 24px;
-  margin: 8px 0 20px;
-}
-.plan-heading span {
-  color: rgb(var(--v-theme-primary));
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-}
-.plan-heading h1 {
-  margin: 4px 0;
-  color: rgba(var(--v-theme-on-surface), 0.94);
-  font-size: 1.7rem;
-}
-.plan-heading p,
-.plan-songs p,
-.empty-songs {
-  margin: 0;
-  color: rgba(var(--v-theme-on-surface), 0.48);
-  font-size: 0.74rem;
-}
-.plan-card {
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  border-radius: 11px;
-  background: rgba(var(--v-theme-surface), 0.78);
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.08);
-}
-.plan-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
-}
-.plan-main,
-.plan-songs {
-  padding: 24px;
-}
-.plan-songs {
-  border-left: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-  background: rgba(var(--v-theme-background), 0.18);
-}
-h2 {
-  margin: 0 0 16px;
-  font-size: 1rem;
-}
-.template-apply {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 18px;
-}
-.plan-songs h2 {
-  margin-bottom: 4px;
-}
-.plan-song-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 16px 0;
-}
-.plan-song-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  border-radius: 7px;
-  font-size: 0.76rem;
-}
-.plan-song-row .v-icon {
-  color: rgb(var(--v-theme-primary));
-}
-.plan-song-drag {
-  cursor: grab;
-}
-.plan-song-drag:active {
-  cursor: grabbing;
-}
-.plan-song-row span {
-  flex: 1;
-}
-.empty-songs {
-  margin: 18px 0;
-}
-.plan-songs > .plan-team {
-  display: none;
-}
-.plan-team {
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-}
-.plan-team--full {
-  margin: 0;
-  padding: 24px;
-  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-}
-.plan-team-heading {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: 12px;
-}
-.plan-team h2 {
-  margin-bottom: 5px;
-}
-.plan-team p {
-  margin-bottom: 12px;
-}
-.plan-team strong {
-  color: rgb(var(--v-theme-primary));
-}
-.assignment-groups {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-.assignment-group h3 {
-  margin: 0 0 7px;
-  color: rgba(var(--v-theme-on-surface), 0.56);
-  font-size: 0.68rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-.assignment-list {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  border-radius: 7px;
-  overflow: hidden;
-}
-.assignment-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 9px;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
-}
-.assignment-row:last-child {
-  border-bottom: 0;
-}
-.assignment-row > .v-icon {
-  color: rgb(var(--v-theme-primary));
-}
-.assignment-row--missing {
-  background: rgba(var(--v-theme-warning), 0.1);
-}
-.assignment-row--missing > .v-icon,
-.assignment-row--missing strong {
-  color: rgb(var(--v-theme-warning));
-}
-.assignment-row--tentative {
-  background: rgba(var(--v-theme-amber), 0.1);
-}
-.assignment-row--tentative > .v-icon,
-.assignment-row--tentative strong {
-  color: rgb(var(--v-theme-amber));
-}
-.assignment-row span {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.assignment-row strong {
-  color: rgba(var(--v-theme-on-surface), 0.78);
-  font-size: 0.7rem;
-}
-.assignment-row small {
-  color: rgba(var(--v-theme-on-surface), 0.46);
-  font-size: 0.64rem;
-}
-.plan-actions {
-  display: flex;
-  padding: 14px 20px;
-  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-}
-.plan-missing {
-  padding: 70px 0;
-  text-align: center;
-}
-@media (max-width: 760px) {
-  .plan-heading,
-  .plan-grid {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .template-apply {
-    grid-template-columns: 1fr;
-  }
-  .assignment-groups {
-    grid-template-columns: 1fr;
-  }
-  .plan-songs {
-    border-top: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-    border-left: 0;
-  }
-}
-.assignment-row--tentative {
-  background: rgba(var(--v-theme-violet), 0.1);
-}
-.assignment-row--tentative > .v-icon,
-.assignment-row--tentative strong {
-  color: rgb(var(--v-theme-violet));
-}
-.template-apply {
-  display: block;
-  margin: 0 0 20px;
-  padding: 14px;
-  border: 1px solid rgba(var(--v-theme-primary), 0.16);
-  border-radius: 8px;
-  background: rgba(var(--v-theme-primary), 0.045);
-}
-.template-apply-copy h3 {
-  margin: 0;
-  color: rgba(var(--v-theme-on-surface), 0.8);
-  font-size: 0.78rem;
-}
-.template-apply-copy h3 span {
-  margin-left: 5px;
-  color: rgba(var(--v-theme-on-surface), 0.42);
-  font-size: 0.62rem;
-  font-weight: 500;
-}
-.template-apply-copy p {
-  margin: 4px 0 11px;
-  color: rgba(var(--v-theme-on-surface), 0.48);
-  font-size: 0.7rem;
-}
-.current-template {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 10px;
-  padding: 11px 12px;
-  border: 1px solid rgba(var(--v-theme-primary), 0.22);
-  border-radius: 8px;
-  background: rgba(var(--v-theme-primary), 0.09);
-}
-.current-template > .v-icon {
-  color: rgb(var(--v-theme-primary));
-}
-.current-template div {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.current-template span {
-  color: rgba(var(--v-theme-on-surface), 0.55);
-  font-size: 0.64rem;
-  font-weight: 650;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.current-template strong {
-  color: rgba(var(--v-theme-on-surface), 0.94);
-  font-size: 1rem;
-  line-height: 1.25;
-}
-.template-dialog-copy {
-  margin: 14px 0 18px;
-  color: rgba(var(--v-theme-on-surface), 0.58);
-  font-size: 0.82rem;
-  line-height: 1.5;
-}
-.template-apply-controls {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 9px;
-}
-@media (max-width: 500px) {
-  .template-apply-controls {
-    grid-template-columns: 1fr;
-  }
-}
-.plan-song-row > span {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  flex-direction: column;
-}
-.plan-song-row > span small {
-  color: rgb(var(--v-theme-primary));
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-}
-.plan-song-row > span strong {
-  overflow: hidden;
-  color: rgba(var(--v-theme-on-surface), 0.8);
-  font-size: 0.74rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.plan-song-row--empty {
-  border-style: dashed;
-  background: rgba(var(--v-theme-primary), 0.035);
-}
-.plan-song-row--empty > span strong {
-  color: rgba(var(--v-theme-on-surface), 0.48);
-  font-style: italic;
-}
-.plan-songs-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.song-slot-status {
-  flex: none;
-  color: rgb(var(--v-theme-primary));
-  font-size: 0.68rem;
-  font-weight: 700;
-}
-.plan-scriptures {
-  padding: 24px;
-  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-}
-.scripture-list {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-.scripture-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  border-radius: 7px;
-}
-.scripture-row > .v-icon {
-  color: rgb(var(--v-theme-primary));
-}
-.scripture-row > span {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  flex-direction: column;
-}
-.scripture-row strong {
-  color: rgba(var(--v-theme-on-surface), 0.8);
-  font-size: 0.74rem;
-}
-.scripture-row small {
-  color: rgba(var(--v-theme-on-surface), 0.46);
-  font-size: 0.66rem;
-}
-.plan-grid,
-.plan-scriptures,
-.plan-team--full {
-  overflow: hidden;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  border-radius: 11px;
-  background: rgba(var(--v-theme-surface), 0.76);
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.08);
-}
-.plan-grid {
-  margin: 0;
-}
-.plan-scriptures,
-.plan-team--full {
-  margin: 18px 0 0;
-  padding: 24px;
-}
-.plan-team--full + .plan-actions {
-  margin-top: 0;
-}
-.plan-card {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
+/* Consolidated from an earlier redesign that left the previous "boxed cards in a fixed grid"
+   version's rules in place alongside the current "borderless flowing grid" ones, each selector
+   redefined several times over — every rule below is the single, final, actually-applying result
+   of that whole cascade, not a fresh design. One real bug surfaced doing this: .plan-grid used to
+   get `align-items: start` from a later *unconditional* rule that — by plain CSS source-order,
+   media queries don't get special priority — won the cascade even under the (max-width: 760px)
+   block below that intended `align-items: stretch`, so .plan-scriptures/.plan-songs never
+   actually stretched to the stacked column's full width. Fixed at the source here instead of
+   patched with an explicit width override. */
 .service-plan-page {
   min-height: 100%;
   padding: 0 0 56px;
@@ -1434,7 +1050,27 @@ h2 {
   text-transform: none;
 }
 .plan-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
   margin: 0;
+}
+.plan-heading span {
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.plan-heading h1 {
+  margin: 4px 0;
+  overflow: hidden;
+  color: rgba(var(--v-theme-on-surface), 0.94);
+  font-size: clamp(1.65rem, 2.5vw, 2.2rem);
+  max-width: 760px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .plan-heading-actions {
   display: flex;
@@ -1442,35 +1078,49 @@ h2 {
   justify-content: flex-end;
   gap: 8px;
 }
-.plan-heading h1 {
-  max-width: 760px;
-  overflow: hidden;
-  font-size: clamp(1.65rem, 2.5vw, 2.2rem);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.plan-heading p,
+.plan-songs p,
+.empty-songs {
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.74rem;
 }
 .plan-card {
+  width: min(100%, 1440px);
+  max-width: none;
+  margin: 0 auto;
   padding: 28px 32px 0;
-}
-.plan-grid {
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 24px;
-  align-items: start;
-  margin-top: 18px;
   border: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  column-gap: 24px;
+  align-items: start;
+}
+.plan-grid {
+  display: contents;
 }
 .plan-main,
-.plan-songs {
+.plan-team--full {
+  grid-column: 1 / -1;
+}
+.plan-sermon-details,
+.plan-sermon-details + .plan-sermon-flow,
+.plan-scriptures {
+  grid-column: 1;
+}
+.plan-main {
+  padding: 22px;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   border-radius: 11px;
   background: rgba(var(--v-theme-surface), 0.76);
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.08);
 }
-.plan-main {
-  padding: 22px;
+h2 {
+  margin: 0 0 16px;
+  font-size: 1rem;
 }
 .service-details-row--metadata {
   margin-bottom: -12px;
@@ -1559,6 +1209,226 @@ h2 {
 .sermon-flow-drag:active {
   cursor: grabbing;
 }
+.template-apply {
+  display: block;
+  margin: 0 0 20px;
+  padding: 14px;
+  border: 1px solid rgba(var(--v-theme-primary), 0.16);
+  border-radius: 8px;
+  background: rgba(var(--v-theme-primary), 0.045);
+}
+.template-apply-copy h3 {
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.8);
+  font-size: 0.78rem;
+}
+.template-apply-copy h3 span {
+  margin-left: 5px;
+  color: rgba(var(--v-theme-on-surface), 0.42);
+  font-size: 0.62rem;
+  font-weight: 500;
+}
+.template-apply-copy p {
+  margin: 4px 0 11px;
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.7rem;
+}
+.template-apply-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+}
+.current-template {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 11px 12px;
+  border: 1px solid rgba(var(--v-theme-primary), 0.22);
+  border-radius: 8px;
+  background: rgba(var(--v-theme-primary), 0.09);
+}
+.current-template > .v-icon {
+  color: rgb(var(--v-theme-primary));
+}
+.current-template div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.current-template span {
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  font-size: 0.64rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.current-template strong {
+  color: rgba(var(--v-theme-on-surface), 0.94);
+  font-size: 1rem;
+  line-height: 1.25;
+}
+.template-dialog-copy {
+  margin: 14px 0 18px;
+  color: rgba(var(--v-theme-on-surface), 0.58);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.plan-song-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 16px 0;
+}
+.plan-song-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 7px;
+  font-size: 0.76rem;
+}
+.plan-song-row .v-icon {
+  color: rgb(var(--v-theme-primary));
+}
+.plan-song-drag {
+  cursor: grab;
+}
+.plan-song-drag:active {
+  cursor: grabbing;
+}
+.plan-song-row > span {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+.plan-song-row > span small {
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.plan-song-row > span strong {
+  overflow: hidden;
+  color: rgba(var(--v-theme-on-surface), 0.8);
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plan-song-row--empty {
+  border-style: dashed;
+  background: rgba(var(--v-theme-primary), 0.035);
+}
+.plan-song-row--empty > span strong {
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-style: italic;
+}
+.empty-songs {
+  margin: 18px 0;
+}
+.plan-songs > .plan-team {
+  display: none;
+}
+.plan-songs-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.plan-songs h2 {
+  margin-bottom: 4px;
+}
+.song-slot-status {
+  flex: none;
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.plan-songs {
+  padding: 22px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 11px;
+  background: rgba(var(--v-theme-surface), 0.76);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.08);
+  position: static;
+  grid-column: 2;
+  grid-row: 2 / span 3;
+  margin-top: 18px;
+}
+.plan-scriptures {
+  padding: 24px;
+  margin: 18px 0 0;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 11px;
+  background: rgba(var(--v-theme-surface), 0.76);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+.scripture-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.scripture-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 7px;
+}
+.scripture-row > .v-icon {
+  color: rgb(var(--v-theme-primary));
+}
+.scripture-row > span {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+.scripture-row strong {
+  color: rgba(var(--v-theme-on-surface), 0.8);
+  font-size: 0.74rem;
+}
+.scripture-row small {
+  color: rgba(var(--v-theme-on-surface), 0.46);
+  font-size: 0.66rem;
+}
+.plan-team--full {
+  padding: 24px;
+  margin: 18px 0 0;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 11px;
+  background: rgba(var(--v-theme-surface), 0.76);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+.plan-team--full + .plan-actions {
+  margin-top: 0;
+}
+.plan-team {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+}
+.plan-team-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.plan-team h2 {
+  margin-bottom: 5px;
+}
+.plan-team p {
+  margin-bottom: 12px;
+}
+.plan-team strong {
+  color: rgb(var(--v-theme-primary));
+}
 .assignment-groups {
   display: block;
   column-count: 2;
@@ -1568,49 +1438,73 @@ h2 {
   break-inside: avoid;
   margin: 0 0 16px;
 }
-@media (max-width: 760px) {
-  .assignment-groups {
-    column-count: 1;
+.assignment-group h3 {
+  margin: 0 0 7px;
+  color: rgba(var(--v-theme-on-surface), 0.56);
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.assignment-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.assignment-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+}
+.assignment-row:last-child {
+  border-bottom: 0;
+}
+.assignment-row > .v-icon {
+  color: rgb(var(--v-theme-primary));
+}
+.assignment-row--missing {
+  background: rgba(var(--v-theme-warning), 0.1);
+}
+.assignment-row--missing > .v-icon,
+.assignment-row--missing strong {
+  color: rgb(var(--v-theme-warning));
+}
+.assignment-row--tentative {
+  background: rgba(var(--v-theme-violet), 0.1);
+}
+.assignment-row--tentative > .v-icon,
+.assignment-row--tentative strong {
+  color: rgb(var(--v-theme-violet));
+}
+.assignment-row span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.assignment-row strong {
+  color: rgba(var(--v-theme-on-surface), 0.78);
+  font-size: 0.7rem;
+}
+.assignment-row small {
+  color: rgba(var(--v-theme-on-surface), 0.46);
+  font-size: 0.64rem;
+}
+.plan-actions {
+  display: flex;
+  padding: 14px 20px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+.plan-missing {
+  padding: 70px 0;
+  text-align: center;
+}
+@media (max-width: 500px) {
+  .template-apply-controls {
+    grid-template-columns: 1fr;
   }
-}
-.plan-songs {
-  position: sticky;
-  top: 18px;
-  padding: 22px;
-  border-left: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  background: rgba(var(--v-theme-surface), 0.76);
-}
-.plan-scriptures,
-.plan-team--full {
-  margin-left: 0;
-  margin-right: 0;
-}
-.plan-grid .plan-scriptures {
-  margin-top: 18px;
-}
-.plan-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  column-gap: 24px;
-  align-items: start;
-}
-.plan-main,
-.plan-team--full {
-  grid-column: 1 / -1;
-}
-.plan-sermon-details,
-.plan-sermon-details + .plan-sermon-flow,
-.plan-scriptures {
-  grid-column: 1;
-}
-.plan-grid {
-  display: contents;
-}
-.plan-songs {
-  position: static;
-  grid-column: 2;
-  grid-row: 2 / span 3;
-  margin-top: 18px;
 }
 @media (max-width: 760px) {
   .plan-header,
@@ -1621,13 +1515,23 @@ h2 {
   .plan-card {
     display: block;
   }
+  .plan-heading,
   .plan-grid {
     display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .plan-grid {
+    gap: 24px;
     margin-top: 18px;
   }
   .plan-songs {
-    position: static;
+    border-top: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+    border-left: 0;
     margin-top: 0;
+  }
+  .assignment-groups {
+    column-count: 1;
   }
 }
 </style>

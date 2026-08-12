@@ -22,7 +22,12 @@
  * why), handled before anything else in onMounted so it takes priority over every other
  * resolution path — and where a scanned `?connectCode=` link lands (see the `connectCode` param
  * handling below and connectCode.ts's own doc comment for why the QR still carries a real URL —
- * reliable for iOS's camera to open — while never auto-connecting anything from that page).
+ * reliable for both iOS's and Android's camera to open). What happens next differs by platform:
+ * iOS always opens that link in a plain Safari tab (no way to route it into an already-installed
+ * PWA), a separate storage partition from the installed app, so it only shows a copy-code landing
+ * page rather than risk auto-connecting into storage the installed app will never see; Android's
+ * link capturing often routes it straight into the already-installed PWA instead (confirmed on a
+ * real device), where there's no such risk, so it connects directly with no copy/paste needed.
  * "Add Another Device" (LibrarySyncSection.vue) is this flow's other end: the connect code a
  * second device pastes here, or scans as that URL, to skip typing its app key/client ID by hand.
  */
@@ -37,18 +42,21 @@ import {
   storeLibraryHandle,
 } from '@/adapters/web/handlePersistence'
 import { createTabletAdapter } from '@/adapters/tablet'
-import * as dropbox from '@/adapters/tablet/providers/dropboxAuth'
-import * as onedrive from '@/adapters/tablet/providers/onedriveAuth'
 import { getOpfsRoot } from '@/adapters/tablet/opfs'
 import { createWebSettingsPort } from '@/adapters/web/settings'
 import { usePwaInstall } from '@/composables/usePwaInstall'
 import { formatSyncProgressLabel } from '@/utils/syncProgress'
 import { parseConnectCode, type ConnectCode } from '@/utils/connectCode'
+import {
+  authFor,
+  beginCloudOAuthRedirect,
+  CLOUD_OAUTH_PENDING_KEY,
+  type CloudProviderId,
+  type PendingCloudAuth,
+} from '@/utils/cloudOAuthRedirect'
 import logoDark from '@/assets/logo-dark.png'
 
 const pwaInstall = usePwaInstall()
-
-export type CloudProviderId = 'dropbox' | 'onedrive'
 
 type Phase =
   | 'resolving'
@@ -70,68 +78,6 @@ const connectProvider = ref<CloudProviderId>('dropbox')
 const cloudClientIdInput = ref('')
 const cloudLibraryFolderPathInput = ref('')
 const connectingCloud = ref(false)
-
-// Survives the full top-level redirect to the provider and back (a popup would be unreliable on
-// mobile Safari and in installed PWAs, so this can't just be a component-local variable —
-// BootGate.vue itself gets fully re-mounted on the way back).
-const CLOUD_OAUTH_PENDING_KEY = 'worship-studio:cloud-oauth-pending'
-
-interface PendingCloudAuth {
-  codeVerifier: string
-  state: string
-  provider: CloudProviderId
-  clientId: string
-  libraryFolderPath: string
-  redirectUri: string
-}
-
-/** Both provider auth modules export identically-named functions with slightly different
- *  parameter shapes (Dropbox's `appKey` vs. OneDrive's `clientId`) — this adapts each to one
- *  shared shape so every call site below (the connect form, the OAuth-redirect handler, the
- *  already-connected reload check) can stay provider-agnostic, the same way adapters/tablet/'s
- *  own CloudSyncProvider interface does for the sync engine itself. */
-interface CloudAuth {
-  generateCodeVerifier: () => string
-  codeChallengeFromVerifier: (verifier: string) => Promise<string>
-  generateState: () => string
-  buildAuthorizeUrl: (p: {
-    clientId: string
-    redirectUri: string
-    state: string
-    codeChallenge: string
-  }) => string
-  exchangeCodeForTokens: (p: {
-    clientId: string
-    redirectUri: string
-    code: string
-    codeVerifier: string
-  }) => Promise<unknown>
-  isConnected: () => Promise<boolean>
-}
-
-const dropboxAuth: CloudAuth = {
-  generateCodeVerifier: dropbox.generateCodeVerifier,
-  codeChallengeFromVerifier: dropbox.codeChallengeFromVerifier,
-  generateState: dropbox.generateState,
-  buildAuthorizeUrl: ({ clientId, redirectUri, state, codeChallenge }) =>
-    dropbox.buildAuthorizeUrl({ appKey: clientId, redirectUri, state, codeChallenge }),
-  exchangeCodeForTokens: ({ clientId, redirectUri, code, codeVerifier }) =>
-    dropbox.exchangeCodeForTokens({ appKey: clientId, redirectUri, code, codeVerifier }),
-  isConnected: dropbox.isConnected,
-}
-
-const oneDriveAuth: CloudAuth = {
-  generateCodeVerifier: onedrive.generateCodeVerifier,
-  codeChallengeFromVerifier: onedrive.codeChallengeFromVerifier,
-  generateState: onedrive.generateState,
-  buildAuthorizeUrl: onedrive.buildAuthorizeUrl,
-  exchangeCodeForTokens: onedrive.exchangeCodeForTokens,
-  isConnected: onedrive.isConnected,
-}
-
-function authFor(provider: CloudProviderId): CloudAuth {
-  return provider === 'onedrive' ? oneDriveAuth : dropboxAuth
-}
 
 /** Builds the tablet adapter, caches the provider/client ID/library path locally (MachineSettings
  *  — localStorage-backed, not OPFS, so this is instant and needs no cloud round trip) so a later
@@ -205,25 +151,11 @@ async function beginCloudConnect() {
   }
   connectingCloud.value = true
   try {
-    const auth = authFor(connectProvider.value)
-    const codeVerifier = auth.generateCodeVerifier()
-    const codeChallenge = await auth.codeChallengeFromVerifier(codeVerifier)
-    const state = auth.generateState()
-    // The redirect the provider sends the browser back to has to exactly match what's registered
-    // in that provider's app console — computed from the current origin/path rather than
-    // hardcoded so this works unchanged across local dev and every real deployment.
-    const redirectUri = `${window.location.origin}${window.location.pathname}`
-    const libraryFolderPath = cloudLibraryFolderPathInput.value.trim()
-    const pending: PendingCloudAuth = {
-      codeVerifier,
-      state,
-      provider: connectProvider.value,
+    await beginCloudOAuthRedirect(
+      connectProvider.value,
       clientId,
-      libraryFolderPath,
-      redirectUri,
-    }
-    sessionStorage.setItem(CLOUD_OAUTH_PENDING_KEY, JSON.stringify(pending))
-    window.location.assign(auth.buildAuthorizeUrl({ clientId, redirectUri, state, codeChallenge }))
+      cloudLibraryFolderPathInput.value.trim(),
+    )
   } catch (error) {
     connectingCloud.value = false
     errorText.value = error instanceof Error ? error.message : "Couldn't start connecting."
@@ -293,15 +225,18 @@ async function submitConnectCode(): Promise<void> {
   await applyConnectCode(code)
 }
 
-// Reached only via a scanned `?connectCode=` URL — which, because iOS can't route a tapped/scanned
-// link into an already-installed PWA, is always a plain Safari tab, never the installed app itself.
-// Deliberately does NOT auto-connect anything here: doing so would complete the OAuth+sync flow in
-// this tab's own storage, which is exactly the double-sync problem the connect-code approach exists
-// to avoid (the installed app has a completely separate storage partition). Instead this just
-// re-displays the same plain-text code with a Copy button under our own control — see
-// LibrarySyncSection.vue's addDeviceQrUrl comment for why the QR still wraps a real URL rather than
-// encoding this text directly (iOS's camera only offers a reliable one-tap "Open" for real links;
-// plain scanned text falls back to a web-search prompt, not a copy option).
+// Reached via a scanned `?connectCode=` URL. iOS can't route a tapped/scanned link into an
+// already-installed PWA at all — it's always a plain Safari tab there, with a completely separate
+// storage partition from the installed app, so auto-connecting from that tab would just complete
+// the OAuth+sync flow into storage the installed app will never see (the exact double-sync problem
+// the connect-code approach exists to avoid). Android is different — its OS-level link capturing
+// often DOES route the link straight into the already-installed PWA, confirmed on a real device —
+// so in that case there's no separate-storage risk at all, and making the operator copy a code
+// only to paste it right back into the very same app they're already standing in is pure friction
+// with no safety benefit. pwaInstall.isStandalone (set in that composable's own onMounted, which
+// runs before this one — see usePwaInstall.ts) is what tells the two cases apart: apply directly
+// when already standalone, otherwise fall back to the copy-code landing page below for whatever
+// browser tab this turned out to be.
 const connectCodeToShow = ref('')
 const connectCodeToShowCopied = ref(false)
 async function copyConnectCodeToShow() {
@@ -323,12 +258,15 @@ onMounted(async () => {
   if (params.has('connectCode')) {
     window.history.replaceState({}, '', window.location.pathname)
     const raw = params.get('connectCode') ?? ''
-    if (parseConnectCode(raw)) {
-      connectCodeToShow.value = raw
-      phase.value = 'show-connect-code'
-    } else {
+    const code = parseConnectCode(raw)
+    if (!code) {
       errorText.value = 'That connect code looks invalid. Ask the other device to show it again.'
       phase.value = 'chooser'
+    } else if (pwaInstall.isStandalone.value) {
+      await applyConnectCode(code)
+    } else {
+      connectCodeToShow.value = raw
+      phase.value = 'show-connect-code'
     }
     return
   }

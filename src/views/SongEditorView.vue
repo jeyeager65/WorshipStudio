@@ -217,26 +217,24 @@ function removeFromArrangement(index: number) {
             </div>
           </div>
           <div class="details-grid">
-            <v-text-field
-              v-model="song.title"
-              label="Song Title"
-              variant="outlined"
-              hide-details
-              class="title-detail-field"
-            />
-            <v-text-field v-model="song.author" label="Author" variant="outlined" hide-details />
-            <v-text-field v-model="song.artist" label="Artist" variant="outlined" hide-details />
-            <v-text-field v-model="song.ccli" label="CCLI Number" variant="outlined" hide-details />
-            <v-combobox
-              v-model="song.tags"
-              label="Tags"
-              variant="outlined"
-              multiple
-              chips
-              closable-chips
-              hide-details
-              class="tags-field"
-            />
+            <v-text-field v-model="song.title" label="Song Title" variant="outlined" hide-details />
+            <div class="details-row">
+              <v-text-field v-model="song.author" label="Author" variant="outlined" hide-details />
+              <v-text-field v-model="song.artist" label="Artist" variant="outlined" hide-details />
+            </div>
+            <div class="details-row details-row--tags">
+              <v-combobox
+                v-model="song.tags"
+                label="Tags"
+                variant="outlined"
+                multiple
+                chips
+                closable-chips
+                hide-details
+                class="tags-field"
+              />
+              <v-text-field v-model="song.ccli" label="CCLI Number" variant="outlined" hide-details />
+            </div>
           </div>
         </section>
 
@@ -559,14 +557,39 @@ function removeFromArrangement(index: number) {
   align-items: center;
 }
 
+/* container-type, not another window-width @media breakpoint — .editor-main's actual available
+   width here isn't a function of window width alone (it also depends on whether the arrangement
+   panel sidebar is currently a 320-360px column vs. gone entirely below 820px, and on the app
+   nav's own collapsed/expanded state), so a media query can't reliably tell when these rows
+   actually have room. A container query measures the real available width directly. */
 .details-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  container-type: inline-size;
+}
+
+.details-row {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) 150px minmax(220px, 1.1fr);
+  grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr);
   gap: 14px;
 }
 
-.title-detail-field {
-  grid-column: 1 / -1;
+/* Tags (a multi-select combobox with chips) benefits from more room than CCLI needs, but CCLI
+   still gets a flexible share (not a rigid fixed width) so it can take up a bit more of the row
+   on wider screens instead of staying pinned narrow. */
+.details-row--tags {
+  grid-template-columns: minmax(220px, 1.4fr) minmax(150px, 0.8fr);
+}
+
+/* 384px is .details-row--tags's own combined minimum (220 + 150 + 14 gap) — the wider of the two
+   rows' floors, so both stack together at the same point rather than one wrapping before the
+   other. A little headroom above that floor avoids stacking right at the exact pixel it'd start
+   to overflow. */
+@container (max-width: 420px) {
+  .details-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .editor-section :deep(.v-field) {
@@ -856,14 +879,6 @@ function removeFromArrangement(index: number) {
   .editor-layout {
     grid-template-columns: minmax(0, 1fr) 320px;
   }
-
-  .details-grid {
-    grid-template-columns: minmax(180px, 1fr) minmax(160px, 1fr);
-  }
-
-  .tags-field {
-    grid-column: 1 / -1;
-  }
 }
 
 @media (max-width: 820px) {
@@ -884,8 +899,11 @@ function removeFromArrangement(index: number) {
   }
 
   .arrangement-panel {
+    /* No grid-row override — .arrangement-panel is already second in DOM order after
+       .editor-main, so once the layout stacks to one column it naturally lands below the song's
+       own details/blocks/collections instead of above them, which is what actually matters here
+       (it's the secondary, "reference while editing" panel, not the primary content). */
     position: static;
-    grid-row: 1;
   }
 }
 
@@ -909,12 +927,8 @@ function removeFromArrangement(index: number) {
     flex-direction: column;
   }
 
-  .details-grid,
   .collection-row {
     grid-template-columns: 1fr;
-  }
-
-  .collection-row {
     padding-bottom: 14px;
     border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
   }

@@ -15,6 +15,7 @@ import { disconnect as disconnectOneDrive, isConnected as isOneDriveConnected } 
 import { generateQrCodeDataUrl } from '@/utils/qrCode'
 import { buildConnectCode } from '@/utils/connectCode'
 import { formatSyncProgressLabel } from '@/utils/syncProgress'
+import { beginCloudOAuthRedirect } from '@/utils/cloudOAuthRedirect'
 import {
   buildSampleServices,
   sampleSongs,
@@ -76,6 +77,33 @@ async function switchConnectionMethod() {
     await clearStoredLibraryHandle().catch(() => {})
   }
   window.location.reload()
+}
+
+// A one-tap recovery for ProviderReauthRequiredError (syncStore.status.needsReconnect) that
+// doesn't require Disconnect first — reuses this device's already-stored client ID/library path
+// (machineSettings, the same values "Add Another Device" QR-codes for a second device) rather
+// than making the operator re-enter anything. This is a full top-level redirect to the
+// provider's own sign-in page, same mechanism as BootGate.vue's first-connect flow
+// (beginCloudOAuthRedirect, cloudOAuthRedirect.ts) — and on a real device, confirmed this alone
+// is often enough to clear a false "needs reconnect" (the underlying browser session was still
+// signed in the whole time; only OneDrive's own silent hidden-iframe reauth attempt had failed,
+// not the connection itself — see cloudSync.ts's own doc comment on needsReconnect).
+const reconnectingCloud = ref(false)
+async function reconnectCloud() {
+  const clientId = machineSettings.value?.tabletCloudClientId
+  if (!clientId) return
+  reconnectingCloud.value = true
+  cloudActionError.value = ''
+  try {
+    await beginCloudOAuthRedirect(
+      cloudProvider.value,
+      clientId,
+      machineSettings.value?.tabletCloudLibraryFolderPath ?? '',
+    )
+  } catch (error) {
+    cloudActionError.value = error instanceof Error ? error.message : "Couldn't start reconnecting."
+    reconnectingCloud.value = false
+  }
 }
 
 async function disconnectCloud() {
@@ -572,12 +600,21 @@ async function pickLibraryFolder() {
           </div>
         </template>
         <template v-else>
-          <div v-if="syncStore.status.needsReconnect" class="d-flex align-center ga-2 mb-2">
+          <div v-if="syncStore.status.needsReconnect" class="d-flex align-center ga-2 mb-2 flex-wrap">
             <v-icon icon="mdi-alert-circle" color="warning" size="small" />
             <span class="text-body-2"
-              >This device needs to reconnect to {{ cloudProviderLabel }} — use Disconnect above,
-              then connect again.</span
+              >This device needs to reconnect to {{ cloudProviderLabel }}.</span
             >
+            <v-btn
+              variant="tonal"
+              color="warning"
+              size="small"
+              :loading="reconnectingCloud"
+              prepend-icon="mdi-refresh"
+              @click="reconnectCloud"
+            >
+              Reconnect
+            </v-btn>
           </div>
           <div class="d-flex align-center ga-2 mb-2">
             <v-icon icon="mdi-sync" color="success" size="small" />

@@ -71,11 +71,19 @@ export function createCloudSync(config: CloudSyncConfig) {
   // A rate limit stops the *whole* push pass, not just the one path that hit it — provider rate
   // limits are account-wide, so retrying a different path immediately would just draw another one.
   let cooldownUntil = 0
-  // Set by requireToken() whenever the provider can't silently produce a token (e.g. OneDrive's
-  // 24h SPA refresh-token cap) and cleared the next time it succeeds — surfaced via
-  // getSyncStatus() so the UI can prompt a visible reconnect instead of pulls/pushes silently
-  // failing forever.
+  // Surfaced via getSyncStatus() so the UI can prompt a visible reconnect instead of pulls/pushes
+  // silently failing forever — but only after REAUTH_FAILURE_THRESHOLD consecutive runSync()
+  // attempts have all hit a ProviderReauthRequiredError, not the first one. A single failed
+  // attempt is expected, ordinary noise, not proof the connection is actually broken: OneDrive's
+  // fallback to a hidden-iframe silent reauth once its 24h SPA refresh-token cap passes (see
+  // onedriveAuth.ts's own doc comment) is a real technique with real, unrelated-to-this-app
+  // failure modes (third-party-cookie restrictions in an installed PWA, a transient network blip
+  // during its 10s window) — confirmed on a real device this fired even though the underlying
+  // connection was completely fine (reconnecting afterward needed no new sign-in at all). Cleared
+  // back to zero the moment any attempt succeeds.
   let needsReconnect = false
+  let consecutiveReauthFailures = 0
+  const REAUTH_FAILURE_THRESHOLD = 2
   // Live snapshot of whichever phase is currently running — set at the top of each loop
   // iteration in pull()/push() below and cleared once that phase finishes, so getProgress() (and
   // by extension stores/sync.ts's poll while syncing) always reflects real numbers rather than
@@ -97,17 +105,11 @@ export function createCloudSync(config: CloudSyncConfig) {
    *  expiry, otherwise it's just a local storage read (also cached now — see
    *  onedriveAuthStorage.ts/dropboxAuthStorage.ts). */
   async function requireToken(): Promise<string> {
+    // needsReconnect itself is decided at runSync()'s level (consecutive whole-attempt failures,
+    // not individual token fetches) — this just fetches/de-dupes and lets ProviderReauthRequiredError
+    // propagate unchanged.
     if (!inFlightTokenRequest) {
-      inFlightTokenRequest = (async () => {
-        try {
-          const token = await provider.getValidAccessToken()
-          needsReconnect = false
-          return token
-        } catch (error) {
-          if (error instanceof ProviderReauthRequiredError) needsReconnect = true
-          throw error
-        }
-      })()
+      inFlightTokenRequest = provider.getValidAccessToken()
     }
     const request = inFlightTokenRequest
     try {
@@ -381,6 +383,14 @@ export function createCloudSync(config: CloudSyncConfig) {
     try {
       await pull()
       await push()
+      consecutiveReauthFailures = 0
+      needsReconnect = false
+    } catch (error) {
+      if (error instanceof ProviderReauthRequiredError) {
+        consecutiveReauthFailures += 1
+        needsReconnect = consecutiveReauthFailures >= REAUTH_FAILURE_THRESHOLD
+      }
+      throw error
     } finally {
       syncing = false
     }
