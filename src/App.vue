@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useDisplay, useTheme } from 'vuetify'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -27,7 +27,9 @@ useTabletSync()
 const pwaUpdate = usePwaUpdate()
 
 const { blockedMessage } = storeToRefs(useLiveSessionStore())
-const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsavedChangesStore())
+const { isDirty, saving, saveHandler, pageTitleOverride, navCollapseRequested } = storeToRefs(
+  useUnsavedChangesStore(),
+)
 const syncStore = useSyncStore()
 const settingsStore = useSettingsStore()
 const servicesStore = useServicesStore()
@@ -111,13 +113,42 @@ const isSetupWizard = computed(() => route.name === 'setup-wizard')
 // via pageTitleOverride instead — see unsavedChanges.ts's doc comment.
 const pageTitle = computed(() => pageTitleOverride.value ?? route.meta.title)
 
-// Below this width the expanded drawer eats too much of the content area, so it's forced into
-// rail mode regardless of the operator's own manual preference — matches Vuetify's own `md`
-// breakpoint, the usual point content-heavy layouts start feeling cramped.
+// Below this width even a collapsed rail (68px) eats space content-heavy routed views can't
+// spare (e.g. ServiceWorkspaceView.vue's own tablet breakpoints) — matches Vuetify's own `md`
+// breakpoint, the usual point content-heavy layouts start feeling cramped. Below it the nav
+// becomes a fully-hidden, hamburger-toggled overlay instead of a permanent rail; at/above it,
+// unchanged permanent-drawer/rail-toggle behavior.
 const { width } = useDisplay()
 const isNarrowWindow = computed(() => width.value < 960)
 const manualNavCollapsed = ref(false)
-const navigationCollapsed = computed(() => isNarrowWindow.value || manualNavCollapsed.value)
+// Rail-collapse is only a meaningful concept in permanent mode — below isNarrowWindow the drawer
+// is a temporary overlay instead (see navDrawerOpenNarrow below), always shown at full width
+// with labels when open, never collapsed to a rail. navCollapseRequested (unsavedChanges.ts) lets
+// a specific content-heavy page ask for the rail below a wider threshold than 960px — see that
+// store's own doc comment.
+const navigationCollapsed = computed(
+  () => !isNarrowWindow.value && (manualNavCollapsed.value || navCollapseRequested.value),
+)
+const navDrawerOpenNarrow = ref(false)
+// The drawer's actual model-value: always true when not narrow (a permanent drawer that's
+// visually always open), otherwise follows the hamburger-toggled overlay state. Bound explicitly
+// rather than relying on `permanent` alone to keep the drawer visible regardless of model-value —
+// safer than assuming that interaction, and it's what actually broke the drawer entirely (at any
+// width) when this was left implicit.
+const navDrawerVisible = computed({
+  get: () => !isNarrowWindow.value || navDrawerOpenNarrow.value,
+  set: (value: boolean) => {
+    navDrawerOpenNarrow.value = value
+  },
+})
+// Picking a destination from the overlay drawer should close it (it's covering the page the
+// operator just navigated to) — permanent/rail mode is unaffected, it ignores this state.
+watch(
+  () => route.fullPath,
+  () => {
+    navDrawerOpenNarrow.value = false
+  },
+)
 const showSavedConfirmation = ref(false)
 const saveShortcutLabel = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘S' : 'Ctrl+S'
 const undoShortcutLabel = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘Z' : 'Ctrl+Z'
@@ -391,7 +422,9 @@ onUnmounted(() => {
   <v-app v-else>
     <v-navigation-drawer
       v-if="!isSetupWizard"
-      permanent
+      v-model="navDrawerVisible"
+      :permanent="!isNarrowWindow"
+      :temporary="isNarrowWindow"
       :rail="navigationCollapsed"
       :width="224"
       :rail-width="68"
@@ -520,19 +553,24 @@ onUnmounted(() => {
         icon="mdi-menu"
         variant="text"
         class="navigation-toggle ml-1"
-        :disabled="isNarrowWindow"
         :title="
           isNarrowWindow
-            ? 'Widen the window to expand navigation'
+            ? navDrawerOpenNarrow
+              ? 'Close navigation'
+              : 'Open navigation'
             : navigationCollapsed
               ? 'Expand navigation'
               : 'Collapse navigation'
         "
-        @click="manualNavCollapsed = !manualNavCollapsed"
+        @click="
+          isNarrowWindow
+            ? (navDrawerOpenNarrow = !navDrawerOpenNarrow)
+            : (manualNavCollapsed = !manualNavCollapsed)
+        "
       />
       <span class="app-brand" :class="{ 'ml-4': isSetupWizard }">
         <img :src="appIcon" alt="" class="app-brand-icon" />
-        Worship Studio
+        <span class="app-brand-text">Worship Studio</span>
       </span>
       <v-divider v-if="pageTitle" vertical inset class="app-brand-divider mx-3" />
       <span v-if="pageTitle" class="page-title">{{ pageTitle }}</span>
@@ -806,6 +844,14 @@ onUnmounted(() => {
   height: 22px;
   border-radius: 6px;
   flex-shrink: 0;
+}
+/* Same width isNarrowWindow already treats as "tight" (forces the nav to an overlay) — the
+   brand text is purely decorative once space is already this constrained, but the icon alone
+   still identifies the app. */
+@media (max-width: 960px) {
+  .app-brand-text {
+    display: none;
+  }
 }
 .app-bar {
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.09);

@@ -1,17 +1,24 @@
 <script setup lang="ts">
-defineProps<{
-  previousDisabled: boolean
-  nextDisabled: boolean
-  prevPreviewLabel: string
-  nextPreviewLabel: string
-  isPresenting: boolean
-  currentSlideLabel: string
-  liveContextSnippet: string
-  slidePositionLabel: string
-  backgroundOnly: boolean
-  backgroundOnlyDisabled: boolean
-  isBlankScreen: boolean
-}>()
+withDefaults(
+  defineProps<{
+    previousDisabled: boolean
+    nextDisabled: boolean
+    prevPreviewLabel: string
+    nextPreviewLabel: string
+    isPresenting: boolean
+    currentSlideLabel: string
+    liveContextSnippet: string
+    slidePositionLabel: string
+    backgroundOnly: boolean
+    backgroundOnlyDisabled: boolean
+    isBlankScreen: boolean
+    // Set by the parent on a short landscape-tablet viewport (see ServiceWorkspaceView.vue's
+    // isShortViewport) — height isn't something this component can detect on its own the way
+    // the width-based @media queries below can within its own box.
+    compact?: boolean
+  }>(),
+  { compact: false },
+)
 defineEmits<{
   previous: []
   next: []
@@ -21,7 +28,7 @@ defineEmits<{
 </script>
 
 <template>
-  <div class="live-footer">
+  <div class="live-footer" :class="{ 'live-footer--compact': compact }">
     <button
       type="button"
       class="transport-destination transport-destination--previous"
@@ -57,7 +64,7 @@ defineEmits<{
           class="screen-override-button"
           @click="$emit('toggle-background-only')"
         >
-          Background Only <kbd>G</kbd>
+          <span class="screen-override-label">Background Only</span> <kbd>G</kbd>
         </v-btn>
         <v-btn
           :variant="isBlankScreen ? 'flat' : 'tonal'"
@@ -68,7 +75,7 @@ defineEmits<{
           :aria-pressed="isBlankScreen"
           @click="$emit('toggle-blank-screen')"
         >
-          {{ isBlankScreen ? 'Restore Screen' : 'Blank Screen' }} <kbd>B</kbd>
+          <span class="screen-override-label">{{ isBlankScreen ? 'Restore Screen' : 'Blank Screen' }}</span> <kbd>B</kbd>
         </v-btn>
       </div>
     </div>
@@ -105,6 +112,10 @@ defineEmits<{
     rgba(var(--v-theme-surface-variant), 0.48)
   );
   box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08);
+}
+.live-footer--compact {
+  min-height: 60px;
+  padding: 6px 14px;
 }
 .transport-destination {
   display: grid;
@@ -296,6 +307,46 @@ defineEmits<{
   }
   .transport-destination--next {
     grid-template-columns: minmax(0, 1fr) 28px;
+  }
+}
+/* Only reached in portrait on either target tablet (Tab S7+ portrait ~664px; both devices' own
+   landscape widths stay well above this) — the chevron icons alone (kbd is already hidden by the
+   1250px tier above) still convey Previous/Next, and the screen-override buttons read fine as
+   icon+kbd without their text labels, so dropping both keeps everything on one row instead of
+   overlapping/disappearing. */
+@media (max-width: 760px) {
+  /* Icon-only Previous/Next no longer need the wide minmax(190px, 0.9fr) tracks the 1250px tier
+     reserves for them — shrink both to a small fixed width and hand the reclaimed space to the
+     middle column, which is what actually needs it (current slide info + screen overrides). */
+  .live-footer {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    gap: 6px;
+  }
+  .destination-copy {
+    display: none;
+  }
+  .transport-destination {
+    width: 44px;
+    min-width: 0;
+    padding: 7px 0;
+    grid-template-columns: 28px;
+    justify-content: center;
+  }
+  .transport-destination--previous,
+  .transport-destination--next {
+    grid-template-columns: 28px;
+  }
+  .screen-override-label {
+    display: none;
+  }
+  .screen-override-button {
+    justify-content: center;
+    width: auto;
+    padding-inline: 8px;
+  }
+  .screen-override-button :deep(.v-btn__content) {
+    justify-content: center;
+    gap: 6px;
   }
 }
 </style>

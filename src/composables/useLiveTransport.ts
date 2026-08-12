@@ -400,20 +400,37 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     }
   }
   const PREVIEW_VIRTUAL_SIZE = computed(() => presentationSize.value)
+  // Bound to the outer .preview-panel (ServiceWorkspaceView.vue) — a single, always-present
+  // element, simpler and more reliably observable than trying to target one specific thumbnail
+  // out of the v-for below. The callback below measures .preview-item's real rendered rect, not
+  // .preview-thumb's — deliberately the *available space*, not the thumb itself. Measuring the
+  // thumb only ever shrinks: its own width is driven by previewThumbWidth in the first place, so
+  // once clamped down by a narrow container, growing the container back doesn't change what the
+  // thumb is currently requesting — nothing would ever ask it to request more. .preview-item has
+  // no width of its own (a flex item stretching to fill .preview-list), so its rect always
+  // reflects the true available space independent of whatever the thumb currently is, and tracks
+  // correctly in both directions.
   const previewPanelRef = ref<HTMLElement>()
   const previewThumbWidth = ref(340)
   let previewResizeObserver: ResizeObserver | undefined
   const previewScale = computed(() => previewThumbWidth.value / PREVIEW_VIRTUAL_SIZE.value.width)
-  const previewThumbHeight = computed(() =>
-    Math.round(PREVIEW_VIRTUAL_SIZE.value.height * previewScale.value),
-  )
-  /** Called by the caller once its own template has rendered (the preview panel is behind a
-   *  `v-if="service"`, so observing it any earlier would find nothing to observe). */
+  /** Called by the caller once its own template has actually rendered the real workspace (not
+   *  just once the service data has loaded) — the preview panel sits behind
+   *  `v-if="workspaceLoading || workspaceLoadError"` up higher in that template, which only
+   *  flips over once loading is fully done, so calling this any earlier finds
+   *  previewPanelRef.value still unset and silently observes nothing, forever (this is only
+   *  ever called once). */
   function observePreviewPanel() {
     if (typeof ResizeObserver === 'undefined') return
     if (!previewResizeObserver) {
       previewResizeObserver = new ResizeObserver(([entry]) => {
-        if (entry) previewThumbWidth.value = Math.max(240, Math.floor(entry.contentRect.width - 32))
+        const item = entry?.target.querySelector('.preview-item')
+        if (!item) return
+        // No floor beyond a small legibility minimum — on a narrow drawer (see
+        // ServiceWorkspaceView.vue's compact layout), a thumbnail sized to a wider floor than
+        // the panel actually has room for spills past its edge instead of just rendering
+        // smaller, which is the behavior actually wanted here.
+        previewThumbWidth.value = Math.max(120, Math.floor(item.getBoundingClientRect().width))
       })
     }
     if (previewPanelRef.value) previewResizeObserver.observe(previewPanelRef.value)
@@ -545,7 +562,6 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     PREVIEW_VIRTUAL_SIZE,
     previewPanelRef,
     previewThumbWidth,
-    previewThumbHeight,
     previewScale,
     observePreviewPanel,
   }

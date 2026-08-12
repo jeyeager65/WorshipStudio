@@ -17,11 +17,18 @@ import { ref } from 'vue'
  * pageTitleOverride follows the same registration pattern for a deeper page (one with no
  * static router/index.ts meta.title) that still wants a dynamic title in the app bar — set on
  * mount/whenever its content changes, cleared on unmount, same as saveHandler above.
+ *
+ * navCollapseRequested is the same registration pattern again, this time for a page that wants
+ * the nav rail collapsed below some width narrower than App.vue's own default (960px,
+ * isNarrowWindow) — e.g. ServiceWorkspaceView.vue, which would rather give up the nav's labels
+ * than its own Service Order List column. Set/cleared by a watcher on that page's own width
+ * threshold, same lifecycle as pageTitleOverride.
  */
 export const useUnsavedChangesStore = defineStore('unsavedChanges', () => {
   const isDirty = ref(false)
   const saving = ref(false)
   const saveHandler = ref<(() => void | Promise<void>) | undefined>()
   const pageTitleOverride = ref<string | undefined>()
-  return { isDirty, saving, saveHandler, pageTitleOverride }
+  const navCollapseRequested = ref(false)
+  return { isDirty, saving, saveHandler, pageTitleOverride, navCollapseRequested }
 })

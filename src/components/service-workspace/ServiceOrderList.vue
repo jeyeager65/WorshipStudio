@@ -256,6 +256,7 @@ async function removeServiceItem(index: number) {
 .service-panel {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   border-right: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   background: rgb(var(--v-theme-surface));
   min-height: 0;

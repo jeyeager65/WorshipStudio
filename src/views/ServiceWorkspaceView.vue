@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { useDisplay } from 'vuetify'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
@@ -69,8 +70,62 @@ const settingsStore = useSettingsStore()
 const peopleStore = usePeopleStore()
 const syncStore = useSyncStore()
 const { isPresenting } = storeToRefs(useLiveSessionStore())
-const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
+const { isDirty, saving, saveHandler, navCollapseRequested } = storeToRefs(
+  useUnsavedChangesStore(),
+)
 const confirmDialog = useConfirmDialogStore()
+
+// Responsive breakpoints for this view's own toolbar/layout, chosen against real device CSS
+// viewport measurements (iPad 9th gen ~1080x810 landscape/~810x1080 portrait, Galaxy Tab S7+
+// ~1064x664 landscape/~664x1064 portrait) rather than arbitrary numbers — see the tablet-fit
+// plan for the full reasoning behind each one.
+const { width, height, mdAndDown: isPreviewCompact } = useDisplay()
+// Planning/Assignments/Bulletin collapse into an overflow menu below this width.
+const isNarrowActions = computed(() => width.value < 1060)
+// Below a wider threshold than isNarrowActions above, ask App.vue's nav to give up its rail
+// labels rather than this view giving up the Service Order List column — reclaiming the nav's
+// own space is worth more here than what collapsing it costs elsewhere. Registered/cleared the
+// same way pageTitleOverride is (unsavedChanges.ts) — see that store's own doc comment.
+const wantsNavCollapsed = computed(() => width.value < 1500)
+watch(wantsNavCollapsed, (wants) => (navCollapseRequested.value = wants), { immediate: true })
+onUnmounted(() => {
+  navCollapseRequested.value = false
+})
+// The toolbar's service-context and actions rows collide below this width without wrapping.
+const isNarrowToolbar = computed(() => width.value < 780)
+// Toolbar/heading chrome eats too much of a short landscape-tablet viewport below this height.
+const isShortViewport = computed(() => height.value < 700)
+// The Service Order List becomes a drawer at a narrower width than the preview panel does
+// (isPreviewCompact, Vuetify's mdAndDown/1280px) — the order list is what the operator actually
+// needs open most of the time, so it should give up its permanent column later (i.e. survive
+// down to a narrower width) than the preview panel, rather than both vanishing together. Chosen
+// so both target tablets' landscape widths (iPad ~1080px, Tab S7+ ~1064px) sit above this and
+// below isPreviewCompact — order list permanent, preview a drawer, in landscape on both devices.
+const isOrderCompact = computed(() => width.value < 1000)
+
+// Below their respective thresholds above, the Service Order List and preview panel become
+// toggleable overlay drawers instead of permanent grid columns — a single ref (rather than two
+// booleans) gives mutual exclusivity for free, since opening one always replaces whatever the
+// other held. (isOrderCompact is always true whenever isPreviewCompact is, since 1000 < 1280, so
+// "order open while preview permanent" never needs handling.)
+type WorkspaceDrawer = 'order' | 'preview'
+const openDrawer = ref<WorkspaceDrawer | null>(null)
+function toggleWorkspaceDrawer(drawer: WorkspaceDrawer) {
+  openDrawer.value = openDrawer.value === drawer ? null : drawer
+}
+// Window widened back past a threshold (resize, rotation) — don't leave that drawer's state
+// stuck open once it's no longer a drawer at all.
+watch(isOrderCompact, (compact) => {
+  if (!compact && openDrawer.value === 'order') openDrawer.value = null
+})
+watch(isPreviewCompact, (compact) => {
+  if (!compact && openDrawer.value === 'preview') openDrawer.value = null
+})
+function onWorkspaceDrawerKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && openDrawer.value) openDrawer.value = null
+}
+onMounted(() => window.addEventListener('keydown', onWorkspaceDrawerKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onWorkspaceDrawerKeydown))
 
 const service = ref<Service>()
 const workspaceLoading = ref(true)
@@ -78,6 +133,11 @@ const workspaceLoadError = ref('')
 const notFound = ref(false)
 const documentHistory = useDocumentHistory(service, 'service')
 const selectedItemIndex = ref(0)
+// Operator picked a different item while the order-list drawer was open — reveal the editor
+// they came for instead of leaving it covered.
+watch(selectedItemIndex, () => {
+  if (openDrawer.value === 'order') openDrawer.value = null
+})
 
 const serviceDetailsDialogOpen = ref(false)
 
@@ -263,8 +323,6 @@ onMounted(async () => {
     workspaceLoading.value = false
     return
   }
-  await nextTick()
-  observePreviewPanel()
   // A freshly created service is inherently unsaved — starting dirty (rather than false, as
   // for an existing service) enables the Save button and the router guard's
   // leave-without-saving warning immediately, so it's never silently lost with no way to
@@ -309,6 +367,12 @@ onMounted(async () => {
     .filter((id): id is string => !!id && id !== 'brand-primary' && id !== 'brand-secondary')
   await Promise.all([...new Set([...mediaIds, ...themeMediaIds])].map(resolveMediaItem))
   workspaceLoading.value = false
+  // Only now does the template actually switch from <AsyncLoadState> to the real workspace (see
+  // `v-if="workspaceLoading || workspaceLoadError"` above it) and render .preview-panel — calling
+  // this any earlier (as it used to, right after loading the service itself) found nothing to
+  // observe, since the element didn't exist in the DOM yet, and this is only ever called once.
+  await nextTick()
+  observePreviewPanel()
 })
 
 function reloadWorkspace() {
@@ -1084,7 +1148,6 @@ const {
   PREVIEW_VIRTUAL_SIZE,
   previewPanelRef,
   previewThumbWidth,
-  previewThumbHeight,
   previewScale,
   observePreviewPanel,
 } = useLiveTransport({
@@ -1213,6 +1276,7 @@ const activeAddTypeTitle = computed(
 const addReplaceContext = ref<{ index: number; role?: string; label?: string; note?: string }>()
 
 function openAddDialog(type: AddItemType) {
+  if (openDrawer.value === 'order') openDrawer.value = null
   addReplaceContext.value = undefined
   addTab.value = type
   addDialogOpen.value = true
@@ -1302,7 +1366,11 @@ function updateRolePerson(role: string, personId: string | undefined) {
     :back-to="{ path: '/' }"
     back-label="Back to Services"
   />
-  <div v-else-if="service" class="workspace-root">
+  <div
+    v-else-if="service"
+    class="workspace-root"
+    :class="{ 'workspace-root--short': isShortViewport }"
+  >
     <v-alert
       v-if="servicesStore.mutationError"
       type="error"
@@ -1314,7 +1382,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
     >
       Service changes were not saved: {{ servicesStore.mutationError }}
     </v-alert>
-    <div class="workspace-toolbar">
+    <div class="workspace-toolbar" :class="{ 'workspace-toolbar--wrap': isNarrowToolbar }">
       <div class="workspace-service-context">
         <v-btn
           icon="mdi-arrow-left"
@@ -1351,27 +1419,83 @@ function updateRolePerson(role: string, personId: string | undefined) {
         />
       </div>
       <div class="workspace-actions">
-        <v-btn
-          variant="tonal"
-          prepend-icon="mdi-calendar-edit-outline"
-          :to="routeWithReturnTo(`/service/${service.id}/plan`, route.fullPath)"
-        >
-          Planning
-        </v-btn>
-        <v-btn
-          variant="tonal"
-          prepend-icon="mdi-account-group-outline"
-          :to="routeWithReturnTo(`/service/${service.id}/assignments`, route.fullPath)"
-        >
-          Assignments
-        </v-btn>
-        <v-btn
-          variant="tonal"
-          prepend-icon="mdi-file-document-outline"
-          :to="routeWithReturnTo(`/service/${service.id}/bulletin`, route.fullPath)"
-        >
-          Bulletin
-        </v-btn>
+        <template v-if="isOrderCompact || isPreviewCompact">
+          <v-btn
+            v-if="isOrderCompact"
+            icon="mdi-format-list-bulleted"
+            variant="text"
+            size="small"
+            :color="openDrawer === 'order' ? 'primary' : undefined"
+            :title="openDrawer === 'order' ? 'Close order list' : 'Open order list'"
+            :aria-label="openDrawer === 'order' ? 'Close order list' : 'Open order list'"
+            @click="toggleWorkspaceDrawer('order')"
+          />
+          <v-btn
+            v-if="isPreviewCompact"
+            icon="mdi-monitor-eye"
+            variant="text"
+            size="small"
+            :color="openDrawer === 'preview' ? 'primary' : undefined"
+            :title="openDrawer === 'preview' ? 'Close presentation preview' : 'Open presentation preview'"
+            :aria-label="
+              openDrawer === 'preview' ? 'Close presentation preview' : 'Open presentation preview'
+            "
+            @click="toggleWorkspaceDrawer('preview')"
+          />
+          <span class="action-divider" />
+        </template>
+        <template v-if="!isNarrowActions">
+          <v-btn
+            variant="tonal"
+            prepend-icon="mdi-calendar-edit-outline"
+            :to="routeWithReturnTo(`/service/${service.id}/plan`, route.fullPath)"
+          >
+            Planning
+          </v-btn>
+          <v-btn
+            variant="tonal"
+            prepend-icon="mdi-account-group-outline"
+            :to="routeWithReturnTo(`/service/${service.id}/assignments`, route.fullPath)"
+          >
+            Assignments
+          </v-btn>
+          <v-btn
+            variant="tonal"
+            prepend-icon="mdi-file-document-outline"
+            :to="routeWithReturnTo(`/service/${service.id}/bulletin`, route.fullPath)"
+          >
+            Bulletin
+          </v-btn>
+        </template>
+        <v-menu v-else location="bottom end">
+          <template #activator="{ props: menuProps }">
+            <v-btn
+              v-bind="menuProps"
+              icon="mdi-dots-vertical"
+              variant="text"
+              size="small"
+              title="More"
+              aria-label="More service pages"
+            />
+          </template>
+          <v-list density="compact">
+            <v-list-item
+              prepend-icon="mdi-calendar-edit-outline"
+              title="Planning"
+              :to="routeWithReturnTo(`/service/${service.id}/plan`, route.fullPath)"
+            />
+            <v-list-item
+              prepend-icon="mdi-account-group-outline"
+              title="Assignments"
+              :to="routeWithReturnTo(`/service/${service.id}/assignments`, route.fullPath)"
+            />
+            <v-list-item
+              prepend-icon="mdi-file-document-outline"
+              title="Bulletin"
+              :to="routeWithReturnTo(`/service/${service.id}/bulletin`, route.fullPath)"
+            />
+          </v-list>
+        </v-menu>
         <button
           type="button"
           class="readiness-status"
@@ -1380,7 +1504,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
           @click="readinessDialogOpen = true"
         >
           <v-icon :icon="readinessIcon" size="17" />
-          <span>{{ readinessLabel }}</span>
+          <span class="readiness-label">{{ readinessLabel }}</span>
         </button>
         <span class="action-divider" />
         <v-tooltip
@@ -1402,7 +1526,9 @@ function updateRolePerson(role: string, personId: string | undefined) {
                 @click="togglePresenting"
               >
                 <v-icon :icon="isPresenting ? 'mdi-stop' : 'mdi-play'" start />
-                {{ isPresenting ? 'Stop Presenting' : 'Start Presenting' }}
+                <span class="present-button-label">{{
+                  isPresenting ? 'Stop Presenting' : 'Start Presenting'
+                }}</span>
               </v-btn>
             </span>
           </template>
@@ -1410,7 +1536,13 @@ function updateRolePerson(role: string, personId: string | undefined) {
       </div>
     </div>
 
-    <div class="workspace-layout">
+    <div
+      class="workspace-layout"
+      :class="{
+        'workspace-layout--order-drawer': isOrderCompact,
+        'workspace-layout--preview-drawer': isPreviewCompact,
+      }"
+    >
       <ServiceOrderList
         :service="service"
         v-model:selected-item-index="selectedItemIndex"
@@ -1418,6 +1550,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
         :item-label="itemLabel"
         :item-color="itemColor"
         :item-has-live="itemHasLive"
+        :class="{ 'order-drawer-open': isOrderCompact && openDrawer === 'order' }"
         @open-add-dialog="openAddDialog"
       />
 
@@ -2902,10 +3035,13 @@ function updateRolePerson(role: string, personId: string | undefined) {
         <p v-else class="text-medium-emphasis">This service has no items yet.</p>
       </div>
 
-      <div ref="previewPanelRef" class="preview-panel">
+      <div
+        ref="previewPanelRef"
+        class="preview-panel"
+        :class="{ 'preview-drawer-open': isPreviewCompact && openDrawer === 'preview' }"
+      >
         <div class="preview-panel-header">
           <div class="panel-title">Presentation</div>
-          <div class="panel-subtitle">Previous · Current · Next</div>
         </div>
         <div class="preview-list">
           <div v-for="preview in previewSlots" :key="preview.label" class="preview-item">
@@ -2916,7 +3052,10 @@ function updateRolePerson(role: string, personId: string | undefined) {
             <div
               class="preview-thumb"
               :class="{ 'preview-thumb--live': preview.live }"
-              :style="{ width: `${previewThumbWidth}px`, height: `${previewThumbHeight}px` }"
+              :style="{
+                width: `${previewThumbWidth}px`,
+                aspectRatio: `${PREVIEW_VIRTUAL_SIZE.width} / ${PREVIEW_VIRTUAL_SIZE.height}`,
+              }"
             >
               <SlideContentRenderer
                 :content="preview.content"
@@ -2929,6 +3068,13 @@ function updateRolePerson(role: string, personId: string | undefined) {
           </div>
         </div>
       </div>
+
+      <div
+        v-if="isOrderCompact || isPreviewCompact"
+        class="drawer-backdrop"
+        :class="{ 'drawer-backdrop--visible': openDrawer !== null }"
+        @click="openDrawer = null"
+      />
     </div>
 
     <ExternalAppFailureAlert
@@ -2939,6 +3085,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
     />
 
     <LiveTransportBar
+      :compact="isShortViewport"
       :previous-disabled="previousDisabled"
       :next-disabled="nextDisabled"
       :prev-preview-label="prevPreviewLabel"
@@ -3038,6 +3185,29 @@ function updateRolePerson(role: string, personId: string | undefined) {
   box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
   z-index: 2;
 }
+/* Below isNarrowToolbar's width, the service-context and actions rows no longer both fit on one
+   line without colliding — stack them instead of letting them overlap. */
+.workspace-toolbar--wrap {
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.workspace-toolbar--wrap .workspace-service-context {
+  flex-basis: 100%;
+}
+.workspace-toolbar--wrap .workspace-actions {
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+/* Below isShortViewport's height, the toolbar's own fixed min-height and the sticky editor
+   heading below it are two of the biggest consumers of a short landscape-tablet viewport —
+   shrink both and drop the toolbar's date/time line. */
+.workspace-root--short .workspace-toolbar {
+  min-height: 56px;
+}
+.workspace-root--short .workspace-service-date {
+  display: none;
+}
 .workspace-service-context {
   display: grid;
   min-width: 0;
@@ -3057,6 +3227,16 @@ function updateRolePerson(role: string, personId: string | undefined) {
   border-radius: 10px;
   background: rgba(var(--v-theme-primary), 0.11);
   color: rgb(var(--v-theme-primary));
+}
+/* Same width isNarrowToolbar already treats as tight enough to wrap the toolbar onto two rows —
+   the icon is purely decorative, drop it and reclaim its grid column at the same point. */
+@media (max-width: 780px) {
+  .workspace-service-icon {
+    display: none;
+  }
+  .workspace-service-context {
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+  }
 }
 .workspace-service-heading {
   display: flex;
@@ -3191,11 +3371,31 @@ function updateRolePerson(role: string, personId: string | undefined) {
 .present-button-wrap {
   display: inline-flex;
 }
+/* Same width the toolbar wraps to two rows at — keep the readiness badge and present button's
+   own color/shape/styling, just drop their text so both still fit comfortably alongside the
+   drawer toggles on that row instead of forcing a further wrap. */
+@media (max-width: 780px) {
+  .readiness-status {
+    padding: 0 8px;
+  }
+  .readiness-label {
+    display: none;
+  }
+  .present-button {
+    min-width: 0;
+    padding-inline: 12px;
+  }
+  .present-button-label {
+    display: none;
+  }
+  .present-button :deep(.v-icon) {
+    margin-inline-end: 0;
+  }
+}
 @media (max-width: 1060px) {
   .workspace-service-sermon {
     display: none;
   }
-  .workspace-actions .v-btn:not(.present-button),
   .action-divider {
     display: none;
   }
@@ -3207,6 +3407,85 @@ function updateRolePerson(role: string, personId: string | undefined) {
   flex: 1;
   min-height: 0;
   background: rgb(var(--v-theme-background));
+}
+/* Below isPreviewCompact (Vuetify's mdAndDown, <1280px) the preview panel becomes a toggleable
+   overlay drawer instead of a permanent grid column — see the tablet-fit plan. Below the
+   narrower isOrderCompact (<1000px) the Service Order List does too. The order list survives as
+   a real column down to a narrower width than the preview panel deliberately: it's what the
+   operator needs open most of the time, so it should keep its own space longer, with the center
+   editor only reclaiming the *preview* panel's column first as width gets tight — both target
+   tablets' landscape widths (iPad ~1080px, Tab S7+ ~1064px) land in exactly that middle zone:
+   order list permanent, preview a drawer. Whichever panel is a drawer is pulled out via
+   position:absolute and slid on/off-screen with transform, which never changes its layout box
+   (so useLiveTransport.ts's ResizeObserver on previewPanelRef never sees a spurious resize when
+   the drawer opens/closes). */
+.workspace-layout--preview-drawer {
+  position: relative;
+  overflow: hidden;
+}
+.workspace-layout--preview-drawer .preview-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
+  /* 100%, not a vw-based value — vw is relative to the raw viewport, not to .workspace-layout
+     (this element's actual positioning container), so it doesn't account for the app's own nav
+     sidebar or the order-list column when that's also showing permanently. Using 88vw here used
+     to mean the drawer's real DOM width could stay pinned at its 360px cap well past the point
+     where the *visible* remaining space had already shrunk below that — nothing was actually
+     resizing, just getting silently clipped by this container's own overflow:hidden, so neither
+     the ResizeObserver above nor CSS's own max-width:100% on .preview-thumb ever saw it happen. */
+  width: min(360px, 100%);
+  border-left: none;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  transition: transform 0.22s ease;
+  transform: translateX(100%);
+}
+.workspace-layout--preview-drawer .preview-panel.preview-drawer-open {
+  transform: translateX(0);
+}
+/* Preview is a drawer but the order list is still a permanent column — reclaim just the third
+   grid track for the center editor. */
+.workspace-layout--preview-drawer:not(.workspace-layout--order-drawer) {
+  grid-template-columns: minmax(280px, 330px) minmax(430px, 1fr);
+}
+/* Both become drawers — center editor takes the full width. */
+.workspace-layout--order-drawer.workspace-layout--preview-drawer {
+  display: block;
+}
+.workspace-layout--order-drawer.workspace-layout--preview-drawer .center-panel {
+  height: 100%;
+}
+.workspace-layout--order-drawer.workspace-layout--preview-drawer :deep(.service-panel) {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 6;
+  /* See the preview-panel rule above for why 100% (of .workspace-layout) rather than a vw-based
+     value. */
+  width: min(330px, 100%);
+  border-right: none;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  transition: transform 0.22s ease;
+  transform: translateX(-100%);
+}
+.workspace-layout--order-drawer.workspace-layout--preview-drawer :deep(.service-panel.order-drawer-open) {
+  transform: translateX(0);
+}
+.drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.drawer-backdrop--visible {
+  opacity: 1;
+  pointer-events: auto;
 }
 .preview-panel-header {
   display: flex;
@@ -3220,9 +3499,11 @@ function updateRolePerson(role: string, personId: string | undefined) {
 .preview-panel {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   border-left: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   background: rgb(var(--v-theme-surface));
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 .preview-list {
@@ -3230,6 +3511,9 @@ function updateRolePerson(role: string, personId: string | undefined) {
   flex-direction: column;
   gap: 18px;
   padding: 14px 16px 22px;
+}
+.preview-item {
+  min-width: 0;
 }
 .preview-label {
   display: flex;
@@ -3254,6 +3538,12 @@ function updateRolePerson(role: string, personId: string | undefined) {
 }
 .preview-thumb {
   overflow: hidden;
+  /* Belt-and-suspenders alongside previewThumbWidth's own ResizeObserver (useLiveTransport.ts,
+     measures this exact element's real rendered rect directly on every previewPanelRef resize)
+     — guarantees the box can never render wider than the space actually available even in the
+     first paint before that observer's initial callback has fired. Safe to clamp here
+     regardless of the inline pixel width. */
+  max-width: 100%;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.11);
   border-radius: 7px;
   background: #000;
@@ -3267,6 +3557,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
 .center-panel {
   padding: 0 24px 28px;
   overflow-y: auto;
+  min-width: 0;
   min-height: 0;
   background:
     radial-gradient(circle at 50% 0, rgba(var(--v-theme-primary), 0.045), transparent 340px),
@@ -3290,6 +3581,11 @@ function updateRolePerson(role: string, personId: string | undefined) {
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
   background: rgba(var(--v-theme-background), 0.94);
   backdrop-filter: blur(12px);
+}
+.workspace-root--short .editor-heading {
+  min-height: 52px;
+  margin-bottom: 12px;
+  padding: 8px 24px;
 }
 .editor-eyebrow {
   margin-bottom: 2px;
