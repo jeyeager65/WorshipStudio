@@ -180,7 +180,7 @@ defineExpose({ loadCanvaStatus })
           v-model="canvaCallbackPort"
           label="Callback port"
           variant="outlined"
-          density="comfortable"
+          density="compact"
           control-variant="stacked"
           :min="1024"
           :max="65535"

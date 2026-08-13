@@ -160,7 +160,7 @@ onMounted(loadExternalApps)
             v-model="editingProfile.name"
             label="Name"
             variant="outlined"
-            density="comfortable"
+            density="compact"
             class="mb-4"
           />
 
@@ -171,7 +171,7 @@ onMounted(loadExternalApps)
             item-value="value"
             label="Launch Mode"
             variant="outlined"
-            density="comfortable"
+            density="compact"
             class="mb-4"
           >
             <template #item="{ item, props: itemProps }">
@@ -183,7 +183,7 @@ onMounted(loadExternalApps)
             v-model="editingProfile.executablePath"
             label="Executable"
             variant="outlined"
-            density="comfortable"
+            density="compact"
             hint="Used to launch the app and/or recognize its already-running process."
             persistent-hint
             class="mb-4"
@@ -198,7 +198,7 @@ onMounted(loadExternalApps)
               v-model="editingProfile.parameterFormat"
               label="Parameter Format"
               variant="outlined"
-              density="comfortable"
+              density="compact"
               hint="{file} is replaced with the file chosen when this app is added to a service."
               persistent-hint
               class="mb-1"

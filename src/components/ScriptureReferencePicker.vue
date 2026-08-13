@@ -168,7 +168,7 @@ defineExpose({
       label="Reference"
       placeholder="e.g. John 3:16-17"
       variant="outlined"
-      density="comfortable"
+      density="compact"
       autofocus
       :error="!!refText && !isValid"
       :error-messages="refText && !isValid ? ['Not a recognized reference'] : []"
@@ -180,7 +180,7 @@ defineExpose({
         :items="bookNames"
         label="Book"
         variant="outlined"
-        density="comfortable"
+        density="compact"
       />
       <div class="d-flex ga-3">
         <v-select
@@ -188,7 +188,7 @@ defineExpose({
           :items="startChapterOptions"
           label="Start Chapter"
           variant="outlined"
-          density="comfortable"
+          density="compact"
           :disabled="!book"
         />
         <v-select
@@ -196,7 +196,7 @@ defineExpose({
           :items="startVerseOptions"
           label="Start Verse"
           variant="outlined"
-          density="comfortable"
+          density="compact"
           :disabled="!startChapter"
         />
       </div>
@@ -206,7 +206,7 @@ defineExpose({
           :items="endChapterOptions"
           label="End Chapter"
           variant="outlined"
-          density="comfortable"
+          density="compact"
           :disabled="!startChapter"
         />
         <v-select
@@ -214,7 +214,7 @@ defineExpose({
           :items="endVerseOptions"
           label="End Verse"
           variant="outlined"
-          density="comfortable"
+          density="compact"
           :disabled="!endChapter"
         />
       </div>
@@ -233,7 +233,7 @@ defineExpose({
       item-value="code"
       label="Translation"
       variant="outlined"
-      density="comfortable"
+      density="compact"
     />
 
     <div v-if="displayMode === 'full'" class="mb-2" style="min-height: 24px">

@@ -7,7 +7,7 @@ import { presentationTextEffect } from '@/utils/presentationTextEffect'
 import { resolvePresentationTheme } from '@/utils/presentationTheme'
 import type { FlatSlide } from '@/utils/flattenService'
 import type { Service } from '@/models/service'
-import type { MediaItem } from '@/models/library'
+import type { MediaItem, SlideLibraryItem } from '@/models/library'
 import type { ServiceReadinessResult } from '@/utils/serviceReadiness'
 import type {
   DisplayInfo,
@@ -28,6 +28,10 @@ interface UseLiveTransportOptions {
   flatSlides: ComputedRef<FlatSlide[]>
   mediaById: ComputedRef<Map<string, MediaItem>>
   mediaUrlById: Map<string, string>
+  /** slide-ref items only — resolves each ServiceItem.slideId to its library item, so a
+   *  slide-ref with no autoAdvance override of its own can fall back to the library item's own
+   *  default (see the liveItemAutoAdvance computed below). */
+  slidesById: ComputedRef<Map<string, SlideLibraryItem>>
   themesStore: ReturnType<typeof useThemesStore>
   settingsStore: ReturnType<typeof useSettingsStore>
   isPresenting: Ref<boolean>
@@ -59,6 +63,7 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     flatSlides,
     mediaById,
     mediaUrlById,
+    slidesById,
     themesStore,
     settingsStore,
     isPresenting,
@@ -125,6 +130,67 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     if (previousDisabled.value) return
     goLive(prevIndex.value)
   }
+
+  // Slide auto-advance/looping (spec: notes/slide-auto-advance-plan.md) — every slide change is
+  // otherwise operator-triggered; this is the one place a timer can move the live position on
+  // its own. One self-rescheduling setTimeout, not a persistent setInterval: each tick either
+  // calls the existing `next()` (safe — see below, only ever called while still short of the
+  // item's own last slide) or jumps back to the item's first slide when looping, both of which
+  // change `flatIndex`/`liveSlideKey` and so re-trigger the watch below, which schedules the
+  // *next* tick fresh off the new slide's own remaining time. An operator navigating away
+  // manually (previous/next, jumping to a different item, stopping presentation) changes
+  // `flatIndex`/`isPresenting` the same way, so the watch clears the old timer exactly the same
+  // as any other reschedule — no separate "cancel auto-advance" path needed.
+  //
+  // A dedicated computed (rather than watching `service` directly, or relying on `flatSlides`)
+  // so toggling autoAdvance on/off for the item that's *already* live takes effect immediately
+  // — flattenService never reads autoAdvance, so flatSlides itself wouldn't otherwise change
+  // shape just because this one field on the live item was edited. A slide-ref item with no
+  // override of its own falls back to the referenced SlideLibraryItem's own default (see
+  // AutoAdvanceConfig's doc comment, models/library.ts) — text-slide has no library item to
+  // fall back to, so it's override-only there.
+  const liveItemAutoAdvance = computed(() => {
+    const slide = liveSlide.value
+    const item = slide ? service.value?.items[slide.itemIndex] : undefined
+    if (!item) return undefined
+    if (item.autoAdvance) return item.autoAdvance
+    if (item.type === 'slide-ref') return slidesById.value.get(item.slideId)?.autoAdvance
+    return undefined
+  })
+  let autoAdvanceTimer: ReturnType<typeof setTimeout> | undefined
+  watch(
+    [flatIndex, isPresenting, liveItemAutoAdvance],
+    () => {
+      if (autoAdvanceTimer) {
+        clearTimeout(autoAdvanceTimer)
+        autoAdvanceTimer = undefined
+      }
+      if (!isPresenting.value) return
+      const slide = liveSlide.value
+      const autoAdvance = liveItemAutoAdvance.value
+      if (!slide || !autoAdvance || autoAdvance.intervalSeconds <= 0) return
+      const itemIndex = slide.itemIndex
+      autoAdvanceTimer = setTimeout(() => {
+        autoAdvanceTimer = undefined
+        // Re-derived fresh rather than captured at schedule time — flatSlides could have
+        // changed (an edit mid-presentation) without flatIndex itself moving.
+        const itemFlatIndices = flatSlides.value.reduce<number[]>((acc, s, i) => {
+          if (s.itemIndex === itemIndex) acc.push(i)
+          return acc
+        }, [])
+        const lastItemFlatIndex = itemFlatIndices[itemFlatIndices.length - 1]
+        if (flatIndex.value === lastItemFlatIndex) {
+          if (autoAdvance.loop) goLive(itemFlatIndices[0]!)
+          // Not looping: stop here rather than spilling into the next item — crossing an item
+          // boundary stays an operator decision, same as it always has been.
+        } else {
+          next()
+        }
+      }, autoAdvance.intervalSeconds * 1000)
+    },
+    { immediate: true },
+  )
+
   function toggleBlankScreen() {
     if (isBlankScreen.value) {
       isBlankScreen.value = false
@@ -554,6 +620,7 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     getAdapter().remote?.pushServiceOpen(false)
     unlistenRemoteCommand?.()
     previewResizeObserver?.disconnect()
+    if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer)
   })
 
   return {

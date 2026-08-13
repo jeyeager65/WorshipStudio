@@ -737,16 +737,16 @@ function openSlide(item: SlideLibraryItem) {
     margin-bottom: 0;
   }
 }
+/* The whole hero card (eyebrow, title, description, stats) is nice-to-have context, not
+   essential, and it eats space that matters more on a narrow/short screen. */
+@media (max-width: 700px) {
+  .slides-hero {
+    display: none;
+  }
+}
 @media (max-width: 620px) {
   .slides-page {
     padding: 14px 12px 40px;
-  }
-  .slides-summary {
-    width: 100%;
-  }
-  .slides-summary-stat {
-    min-width: 0;
-    flex: 1;
   }
   .presentation-grid {
     grid-template-columns: 1fr;

@@ -118,6 +118,7 @@ pub fn import_sets(
                         role: None,
                         bulletin_label: None,
                         bulletin_note: None,
+                        auto_advance: None,
                     });
                     song_references_matched += 1;
                     let record = usage_by_song_id.entry(song.id.clone()).or_insert((0, None));

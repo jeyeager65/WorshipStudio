@@ -494,4 +494,11 @@ async function deleteTemplate(template: ServiceTemplate) {
     grid-template-columns: 1fr;
   }
 }
+/* The whole hero card (eyebrow, title, description, stat) is nice-to-have context, not
+   essential, and it eats space that matters more on a narrow/short screen. */
+@media (max-width: 700px) {
+  .templates-hero {
+    display: none;
+  }
+}
 </style>

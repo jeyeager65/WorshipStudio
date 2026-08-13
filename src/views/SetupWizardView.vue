@@ -431,7 +431,7 @@ async function skipSetup() {
                 v-model="churchName"
                 placeholder="First Community Church"
                 variant="outlined"
-                density="comfortable"
+                density="compact"
                 hide-details
                 autofocus
               />
@@ -745,7 +745,7 @@ async function skipSetup() {
                   item-title="name"
                   item-value="code"
                   variant="outlined"
-                  density="comfortable"
+                  density="compact"
                   hide-details
                 />
               </article>
@@ -759,7 +759,7 @@ async function skipSetup() {
                   v-model="firstServiceType"
                   :items="store.librarySettings.serviceTypes"
                   variant="outlined"
-                  density="comfortable"
+                  density="compact"
                   hide-details
                 />
               </article>

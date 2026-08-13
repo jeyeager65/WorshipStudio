@@ -413,7 +413,7 @@ const showAdvancedConnect = ref(false)
             v-model="connectCodeInput"
             label="Paste connect code"
             variant="outlined"
-            density="comfortable"
+            density="compact"
             rows="3"
             auto-grow
             hide-details
@@ -505,7 +505,7 @@ const showAdvancedConnect = ref(false)
             :model-value="connectCodeToShow"
             label="Connect code"
             variant="outlined"
-            density="comfortable"
+            density="compact"
             rows="3"
             readonly
             hide-details
@@ -532,7 +532,7 @@ const showAdvancedConnect = ref(false)
             v-model="cloudClientIdInput"
             :label="connectProvider === 'onedrive' ? 'Microsoft app client ID' : 'Dropbox app key'"
             variant="outlined"
-            density="comfortable"
+            density="compact"
             autocomplete="off"
             hint="Needed once per church, not once per device — ask whoever registered the app, or (on any device that's already connected) go to Settings and use Add Another Device to skip typing this in."
             persistent-hint
@@ -542,7 +542,7 @@ const showAdvancedConnect = ref(false)
             v-model="cloudLibraryFolderPathInput"
             label="Library folder path (optional)"
             variant="outlined"
-            density="comfortable"
+            density="compact"
             autocomplete="off"
             placeholder="/Church/WorshipStudio Library"
             hint="Leave blank if the library lives at the root of the account."

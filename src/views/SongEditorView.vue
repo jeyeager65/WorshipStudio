@@ -217,23 +217,48 @@ function removeFromArrangement(index: number) {
             </div>
           </div>
           <div class="details-grid">
-            <v-text-field v-model="song.title" label="Song Title" variant="outlined" hide-details />
+            <v-text-field
+              v-model="song.title"
+              label="Song Title"
+              variant="outlined"
+              density="compact"
+              hide-details
+            />
             <div class="details-row">
-              <v-text-field v-model="song.author" label="Author" variant="outlined" hide-details />
-              <v-text-field v-model="song.artist" label="Artist" variant="outlined" hide-details />
+              <v-text-field
+                v-model="song.author"
+                label="Author"
+                variant="outlined"
+                density="compact"
+                hide-details
+              />
+              <v-text-field
+                v-model="song.artist"
+                label="Artist"
+                variant="outlined"
+                density="compact"
+                hide-details
+              />
             </div>
             <div class="details-row details-row--tags">
               <v-combobox
                 v-model="song.tags"
                 label="Tags"
                 variant="outlined"
+                density="compact"
                 multiple
                 chips
                 closable-chips
                 hide-details
                 class="tags-field"
               />
-              <v-text-field v-model="song.ccli" label="CCLI Number" variant="outlined" hide-details />
+              <v-text-field
+                v-model="song.ccli"
+                label="CCLI Number"
+                variant="outlined"
+                density="compact"
+                hide-details
+              />
             </div>
           </div>
         </section>

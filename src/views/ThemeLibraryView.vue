@@ -536,4 +536,11 @@ async function duplicateTheme(theme: Theme) {
     padding: 12px;
   }
 }
+/* The whole hero card (eyebrow, title, description, stat) is nice-to-have context, not
+   essential, and it eats space that matters more on a narrow/short screen. */
+@media (max-width: 700px) {
+  .library-hero {
+    display: none;
+  }
+}
 </style>

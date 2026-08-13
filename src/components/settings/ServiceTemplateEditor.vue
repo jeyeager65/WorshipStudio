@@ -406,7 +406,7 @@ function setDefaultTypes(serviceTypes: string[]) {
             :model-value="selectedTemplate.serviceType"
             placeholder="Sunday Worship"
             variant="outlined"
-            density="comfortable"
+            density="compact"
             hide-details
             @update:model-value="(serviceType: string) => setSelectedTemplate({ serviceType })"
           />
@@ -417,7 +417,7 @@ function setDefaultTypes(serviceTypes: string[]) {
             :model-value="selectedTemplate.description"
             placeholder="Describe when this template is useful or what makes it different."
             variant="outlined"
-            density="comfortable"
+            density="compact"
             rows="2"
             auto-grow
             hide-details
@@ -811,7 +811,7 @@ function setDefaultTypes(serviceTypes: string[]) {
             :items="serviceTypes"
             label="Service types"
             variant="outlined"
-            density="comfortable"
+            density="compact"
             multiple
             chips
             closable-chips

@@ -462,7 +462,7 @@ function closeAddDialog() {
               v-model="addQuery"
               label="Search songs…"
               variant="outlined"
-              density="comfortable"
+              density="compact"
               prepend-inner-icon="mdi-magnify"
               autofocus
             />
@@ -497,7 +497,7 @@ function closeAddDialog() {
                 v-model="slideQuery"
                 label="Search slides…"
                 variant="outlined"
-                density="comfortable"
+                density="compact"
                 prepend-inner-icon="mdi-magnify"
                 autofocus
               />
@@ -602,7 +602,7 @@ function closeAddDialog() {
               item-value="id"
               label="App Profile"
               variant="outlined"
-              density="comfortable"
+              density="compact"
               class="mb-3"
             />
             <template v-if="selectedExternalAppProfile">
@@ -611,7 +611,7 @@ function closeAddDialog() {
                 :model-value="externalAppFile"
                 label="File"
                 variant="outlined"
-                density="comfortable"
+                density="compact"
                 readonly
                 class="mb-2"
               >
@@ -761,7 +761,7 @@ function closeAddDialog() {
               label="Bulletin Label"
               placeholder="e.g. Silent Preparation"
               variant="outlined"
-              density="comfortable"
+              density="compact"
               class="mb-3"
             />
             <v-textarea
@@ -769,7 +769,7 @@ function closeAddDialog() {
               label="Bulletin Note (optional)"
               placeholder="e.g. (please spend the next few moments preparing your heart for corporate worship)"
               variant="outlined"
-              density="comfortable"
+              density="compact"
               rows="2"
               auto-grow
               class="mb-3"

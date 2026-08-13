@@ -123,6 +123,17 @@ export interface LibrarySlide {
       }
 }
 
+/** Shared by SlideLibraryItem.autoAdvance (the default) and ServiceItem.autoAdvance (the
+ *  per-service override) — see notes/slide-auto-advance-plan.md. `loop` is independent of the
+ *  default/override distinction itself: a library item can default to playing through once
+ *  (e.g. a photo slideshow meant to show only once) just as easily as looping indefinitely
+ *  (e.g. a pre-service announcement loop), and a service can override either way regardless of
+ *  what the library item itself defaults to. */
+export interface AutoAdvanceConfig {
+  intervalSeconds: number
+  loop: boolean
+}
+
 export interface SlideLibraryItem {
   id: string
   label: string
@@ -130,11 +141,9 @@ export interface SlideLibraryItem {
   documentVersion: 2
   slides: LibrarySlide[]
   backgroundId?: string
-  loop?: {
-    enabled: boolean
-    secondsPerSlide: number
-    countdownOverlay?: { targetTime: string }
-  }
+  /** Default auto-advance/looping timer applied whenever this item is added to a service,
+   *  unless that service item sets its own autoAdvance override. */
+  autoAdvance?: AutoAdvanceConfig
   usage: {
     lastUsedAt?: string
     usesPastYear: number

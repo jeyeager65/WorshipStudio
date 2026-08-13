@@ -782,7 +782,7 @@ async function copyEmailDraft() {
             v-model="emailSubject"
             label="Subject"
             variant="outlined"
-            density="comfortable"
+            density="compact"
             class="mb-2"
           />
           <v-textarea

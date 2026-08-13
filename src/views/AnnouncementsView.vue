@@ -901,12 +901,10 @@ function stopDateLabel(a: Announcement): string {
   .announcements-page {
     padding: 14px 12px 40px;
   }
-  .announcements-summary {
-    width: 100%;
-  }
-  .summary-stat {
-    min-width: 0;
-    flex: 1;
+  /* The whole hero card (eyebrow, title, description, stats) is nice-to-have context, not
+     essential, and it eats space that matters more on a narrow/short screen. */
+  .announcements-hero {
+    display: none;
   }
 }
 </style>

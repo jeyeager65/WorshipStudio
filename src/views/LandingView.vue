@@ -199,9 +199,6 @@ const browseResults = computed(() => {
             ><span>Past</span>
           </div>
         </div>
-        <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" to="/create-service"
-          >Create Service</v-btn
-        >
       </div>
     </header>
 
@@ -227,8 +224,9 @@ const browseResults = computed(() => {
             }}
           </p>
         </div>
-        <div v-if="tab === 'browse'" class="toolbar-actions">
+        <div class="toolbar-actions">
           <v-text-field
+            v-if="tab === 'browse'"
             v-model="browseQuery"
             prepend-inner-icon="mdi-magnify"
             placeholder="Search service, sermon, passage, or preacher"
@@ -239,6 +237,9 @@ const browseResults = computed(() => {
             clearable
             class="service-search"
           />
+          <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" to="/create-service"
+            >Create Service</v-btn
+          >
         </div>
       </div>
 
@@ -911,19 +912,18 @@ const browseResults = computed(() => {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+/* Below this, the whole hero card (eyebrow, title, description, Upcoming/Past stats) goes away
+   — nice-to-have context, not essential, and it eats space that matters more on a narrow/short
+   screen. Create Service already lives permanently in .services-toolbar now (see the template),
+   so nothing is lost by hiding it here. */
+@media (max-width: 700px) {
+  .services-hero {
+    display: none;
+  }
+}
 @media (max-width: 560px) {
   .services-page {
     padding: 16px 12px 36px;
-  }
-  .services-hero {
-    padding: 20px;
-  }
-  .hero-side {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .services-summary {
-    align-self: flex-start;
   }
   .toolbar-actions {
     align-items: stretch;

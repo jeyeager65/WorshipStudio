@@ -62,7 +62,7 @@ function setBrandingColor(which: 'primaryColor' | 'secondaryColor', event: Event
         label="Church or ministry name"
         placeholder="First Community Church"
         variant="outlined"
-        density="comfortable"
+        density="compact"
         hide-details
         class="branding-name-field"
       />

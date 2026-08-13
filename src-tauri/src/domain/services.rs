@@ -188,6 +188,7 @@ fn apply_legacy_sermon_fields(
                 role: None,
                 bulletin_label: None,
                 bulletin_note: None,
+                auto_advance: None,
             });
             changed = true;
             service.items.len() - 1

@@ -211,6 +211,23 @@ pub struct ServiceItem {
     /// the full text themselves; nothing here is auto-punctuated.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bulletin_note: Option<String>,
+    /// Optional auto-advance/looping timer for this item's own generated slides (see
+    /// notes/slide-auto-advance-plan.md) — only meaningful for TextSlide/SlideRef items (the
+    /// frontend only exposes it there); ignored by every other type, including Song/Scripture/
+    /// Sermon, which are normally paced live by whoever's leading them rather than a timer. A
+    /// pure data passthrough here, same as every other ServiceItem field: the actual timer
+    /// lives entirely in the frontend's live-transport composable, not on this side.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_advance: Option<AutoAdvance>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoAdvance {
+    pub interval_seconds: f64,
+    /// `loop` is a Rust keyword, so the identifier differs from the wire field name.
+    #[serde(rename = "loop")]
+    pub looping: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -468,21 +485,6 @@ pub struct Service {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct CountdownOverlay {
-    pub target_time: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct LoopConfig {
-    pub enabled: bool,
-    pub seconds_per_slide: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub countdown_overlay: Option<CountdownOverlay>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
 pub struct SlideLibraryItem {
     pub id: String,
     pub label: String,
@@ -493,8 +495,14 @@ pub struct SlideLibraryItem {
     pub slides: Vec<LibrarySlide>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub background_id: Option<String>,
-    #[serde(rename = "loop", skip_serializing_if = "Option::is_none")]
-    pub loop_config: Option<LoopConfig>,
+    /// Default auto-advance/looping timer for this item's own slides (see
+    /// notes/slide-auto-advance-plan.md), applied whenever this item is added to a service
+    /// unless that ServiceItem sets its own auto_advance override (same shape, reused here
+    /// rather than a separate type). Independent loop flag from the override: a library item
+    /// can default to playing through once (e.g. a photo slideshow meant to show only once)
+    /// just as easily as looping indefinitely (e.g. a pre-service announcement loop).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_advance: Option<AutoAdvance>,
     pub usage: Usage,
     pub updated_at: String,
     pub updated_by_device: String,

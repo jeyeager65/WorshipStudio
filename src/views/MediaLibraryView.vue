@@ -1238,16 +1238,16 @@ async function saveEdits() {
     margin-bottom: 0;
   }
 }
+/* The whole hero card (eyebrow, title, description, stats) is nice-to-have context, not
+   essential, and it eats space that matters more on a narrow/short screen. */
+@media (max-width: 700px) {
+  .media-hero {
+    display: none;
+  }
+}
 @media (max-width: 620px) {
   .media-page {
     padding: 14px 12px 40px;
-  }
-  .media-summary {
-    width: 100%;
-  }
-  .summary-stat {
-    min-width: 0;
-    flex: 1;
   }
   .media-grid {
     grid-template-columns: 1fr;

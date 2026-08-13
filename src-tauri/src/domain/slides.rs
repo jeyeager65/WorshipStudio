@@ -49,7 +49,7 @@ mod tests {
             document_version: 2,
             slides: vec![],
             background_id: None,
-            loop_config: None,
+            auto_advance: None,
             usage: Usage {
                 last_used_at: None,
                 uses_past_year: 0,

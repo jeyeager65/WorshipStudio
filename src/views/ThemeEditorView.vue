@@ -377,7 +377,7 @@ function setTextEffectColor(event: Event) {
                 label="Theme name"
                 placeholder="e.g. Sunday Worship"
                 variant="outlined"
-                density="comfortable"
+                density="compact"
                 hide-details
                 class="theme-name-field"
               />
@@ -487,7 +487,7 @@ function setTextEffectColor(event: Event) {
                   label="Background color"
                   placeholder="#000000"
                   variant="outlined"
-                  density="comfortable"
+                  density="compact"
                   hide-details
                 />
               </div>
@@ -557,7 +557,7 @@ function setTextEffectColor(event: Event) {
                   label="Font"
                   placeholder="Choose a bundled font"
                   variant="outlined"
-                  density="comfortable"
+                  density="compact"
                   hint="Bundled with Worship Studio for consistent presentation on every computer."
                   persistent-hint
                 />
@@ -573,7 +573,7 @@ function setTextEffectColor(event: Event) {
                     label="Text color"
                     placeholder="#FFFFFF"
                     variant="outlined"
-                    density="comfortable"
+                    density="compact"
                     hide-details
                   />
                 </div>
@@ -589,7 +589,7 @@ function setTextEffectColor(event: Event) {
                   ]"
                   label="Text effect"
                   variant="outlined"
-                  density="comfortable"
+                  density="compact"
                   hide-details
                 />
                 <template v-if="draft.textEffect.type !== 'none'">
@@ -605,7 +605,7 @@ function setTextEffectColor(event: Event) {
                       label="Effect color"
                       placeholder="#000000"
                       variant="outlined"
-                      density="comfortable"
+                      density="compact"
                       hide-details
                     />
                   </div>
@@ -613,7 +613,7 @@ function setTextEffectColor(event: Event) {
                     v-model="draft.textEffect.size"
                     label="Strength"
                     variant="outlined"
-                    density="comfortable"
+                    density="compact"
                     control-variant="hidden"
                     :min="1"
                     :max="30"
@@ -624,7 +624,7 @@ function setTextEffectColor(event: Event) {
                       v-model="draft.textEffect.offsetX"
                       label="Horizontal offset"
                       variant="outlined"
-                      density="comfortable"
+                      density="compact"
                       control-variant="hidden"
                       :min="-50"
                       :max="50"
@@ -634,7 +634,7 @@ function setTextEffectColor(event: Event) {
                       v-model="draft.textEffect.offsetY"
                       label="Vertical offset"
                       variant="outlined"
-                      density="comfortable"
+                      density="compact"
                       control-variant="hidden"
                       :min="-50"
                       :max="50"

@@ -547,6 +547,14 @@ const selectedItem = computed<ServiceItem | undefined>(
 const selectedItemFlatSlides = computed(() =>
   flatSlides.value.filter((s) => s.itemIndex === selectedItemIndex.value),
 )
+// PropertyInspector's own auto-advance override only applies to slide-ref/text-slide items; for
+// slide-ref specifically, this is what it falls back to (and shows as a hint) when no override
+// is set — see useLiveTransport.ts's liveItemAutoAdvance, which resolves the exact same way.
+const selectedItemLibraryAutoAdvance = computed(() => {
+  const item = selectedItem.value
+  if (item?.type !== 'slide-ref') return undefined
+  return slidesById.value.get(item.slideId)?.autoAdvance
+})
 
 const themeTargetLabels: Record<PresentationThemeTarget, string> = {
   songs: 'Songs',
@@ -1156,6 +1164,7 @@ const {
   flatSlides,
   mediaById,
   mediaUrlById,
+  slidesById,
   themesStore,
   settingsStore,
   isPresenting,
@@ -3020,6 +3029,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
           <PropertyInspector
             :service="service"
             :selected-item="selectedItem"
+            :library-auto-advance="selectedItemLibraryAutoAdvance"
             :theme-target-label="
               selectedThemeTarget ? themeTargetLabels[selectedThemeTarget] : undefined
             "

@@ -304,18 +304,21 @@ function formatDateRange(range: UnavailableDateRange): string {
             v-model="person.firstName"
             label="First Name"
             variant="outlined"
+            density="compact"
             hide-details
           />
           <v-text-field
             v-model="person.lastName"
             label="Last Name"
             variant="outlined"
+            density="compact"
             hide-details
           />
           <v-text-field
             v-model="person.preferredName"
             label="Preferred Name"
             variant="outlined"
+            density="compact"
             hint="Optional first name used in the app, such as Dan for Daniel."
             persistent-hint
           />
@@ -324,6 +327,7 @@ function formatDateRange(range: UnavailableDateRange): string {
             :items="titleSuggestions"
             label="Title"
             variant="outlined"
+            density="compact"
             hint="Optional formal title. Choose a suggestion or enter another title."
             persistent-hint
             clearable
@@ -333,6 +337,7 @@ function formatDateRange(range: UnavailableDateRange): string {
             label="Email Address"
             type="email"
             variant="outlined"
+            density="compact"
             hint="Used when sharing service assignments."
             persistent-hint
           />
@@ -410,6 +415,7 @@ function formatDateRange(range: UnavailableDateRange): string {
             label="Start Date"
             type="date"
             variant="outlined"
+            density="compact"
             hide-details
           />
           <v-text-field
@@ -417,6 +423,7 @@ function formatDateRange(range: UnavailableDateRange): string {
             label="End Date"
             type="date"
             variant="outlined"
+            density="compact"
             hide-details
           />
           <v-btn
@@ -522,7 +529,7 @@ function formatDateRange(range: UnavailableDateRange): string {
             label="Device Name"
             placeholder="e.g. iPhone or Tablet"
             variant="outlined"
-            density="comfortable"
+            density="compact"
             autofocus
             class="mb-2"
           />
@@ -531,7 +538,7 @@ function formatDateRange(range: UnavailableDateRange): string {
             :items="accessLevelOptions"
             label="Access Level"
             variant="outlined"
-            density="comfortable"
+            density="compact"
           />
         </template>
         <template v-else>

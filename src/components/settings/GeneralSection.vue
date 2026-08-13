@@ -27,7 +27,7 @@ function runSetupWizard() {
         v-model="machineSettings!.thisComputerName"
         label="Computer name"
         variant="outlined"
-        density="comfortable"
+        density="compact"
         hide-details
         class="settings-form-field"
       />

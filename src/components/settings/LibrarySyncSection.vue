@@ -395,7 +395,7 @@ async function pickLibraryFolder() {
           label="Library path"
           placeholder="C:\\WorshipStudio\\Library or ./Library"
           variant="outlined"
-          density="comfortable"
+          density="compact"
           :hint="
             libraryPathIsRelative
               ? 'Relative to the folder containing the Worship Studio executable.'
@@ -474,7 +474,7 @@ async function pickLibraryFolder() {
         v-model="tabletMediaMaxCachedFileSizeMb"
         label="Skip caching media files larger than (MB)"
         variant="outlined"
-        density="comfortable"
+        density="compact"
         control-variant="stacked"
         :min="1"
         hint="Files at or above this size are never downloaded to this device — still listed, just not previewable here."

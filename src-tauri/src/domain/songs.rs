@@ -254,6 +254,7 @@ mod tests {
                 role: None,
                 bulletin_label: None,
                 bulletin_note: None,
+                auto_advance: None,
             }],
             presenter_notes: None,
             assignments: None,

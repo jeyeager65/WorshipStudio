@@ -386,7 +386,7 @@ async function remove(person: Person) {
               <header class="person-card-header">
                 <span class="person-avatar">{{ initials(person) }}</span>
                 <div class="person-identity">
-                  <h3>{{ personLabel(person) }}</h3>
+                  <h3>{{ personDisplayName(person) }}</h3>
                   <p>
                     {{
                       [person.title, person.email || 'No email on file'].filter(Boolean).join(' · ')
@@ -721,6 +721,7 @@ async function remove(person: Person) {
   min-width: 0;
 }
 .people-grid {
+  container: people-grid / inline-size;
   display: flex;
   flex-direction: column;
   gap: 9px;
@@ -974,6 +975,11 @@ async function remove(person: Person) {
   .people-page {
     padding: 14px 12px 40px;
   }
+  /* The whole hero card (eyebrow, title, description, stats) is nice-to-have context, not
+     essential, and it eats space that matters more on a narrow/short screen. */
+  .people-hero {
+    display: none;
+  }
   .directory-toolbar,
   .directory-actions {
     align-items: stretch;
@@ -982,25 +988,22 @@ async function remove(person: Person) {
   .people-search {
     width: 100%;
   }
-  .people-summary {
-    width: 100%;
-  }
-  .summary-stat {
-    min-width: 0;
-    flex: 1;
-  }
-  .person-card-header {
-    flex-wrap: wrap;
-  }
+}
+/* Tied to .people-grid's own rendered width (a container query), not the window's — the
+   filters sidebar (permanent ≥980px) and the nav eat fixed space out of the window before the
+   card list ever sees it, so a window-width breakpoint can't reliably predict when a card
+   actually has room for its own content (same class of issue fixed on the Songs page). Hide,
+   not wrap: a wrapped availability badge floating under the name read as more confusing than
+   useful once it stopped being scannable at a glance. */
+@container people-grid (max-width: 520px) {
   .availability-state {
-    order: 2;
-    margin-left: 60px;
+    display: none;
   }
-  .person-roles {
-    padding-left: 16px;
-  }
+}
+@container people-grid (max-width: 380px) {
+  .person-roles,
   .person-no-roles {
-    padding-left: 16px;
+    display: none;
   }
 }
 </style>

@@ -165,7 +165,7 @@ onMounted(async () => {
             placeholder="Automatic"
             suffix=".local"
             variant="outlined"
-            density="comfortable"
+            density="compact"
             clearable
             maxlength="63"
             hide-details
@@ -185,7 +185,7 @@ onMounted(async () => {
             label="Port"
             placeholder="Automatic"
             variant="outlined"
-            density="comfortable"
+            density="compact"
             control-variant="stacked"
             :min="1024"
             :max="65535"
@@ -280,7 +280,7 @@ onMounted(async () => {
               label="Person"
               placeholder="Choose the device owner"
               variant="outlined"
-              density="comfortable"
+              density="compact"
               class="mb-2"
             />
             <v-text-field
@@ -288,7 +288,7 @@ onMounted(async () => {
               label="Device Name"
               placeholder="e.g. iPhone or Booth Tablet"
               variant="outlined"
-              density="comfortable"
+              density="compact"
               autofocus
               class="mb-2"
             />
@@ -297,7 +297,7 @@ onMounted(async () => {
               :items="accessLevelOptions"
               label="Access Level"
               variant="outlined"
-              density="comfortable"
+              density="compact"
             />
             <div class="text-caption text-medium-emphasis mb-2">
               <div><strong>View Only</strong> — mirrors the presentation screen, no controls.</div>

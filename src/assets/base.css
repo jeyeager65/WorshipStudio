@@ -50,3 +50,15 @@ body {
 .v-overlay__scrim {
   opacity: 0.6;
 }
+
+/* Switch/checkbox/radio labels use Vuetify's own .v-label sizing, which scales off the root
+   font-size above (18px, not Vuetify's assumed 16px) — that makes an inline toggle caption like
+   "Enabled" or "Show this footer" read noticeably oversized next to the rest of this app's
+   compact aesthetic (first noticed on the Slide Editor's own switches, but universal — Bulletin
+   Settings is the worst of it, being mostly a long list of toggles). Scoped to selection
+   controls specifically, not .v-label everywhere: a text field's floating label is a different
+   visual role (identifies an input box) from a switch's inline clickable caption, and only the
+   latter was ever reported as too large. */
+.v-selection-control .v-label {
+  font-size: 0.77rem;
+}

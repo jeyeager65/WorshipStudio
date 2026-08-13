@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useDisplay } from 'vuetify'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
@@ -40,6 +41,36 @@ const editorLoadError = ref('')
 const notFound = ref(false)
 const documentHistory = useDocumentHistory(item, 'presentation')
 const selectedSlideId = ref('')
+
+// Below Vuetify's mdAndDown (1280px) — same breakpoint ServiceWorkspaceView.vue's preview panel
+// already uses — the filmstrip and properties columns become toggleable overlay drawers instead
+// of permanent grid columns, so the canvas (what you're actually editing) can take the space
+// instead. A single ref gives the two mutual exclusivity for free, same pattern as
+// ServiceWorkspaceView's own openDrawer.
+const { mdAndDown: isEditorCompact } = useDisplay()
+type EditorDrawer = 'filmstrip' | 'properties'
+const openDrawer = ref<EditorDrawer | null>(null)
+function toggleEditorDrawer(drawer: EditorDrawer) {
+  openDrawer.value = openDrawer.value === drawer ? null : drawer
+}
+// Window widened back past the threshold (resize, rotation) — don't leave a drawer stuck open
+// once it's no longer a drawer at all.
+watch(isEditorCompact, (compact) => {
+  if (!compact) openDrawer.value = null
+})
+// Picking a different slide from the filmstrip drawer means "show me that slide" — close it so
+// the canvas is actually visible, same as ServiceWorkspaceView closing its order-list drawer
+// once an item's selected. The properties drawer has no equivalent: it's an active editing
+// surface you keep coming back to, not a one-shot picker.
+watch(selectedSlideId, () => {
+  if (openDrawer.value === 'filmstrip') openDrawer.value = null
+})
+function onEditorDrawerKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && openDrawer.value) openDrawer.value = null
+}
+onMounted(() => window.addEventListener('keydown', onEditorDrawerKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onEditorDrawerKeydown))
+
 const selectedElementId = ref('')
 const editingElementId = ref('')
 const showSafeArea = ref(true)
@@ -121,6 +152,32 @@ function updateBackgroundFocalPoint(x?: number, y?: number) {
 
 function centerBackground() {
   updateBackgroundFocalPoint(0.5, 0.5)
+}
+
+// Default auto-advance/looping timer for this library item, applied whenever it's added to a
+// service unless overridden there (PropertyInspector.vue) — see
+// notes/slide-auto-advance-plan.md. `loop` is independent of enabling a default at all: a
+// slideshow meant to play through once just as easily wants a default as one meant to loop.
+const DEFAULT_AUTO_ADVANCE_INTERVAL_SECONDS = 8
+
+function updateAutoAdvanceEnabled(enabled: boolean | null) {
+  if (!item.value) return
+  item.value.autoAdvance = enabled
+    ? {
+        intervalSeconds:
+          item.value.autoAdvance?.intervalSeconds ?? DEFAULT_AUTO_ADVANCE_INTERVAL_SECONDS,
+        loop: item.value.autoAdvance?.loop ?? false,
+      }
+    : undefined
+}
+function updateAutoAdvanceInterval(value: string) {
+  if (!item.value?.autoAdvance) return
+  const seconds = Number(value)
+  item.value.autoAdvance.intervalSeconds = Number.isFinite(seconds) ? Math.max(1, seconds) : 1
+}
+function updateAutoAdvanceLoop(value: boolean | null) {
+  if (!item.value?.autoAdvance) return
+  item.value.autoAdvance.loop = !!value
 }
 const shapeStrokeColor = computed({
   get: () => shapeElement.value?.stroke?.color ?? shapeElement.value?.fill ?? '#ffffff',
@@ -715,7 +772,11 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
     :back-to="{ path: '/library/slides' }"
     back-label="Back to Slides"
   />
-  <div v-else-if="item && scene" class="editor">
+  <div
+    v-else-if="item && scene"
+    class="editor"
+    :class="{ 'editor--compact': isEditorCompact }"
+  >
     <header class="editor-header">
       <div class="editor-heading">
         <v-btn to="/library/slides" variant="text" prepend-icon="mdi-arrow-left" class="back-button"
@@ -727,6 +788,28 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
         </div>
       </div>
       <div class="editor-summary">
+        <template v-if="isEditorCompact">
+          <v-btn
+            icon="mdi-filmstrip"
+            variant="text"
+            size="small"
+            :color="openDrawer === 'filmstrip' ? 'primary' : undefined"
+            :title="openDrawer === 'filmstrip' ? 'Close slides panel' : 'Open slides panel'"
+            :aria-label="openDrawer === 'filmstrip' ? 'Close slides panel' : 'Open slides panel'"
+            @click="toggleEditorDrawer('filmstrip')"
+          />
+          <v-btn
+            icon="mdi-tune-variant"
+            variant="text"
+            size="small"
+            :color="openDrawer === 'properties' ? 'primary' : undefined"
+            :title="openDrawer === 'properties' ? 'Close properties panel' : 'Open properties panel'"
+            :aria-label="
+              openDrawer === 'properties' ? 'Close properties panel' : 'Open properties panel'
+            "
+            @click="toggleEditorDrawer('properties')"
+          />
+        </template>
         <span
           ><v-icon icon="mdi-view-carousel-outline" size="17" />{{ item.slides.length }}
           {{ item.slides.length === 1 ? 'Slide' : 'Slides' }}</span
@@ -735,7 +818,10 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
       </div>
     </header>
 
-    <aside class="filmstrip">
+    <aside
+      class="filmstrip"
+      :class="{ 'drawer-open': isEditorCompact && openDrawer === 'filmstrip' }"
+    >
       <div class="presentation-details">
         <div class="panel-heading">Presentation Details</div>
         <v-text-field
@@ -756,6 +842,42 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
           hide-details
         />
       </div>
+
+      <div v-if="item.slides.length > 1" class="presentation-details">
+        <div class="panel-heading">Auto-Advance</div>
+        <v-switch
+          :model-value="!!item.autoAdvance"
+          label="Enabled"
+          color="primary"
+          density="compact"
+          hide-details
+          @update:model-value="updateAutoAdvanceEnabled"
+        />
+        <div v-if="item.autoAdvance" class="auto-advance-row">
+          <v-text-field
+            :model-value="item.autoAdvance.intervalSeconds"
+            label="Interval"
+            type="number"
+            min="1"
+            max="99"
+            suffix="sec"
+            variant="outlined"
+            density="compact"
+            hide-details
+            class="interval-field"
+            @update:model-value="updateAutoAdvanceInterval"
+          />
+          <v-switch
+            :model-value="item.autoAdvance.loop"
+            label="Loop"
+            color="primary"
+            density="compact"
+            hide-details
+            @update:model-value="updateAutoAdvanceLoop"
+          />
+        </div>
+      </div>
+
       <div class="filmstrip-heading">
         <span>Slides</span>
         <strong>{{ item.slides.length }}</strong>
@@ -809,8 +931,7 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
         Presentation changes were not saved: {{ store.mutationError }}
       </v-alert>
       <div class="toolbar">
-        <div class="toolbar-group">
-          <span class="toolbar-label">Add</span>
+        <div class="toolbar-group add-group add-group--full">
           <v-btn prepend-icon="mdi-format-text" variant="tonal" @click="addText">Text</v-btn>
           <v-btn prepend-icon="mdi-image-outline" variant="tonal" @click="openMediaPicker('add')"
             >Image</v-btn
@@ -840,71 +961,122 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
             >Countdown</v-btn
           >
         </div>
-        <v-divider vertical class="toolbar-divider" />
+        <!-- Same set of actions as above, flattened into one menu (including Shape's own
+             variants — only 4, not worth a nested submenu) once there's no room for five
+             separate buttons. Both this and add-group--full above are always in the DOM; a
+             container query (not a JS width breakpoint) picks which one actually shows — see
+             the CSS. That's deliberate: the toolbar's *own* available width doesn't track the
+             window width in a simple way, since the filmstrip/properties side columns eat a
+             fixed ~570px only while they're still permanent grid columns (above
+             isEditorCompact) and give it all back once they become drawers — a single window-
+             width threshold can't represent that non-monotonic relationship, but a container
+             query measuring the toolbar's actual rendered width naturally does. -->
+        <div class="toolbar-group add-group add-group--compact">
+          <v-menu>
+            <template #activator="{ props }">
+              <v-btn v-bind="props" prepend-icon="mdi-plus" append-icon="mdi-menu-down" variant="tonal">
+                Add
+              </v-btn>
+            </template>
+            <v-list density="compact">
+              <v-list-item title="Text" prepend-icon="mdi-format-text" @click="addText" />
+              <v-list-item
+                title="Image"
+                prepend-icon="mdi-image-outline"
+                @click="openMediaPicker('add')"
+              />
+              <v-list-item
+                v-for="option in shapeOptions"
+                :key="option.value"
+                :title="option.title"
+                :prepend-icon="option.icon"
+                @click="addShape(option.value)"
+              />
+              <v-list-item title="QR Code" prepend-icon="mdi-qrcode" @click="addQr" />
+              <v-list-item title="Countdown" prepend-icon="mdi-timer-outline" @click="addCountdown" />
+            </v-list>
+          </v-menu>
+        </div>
         <div v-if="canvaConfigured" class="toolbar-group">
-          <span class="toolbar-label">Canva</span>
-          <v-btn prepend-icon="mdi-palette-outline" variant="tonal" @click="openCanvaDialog">
-            Canva
-          </v-btn>
-          <v-btn
-            v-if="selectedSlide?.source.type === 'canva'"
-            prepend-icon="mdi-open-in-new"
-            variant="text"
-            @click="openSelectedCanvaDesign"
-          >
-            Edit in Canva
-          </v-btn>
-          <v-btn
-            v-if="selectedSlide?.source.type === 'canva'"
-            prepend-icon="mdi-cloud-refresh-outline"
-            variant="tonal"
-            @click="refreshSelectedCanvaDesign"
-          >
-            Refresh from Canva
-          </v-btn>
+          <v-menu>
+            <template #activator="{ props }">
+              <v-btn
+                v-bind="props"
+                prepend-icon="mdi-palette-outline"
+                append-icon="mdi-menu-down"
+                variant="tonal"
+              >
+                Canva
+              </v-btn>
+            </template>
+            <v-list density="compact">
+              <v-list-item
+                title="Import"
+                prepend-icon="mdi-palette-outline"
+                @click="openCanvaDialog"
+              />
+              <v-list-item
+                v-if="selectedSlide?.source.type === 'canva'"
+                title="Edit"
+                prepend-icon="mdi-open-in-new"
+                @click="openSelectedCanvaDesign"
+              />
+              <v-list-item
+                v-if="selectedSlide?.source.type === 'canva'"
+                title="Refresh"
+                prepend-icon="mdi-cloud-refresh-outline"
+                @click="refreshSelectedCanvaDesign"
+              />
+            </v-list>
+          </v-menu>
         </div>
-        <v-divider v-if="canvaConfigured" vertical class="toolbar-divider" />
-        <div class="toolbar-group toolbar-group--icons">
-          <span class="toolbar-label">Arrange</span>
-          <v-btn
-            icon="mdi-arrange-bring-forward"
-            title="Bring Forward"
-            variant="text"
-            :disabled="!selectedElement"
-            @click="moveLayer('forward')"
-          />
-          <v-btn
-            icon="mdi-arrange-bring-to-front"
-            title="Bring to Front"
-            variant="text"
-            :disabled="!selectedElement"
-            @click="moveLayer('front')"
-          />
-          <v-btn
-            icon="mdi-arrange-send-backward"
-            title="Send Backward"
-            variant="text"
-            :disabled="!selectedElement"
-            @click="moveLayer('backward')"
-          />
-          <v-btn
-            icon="mdi-arrange-send-to-back"
-            title="Send to Back"
-            variant="text"
-            :disabled="!selectedElement"
-            @click="moveLayer('back')"
-          />
+        <div class="toolbar-group">
+          <v-menu>
+            <template #activator="{ props }">
+              <v-btn
+                v-bind="props"
+                prepend-icon="mdi-arrange-bring-forward"
+                append-icon="mdi-menu-down"
+                variant="tonal"
+                :disabled="!selectedElement"
+              >
+                Arrange
+              </v-btn>
+            </template>
+            <v-list density="compact">
+              <v-list-item
+                title="Bring Forward"
+                prepend-icon="mdi-arrange-bring-forward"
+                @click="moveLayer('forward')"
+              />
+              <v-list-item
+                title="Bring to Front"
+                prepend-icon="mdi-arrange-bring-to-front"
+                @click="moveLayer('front')"
+              />
+              <v-list-item
+                title="Send Backward"
+                prepend-icon="mdi-arrange-send-backward"
+                @click="moveLayer('backward')"
+              />
+              <v-list-item
+                title="Send to Back"
+                prepend-icon="mdi-arrange-send-to-back"
+                @click="moveLayer('back')"
+              />
+            </v-list>
+          </v-menu>
         </div>
-        <v-spacer />
+      </div>
+      <div class="canvas-scroll">
         <v-switch
           v-model="showSafeArea"
           label="Safe Area"
           hide-details
           density="compact"
           color="primary"
+          class="safe-area-toggle"
         />
-      </div>
-      <div class="canvas-scroll">
         <div ref="canvasHost" class="canvas-host">
           <SlideSceneRenderer
             :scene="scene"
@@ -946,7 +1118,10 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
       </div>
     </main>
 
-    <aside class="properties">
+    <aside
+      class="properties"
+      :class="{ 'drawer-open': isEditorCompact && openDrawer === 'properties' }"
+    >
       <div class="inspector-heading">
         <div class="panel-heading">Properties</div>
         <h2>
@@ -1397,11 +1572,15 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
           @click="scene.background.mediaId = undefined"
           >Remove Background</v-btn
         >
-        <p class="text-caption text-medium-emphasis mt-4">
-          Blue marks the full-height 16:10 crop; yellow marks the full-height 4:3 crop.
-        </p>
       </template>
     </aside>
+
+    <div
+      v-if="isEditorCompact"
+      class="drawer-backdrop"
+      :class="{ 'drawer-backdrop--visible': openDrawer !== null }"
+      @click="openDrawer = null"
+    />
 
     <MediaPickerDialog v-model="mediaDialog" @select="onMediaPicked" />
     <CanvaImportDialog
@@ -1426,6 +1605,61 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
   overflow-x: auto;
   overflow-y: hidden;
   background: rgb(var(--v-theme-background));
+}
+/* Below Vuetify's mdAndDown (~1280px, matching isEditorCompact) the filmstrip and properties
+   columns become toggleable overlay drawers instead of permanent grid columns, so the canvas
+   (what's actually being edited) gets the full width — same pattern as
+   ServiceWorkspaceView.vue's order-list/preview-panel drawers. The header row's own height
+   (78px, grid-template-rows above) is unchanged here, so the drawers' `top` can stay a plain
+   constant instead of needing to measure anything. Slid on/off via position:absolute +
+   transform, which never changes either panel's own layout box. */
+.editor--compact {
+  grid-template-columns: minmax(0, 1fr);
+  position: relative;
+  overflow: hidden;
+}
+.editor--compact .filmstrip,
+.editor--compact .properties {
+  position: absolute;
+  top: 78px;
+  bottom: 0;
+  z-index: 6;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  transition: transform 0.22s ease;
+}
+.editor--compact .filmstrip {
+  left: 0;
+  width: min(280px, 100%);
+  border-right: none;
+  transform: translateX(-100%);
+}
+.editor--compact .filmstrip.drawer-open {
+  transform: translateX(0);
+}
+.editor--compact .properties {
+  right: 0;
+  width: min(340px, 100%);
+  border-left: none;
+  transform: translateX(100%);
+}
+.editor--compact .properties.drawer-open {
+  transform: translateX(0);
+}
+.drawer-backdrop {
+  position: absolute;
+  top: 78px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.drawer-backdrop--visible {
+  opacity: 1;
+  pointer-events: auto;
 }
 .editor-header {
   z-index: 3;
@@ -1453,8 +1687,7 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
 }
 .editor-eyebrow,
 .panel-heading,
-.property-section-title,
-.toolbar-label {
+.property-section-title {
   color: rgba(var(--v-theme-on-surface), 0.48);
   font-size: 0.68rem;
   font-weight: 700;
@@ -1639,7 +1872,10 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
 .properties :deep(.v-input) {
   margin-bottom: 4px;
 }
-.properties :deep(.v-label) {
+.presentation-details :deep(.v-label),
+.properties :deep(.v-label),
+.toolbar :deep(.v-label),
+.safe-area-toggle :deep(.v-label) {
   font-size: 0.77rem;
 }
 .background-position-controls {
@@ -1710,6 +1946,7 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
   margin: 8px 12px 0;
 }
 .toolbar {
+  container: editor-toolbar / inline-size;
   display: flex;
   flex-wrap: wrap;
   row-gap: 6px;
@@ -1720,43 +1957,63 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   background: rgba(var(--v-theme-surface), 0.9);
 }
+/* .toolbar-group (two-class selector, so it reliably outranks that single-class rule below
+   regardless of source order) sets display:flex on every toolbar group including this one —
+   without matching that specificity here, .toolbar-group's own rule would win the cascade tie
+   and this would never actually hide. */
+.toolbar-group.add-group--compact {
+  display: none;
+}
+/* The five Add buttons plus a conditional Canva button plus Arrange need roughly ~770px in the
+   worst case (Canva present) before anything gets cut off — 820px leaves some margin.
+   Deliberately a container query against the toolbar's own rendered width, not a JS window-width
+   breakpoint: see the template comment on add-group--compact for why a single window-width
+   number can't represent this correctly. */
+@container editor-toolbar (max-width: 820px) {
+  .toolbar-group.add-group--full {
+    display: none;
+  }
+  .toolbar-group.add-group--compact {
+    display: flex;
+  }
+}
 .toolbar-group {
   display: flex;
   align-items: center;
   gap: 5px;
-}
-.toolbar-label {
-  margin-right: 2px;
 }
 .toolbar-group :deep(.v-btn) {
   font-size: 0.72rem;
   letter-spacing: 0;
   text-transform: none;
 }
-.toolbar-group--icons :deep(.v-btn) {
-  width: 34px;
-  height: 34px;
-}
-.toolbar-divider {
-  align-self: stretch;
-  height: auto;
-  margin: 5px 0;
-  opacity: 0.62;
-}
-/* Without this, the trailing v-spacer squeezing against wrapped/narrow content could compress
-   the Safe Area switch down to almost nothing, wrapping its label one letter per line instead
-   of just moving the whole control to its own row. */
-.toolbar :deep(.v-switch) {
-  flex: none;
-  white-space: nowrap;
-}
 .canvas-scroll {
+  position: relative;
   display: grid;
   flex: 1;
   place-items: center;
   padding: 26px;
   overflow: auto;
   container-type: size;
+}
+/* Floats over the top-right corner of the editing area rather than living in the toolbar —
+   it's a view option for the canvas itself, not an action, so it reads more like a setting on
+   what you're looking at than another toolbar button. Same chip treatment as .editor-summary
+   span (border + translucent surface, not a stark black pill) so it reads as part of this app's
+   own UI rather than a foreign overlay — still enough contrast to stay legible over whatever's
+   actually on the slide beneath it. */
+.safe-area-toggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  flex: none;
+  padding: 0 12px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-radius: 8px;
+  background: rgba(var(--v-theme-surface), 0.92);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  white-space: nowrap;
 }
 .canvas-host {
   position: relative;
@@ -1770,23 +2027,25 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
 .property-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  align-items: center;
   gap: 8px;
 }
+.auto-advance-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.interval-field {
+  flex: none;
+  /* Value is never more than 2 digits, but wide enough for the "Interval" label itself to show
+     in full rather than truncating — a fixed width instead of stretching to match the row. */
+  width: 108px;
+}
+/* Independent of the drawer collapse above (a plain CSS breakpoint, not tied to isEditorCompact)
+   — trims the toolbar down before the side columns themselves become drawers. */
 @media (max-width: 1280px) {
-  .editor {
-    grid-template-columns: 225px minmax(160px, 1fr) 290px;
-  }
-  .toolbar-label,
   .editor-summary span:last-child {
     display: none;
-  }
-}
-/* Below this, even the narrower side columns above don't leave enough room for a usable
-   canvas — shrink them further rather than letting the middle column's floor force a
-   horizontal scrollbar this early. */
-@media (max-width: 820px) {
-  .editor {
-    grid-template-columns: 190px minmax(160px, 1fr) 250px;
   }
 }
 </style>

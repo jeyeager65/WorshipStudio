@@ -80,6 +80,7 @@ async function removeSelectedGroup() {
 <template>
   <div class="role-workspace">
     <aside class="role-directory">
+      <div class="directory-heading">Role Categories</div>
       <div class="directory-add">
         <v-text-field
           v-model="newGroupName"
@@ -124,7 +125,7 @@ async function removeSelectedGroup() {
 
     <section v-if="selectedGroup" class="role-editor">
       <header class="editor-heading">
-        <div>
+        <div class="editor-heading-copy">
           <span>Role Category</span>
           <h3>{{ selectedGroup.name || 'Untitled category' }}</h3>
         </div>
@@ -144,7 +145,7 @@ async function removeSelectedGroup() {
           :model-value="selectedGroup.name"
           label="Category name"
           variant="outlined"
-          density="comfortable"
+          density="compact"
           hide-details
           @update:model-value="renameGroup"
         />
@@ -295,9 +296,31 @@ async function removeSelectedGroup() {
   font-size: 0.72rem;
   text-align: center;
 }
+/* Same eyebrow treatment as .editor-heading span on the detail panel below — labels this as
+   its own distinct section rather than leaving "Role Category" (that other eyebrow) as the
+   first bold text on the page, which read like it was introducing the whole page instead of
+   just the currently-selected category once the page's own title hides at narrow widths. */
+.directory-heading {
+  /* Top padding matches .role-editor's own 24px (not the 12px .directory-add/.category-list
+     below use) so this eyebrow lines up vertically with .editor-heading span's "Role Category"
+     eyebrow next to it — misaligned before at widths where the two panels sit side by side.
+     Left padding matches .directory-add's own 12px instead, not .role-editor's — this heading
+     needs to align with the input directly below it in the *same* column, not the other
+     column's unrelated inset. */
+  padding: 24px 12px 0;
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
 .directory-add {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
+  /* Without this, grid's default stretch forces the compact-density field to match the "+"
+     icon button's own (taller) natural height instead of its own — same fix as .role-add-row
+     below, and why "New category" looked taller than "New role" despite both being compact. */
+  align-items: center;
   gap: 8px;
   padding: 12px;
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
@@ -313,6 +336,15 @@ async function removeSelectedGroup() {
   gap: 16px;
   padding-bottom: 18px;
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+}
+/* Without this, .editor-heading's align-items:center vertically centers this against the taller
+   Remove button next to it, pushing "Role Category" down a few px from the row's actual top —
+   which no longer matched .directory-heading's own clean, un-centered top edge once that was
+   added. Pinned to the top instead, deterministically, rather than compensating with a guessed
+   padding value on the other side that would only be right by coincidence. The Remove button
+   itself is untouched — still centered against the row via .editor-heading's own align-items. */
+.editor-heading-copy {
+  align-self: flex-start;
 }
 .editor-heading span {
   color: rgb(var(--v-theme-primary));
@@ -352,6 +384,11 @@ async function removeSelectedGroup() {
 .role-add-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
+  /* Without this, grid's default stretch forces the "Add Role" button taller than its own
+     natural height to match the row — its icon/label aren't centered within that extra height,
+     reading as "the button sits slightly high". Centering both children at their own natural
+     size fixes that and keeps the compact-density field from being stretched too. */
+  align-items: center;
   gap: 8px;
   margin-bottom: 11px;
 }

@@ -1,4 +1,5 @@
 import type { Arrangement, SongBlock } from './song'
+import type { AutoAdvanceConfig } from './library'
 
 /** One passage a sermon references — a sermon may cite several beyond its main one; only the
  *  main passage (Sermon.mainPassageId) is printed in the Order of Worship, but every passage
@@ -78,6 +79,17 @@ export type ServiceItem = ServiceItemContent & {
    *  children up to grade 4 can be dismissed to a children's lesson)") — the operator types the
    *  full text themselves; nothing here is auto-punctuated. */
   bulletinNote?: string
+  /** Optional auto-advance/looping timer override for this item's own generated slides (see
+   *  notes/slide-auto-advance-plan.md) — only meaningful for `text-slide`/`slide-ref` items
+   *  (the UI only exposes it there); ignored by every other type, including song/scripture/
+   *  sermon, which are normally paced live by whoever's leading them rather than a timer. For a
+   *  `slide-ref` item specifically, an absent value here falls back to the referenced
+   *  SlideLibraryItem's own `autoAdvance` default (useLiveTransport.ts); a `text-slide` has no
+   *  library item to fall back to, so it's override-only. Live transport advances through *this
+   *  item's own* flattened slides on this interval instead of waiting for the operator, gated on
+   *  the live position staying within this item; `loop` restarts from the item's first slide
+   *  instead of stopping once the timer reaches the item's last slide. */
+  autoAdvance?: AutoAdvanceConfig
 }
 
 export interface RoleAssignment {

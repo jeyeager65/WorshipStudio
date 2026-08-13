@@ -937,6 +937,7 @@ function finishSelection() {
   min-width: 0;
 }
 .song-list {
+  container: song-list / inline-size;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1130,10 +1131,33 @@ function finishSelection() {
   .song-search {
     width: min(520px, 100%);
   }
+}
+/* .song-card's own responsive columns are keyed to .song-list's actual rendered width (a
+   container query), not the window's — the window can be well above any of the @media
+   breakpoints elsewhere on this page while the list column itself is still narrow, since the
+   nav (224px, permanent ≥960px window width) and the filters sidebar (230px, permanent
+   ≥880px window width — see .songs-directory-body below) both eat fixed space out of the
+   window before the list ever sees it. A plain window-width @media query can't represent that:
+   it would need to know whether the nav is a rail or overlay and whether the filters are a
+   sidebar or a bar, not just the raw window width. Thresholds below are picked from the card's
+   own content (see each rule). */
+@container song-list (max-width: 820px) {
+  /* Below the space needed for the full 5-column layout (icon + identity-at-least-220px +
+     280px metadata + 175px usage + button, plus gaps) to avoid squeezing the identity column
+     past readability. */
   .song-card {
     grid-template-columns: 44px minmax(180px, 1fr) 280px 36px;
   }
   .song-usage {
+    display: none;
+  }
+}
+@container song-list (max-width: 600px) {
+  /* Below the space needed for even the reduced 4-column layout above. */
+  .song-card {
+    grid-template-columns: 44px minmax(0, 1fr) 36px;
+  }
+  .song-metadata {
     display: none;
   }
 }
@@ -1180,18 +1204,10 @@ function finishSelection() {
   .songs-page {
     padding: 14px 12px 40px;
   }
-  .songs-summary {
-    width: 100%;
-  }
-  .summary-stat {
-    min-width: 0;
-    flex: 1;
-  }
-  .song-card {
-    grid-template-columns: 44px minmax(0, 1fr) 36px;
-  }
-  .song-metadata {
-    grid-column: 2 / -1;
+  /* The whole hero card (eyebrow, title, description, stats) is nice-to-have context, not
+     essential, and it eats a lot of vertical space that matters more on a narrow/short screen. */
+  .songs-hero {
+    display: none;
   }
 }
 </style>
