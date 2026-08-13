@@ -27,6 +27,10 @@ import SlideSceneRenderer from '@/components/slides/SlideSceneRenderer.vue'
  * presentation window plays media video audio through the room's own sound system) — the
  * Remote Control mirror is the one caller that passes true, to avoid feedback/echo from a
  * phone speaker near the platform (see RemoteMirror.vue's own tap-to-unmute affordance).
+ * `transition`, when true, fades across a content change instead of cutting instantly — see
+ * displayedContent below. Only PresentationView.vue/WebAudienceView.vue (the actual
+ * audience-facing output) pass it; the preview thumbnails and Remote mirror leave it off since
+ * an operator watching those wants immediate feedback, not a delayed transition.
  */
 const props = withDefaults(
   defineProps<{
@@ -35,8 +39,63 @@ const props = withDefaults(
     videoAutoplay?: boolean
     videoControls?: boolean
     videoMuted?: boolean
+    transition?: boolean
   }>(),
-  { videoAutoplay: true, videoControls: true, videoMuted: false },
+  { videoAutoplay: true, videoControls: true, videoMuted: false, transition: false },
+)
+
+// Every computed/template expression below reads displayedContent, never props.content
+// directly — when `transition` is on, it deliberately lags behind the real prop by up to
+// FADE_MS while .slide-root fades to invisible, so the actual content swap only ever happens
+// once nothing of the old slide is visible (a clean cut hidden inside the fade, never a jump
+// mid-fade, and never two videos/background audio tracks briefly overlapping). When
+// `transition` is off (the default), it mirrors props.content immediately — identical to this
+// component's behavior before transitions existed. See notes/slide-transitions-plan.md.
+const FADE_MS = 125
+// Bound into <style>'s v-bind() below so the background crossfade's CSS duration can never
+// drift out of sync with the JS constant driving everything else.
+const fadeDurationCss = `${FADE_MS}ms`
+const displayedContent = ref<LiveSlideContent | undefined>(props.content)
+const fading = ref(false)
+let fadeTimer: ReturnType<typeof setTimeout> | undefined
+
+// A back-to-back repeat of the same song block (e.g. three Choruses in a row) produces a fresh
+// LiveSlideContent object with every field identical except `repeatLabel` itself (see
+// flattenService.ts's repeat-run handling) — nothing about it actually looks different, so
+// fading would just be a pointless flicker. JSON.stringify is fine here (called once per slide
+// change, never per frame, on a small object always built the same shape by buildLiveContent),
+// and both sides come from that same function, so key order can't drift between calls.
+function contentSignature(content: LiveSlideContent | undefined): string {
+  if (!content) return ''
+  const rest: Partial<LiveSlideContent> = { ...content }
+  delete rest.repeatLabel
+  return JSON.stringify(rest)
+}
+
+watch(
+  () => props.content,
+  (next) => {
+    if (!props.transition) {
+      displayedContent.value = next
+      return
+    }
+    if (contentSignature(next) === contentSignature(displayedContent.value)) {
+      // Only the repeat counter (if anything) is actually different — update immediately so
+      // that still moves, without fading content that never visually changed.
+      displayedContent.value = next
+      return
+    }
+    // A change arriving mid-fade (rapid operator clicks) just restarts the wait rather than
+    // stacking timers — the intermediate content is never shown either way, only whatever's
+    // current once things settle.
+    if (fadeTimer) clearTimeout(fadeTimer)
+    fading.value = true
+    fadeTimer = setTimeout(() => {
+      displayedContent.value = next
+      fading.value = false
+      fadeTimer = undefined
+    }, FADE_MS)
+  },
 )
 
 // Song/scripture/text-slide/slide-ref items — the ones rendered by the plain "slide-text"
@@ -44,11 +103,11 @@ const props = withDefaults(
 // don't get a header/footer. Matches that branch's v-else-if fallthrough condition exactly.
 const isTextSlide = computed(
   () =>
-    !!props.content &&
-    !props.content.backgroundOnly &&
-    !props.content.scene &&
-    !props.content.wayfindingBooks &&
-    !props.content.media,
+    !!displayedContent.value &&
+    !displayedContent.value.backgroundOnly &&
+    !displayedContent.value.scene &&
+    !displayedContent.value.wayfindingBooks &&
+    !displayedContent.value.media,
 )
 
 // Song slides override the footer with the song's own collection citation instead of the
@@ -56,21 +115,32 @@ const isTextSlide = computed(
 // to '', meaning "no collection, hide the footer") for song slides, so undefined here means
 // "not a song slide, keep showing subLabel" for every other text-slide type.
 const footerDisplayText = computed(() =>
-  props.content?.footerText !== undefined ? props.content.footerText : props.content?.subLabel,
+  displayedContent.value?.footerText !== undefined
+    ? displayedContent.value.footerText
+    : displayedContent.value?.subLabel,
 )
 
 // Background Only is a presentation override, not a mutation of the saved scene. Advanced
 // slides keep their configured color/image background while temporarily omitting every scene
 // element; the other foreground-only slide types naturally fall back to the black canvas.
 const renderedScene = computed(() => {
-  const scene = props.content?.scene
-  if (!scene || !props.content?.backgroundOnly) return scene
+  const scene = displayedContent.value?.scene
+  if (!scene || !displayedContent.value?.backgroundOnly) return scene
   return { ...scene, elements: [] }
 })
 
 const rootStyle = computed(() => {
-  const theme = props.content?.presentationTheme
+  const theme = displayedContent.value?.presentationTheme
   return {
+    // Covers the solid-color background case (no theme backgroundMedia): a CSS transition on
+    // background-color only ever animates when the color value itself actually changes, so a
+    // shared color across an item's slides is naturally left untouched — same "don't fade
+    // unless it changes" rule the background media Transition below enforces, for free, with
+    // no JS comparison needed here. Always present (not just while `transition` is on) so the
+    // duration can never drift out of sync with FADE_MS — harmless when `transition` is off,
+    // since these callers never receive a content change with a different backgroundColor
+    // faster than the color itself would just cut anyway.
+    transition: `background-color ${FADE_MS}ms ease`,
     ...(props.fixedSize
       ? { width: `${props.fixedSize.width}px`, height: `${props.fixedSize.height}px` }
       : {}),
@@ -118,10 +188,10 @@ function measureTextWidthPx(text: string, font: string): number {
 }
 
 function fitAutoSizedText() {
-  const range = props.content?.fontRange
+  const range = displayedContent.value?.fontRange
   const root = rootRef.value
   const text = textRef.value
-  const rawText = props.content?.text ?? ''
+  const rawText = displayedContent.value?.text ?? ''
   if (!range || !root || !text) {
     fittedFontSizePx.value = undefined
     displayText.value = rawText
@@ -134,7 +204,7 @@ function fitAutoSizedText() {
   let hi = Math.floor(range.maxPx)
   let best = lo
 
-  if (props.content?.lineWrap) {
+  if (displayedContent.value?.lineWrap) {
     const maxWidthPx = root.clientWidth * 0.9 // matches .slide-content's max-width: 90cqw
     const computed = getComputedStyle(text)
     const rawLines = rawText.split('\n')
@@ -202,10 +272,10 @@ function fitAutoSizedText() {
 watch(
   () =>
     [
-      props.content?.text,
-      props.content?.fontRange,
-      props.content?.lineWrap,
-      props.content?.itemLabel,
+      displayedContent.value?.text,
+      displayedContent.value?.fontRange,
+      displayedContent.value?.lineWrap,
+      displayedContent.value?.itemLabel,
     ] as const,
   () => nextTick(fitAutoSizedText),
   { flush: 'post' },
@@ -235,6 +305,7 @@ onMounted(() => {
 onUnmounted(() => {
   resizeObserver?.disconnect()
   document.fonts.removeEventListener('loadingdone', onFontsLoadingDone)
+  if (fadeTimer) clearTimeout(fadeTimer)
 })
 
 // Wayfinding (reference-only scripture, spec section 1): books further from the current one
@@ -246,11 +317,11 @@ onUnmounted(() => {
 // isn't always at the full configured radius (e.g. Revelation has no books after it).
 function bookStyle(distance: number) {
   const level = Math.abs(distance)
-  const maxPx = props.content?.wayfindingMaxFontSizePx ?? 150
-  const minPx = props.content?.wayfindingMinFontSizePx ?? 56
+  const maxPx = displayedContent.value?.wayfindingMaxFontSizePx ?? 150
+  const minPx = displayedContent.value?.wayfindingMinFontSizePx ?? 56
   const radius = Math.max(
     1,
-    ...(props.content?.wayfindingBooks ?? []).map((b) => Math.abs(b.distance)),
+    ...(displayedContent.value?.wayfindingBooks ?? []).map((b) => Math.abs(b.distance)),
   )
   const t = level / radius
   const opacities = [0.55, 0.3]
@@ -265,8 +336,8 @@ function bookStyle(distance: number) {
 // portion, sized by OLD_TESTAMENT_FRACTION and the current reference's overall bibleProgress.
 // Always sums to exactly 1.
 const progressSegments = computed(() => {
-  if (props.content?.backgroundOnly) return undefined
-  const bibleProgress = props.content?.bibleProgress
+  if (displayedContent.value?.backgroundOnly) return undefined
+  const bibleProgress = displayedContent.value?.bibleProgress
   if (bibleProgress === undefined) return undefined
   return {
     otFilled: Math.min(bibleProgress, OLD_TESTAMENT_FRACTION),
@@ -279,161 +350,202 @@ const progressSegments = computed(() => {
 
 <template>
   <div ref="rootRef" class="slide-root" :style="rootStyle">
-    <img
-      v-if="content?.presentationTheme?.backgroundMedia?.kind === 'image'"
-      :key="content.presentationTheme.backgroundMedia.url"
-      :src="content.presentationTheme.backgroundMedia.url"
-      class="theme-background"
-      :style="{ objectFit: content.presentationTheme.backgroundMedia.fit }"
-      alt=""
-    />
-    <video
-      v-else-if="content?.presentationTheme?.backgroundMedia?.kind === 'video'"
-      :key="content.presentationTheme.backgroundMedia.url"
-      :src="content.presentationTheme.backgroundMedia.url"
-      class="theme-background"
-      :style="{ objectFit: content.presentationTheme.backgroundMedia.fit }"
-      :autoplay="videoAutoplay"
-      loop
-      muted
-      playsinline
-    />
-    <SlideSceneRenderer
-      v-if="renderedScene"
-      :scene="renderedScene"
-      :service-date-time="content?.serviceDateTime"
-    />
-    <div v-else-if="content?.wayfindingBooks && !content.backgroundOnly" class="wayfinding-content">
-      <div
-        v-for="book in content.wayfindingBooks.filter((b) => b.distance < 0)"
-        :key="book.name"
-        class="wayfinding-book"
-        :style="bookStyle(book.distance)"
-      >
-        {{ book.name }}
-      </div>
-      <div
-        class="wayfinding-reference"
-        :style="{ fontSize: `${content.wayfindingMaxFontSizePx ?? 150}px` }"
-      >
-        {{ content.itemLabel }}
-      </div>
-      <div
-        v-for="book in content.wayfindingBooks.filter((b) => b.distance > 0)"
-        :key="book.name"
-        class="wayfinding-book"
-        :style="bookStyle(book.distance)"
-      >
-        {{ book.name }}
-      </div>
-    </div>
-    <div v-if="progressSegments" class="wayfinding-progress-container">
-      <div class="wayfinding-progress-labels">
-        <span class="wayfinding-progress-label" style="color: #d4af37">Old Testament</span>
-        <span class="wayfinding-progress-label" style="color: #4fa8d8">New Testament</span>
-      </div>
-      <!-- A sibling of both the labels and the bar-wrapper (not nested in either) so its height
-           can span from near the label text down through the bar — its left position is still
-           a percentage of the same width as the bar below, since neither it nor the bar-wrapper
-           add any side padding/margin. -->
-      <div
-        class="wayfinding-progress-boundary"
-        :style="{ left: `${OLD_TESTAMENT_FRACTION * 100}%` }"
+    <!-- Its own, independent fade — keyed by the background's own identity (kind+url), so
+         Vue only actually triggers enter/leave when the background itself changes; navigating
+         between other slides of the same item that share one background leaves this element
+         untouched (not even patched), never dimming. No `mode` (unlike displayedContent's own
+         swap-at-the-trough timing below): the old and new background overlap and cross-dissolve
+         directly into each other rather than fading through black/the theme color first —
+         safe to let them briefly overlap because a theme background video is always `muted`
+         below, so there's no audio to double up the way an unmuted foreground media video
+         could. Disabled (no name = no matching CSS = an instant cut) whenever `transition` is
+         off, matching every other caller of this component. -->
+    <Transition :name="transition ? 'content-crossfade' : ''">
+      <img
+        v-if="displayedContent?.presentationTheme?.backgroundMedia?.kind === 'image'"
+        :key="`image:${displayedContent.presentationTheme.backgroundMedia.url}`"
+        :src="displayedContent.presentationTheme.backgroundMedia.url"
+        class="theme-background"
+        :style="{ objectFit: displayedContent.presentationTheme.backgroundMedia.fit }"
+        alt=""
       />
-      <div class="wayfinding-progress-bar-wrapper">
-        <div class="wayfinding-progress">
+      <video
+        v-else-if="displayedContent?.presentationTheme?.backgroundMedia?.kind === 'video'"
+        :key="`video:${displayedContent.presentationTheme.backgroundMedia.url}`"
+        :src="displayedContent.presentationTheme.backgroundMedia.url"
+        class="theme-background"
+        :style="{ objectFit: displayedContent.presentationTheme.backgroundMedia.fit }"
+        :autoplay="videoAutoplay"
+        loop
+        muted
+        playsinline
+      />
+    </Transition>
+    <!-- Everything but the background above lives in here so the fade driven by `fading`
+         (see displayedContent in script) only ever dims the foreground — the background keeps
+         playing/showing underneath untouched unless its own Transition above decides it
+         actually changed. -->
+    <div class="slide-foreground" :class="{ 'slide-foreground--fading': fading }">
+      <SlideSceneRenderer
+        v-if="renderedScene"
+        :scene="renderedScene"
+        :service-date-time="displayedContent?.serviceDateTime"
+      />
+      <div
+        v-else-if="displayedContent?.wayfindingBooks && !displayedContent.backgroundOnly"
+        class="wayfinding-content"
+      >
+        <div
+          v-for="book in displayedContent.wayfindingBooks.filter((b) => b.distance < 0)"
+          :key="book.name"
+          class="wayfinding-book"
+          :style="bookStyle(book.distance)"
+        >
+          {{ book.name }}
+        </div>
+        <div
+          class="wayfinding-reference"
+          :style="{ fontSize: `${displayedContent.wayfindingMaxFontSizePx ?? 150}px` }"
+        >
+          {{ displayedContent.itemLabel }}
+        </div>
+        <div
+          v-for="book in displayedContent.wayfindingBooks.filter((b) => b.distance > 0)"
+          :key="book.name"
+          class="wayfinding-book"
+          :style="bookStyle(book.distance)"
+        >
+          {{ book.name }}
+        </div>
+      </div>
+      <div v-if="progressSegments" class="wayfinding-progress-container">
+        <div class="wayfinding-progress-labels">
+          <span class="wayfinding-progress-label" style="color: #d4af37">Old Testament</span>
+          <span class="wayfinding-progress-label" style="color: #4fa8d8">New Testament</span>
+        </div>
+        <!-- A sibling of both the labels and the bar-wrapper (not nested in either) so its
+             height can span from near the label text down through the bar — its left position
+             is still a percentage of the same width as the bar below, since neither it nor the
+             bar-wrapper add any side padding/margin. -->
+        <div
+          class="wayfinding-progress-boundary"
+          :style="{ left: `${OLD_TESTAMENT_FRACTION * 100}%` }"
+        />
+        <div class="wayfinding-progress-bar-wrapper">
+          <div class="wayfinding-progress">
+            <div
+              v-for="(segment, index) in [
+                { width: progressSegments.otFilled, color: '#d4af37', opacity: 1 },
+                { width: progressSegments.otUnfilled, color: '#d4af37', opacity: 0.25 },
+                { width: progressSegments.ntFilled, color: '#4fa8d8', opacity: 1 },
+                { width: progressSegments.ntUnfilled, color: '#4fa8d8', opacity: 0.25 },
+              ]"
+              :key="index"
+              :style="{
+                flexBasis: `${segment.width * 100}%`,
+                background: segment.color,
+                opacity: segment.opacity,
+              }"
+            />
+          </div>
+          <!-- A sibling of (not nested in) .wayfinding-progress — that bar clips to a rounded
+               pill via overflow:hidden, which would cut off this extending past its height. Its
+               own vertical centering is relative to this wrapper (the bar's own box), not the
+               taller .wayfinding-progress-container above, so it centers on the bar itself. -->
           <div
-            v-for="(segment, index) in [
-              { width: progressSegments.otFilled, color: '#d4af37', opacity: 1 },
-              { width: progressSegments.otUnfilled, color: '#d4af37', opacity: 0.25 },
-              { width: progressSegments.ntFilled, color: '#4fa8d8', opacity: 1 },
-              { width: progressSegments.ntUnfilled, color: '#4fa8d8', opacity: 0.25 },
-            ]"
-            :key="index"
-            :style="{
-              flexBasis: `${segment.width * 100}%`,
-              background: segment.color,
-              opacity: segment.opacity,
-            }"
+            class="wayfinding-progress-marker"
+            :style="{ left: `${(displayedContent?.bibleProgress ?? 0) * 100}%` }"
           />
         </div>
-        <!-- A sibling of (not nested in) .wayfinding-progress — that bar clips to a rounded
-             pill via overflow:hidden, which would cut off this extending past its height. Its
-             own vertical centering is relative to this wrapper (the bar's own box), not the
-             taller .wayfinding-progress-container above, so it centers on the bar itself. -->
-        <div
-          class="wayfinding-progress-marker"
-          :style="{ left: `${(content?.bibleProgress ?? 0) * 100}%` }"
-        />
       </div>
-    </div>
-    <img
-      v-else-if="content?.media?.kind === 'image'"
-      :key="content.media.url"
-      :src="content.media.url"
-      class="media-fill"
-      :style="{ objectFit: content.media.fit }"
-      alt=""
-    />
-    <video
-      v-else-if="content?.media?.kind === 'video'"
-      :key="content.media.url"
-      :src="content.media.url"
-      class="media-fill"
-      :style="{ objectFit: content.media.fit }"
-      :autoplay="videoAutoplay"
-      :controls="videoControls"
-      :muted="videoMuted"
-    />
-    <div
-      v-else-if="content?.outlineTitle && !content.backgroundOnly"
-      class="slide-content outline-content"
-    >
-      <div class="outline-title">{{ content.outlineTitle }}</div>
-      <div v-if="content.text" class="outline-details">{{ content.text }}</div>
-    </div>
-    <div
-      v-else-if="content && !content.backgroundOnly && !content.scene && !content.wayfindingBooks"
-      class="slide-content"
-    >
+      <img
+        v-else-if="displayedContent?.media?.kind === 'image'"
+        :key="displayedContent.media.url"
+        :src="displayedContent.media.url"
+        class="media-fill"
+        :style="{ objectFit: displayedContent.media.fit }"
+        alt=""
+      />
+      <video
+        v-else-if="displayedContent?.media?.kind === 'video'"
+        :key="displayedContent.media.url"
+        :src="displayedContent.media.url"
+        class="media-fill"
+        :style="{ objectFit: displayedContent.media.fit }"
+        :autoplay="videoAutoplay"
+        :controls="videoControls"
+        :muted="videoMuted"
+      />
       <div
-        ref="textRef"
-        class="slide-text"
-        :style="{
-          ...(content.fontRange
-            ? { fontSize: `${fittedFontSizePx ?? content.fontRange.maxPx}px` }
-            : {}),
-          // Song lines must never wrap except where we've explicitly inserted a break (see
-          // wrapLineAtPunctuation) — `pre-line` still lets the browser wrap a preserved line
-          // that doesn't fit, which silently undid the comma/semicolon-only rule for any line
-          // with no punctuation to break at. Scripture keeps normal paragraph wrapping.
-          ...(content.lineWrap ? { whiteSpace: 'pre' } : {}),
-        }"
+        v-else-if="displayedContent?.outlineTitle && !displayedContent.backgroundOnly"
+        class="slide-content outline-content"
       >
-        {{ displayText }}
+        <div class="outline-title">{{ displayedContent.outlineTitle }}</div>
+        <div v-if="displayedContent.text" class="outline-details">{{ displayedContent.text }}</div>
+      </div>
+      <div
+        v-else-if="
+          displayedContent &&
+          !displayedContent.backgroundOnly &&
+          !displayedContent.scene &&
+          !displayedContent.wayfindingBooks
+        "
+        class="slide-content"
+      >
+        <div
+          ref="textRef"
+          class="slide-text"
+          :style="{
+            ...(displayedContent.fontRange
+              ? { fontSize: `${fittedFontSizePx ?? displayedContent.fontRange.maxPx}px` }
+              : {}),
+            // Song lines must never wrap except where we've explicitly inserted a break (see
+            // wrapLineAtPunctuation) — `pre-line` still lets the browser wrap a preserved line
+            // that doesn't fit, which silently undid the comma/semicolon-only rule for any line
+            // with no punctuation to break at. Scripture keeps normal paragraph wrapping.
+            ...(displayedContent.lineWrap ? { whiteSpace: 'pre' } : {}),
+          }"
+        >
+          {{ displayText }}
+        </div>
+      </div>
+
+      <div v-if="isTextSlide && displayedContent?.repeatLabel" class="slide-repeat-label">
+        {{ displayedContent.repeatLabel }}
       </div>
     </div>
-
-    <!-- Fixed position, fixed (configurable) size — unlike the auto-fit main text above, these
-         never move or resize as that text shrinks/grows. Only for the plain text slide above;
-         wayfinding/media have their own distinct designs. -->
-    <div
-      v-if="isTextSlide && content?.itemLabel"
-      class="slide-header"
-      :style="{ fontSize: `${content?.headerFontSizePx ?? 48}px` }"
-    >
-      {{ content?.itemLabel }}
-    </div>
-    <div
-      v-if="isTextSlide && footerDisplayText"
-      class="slide-footer"
-      :style="{ fontSize: `${content?.footerFontSizePx ?? 48}px` }"
-    >
-      {{ footerDisplayText }}
-    </div>
-    <div v-if="isTextSlide && content?.repeatLabel" class="slide-repeat-label">
-      {{ content.repeatLabel }}
-    </div>
+    <!-- Header/footer live outside .slide-foreground, each with their own independent
+         crossfade keyed by their own text — same reasoning as the background above: a song's
+         header (title) and footer (collection citation) are typically identical across every
+         one of its slides, and nesting them inside .slide-foreground would still visually dim
+         them on every slide change (an ancestor's opacity affects all descendants regardless of
+         whether their own content changed), even though the label itself never moved.
+         `mode="out-in"`, unlike the background's simultaneous cross-dissolve: two overlapping
+         image layers reads as a smooth dissolve, but two overlapping strings of text reads as
+         garbled, so the old label fully clears before the new one fades in. Fixed position,
+         fixed (configurable) size — unlike the auto-fit main text above, these never move or
+         resize as that text shrinks/grows. Only for the plain text slide above; wayfinding/media
+         have their own distinct designs. -->
+    <Transition :name="transition ? 'content-crossfade' : ''" mode="out-in">
+      <div
+        v-if="isTextSlide && displayedContent?.itemLabel"
+        :key="displayedContent.itemLabel"
+        class="slide-header"
+        :style="{ fontSize: `${displayedContent?.headerFontSizePx ?? 48}px` }"
+      >
+        {{ displayedContent.itemLabel }}
+      </div>
+    </Transition>
+    <Transition :name="transition ? 'content-crossfade' : ''" mode="out-in">
+      <div
+        v-if="isTextSlide && footerDisplayText"
+        :key="footerDisplayText"
+        class="slide-footer"
+        :style="{ fontSize: `${displayedContent?.footerFontSizePx ?? 48}px` }"
+      >
+        {{ footerDisplayText }}
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -455,6 +567,42 @@ const progressSegments = computed(() => {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+}
+/* Everything except the background media (see the Transition-wrapped img/video above it in the
+   template) — sized/centered exactly like .slide-root used to lay out its direct children
+   before this wrapper existed, so nothing inside had to change its own sizing rules. */
+.slide-foreground {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Without this, toggling the --fading class below just snaps opacity between 1 and 0 with
+     nothing to animate across — always present (not just while `transition` is on) so it can
+     never drift out of sync with FADE_MS; harmless when `transition` is off since --fading is
+     never applied there. */
+  transition: opacity v-bind(fadeDurationCss) ease;
+}
+/* Only ever toggled on when the `transition` prop is set (see displayedContent/fading in
+   script) — the operator preview thumbnails and Remote mirror never apply this class, so they
+   stay an instant cut exactly as before transitions existed. Scoped to the foreground only —
+   the background media above fades solely via its own Transition, keyed off its own identity,
+   so a background shared across an item's slides is never dimmed just because the text on top
+   of it changed. */
+.slide-foreground--fading {
+  opacity: 0;
+}
+/* Shared by every independently-keyed Transition in the template above (background media,
+   header, footer) — each only actually triggers when its own identity (background's kind+url,
+   header/footer's own text) changes, never on a same-content slide change within an item. */
+.content-crossfade-enter-active,
+.content-crossfade-leave-active {
+  transition: opacity v-bind(fadeDurationCss) ease;
+}
+.content-crossfade-enter-from,
+.content-crossfade-leave-to {
+  opacity: 0;
 }
 .slide-content {
   position: relative;
@@ -591,6 +739,13 @@ const progressSegments = computed(() => {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  /* Overrides the theme's own text-shadow (set on the slide root, see rootStyle above, and
+     inherited by every descendant by default) — these labels already have their own fixed,
+     theme-independent gold/blue colors and a dedicated contrast panel behind the whole
+     indicator (.wayfinding-progress-container::before) specifically so they stay readable
+     regardless of theme or background; the theme's outline/shadow effect was never meant to
+     reach them. */
+  text-shadow: none;
 }
 .wayfinding-progress-bar-wrapper {
   position: relative;

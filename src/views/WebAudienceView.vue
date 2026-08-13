@@ -94,7 +94,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="audience-root">
-    <SlideContentRenderer :content="current" />
+    <SlideContentRenderer :content="current" transition />
 
     <div v-if="!isFullscreen" class="controls">
       <button v-if="!screenPickerOpen" type="button" class="control-btn" @click="chooseDisplay">

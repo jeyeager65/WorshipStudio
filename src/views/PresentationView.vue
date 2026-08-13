@@ -28,5 +28,5 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <SlideContentRenderer :content="current" />
+  <SlideContentRenderer :content="current" transition />
 </template>

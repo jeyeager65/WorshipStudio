@@ -269,6 +269,34 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     const content = buildLiveContent(liveSlide.value)
     return content ? { ...content, backgroundOnly: backgroundOnly.value } : undefined
   })
+  // A fade now plays across every slide change on the audience-facing output (see
+  // SlideContentRenderer.vue's `transition` prop / notes/slide-transitions-plan.md). A
+  // background image/video that hasn't finished loading by the time its slide goes live would
+  // otherwise pop in mid-fade, reading as a stutter — backgrounds load lazily today, only
+  // exactly when a slide carrying a new url first becomes live. This does a one-time browser
+  // cache warm-up for every distinct background/media url in the service whenever the slide
+  // list changes; `warmedMediaUrls` persists across calls so an already-warmed url is a cheap
+  // Set lookup, not a repeat fetch. Distinct urls per service are typically few (most slides in
+  // an item share one background), so this is a small, one-time cost, not a per-slide one.
+  const warmedMediaUrls = new Set<string>()
+  function warmMediaUrl(url: string | undefined, kind: 'image' | 'video' | undefined) {
+    if (!url || !kind || warmedMediaUrls.has(url)) return
+    warmedMediaUrls.add(url)
+    if (kind === 'image') {
+      new Image().src = url
+    } else {
+      const video = document.createElement('video')
+      video.preload = 'auto'
+      video.src = url
+    }
+  }
+  function warmBackgroundMediaCache(slides: FlatSlide[]) {
+    for (const slide of slides) {
+      const theme = buildPresentationTheme(slide)
+      warmMediaUrl(theme?.backgroundMedia?.url, theme?.backgroundMedia?.kind)
+      warmMediaUrl(slide.mediaId ? mediaUrlById.get(slide.mediaId) : undefined, slide.mediaKind)
+    }
+  }
   // Deliberately separate from liveContentPayload's watch below — this only needs to re-fire
   // when the service's own slide list changes (load, edit, reorder), not on every single slide
   // advance, unlike the moment-to-moment live-position push. `immediate` so a Full Control
@@ -279,6 +307,7 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
       getAdapter().remote?.pushServiceOutline(
         slides.map((_, index) => ({ index, label: describeSlide(index) })),
       )
+      warmBackgroundMediaCache(slides)
     },
     { immediate: true },
   )
