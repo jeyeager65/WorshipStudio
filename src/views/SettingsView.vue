@@ -266,6 +266,36 @@ async function saveSettings() {
       </section>
     </nav>
 
+    <!-- Narrow-width replacement for the nav above: a single menu button instead of the whole
+         section list sitting inline (which used to just be a short scrollable box at the top of
+         the page). Always in the DOM; a media query picks which one actually shows, same pattern
+         as the Slide Editor toolbar's full/compact button groups. -->
+    <div class="settings-nav-compact">
+      <v-menu>
+        <template #activator="{ props }">
+          <v-btn v-bind="props" variant="text" class="settings-nav-compact-btn" block>
+            <v-icon :icon="activeSectionInfo.icon" size="18" start />
+            <span class="settings-nav-compact-label">{{ activeSectionInfo.label }}</span>
+            <v-spacer />
+            <v-icon icon="mdi-menu-down" size="18" end />
+          </v-btn>
+        </template>
+        <v-list density="compact">
+          <template v-for="group in groupedSections" :key="group.name">
+            <v-list-subheader>{{ group.name }}</v-list-subheader>
+            <v-list-item
+              v-for="section in group.items"
+              :key="section.key"
+              :active="activeSection === section.key"
+              :title="section.label"
+              :prepend-icon="sectionIcons[section.key]"
+              @click="selectSettingsSection(section.key)"
+            />
+          </template>
+        </v-list>
+      </v-menu>
+    </div>
+
     <div class="settings-content">
       <AsyncLoadState
         v-if="store.loadError"
@@ -432,6 +462,9 @@ async function saveSettings() {
   width: 100%;
   max-width: 900px;
 }
+.settings-nav-compact {
+  display: none;
+}
 @media (max-width: 900px) {
   .settings-layout {
     grid-template-columns: 218px minmax(0, 1fr);
@@ -445,18 +478,28 @@ async function saveSettings() {
     display: block;
   }
   .settings-nav {
-    position: static;
-    height: auto;
-    max-height: 255px;
-    padding: 12px 14px 16px;
-    border-right: 0;
-    border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  }
-  .settings-nav-header {
     display: none;
   }
-  .settings-nav-group + .settings-nav-group {
-    margin-top: 11px;
+  .settings-nav-compact {
+    display: block;
+    position: sticky;
+    top: 49px;
+    z-index: 1;
+    padding: 8px 14px;
+    background: rgba(var(--v-theme-surface), 0.92);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  }
+  .settings-nav-compact-btn {
+    justify-content: flex-start;
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 600;
+  }
+  .settings-nav-compact-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .settings-content {
     max-width: none;
