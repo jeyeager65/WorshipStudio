@@ -504,6 +504,12 @@ export interface RemotePort {
 export interface SyncStatus {
   folderReadable: boolean
   syncClientRunning: boolean
+  /** Which known cloud sync provider ("OneDrive" / "Dropbox") the library folder appears to
+   *  live inside, inferred from the folder path — see the Rust `detect_sync_provider` doc
+   *  comment for how and its limits. Undefined when unrecognized; UI falls back to generic
+   *  wording rather than assuming Dropbox. Tauri-only — every other adapter kind leaves it
+   *  undefined along with `syncClientRunning`'s own always-true placeholder value. */
+  syncClientName?: string
   lastLibraryChangeAt?: string
   conflictCount: number
   recoveryCount: number

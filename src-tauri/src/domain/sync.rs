@@ -38,6 +38,12 @@ pub struct ConflictedItem {
 pub struct SyncStatus {
     pub folder_readable: bool,
     pub sync_client_running: bool,
+    /// Which known cloud sync provider the library folder appears to live inside ("OneDrive" /
+    /// "Dropbox"), or absent if the path doesn't look like either. Purely a display label for
+    /// `sync_client_running` above — see `detect_sync_provider`'s own doc comment for how it's
+    /// inferred and its limits.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sync_client_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_library_change_at: Option<String>,
     pub conflict_count: usize,
@@ -309,21 +315,49 @@ pub fn resolve_conflict(conflict_file_path: &str, keep: &str) -> std::io::Result
     fs::remove_file(conflict_path)
 }
 
-/// Best-effort: genuinely detecting whether the sync client is running is inherently
+/// Which known cloud sync provider the library folder appears to live inside, inferred from the
+/// path itself — the desktop build has no explicit "which provider" setting the way the tablet
+/// build's OAuth connection does (see LibrarySyncSection.vue), so a substring match against the
+/// provider's default local folder naming (`OneDrive`, `Dropbox`) is the only signal available.
+/// `None` for a renamed sync folder, a provider not recognized here (e.g. Google Drive/Box), or
+/// a plain unsynced local folder — callers fall back to checking every known client in that case
+/// rather than assuming Dropbox specifically.
+fn detect_sync_provider(root: &Path) -> Option<&'static str> {
+    let path_lower = root.to_string_lossy().to_lowercase();
+    if path_lower.contains("onedrive") {
+        Some("OneDrive")
+    } else if path_lower.contains("dropbox") {
+        Some("Dropbox")
+    } else {
+        None
+    }
+}
+
+/// Best-effort: genuinely detecting whether a given sync client is running is inherently
 /// OS-specific and only implemented for Windows (this app's primary target so far — see
 /// notes/architecture-plan.md's macOS-build note); other platforms can't currently verify
 /// this, so it optimistically assumes yes rather than showing a false warning.
 #[cfg(target_os = "windows")]
-fn dropbox_process_running() -> bool {
+fn process_running(image_name: &str) -> bool {
     std::process::Command::new("tasklist")
-        .args(["/FI", "IMAGENAME eq Dropbox.exe", "/NH"])
+        .args(["/FI", &format!("IMAGENAME eq {image_name}"), "/NH"])
         .output()
-        .map(|output| String::from_utf8_lossy(&output.stdout).contains("Dropbox.exe"))
+        .map(|output| String::from_utf8_lossy(&output.stdout).contains(image_name))
         .unwrap_or(false)
 }
 #[cfg(not(target_os = "windows"))]
-fn dropbox_process_running() -> bool {
+fn process_running(_image_name: &str) -> bool {
     true
+}
+
+fn sync_client_running(provider: Option<&str>) -> bool {
+    match provider {
+        Some("OneDrive") => process_running("OneDrive.exe"),
+        Some("Dropbox") => process_running("Dropbox.exe"),
+        // Folder location didn't obviously match either known provider — check both rather
+        // than silently assuming Dropbox, which is what the single hardcoded check used to do.
+        _ => process_running("OneDrive.exe") || process_running("Dropbox.exe"),
+    }
 }
 
 pub fn get_status(root: &Path) -> std::io::Result<SyncStatus> {
@@ -342,9 +376,11 @@ pub fn get_status(root: &Path) -> std::io::Result<SyncStatus> {
         .max();
     let conflict_count = detect_conflicts(root)?.len();
     let recovery_count = detect_recovery_issues(root)?.len();
+    let sync_provider = detect_sync_provider(root);
     Ok(SyncStatus {
         folder_readable,
-        sync_client_running: dropbox_process_running(),
+        sync_client_running: sync_client_running(sync_provider),
+        sync_client_name: sync_provider.map(str::to_string),
         last_library_change_at,
         conflict_count,
         recovery_count,

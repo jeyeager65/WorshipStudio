@@ -364,7 +364,17 @@ const libraryPathIsRelative = computed(() => {
   return !!path && !/^(?:[A-Za-z]:[\\/]|[\\/]{2}|\/)/.test(path)
 })
 
-function usePortableLibraryFolder() {
+async function usePortableLibraryFolder() {
+  if (
+    !(await confirmDialog.confirm(
+      "Switch to a portable library folder? This replaces the path above with a relative " +
+        "'./Library' folder next to the Worship Studio executable — for running the app from a " +
+        'USB drive or portable install with its own library, not a Dropbox/OneDrive-synced ' +
+        "folder like the one currently set. You'll still need to click Save to apply it.",
+      'Use Portable Folder',
+    ))
+  )
+    return
   if (machineSettings.value) machineSettings.value.libraryPath = './Library'
 }
 
@@ -420,6 +430,11 @@ async function pickLibraryFolder() {
             @click="usePortableLibraryFolder"
           >
             Use Portable Folder
+            <v-tooltip activator="parent" location="bottom" max-width="280">
+              For running Worship Studio from a USB drive or portable install with its own
+              library, not a Dropbox/OneDrive-synced folder. Sets a relative "./Library" path
+              next to the executable instead of the absolute path above.
+            </v-tooltip>
           </v-btn>
         </div>
       </div>
@@ -590,7 +605,7 @@ async function pickLibraryFolder() {
               size="small"
             />
             <span class="text-body-2">
-              Dropbox
+              {{ syncStore.status.syncClientName ?? 'A cloud sync app' }}
               {{
                 syncStore.status.syncClientRunning
                   ? 'appears to be running'
