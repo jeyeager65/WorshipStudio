@@ -13,12 +13,58 @@ use super::{backup_path, manifest, read_json_file, restore_json_backup, write_js
 /// Matches Dropbox's "conflicted copy" filename convention — the exact wording has varied
 /// across client versions ("Conflicted copy", "<device>'s conflicted copy"), so this just
 /// looks for "conflicted copy" case-insensitively inside a trailing parenthetical, which
-/// covers both. Other sync providers' conflict-artifact naming isn't handled — this is
-/// Dropbox-specific by design (see design/feature-spec.md's Sync section).
-static CONFLICT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+/// covers both.
+static DROPBOX_CONFLICT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^(?P<stem>.+) \([^)]*conflicted copy[^)]*\)(?P<ext>\.[^.]+)?$")
         .expect("pattern must compile")
 });
+
+/// OneDrive's local sync client has no distinctive marker like Dropbox's "(conflicted copy)" —
+/// confirmed against Microsoft's own "Why has my filename changed?" / "Duplicate files in
+/// OneDrive" support docs (which confirm the computer name gets appended but don't spell out
+/// the exact punctuation) plus corroborating technical sources, including the abraunegg/onedrive
+/// client's own reverse-engineered behavior: it just appends the computer name directly onto the
+/// existing filename, hyphen-separated, right before the extension — `original-ComputerName.ext`,
+/// no parentheses or wording at all. That shape alone is indistinguishable from an ordinary
+/// filename (this app's own ids already contain hyphens, e.g. `song-<uuid>.json`), so instead of
+/// a fixed pattern this checks the filesystem directly: repeatedly trim the last `-segment` off
+/// the stem and see whether *that* shorter name already exists as a real file alongside it. Item
+/// ids are random UUIDs, so a truncated id colliding with an unrelated real filename by chance
+/// isn't a realistic risk.
+fn onedrive_conflict_original(dir: &Path, filename: &str) -> Option<(String, String)> {
+    let path = Path::new(filename);
+    let ext = format!(".{}", path.extension()?.to_str()?);
+    let full_stem = path.file_stem()?.to_str()?;
+    let mut candidate = full_stem;
+    while let Some(idx) = candidate.rfind('-') {
+        candidate = &candidate[..idx];
+        if candidate.is_empty() {
+            break;
+        }
+        if dir.join(format!("{candidate}{ext}")).exists() {
+            return Some((candidate.to_string(), ext));
+        }
+    }
+    None
+}
+
+/// Tries Dropbox's distinctive pattern first (specific, no filesystem lookup needed), then
+/// falls back to OneDrive's plain stem-plus-computer-name scheme. `filename` must not itself be
+/// one of this app's own `.backup` atomic-write artifacts (see `write_json_file`) — callers
+/// filter those out before reaching here, since they live in the same folders these scans walk
+/// and would otherwise be a second, unrelated source of hyphenated near-duplicate filenames.
+fn parse_conflict_filename(dir: &Path, filename: &str) -> Option<(String, String)> {
+    if let Some(caps) = DROPBOX_CONFLICT_PATTERN.captures(filename) {
+        let stem = caps["stem"].to_string();
+        let ext = caps
+            .name("ext")
+            .map(|m| m.as_str())
+            .unwrap_or("")
+            .to_string();
+        return Some((stem, ext));
+    }
+    onedrive_conflict_original(dir, filename)
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -225,11 +271,12 @@ fn scan_dir(dir: &Path, kind: &str, out: &mut Vec<ConflictedItem>) -> std::io::R
             continue;
         }
         let filename = entry.file_name().to_string_lossy().to_string();
-        let Some(caps) = CONFLICT_PATTERN.captures(&filename) else {
+        if filename.ends_with(".backup") {
+            continue;
+        }
+        let Some((stem, ext)) = parse_conflict_filename(dir, &filename) else {
             continue;
         };
-        let stem = &caps["stem"];
-        let ext = caps.name("ext").map(|m| m.as_str()).unwrap_or("");
         let original_path = dir.join(format!("{stem}{ext}"));
         // The original may already be gone (deleted, or a previous conflict resolution) —
         // nothing meaningful to compare against, so this artifact is silently skipped rather
@@ -243,7 +290,7 @@ fn scan_dir(dir: &Path, kind: &str, out: &mut Vec<ConflictedItem>) -> std::io::R
         let id = this_version
             .get("id")
             .and_then(Value::as_str)
-            .unwrap_or(stem)
+            .unwrap_or(&stem)
             .to_string();
         let other_device = other_version
             .get("updatedByDevice")
@@ -269,8 +316,8 @@ fn scan_dir(dir: &Path, kind: &str, out: &mut Vec<ConflictedItem>) -> std::io::R
     Ok(())
 }
 
-/// Scans every per-item content folder for Dropbox conflict artifacts. Non-recursive per
-/// folder (services needs one extra level for its year subfolders) — matches how each
+/// Scans every per-item content folder for Dropbox or OneDrive conflict artifacts. Non-recursive
+/// per folder (services needs one extra level for its year subfolders) — matches how each
 /// domain module already lays its files out.
 pub fn detect_conflicts(root: &Path) -> std::io::Result<Vec<ConflictedItem>> {
     let mut out = Vec::new();
@@ -302,11 +349,9 @@ pub fn resolve_conflict(conflict_file_path: &str, keep: &str) -> std::io::Result
             .file_name()
             .and_then(|f| f.to_str())
             .ok_or_else(|| std::io::Error::other("invalid conflict file path"))?;
-        let caps = CONFLICT_PATTERN
-            .captures(filename)
+        let dir = conflict_path.parent().unwrap_or_else(|| Path::new("."));
+        let (stem, ext) = parse_conflict_filename(dir, filename)
             .ok_or_else(|| std::io::Error::other("not a recognized conflicted-copy filename"))?;
-        let stem = &caps["stem"];
-        let ext = caps.name("ext").map(|m| m.as_str()).unwrap_or("");
         let original_path = conflict_path.with_file_name(format!("{stem}{ext}"));
         let bytes = fs::read(conflict_path)?;
         let selected: Value = serde_json::from_slice(&bytes).map_err(std::io::Error::other)?;
@@ -523,6 +568,98 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(kept["key"], "G");
+    }
+
+    #[test]
+    fn detects_a_onedrive_style_conflict_copy_alongside_its_original() {
+        let dir = tempfile::tempdir().unwrap();
+        let songs_dir = dir.path().join("songs");
+        let id = "song-550e8400-e29b-41d4-a716-446655440000";
+        write(
+            &songs_dir.join(format!("{id}.json")),
+            id,
+            "now",
+            "This Computer",
+            "",
+        );
+        write(
+            &songs_dir.join(format!("{id}-DESKTOP-ABC123.json")),
+            id,
+            "earlier",
+            "Pastor's Mac",
+            "",
+        );
+
+        let conflicts = detect_conflicts(dir.path()).unwrap();
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].id, id);
+    }
+
+    #[test]
+    fn resolve_keeping_theirs_on_a_onedrive_style_conflict() {
+        let dir = tempfile::tempdir().unwrap();
+        let songs_dir = dir.path().join("songs");
+        let id = "song-550e8400-e29b-41d4-a716-446655440000";
+        write(
+            &songs_dir.join(format!("{id}.json")),
+            id,
+            "now",
+            "This Computer",
+            r#","key":"A""#,
+        );
+        let conflict_path = songs_dir.join(format!("{id}-DESKTOP-ABC123.json"));
+        write(
+            &conflict_path,
+            id,
+            "earlier",
+            "Pastor's Mac",
+            r#","key":"G""#,
+        );
+
+        resolve_conflict(&conflict_path.to_string_lossy(), "theirs").unwrap();
+
+        assert!(!conflict_path.exists());
+        let kept: Value = read_json_file(&songs_dir.join(format!("{id}.json")))
+            .unwrap()
+            .unwrap();
+        assert_eq!(kept["key"], "G");
+    }
+
+    #[test]
+    fn ignores_this_apps_own_backup_files_as_conflicts() {
+        let dir = tempfile::tempdir().unwrap();
+        let songs_dir = dir.path().join("songs");
+        write(
+            &songs_dir.join("song-1.json"),
+            "song-1",
+            "now",
+            "This Computer",
+            "",
+        );
+        write(
+            &songs_dir.join("song-1.json.backup"),
+            "song-1",
+            "earlier",
+            "This Computer",
+            "",
+        );
+
+        assert_eq!(detect_conflicts(dir.path()).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn does_not_flag_a_lone_hyphenated_id_with_no_sibling() {
+        let dir = tempfile::tempdir().unwrap();
+        let songs_dir = dir.path().join("songs");
+        write(
+            &songs_dir.join("song-550e8400-e29b-41d4-a716-446655440000.json"),
+            "song-550e8400-e29b-41d4-a716-446655440000",
+            "now",
+            "This Computer",
+            "",
+        );
+
+        assert_eq!(detect_conflicts(dir.path()).unwrap().len(), 0);
     }
 
     #[test]
