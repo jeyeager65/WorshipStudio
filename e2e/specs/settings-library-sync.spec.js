@@ -4,8 +4,10 @@ describe('Settings — Library & Sync data tools', () => {
     // the library path would point this test (and the reload prompt it triggers) at a
     // different folder entirely, which isn't safely reversible mid-test. "Check Now"/sync
     // health is already covered by sync-conflicts.spec.js. Sample data is the one remaining,
-    // safe-to-drive action: it's isolated to this spec's own empty E2E app-data directory (see
-    // helpers/appDataDir.js).
+    // safe-to-drive action: it shares the E2E app-data directory (see helpers/appDataDir.js)
+    // with every other spec in this run — reset once at suite start, not per spec — so by the
+    // time this runs, other specs' leftover services/themes may already make the confirmation
+    // below require typing DELETE rather than a plain confirm; handled below either way.
     const skipLink = await $('button*=Skip setup')
     if (await skipLink.isExisting()) await skipLink.click()
 
@@ -20,6 +22,18 @@ describe('Settings — Library & Sync data tools', () => {
     const loadSampleBtn = await $('button*=Load Sample Data')
     await loadSampleBtn.waitForClickable({ timeout: 10000 })
     await loadSampleBtn.click()
+
+    // Whether this needs a plain confirm or a typed "DELETE" depends on whether the shared
+    // E2E library already has real content at this point in the suite run — other specs that
+    // ran earlier (add-external-app, order-of-worship, etc.) leave services/themes behind
+    // rather than cleaning up, since the app-data directory is only reset once per full run,
+    // not per spec (see ConfirmDialog.vue / LibrarySyncSection.vue's confirmDestructiveAction).
+    const phraseField = await $('label*=Type DELETE to confirm')
+    if (await phraseField.waitForExist({ timeout: 3000 }).catch(() => false)) {
+      const phraseLabelId = await phraseField.getAttribute('id')
+      const phraseInput = await $(`input[aria-labelledby="${phraseLabelId}"]`)
+      await phraseInput.setValue('DELETE')
+    }
 
     const confirmBtn = await $('button*=Delete Everything & Load Sample Data')
     await confirmBtn.waitForClickable({ timeout: 10000 })

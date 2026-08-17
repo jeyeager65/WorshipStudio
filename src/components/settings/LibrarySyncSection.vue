@@ -322,8 +322,12 @@ async function deleteAllLibraryContent() {
     await serviceTypesStore.remove(serviceType.id)
 }
 
-/** Real content worth protecting, matching exactly what deleteAllLibraryContent() destroys —
- *  slides/media/announcements aren't included since those two actions don't touch them either. */
+/** Real content worth protecting — deleteAllLibraryContent() also clears service types, but
+ *  those aren't counted here: a genuinely fresh library always has the 3 default service types
+ *  auto-seeded (same defaults a brand-new install has always started with — see
+ *  commands::service_types::migrate_if_needed), so counting them would make every fresh library
+ *  look "non-empty" and defeat the lighter plain-confirm prompt below. Slides/media/
+ *  announcements aren't included since those two actions don't touch them either. */
 async function hasExistingLibraryContent(): Promise<boolean> {
   await Promise.all([
     songsStore.load(),
@@ -331,15 +335,13 @@ async function hasExistingLibraryContent(): Promise<boolean> {
     peopleStore.load(),
     themesStore.load(),
     songCollectionsStore.load(),
-    serviceTypesStore.load(),
   ])
   return (
     songsStore.songs.length > 0 ||
     servicesStore.services.length > 0 ||
     peopleStore.people.length > 0 ||
     themesStore.themes.length > 0 ||
-    songCollectionsStore.collections.length > 0 ||
-    serviceTypesStore.serviceTypes.length > 0
+    songCollectionsStore.collections.length > 0
   )
 }
 

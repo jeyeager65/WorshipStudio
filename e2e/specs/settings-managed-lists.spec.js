@@ -18,20 +18,22 @@ describe('Settings — Service Types and Song Collections', () => {
     await addField.setValue('E2E Sunrise Service')
     await browser.keys('Enter')
 
-    const chip = await $('.v-chip*=E2E Sunrise Service')
-    await chip.waitForExist({ timeout: 10000 })
-    await expect(chip).toBeExisting()
+    // Service Types uses its own dedicated row layout (name + description + remove button),
+    // not a chip list — see ServiceTypesSection.vue.
+    const row = await $('.service-type-row*=E2E Sunrise Service')
+    await row.waitForExist({ timeout: 10000 })
+    await expect(row).toBeExisting()
 
-    const closeIcon = await chip.$('.v-chip__close')
-    await closeIcon.waitForClickable({ timeout: 10000 })
-    await closeIcon.click()
+    const removeIcon = await row.$('button[aria-label="Remove service type"]')
+    await removeIcon.waitForClickable({ timeout: 10000 })
+    await removeIcon.click()
 
     const confirmBtn = await $('button*=Remove')
     await confirmBtn.waitForClickable({ timeout: 10000 })
     await confirmBtn.click()
 
-    await chip.waitForExist({ timeout: 10000, reverse: true })
-    await expect(chip).not.toBeExisting()
+    await row.waitForExist({ timeout: 10000, reverse: true })
+    await expect(row).not.toBeExisting()
   })
 
   it('adds and removes a song collection', async () => {
