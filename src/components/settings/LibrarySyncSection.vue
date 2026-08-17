@@ -8,6 +8,7 @@ import { useSongsStore } from '@/stores/songs'
 import { useServicesStore } from '@/stores/services'
 import { usePeopleStore } from '@/stores/people'
 import { useThemesStore } from '@/stores/themes'
+import { useMediaStore } from '@/stores/media'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { clearStoredLibraryHandle } from '@/adapters/web/handlePersistence'
 import { disconnect as disconnectDropbox, isConnected as isDropboxConnected } from '@/adapters/tablet/providers/dropboxAuth'
@@ -35,6 +36,7 @@ const songsStore = useSongsStore()
 const servicesStore = useServicesStore()
 const peopleStore = usePeopleStore()
 const themesStore = useThemesStore()
+const mediaStore = useMediaStore()
 const confirmDialog = useConfirmDialogStore()
 
 // This one page now covers every adapter kind's idea of "where the library lives" — a real
@@ -263,6 +265,11 @@ async function addStockBackgrounds() {
   stockBackgroundsError.value = ''
   try {
     stockBackgroundsAdded.value = await getAdapter().media.importStockBackgrounds()
+    // The Media and Themes stores may already be loaded (from an earlier visit to either
+    // library this session) with no way to know new items just appeared on disk underneath
+    // them — without this, the new backgrounds/themes are real and saved, just invisible until
+    // something else happens to reload one of these two stores (e.g. a full page reload).
+    await Promise.all([mediaStore.load(), themesStore.load()])
   } catch (error) {
     stockBackgroundsError.value =
       error instanceof Error ? error.message : 'Stock backgrounds could not be added.'
@@ -286,13 +293,43 @@ async function deleteAllLibraryContent() {
   for (const theme of themesStore.themes) await themesStore.remove(theme.id)
 }
 
+/** Real content worth protecting, matching exactly what deleteAllLibraryContent() destroys —
+ *  slides/media/announcements aren't included since those two actions don't touch them either. */
+async function hasExistingLibraryContent(): Promise<boolean> {
+  await Promise.all([
+    songsStore.load(),
+    servicesStore.load(),
+    peopleStore.load(),
+    themesStore.load(),
+  ])
+  return (
+    songsStore.songs.length > 0 ||
+    servicesStore.services.length > 0 ||
+    peopleStore.people.length > 0 ||
+    themesStore.themes.length > 0
+  )
+}
+
+/** Load Sample Data and Clear Existing Data both destroy every song/service/person/theme with
+ *  no way back — a plain confirm dialog already proved misclickable in practice on a real
+ *  church's library. Once there's anything real to lose, this requires typing DELETE instead of
+ *  just clicking through; an already-empty library (the safe way to preview sample data: point
+ *  the library path at a blank folder first, see LibrarySyncSection's own path field above)
+ *  keeps the lighter plain-confirm prompt, since there's nothing at stake yet. */
+async function confirmDestructiveAction(message: string, label: string): Promise<boolean> {
+  const hasContent = await hasExistingLibraryContent()
+  return hasContent
+    ? confirmDialog.confirmWithPhrase(message, 'DELETE', label)
+    : confirmDialog.confirm(message, label)
+}
+
 // Sample data is strictly for demoing the app, never for mixing into a real church's library
 // — so this *replaces* everything rather than adding alongside it: every existing song,
 // service, person, and theme is deleted first. That's exactly why the confirmation below
 // spells out what's being destroyed instead of using a generic "are you sure?".
 async function loadSampleData() {
   if (
-    !(await confirmDialog.confirm(
+    !(await confirmDestructiveAction(
       "This permanently deletes ALL existing songs, services, people, and themes in this library, and replaces them with demo content. This cannot be undone — only use this on a library you don't need (e.g. exploring the app for the first time), never on a real church's data.",
       'Delete Everything & Load Sample Data',
     ))
@@ -334,7 +371,7 @@ async function loadSampleData() {
 // deletable records like songs/services/people/themes.
 async function clearExistingData() {
   if (
-    !(await confirmDialog.confirm(
+    !(await confirmDestructiveAction(
       'This permanently deletes ALL songs, services, people, themes, service types, collections, role categories, and service templates in this library. This cannot be undone — make sure this library is not currently in use before doing this.',
       'Delete Everything',
     ))
