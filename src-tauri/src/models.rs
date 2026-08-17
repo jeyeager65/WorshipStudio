@@ -690,7 +690,7 @@ pub struct OneDriveIntegration {
 }
 
 /// A church-chosen api.bible edition (e.g. NIV) — synced via LibrarySettings, same as the
-/// api.bible *key* needed to actually resolve it (LibrarySettings::api_bible_key). Both are
+/// api.bible *key* needed to actually resolve it (LibraryCredentials::api_bible_key). Both are
 /// church-wide, not per-machine — every device planning or presenting for the same church should
 /// resolve translations the same way.
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -703,18 +703,28 @@ pub struct ApiBibleTranslation {
     pub bible_id: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+/// Lives in its own `credentials.json`, a peer of `library-settings.json` — see
+/// `commands::settings::migrate_credentials_into_own_file` for the one-time migration off the
+/// old nested-in-settings shape. Kept separate from the taxonomy/branding/tuning fields that stay
+/// in `LibrarySettings` for two reasons: it shrinks the conflict surface for the
+/// much-more-frequently-edited fields there, and it matches a security boundary the app already
+/// draws elsewhere — the Canva OAuth access/refresh tokens produced *from* these credentials
+/// already live in their own machine-local `canva-auth.json`, specifically because they're
+/// sensitive; these being church-shared credentials sitting next to bulletin footer text was the
+/// one place that reasoning hadn't been carried through yet. Eager, unlike service_types/
+/// song_collections/service_templates (which only migrate when their own command runs) —
+/// commands::canva and commands::scripture both read these values directly and early (Canva
+/// connection status, scripture resolution), not only once someone happens to open Settings
+/// first — see commands::roles's own doc comment for the same reasoning applied there.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct LibrarySettings {
-    pub branding: Branding,
+pub struct LibraryCredentials {
     #[serde(default)]
     pub canva_integration: CanvaIntegration,
     #[serde(default)]
     pub dropbox_integration: DropboxIntegration,
     #[serde(default)]
     pub one_drive_integration: OneDriveIntegration,
-    #[serde(default)]
-    pub api_bible_translations: Vec<ApiBibleTranslation>,
     /// ESV API key (api.esv.org) — church-wide, synced, entered once in Settings > Bible
     /// Translations. `None`/missing means ESV isn't configured for this church; falls back to
     /// the ESV_API_KEY env var for local-dev convenience (see commands::scripture). Moved here
@@ -727,6 +737,14 @@ pub struct LibrarySettings {
     /// esv_api_key above.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_bible_key: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct LibrarySettings {
+    pub branding: Branding,
+    #[serde(default)]
+    pub api_bible_translations: Vec<ApiBibleTranslation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_translation_code: Option<String>,
     pub media_max_synced_file_size_mb: u32,
@@ -952,7 +970,7 @@ pub struct MachineSettings {
     pub display_roles: std::collections::HashMap<String, String>,
     /// Legacy ESV/api.bible keys, retained only so Settings can migrate installations that
     /// configured a key back when it was (mistakenly) treated as per-machine rather than
-    /// church-wide — see LibrarySettings::esv_api_key/api_bible_key for the real, synced
+    /// church-wide — see LibraryCredentials::esv_api_key/api_bible_key for the real, synced
     /// fields, and commands::settings::migrate_legacy_bible_api_keys for the one-time move.
     /// New saves always clear these.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1200,8 +1218,6 @@ mod tests {
         assert_eq!(settings.slide_footer_font_size_px, 48);
         assert_eq!(settings.wayfinding_min_font_size_px, 56);
         assert_eq!(settings.wayfinding_max_font_size_px, 150);
-        assert!(settings.canva_integration.client_id.is_empty());
-        assert!(settings.canva_integration.client_secret.is_empty());
     }
 
     #[test]

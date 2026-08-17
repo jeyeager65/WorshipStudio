@@ -24,18 +24,23 @@ import SongCollectionsSection from '@/components/settings/SongCollectionsSection
 import ServiceTypesSection from '@/components/settings/ServiceTypesSection.vue'
 
 const store = useSettingsStore()
-const { librarySettings, machineSettings } = storeToRefs(store)
+const { librarySettings, machineSettings, libraryCredentials } = storeToRefs(store)
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const confirmDialog = useConfirmDialogStore()
 const settingsDocument = computed({
   get: () =>
-    librarySettings.value && machineSettings.value
-      ? { library: librarySettings.value, machine: machineSettings.value }
+    librarySettings.value && machineSettings.value && libraryCredentials.value
+      ? {
+          library: librarySettings.value,
+          machine: machineSettings.value,
+          credentials: libraryCredentials.value,
+        }
       : undefined,
   set: (value) => {
     if (!value) return
     librarySettings.value = value.library
     machineSettings.value = value.machine
+    libraryCredentials.value = value.credentials
   },
 })
 const documentHistory = useDocumentHistory(settingsDocument, 'settings')
@@ -251,7 +256,7 @@ async function saveSettings() {
     class="ma-6"
     @retry="store.load"
   />
-  <div v-if="librarySettings && machineSettings" class="settings-layout">
+  <div v-if="librarySettings && machineSettings && libraryCredentials" class="settings-layout">
     <nav class="settings-nav" aria-label="Settings sections">
       <header class="settings-nav-header">
         <span>Configure</span>

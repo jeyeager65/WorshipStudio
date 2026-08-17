@@ -61,14 +61,16 @@ export interface ServiceTypeDefinition {
   description?: string
 }
 
-/** library-settings.json — synced, shared across the church's setup. */
-export interface LibrarySettings {
-  branding: {
-    churchName: string
-    logoMediaId?: string
-    primaryColor: string
-    secondaryColor: string
-  }
+/** Lives in its own `credentials.json`, a peer of `library-settings.json` — see
+ *  `src-tauri/src/commands/settings.rs`'s `migrate_credentials_into_own_file` for the one-time
+ *  migration off the old nested-in-settings shape. Kept separate from the taxonomy/branding/
+ *  tuning fields that stay in `LibrarySettings` for two reasons: it shrinks the conflict surface
+ *  for the much-more-frequently-edited fields there, and it matches a security boundary the app
+ *  already draws elsewhere — the Canva OAuth access/refresh tokens produced *from* these
+ *  credentials already live in their own machine-local canva-auth.json, specifically because
+ *  they're sensitive; these being church-shared credentials sitting next to bulletin footer text
+ *  was the one place that reasoning hadn't been carried through yet. */
+export interface LibraryCredentials {
   /**
    * One Canva Connect integration owned by the church. These credentials sync with the
    * library so every Worship Studio computer uses the same integration. The OAuth access and
@@ -102,15 +104,6 @@ export interface LibrarySettings {
   oneDriveIntegration: {
     clientId: string
   }
-  /**
-   * Church-chosen api.bible editions (e.g. NIV) — synced, same as the api.bible key needed to
-   * actually resolve them (apiBibleKey below). Both are church-wide, not per-machine.
-   */
-  apiBibleTranslations: {
-    code: string
-    label: string
-    bibleId: string
-  }[]
   /** ESV API key (api.esv.org) — church-wide, synced, entered once in Settings > Bible
    *  Translations. Moved here from MachineSettings (pre-0.9) since the key belongs to the
    *  church's own api.esv.org account, not to any one device — see MachineSettings.esvApiKey
@@ -118,6 +111,25 @@ export interface LibrarySettings {
   esvApiKey?: string
   /** api.bible key (scripture.api.bible) — church-wide, synced, same reasoning as esvApiKey. */
   apiBibleKey?: string
+}
+
+/** library-settings.json — synced, shared across the church's setup. */
+export interface LibrarySettings {
+  branding: {
+    churchName: string
+    logoMediaId?: string
+    primaryColor: string
+    secondaryColor: string
+  }
+  /**
+   * Church-chosen api.bible editions (e.g. NIV) — synced, same as the api.bible key needed to
+   * actually resolve them (LibraryCredentials.apiBibleKey). Both are church-wide, not per-machine.
+   */
+  apiBibleTranslations: {
+    code: string
+    label: string
+    bibleId: string
+  }[]
   defaultTranslationCode?: string
   mediaMaxSyncedFileSizeMb: number
   /**
@@ -192,9 +204,10 @@ export interface MachineSettings {
    */
   displayRoles: Record<string, string>
   /** Legacy ESV/api.bible keys, kept only so an already-configured device can migrate to the
-   *  real, synced fields (LibrarySettings.esvApiKey/apiBibleKey) the first time its settings
-   *  load after upgrading — see adapters/web/settings.ts's getLibrarySettings(). New saves
-   *  always clear these; nothing should read them for actual scripture resolution anymore. */
+   *  real, synced fields (LibraryCredentials.esvApiKey/apiBibleKey) the first time its
+   *  credentials load after upgrading — see adapters/web/settings.ts's getLibraryCredentials().
+   *  New saves always clear these; nothing should read them for actual scripture resolution
+   *  anymore. */
   esvApiKey?: string
   apiBibleKey?: string
   /** Explicit Remote Control LAN port. Undefined selects and remembers one automatically. */
@@ -235,10 +248,10 @@ export interface MachineSettings {
   tabletCloudLibraryFolderPath?: string
   /**
    * Tablet-only. A device-local *cache* of the app key/client ID used to connect — not the
-   * canonical value (that's LibrarySettings.dropboxIntegration.appKey or
+   * canonical value (that's LibraryCredentials.dropboxIntegration.appKey or
    * .oneDriveIntegration.clientId, synced church-wide). Needed purely to bootstrap: on a
    * brand-new device, nothing has been pulled from the cloud yet, so there's no synced
-   * LibrarySettings to read the real key from at all — the very first connection on any device
+   * LibraryCredentials to read the real key from at all — the very first connection on any device
    * has to come from a human typing it in, or scanning a same-church device's "Add Another
    * Device" link/QR code (BootGate.vue's connect screen). This just means a device that's
    * already connected doesn't have to ask again after a reload.

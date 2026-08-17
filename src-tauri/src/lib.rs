@@ -145,6 +145,8 @@ pub fn run() {
             commands::slides::delete_slide,
             commands::settings::get_library_settings,
             commands::settings::save_library_settings,
+            commands::settings::get_library_credentials,
+            commands::settings::save_library_credentials,
             commands::settings::get_machine_settings,
             commands::settings::save_machine_settings,
             commands::settings::clear_migration_snapshots,

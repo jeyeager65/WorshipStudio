@@ -8,7 +8,7 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 import type { CanvaStatus } from '@/adapters/types'
 
-const { librarySettings, machineSettings } = storeToRefs(useSettingsStore())
+const { libraryCredentials, machineSettings } = storeToRefs(useSettingsStore())
 const { isDirty } = storeToRefs(useUnsavedChangesStore())
 const confirmDialog = useConfirmDialogStore()
 
@@ -140,7 +140,7 @@ defineExpose({ loadCanvaStatus })
         </div>
       </div>
       <v-text-field
-        v-model="librarySettings!.canvaIntegration.clientId"
+        v-model="libraryCredentials!.canvaIntegration.clientId"
         label="Canva client ID"
         variant="outlined"
         density="compact"
@@ -150,7 +150,7 @@ defineExpose({ loadCanvaStatus })
         persistent-hint
       />
       <v-text-field
-        v-model="librarySettings!.canvaIntegration.clientSecret"
+        v-model="libraryCredentials!.canvaIntegration.clientSecret"
         label="Canva client secret"
         type="password"
         variant="outlined"
@@ -239,8 +239,8 @@ defineExpose({ loadCanvaStatus })
           prepend-icon="mdi-open-in-new"
           :disabled="
             isDirty ||
-            !librarySettings!.canvaIntegration.clientId.trim() ||
-            !librarySettings!.canvaIntegration.clientSecret.trim() ||
+            !libraryCredentials!.canvaIntegration.clientId.trim() ||
+            !libraryCredentials!.canvaIntegration.clientSecret.trim() ||
             canvaPortConflict
           "
           :loading="canvaStatusLoading || canvaStatus?.connecting"

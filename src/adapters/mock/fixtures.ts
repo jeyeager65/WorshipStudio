@@ -1,5 +1,5 @@
 import type { SlideLibraryItem, MediaItem } from '@/models/library'
-import type { LibrarySettings, MachineSettings } from '@/models/settings'
+import type { LibraryCredentials, LibrarySettings, MachineSettings } from '@/models/settings'
 import type { Announcement } from '@/models/announcement'
 import {
   sampleSongs,
@@ -35,19 +35,22 @@ export const seedSlides: SlideLibraryItem[] = []
 export const seedMedia: MediaItem[] = []
 export const seedAnnouncements: Announcement[] = []
 
+export const seedLibraryCredentials: LibraryCredentials = {
+  canvaIntegration: { clientId: '', clientSecret: '' },
+  // The demo build never resolves the 'tablet' adapter kind — no cloud app registration to seed.
+  dropboxIntegration: { appKey: '' },
+  oneDriveIntegration: { clientId: '' },
+  // The mock/demo adapter only ever resolves KJV (see scriptureFixtures.ts) — an ESV/api.bible
+  // key here would be exactly the disconnected-Settings-vs-real-picker bug this model shape
+  // exists to prevent, so the demo's seed data doesn't pretend otherwise.
+}
+
 export const seedLibrarySettings: LibrarySettings = {
   branding: {
     churchName: 'Worship Studio Church',
     primaryColor: '#1F3A5F',
     secondaryColor: '#C9A227',
   },
-  canvaIntegration: { clientId: '', clientSecret: '' },
-  // The demo build never resolves the 'tablet' adapter kind — no cloud app registration to seed.
-  dropboxIntegration: { appKey: '' },
-  oneDriveIntegration: { clientId: '' },
-  // The mock/demo adapter only ever resolves KJV (see scriptureFixtures.ts) — an ESV/api.bible
-  // entry here would be exactly the disconnected-Settings-vs-real-picker bug this model shape
-  // exists to prevent, so the demo's seed data doesn't pretend otherwise.
   apiBibleTranslations: [],
   defaultTranslationCode: 'KJV',
   mediaMaxSyncedFileSizeMb: 50,

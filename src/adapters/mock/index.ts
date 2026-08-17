@@ -35,6 +35,7 @@ import {
   seedPeople,
   seedAnnouncements,
   seedLibrarySettings,
+  seedLibraryCredentials,
   seedMachineSettings,
 } from './fixtures'
 import { parseOpenSongXml } from './opensongParser'
@@ -126,6 +127,7 @@ export function createMockAdapter(): StudioAdapter {
   const announcements = new MockCollection('announcements', seedAnnouncements)
 
   const librarySettingsStore = new MockSingleton('library-settings', seedLibrarySettings)
+  const credentialsStore = new MockSingleton('credentials', seedLibraryCredentials)
   const machineSettingsStore = new MockSingleton('machine-settings', seedMachineSettings)
   // Real hardware enumeration would refresh id/name/resolution from the OS each time and
   // look up only the role from per-machine storage; the mock's "hardware" is fake and
@@ -465,6 +467,8 @@ export function createMockAdapter(): StudioAdapter {
     settings: {
       getLibrarySettings: () => librarySettingsStore.get(),
       saveLibrarySettings: (next) => librarySettingsStore.save(next),
+      getLibraryCredentials: () => credentialsStore.get(),
+      saveLibraryCredentials: (next) => credentialsStore.save(next),
       getMachineSettings: () => machineSettingsStore.get(),
       saveMachineSettings: (next) => machineSettingsStore.save(next),
       // No real filesystem to pick a folder from in the browser demo.

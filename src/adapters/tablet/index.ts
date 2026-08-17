@@ -131,16 +131,19 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
     scripture: {
       resolve: async (reference, translationCode): Promise<ScripturePassage> => {
         if (translationCode === 'ESV') {
-          const librarySettings = await settings.getLibrarySettings()
-          const apiKey = librarySettings.esvApiKey
+          const libraryCredentials = await settings.getLibraryCredentials()
+          const apiKey = libraryCredentials.esvApiKey
           if (!apiKey) throw new Error("The ESV API isn't configured for this church.")
           return resolveEsv(reference, apiKey)
         }
         if (translationCode !== 'KJV') {
-          const librarySettings = await settings.getLibrarySettings()
+          const [librarySettings, libraryCredentials] = await Promise.all([
+            settings.getLibrarySettings(),
+            settings.getLibraryCredentials(),
+          ])
           const entry = librarySettings.apiBibleTranslations.find((t) => t.code === translationCode)
           if (entry) {
-            const apiKey = librarySettings.apiBibleKey
+            const apiKey = libraryCredentials.apiBibleKey
             if (!apiKey) throw new Error("The api.bible API isn't configured for this church.")
             return resolveApiBible(reference, entry.bibleId, translationCode, apiKey)
           }
@@ -167,12 +170,15 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
       },
       getBookList: async () => getBookNames(),
       listTranslations: async () => {
-        const librarySettings = await settings.getLibrarySettings()
+        const [librarySettings, libraryCredentials] = await Promise.all([
+          settings.getLibrarySettings(),
+          settings.getLibraryCredentials(),
+        ])
         const translations = [{ code: 'KJV', name: 'King James Version' }]
-        if (librarySettings.esvApiKey) {
+        if (libraryCredentials.esvApiKey) {
           translations.push({ code: 'ESV', name: 'English Standard Version' })
         }
-        if (librarySettings.apiBibleKey) {
+        if (libraryCredentials.apiBibleKey) {
           for (const t of librarySettings.apiBibleTranslations) {
             translations.push({ code: t.code, name: t.label })
           }
@@ -180,7 +186,7 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
         return translations
       },
       listApiBibleCatalog: async (apiKey) => {
-        const key = apiKey || (await settings.getLibrarySettings()).apiBibleKey
+        const key = apiKey || (await settings.getLibraryCredentials()).apiBibleKey
         if (!key) throw new Error("The api.bible API isn't configured for this church.")
         return listApiBibleCatalog(key)
       },

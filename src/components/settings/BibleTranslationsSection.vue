@@ -7,11 +7,11 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 import type { ApiBibleCatalogEntry } from '@/adapters/types'
 
-const { librarySettings } = storeToRefs(useSettingsStore())
+const { librarySettings, libraryCredentials } = storeToRefs(useSettingsStore())
 const confirmDialog = useConfirmDialogStore()
 
 // KJV is bundled (always resolvable, no config). ESV and api.bible editions (e.g. NIV) each
-// need their own API key, entered below and stored church-wide in LibrarySettings (synced —
+// need their own API key, entered below and stored church-wide in LibraryCredentials (synced —
 // see models/settings.ts) since the key belongs to the church's own account, not to any one
 // computer. `availableTranslationEntries` below is built from exactly the same rules
 // commands::scripture::list_scripture_translations uses on the Rust side, so this list can
@@ -26,7 +26,7 @@ const pickedCatalogEntry = ref<ApiBibleCatalogEntry>()
 let catalogLoadedForKey = ''
 
 async function loadApiBibleCatalog() {
-  const key = librarySettings.value?.apiBibleKey
+  const key = libraryCredentials.value?.apiBibleKey
   // Pass the draft key directly rather than relying on the Rust side re-reading
   // library-settings.json — that file only has last Save's value, so without this the catalog
   // would silently fail to load until Save was pressed at least once.
@@ -112,7 +112,7 @@ const availableTranslationEntries = computed<AvailableTranslationEntry[]>(() => 
       needsKey: false,
     })
   }
-  const apiBibleKeyConfigured = !!librarySettings.value?.apiBibleKey
+  const apiBibleKeyConfigured = !!libraryCredentials.value?.apiBibleKey
   for (const t of librarySettings.value?.apiBibleTranslations ?? []) {
     entries.push({ code: t.code, name: t.label, removable: true, needsKey: !apiBibleKeyConfigured })
   }
@@ -154,7 +154,7 @@ defineExpose({ refreshAvailability })
       icon="mdi-key-outline"
     >
       <v-text-field
-        v-model="librarySettings!.esvApiKey"
+        v-model="libraryCredentials!.esvApiKey"
         label="ESV API key"
         type="password"
         variant="outlined"
@@ -168,7 +168,7 @@ defineExpose({ refreshAvailability })
         {{ ESV_COPYRIGHT_NOTICE }}
       </v-alert>
       <v-alert
-        v-else-if="librarySettings!.esvApiKey"
+        v-else-if="libraryCredentials!.esvApiKey"
         type="warning"
         variant="tonal"
         density="compact"
@@ -184,7 +184,7 @@ defineExpose({ refreshAvailability })
       icon="mdi-book-plus-outline"
     >
       <v-text-field
-        v-model="librarySettings!.apiBibleKey"
+        v-model="libraryCredentials!.apiBibleKey"
         label="api.bible API key"
         type="password"
         variant="outlined"
@@ -194,7 +194,7 @@ defineExpose({ refreshAvailability })
         persistent-hint
         class="settings-form-field mb-3"
       />
-      <div v-if="librarySettings!.apiBibleKey">
+      <div v-if="libraryCredentials!.apiBibleKey">
         <div class="translation-picker">
           <v-autocomplete
             v-model="pickedCatalogEntry"

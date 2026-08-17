@@ -111,9 +111,13 @@ pub struct CanvaVideoPreview {
 }
 
 fn credentials(app: &AppHandle) -> Result<(String, String), String> {
-    let settings = crate::commands::settings::load_library_settings(app)?;
-    let id = settings.canva_integration.client_id.trim().to_string();
-    let secret = settings.canva_integration.client_secret.trim().to_string();
+    let credentials = crate::commands::settings::load_library_credentials(app)?;
+    let id = credentials.canva_integration.client_id.trim().to_string();
+    let secret = credentials
+        .canva_integration
+        .client_secret
+        .trim()
+        .to_string();
     if id.is_empty() || secret.is_empty() {
         Err("The church's Canva integration credentials are not configured.".to_string())
     } else {
@@ -134,7 +138,7 @@ fn read_tokens(app: &AppHandle) -> Result<Option<CanvaTokens>, String> {
     else {
         return Ok(None);
     };
-    let configured_client_id = crate::commands::settings::load_library_settings(app)
+    let configured_client_id = crate::commands::settings::load_library_credentials(app)
         .map_err(|error| error.to_string())?
         .canva_integration
         .client_id;

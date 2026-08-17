@@ -1,13 +1,13 @@
 use tauri::AppHandle;
 
-use crate::commands::settings::get_library_settings;
+use crate::commands::settings::{get_library_credentials, get_library_settings};
 use crate::domain::scripture;
 use crate::models::{ApiBibleCatalogEntry, ScripturePassage, ScriptureTranslation};
 
 fn esv_api_key(app: &AppHandle) -> Option<String> {
-    get_library_settings(app.clone())
+    get_library_credentials(app.clone())
         .ok()
-        .and_then(|library| library.esv_api_key)
+        .and_then(|credentials| credentials.esv_api_key)
         .filter(|k| !k.is_empty())
         // Local-dev convenience only (see notes/release-process.md) — never overrides a real
         // church-wide key configured in Settings.
@@ -15,9 +15,9 @@ fn esv_api_key(app: &AppHandle) -> Option<String> {
 }
 
 fn api_bible_key(app: &AppHandle) -> Option<String> {
-    get_library_settings(app.clone())
+    get_library_credentials(app.clone())
         .ok()
-        .and_then(|library| library.api_bible_key)
+        .and_then(|credentials| credentials.api_bible_key)
         .filter(|k| !k.is_empty())
         .or_else(|| {
             std::env::var("API_BIBLE_KEY")

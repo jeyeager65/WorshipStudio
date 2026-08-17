@@ -195,7 +195,7 @@ async function clearAndResync() {
 
 // A short block of plain text (see connectCode.ts's own doc comment for why it's deliberately not
 // a link) that pre-fills and immediately starts BootGate.vue's connect flow on another device once
-// pasted there. The app key/client ID isn't a secret (see LibrarySettings.dropboxIntegration's own
+// pasted there. The app key/client ID isn't a secret (see LibraryCredentials.dropboxIntegration's own
 // doc comment — PKCE public clients don't have one), so carrying it in plain text is the same
 // reasoning Remote Control's own pairing link/QR already relies on. This is what turns "type in a
 // raw app key" from a per-device chore into a one-time setup task done only for the very first

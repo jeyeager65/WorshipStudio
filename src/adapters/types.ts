@@ -10,6 +10,7 @@ import type {
 } from '@/models/library'
 import type {
   LibrarySettings,
+  LibraryCredentials,
   MachineSettings,
   SongCollectionDefinition,
   ServiceTypeDefinition,
@@ -274,6 +275,10 @@ export interface AnnouncementPort {
 export interface SettingsPort {
   getLibrarySettings(): Promise<LibrarySettings>
   saveLibrarySettings(settings: LibrarySettings): Promise<void>
+  /** See `LibraryCredentials`'s own doc comment for why these live in their own file, separate
+   *  from `LibrarySettings`. */
+  getLibraryCredentials(): Promise<LibraryCredentials>
+  saveLibraryCredentials(credentials: LibraryCredentials): Promise<void>
   getMachineSettings(): Promise<MachineSettings>
   saveMachineSettings(settings: MachineSettings): Promise<void>
   /** Opens a native folder picker for the synced library root (e.g. a Dropbox folder). Returns

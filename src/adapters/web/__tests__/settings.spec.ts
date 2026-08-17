@@ -58,10 +58,31 @@ describe('createWebSettingsPort', () => {
     await expect(port.getMachineSettings()).resolves.toMatchObject({ hasCompletedSetup: false })
   })
 
+  it('returns first-run defaults for credentials when credentials.json does not exist yet', async () => {
+    const port = createWebSettingsPort(createFakeRoot())
+    const credentials = await port.getLibraryCredentials()
+    expect(credentials.canvaIntegration).toEqual({ clientId: '', clientSecret: '' })
+    expect(credentials.dropboxIntegration).toEqual({ appKey: '' })
+    expect(credentials.oneDriveIntegration).toEqual({ clientId: '' })
+  })
+
+  it('round-trips saved credentials through the picked folder, separate from library-settings.json', async () => {
+    const root = createFakeRoot()
+    const port = createWebSettingsPort(root)
+    const credentials = await port.getLibraryCredentials()
+    credentials.canvaIntegration = { clientId: 'church-id', clientSecret: 'church-secret' }
+    await port.saveLibraryCredentials(credentials)
+
+    const reloaded = await port.getLibraryCredentials()
+    expect(reloaded.canvaIntegration.clientId).toBe('church-id')
+    // Never written into library-settings.json — a real, separate file.
+    await expect(readJsonFile(root, 'library-settings.json')).resolves.toBeNull()
+  })
+
   // Mirrors src-tauri/src/commands/settings.rs's migrate_legacy_bible_api_keys tests exactly —
   // these keys used to live on MachineSettings (a mistake: they belong to the church's own
-  // api.esv.org/api.bible account, not to any one device) and now live on LibrarySettings, with
-  // a one-time migration for anyone who already configured one the old way.
+  // api.esv.org/api.bible account, not to any one device) and now live on LibraryCredentials,
+  // with a one-time migration for anyone who already configured one the old way.
   //
   // Legacy state is seeded via a direct localStorage write, not port.saveMachineSettings() — that
   // API now deliberately strips these two fields on every save (so a stale already-open tab can
@@ -77,15 +98,15 @@ describe('createWebSettingsPort', () => {
   }
 
   describe('Bible API key migration', () => {
-    it('moves a legacy machine-local key into library settings on first load', async () => {
+    it('moves a legacy machine-local key into library credentials on first load', async () => {
       const root = createFakeRoot()
       seedLegacyMachineBibleKeys()
       const port = createWebSettingsPort(root)
 
-      const library = await port.getLibrarySettings()
+      const credentials = await port.getLibraryCredentials()
 
-      expect(library.esvApiKey).toBe('legacy-esv-key')
-      expect(library.apiBibleKey).toBe('legacy-api-bible-key')
+      expect(credentials.esvApiKey).toBe('legacy-esv-key')
+      expect(credentials.apiBibleKey).toBe('legacy-api-bible-key')
     })
 
     it('clears the legacy machine-local keys once migrated, so they never resurface', async () => {
@@ -93,7 +114,7 @@ describe('createWebSettingsPort', () => {
       seedLegacyMachineBibleKeys()
       const port = createWebSettingsPort(root)
 
-      await port.getLibrarySettings()
+      await port.getLibraryCredentials()
 
       const machine = await port.getMachineSettings()
       expect(machine.esvApiKey).toBeUndefined()
@@ -103,13 +124,13 @@ describe('createWebSettingsPort', () => {
     it('never overwrites a key the church already configured', async () => {
       const root = createFakeRoot()
       const port = createWebSettingsPort(root)
-      const library = await port.getLibrarySettings()
-      library.esvApiKey = 'church-esv-key'
-      library.apiBibleKey = 'church-api-bible-key'
-      await port.saveLibrarySettings(library)
+      const credentials = await port.getLibraryCredentials()
+      credentials.esvApiKey = 'church-esv-key'
+      credentials.apiBibleKey = 'church-api-bible-key'
+      await port.saveLibraryCredentials(credentials)
       seedLegacyMachineBibleKeys()
 
-      const reloaded = await port.getLibrarySettings()
+      const reloaded = await port.getLibraryCredentials()
 
       expect(reloaded.esvApiKey).toBe('church-esv-key')
       expect(reloaded.apiBibleKey).toBe('church-api-bible-key')
@@ -119,12 +140,12 @@ describe('createWebSettingsPort', () => {
       const root = createFakeRoot()
       const port = createWebSettingsPort(root)
       // The church already configured api.bible (e.g. from another device) but never ESV.
-      const library = await port.getLibrarySettings()
-      library.apiBibleKey = 'church-api-bible-key'
-      await port.saveLibrarySettings(library)
+      const credentials = await port.getLibraryCredentials()
+      credentials.apiBibleKey = 'church-api-bible-key'
+      await port.saveLibraryCredentials(credentials)
       seedLegacyMachineBibleKeys()
 
-      const reloaded = await port.getLibrarySettings()
+      const reloaded = await port.getLibraryCredentials()
 
       expect(reloaded.esvApiKey).toBe('legacy-esv-key')
       expect(reloaded.apiBibleKey).toBe('church-api-bible-key')

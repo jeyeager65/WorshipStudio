@@ -34,6 +34,7 @@ import type { Service, ServiceTemplate } from '@/models/service'
 import type { SlideLibraryItem, MediaItem, Theme, Person } from '@/models/library'
 import type {
   LibrarySettings,
+  LibraryCredentials,
   MachineSettings,
   SongCollectionDefinition,
   ServiceTypeDefinition,
@@ -439,6 +440,9 @@ export function createTauriAdapter(): StudioAdapter {
     settings: {
       getLibrarySettings: () => invoke<LibrarySettings>('get_library_settings'),
       saveLibrarySettings: (settings) => invoke('save_library_settings', { settings }),
+      getLibraryCredentials: () => invoke<LibraryCredentials>('get_library_credentials'),
+      saveLibraryCredentials: (credentials) =>
+        invoke('save_library_credentials', { credentials }),
       getMachineSettings: () => invoke<MachineSettings>('get_machine_settings'),
       saveMachineSettings: (settings) => invoke('save_machine_settings', { settings }),
       pickLibraryFolder: async () => {

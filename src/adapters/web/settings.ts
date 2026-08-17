@@ -1,8 +1,9 @@
 /**
- * SettingsPort for a File System Access-backed web build. LibrarySettings is synced (lives at
- * library-settings.json in the picked folder, same as the Tauri build); MachineSettings is
- * deliberately NOT synced — the Tauri build keeps it in the OS app-data dir, and the browser's
- * equivalent of "this machine/profile, never synced" is localStorage, not the picked folder.
+ * SettingsPort for a File System Access-backed web build. LibrarySettings/LibraryCredentials are
+ * both synced (live at library-settings.json/credentials.json in the picked folder, same as the
+ * Tauri build); MachineSettings is deliberately NOT synced — the Tauri build keeps it in the OS
+ * app-data dir, and the browser's equivalent of "this machine/profile, never synced" is
+ * localStorage, not the picked folder.
  *
  * Default values below are genuinely-reasonable first-run defaults (matching the Rust backend's
  * numeric defaults for font sizes/bulletin labels), not demo/seed content — unlike
@@ -10,18 +11,19 @@
  * fake sample service types, collections, or a placeholder church name.
  */
 
-import type { LibrarySettings, MachineSettings } from '@/models/settings'
+import type { LibraryCredentials, LibrarySettings, MachineSettings } from '@/models/settings'
 import type { SettingsPort } from '@/adapters/types'
 import { backupPath, readJsonFile, removeFile, writeJsonFile } from './fsaStorage'
 import { storeLibraryHandle } from './handlePersistence'
 
 const LIBRARY_SETTINGS_PATH = 'library-settings.json'
+const CREDENTIALS_PATH = 'credentials.json'
 const MACHINE_SETTINGS_KEY = 'worship-studio:web:machine-settings'
 
 // Mirrors src-tauri/src/commands/settings.rs's clear_settings_list_backups exactly — same five
 // filenames (see each adapters/web/*.ts port's own *_PATH constant), same exclusion of
-// library-settings.json.backup (that file itself is never touched by Clear Existing Data, so its
-// backup shouldn't be swept away either).
+// library-settings.json.backup/credentials.json.backup (neither file is ever touched by Clear
+// Existing Data, so neither backup should be swept away).
 const SETTINGS_LIST_FILES = [
   'song-collections.json',
   'service-types.json',
@@ -33,9 +35,6 @@ const SETTINGS_LIST_FILES = [
 function defaultLibrarySettings(): LibrarySettings {
   return {
     branding: { churchName: '', primaryColor: '#1F3A5F', secondaryColor: '#C9A227' },
-    canvaIntegration: { clientId: '', clientSecret: '' },
-    dropboxIntegration: { appKey: '' },
-    oneDriveIntegration: { clientId: '' },
     apiBibleTranslations: [],
     defaultTranslationCode: 'KJV',
     mediaMaxSyncedFileSizeMb: 50,
@@ -62,6 +61,14 @@ function defaultLibrarySettings(): LibrarySettings {
   }
 }
 
+function defaultLibraryCredentials(): LibraryCredentials {
+  return {
+    canvaIntegration: { clientId: '', clientSecret: '' },
+    dropboxIntegration: { appKey: '' },
+    oneDriveIntegration: { clientId: '' },
+  }
+}
+
 function defaultMachineSettings(): MachineSettings {
   return {
     thisComputerName: '',
@@ -85,16 +92,16 @@ function readMachineSettings(): MachineSettings {
   }
 }
 
-/** Moves pre-0.9 machine-local Bible API keys into the synced library settings, mirroring
+/** Moves pre-0.9 machine-local Bible API keys into the synced church credentials, mirroring
  *  src-tauri/src/commands/settings.rs's migrate_legacy_bible_api_keys exactly — existing shared
  *  values win, and ESV/api.bible migrate independently (unlike Canva's paired id+secret) since a
  *  church may only have configured one of the two. */
 function migrateLegacyBibleApiKeys(
-  library: LibrarySettings,
+  credentials: LibraryCredentials,
   machine: MachineSettings,
-): { library: LibrarySettings; changed: boolean } {
+): { credentials: LibraryCredentials; changed: boolean } {
   let changed = false
-  const migrated = { ...library }
+  const migrated = { ...credentials }
   if (!migrated.esvApiKey?.trim() && machine.esvApiKey?.trim()) {
     migrated.esvApiKey = machine.esvApiKey.trim()
     changed = true
@@ -103,33 +110,44 @@ function migrateLegacyBibleApiKeys(
     migrated.apiBibleKey = machine.apiBibleKey.trim()
     changed = true
   }
-  return { library: migrated, changed }
+  return { credentials: migrated, changed }
 }
 
 export function createWebSettingsPort(root: FileSystemDirectoryHandle): SettingsPort {
   return {
     getLibrarySettings: async () => {
-      const existing = await readJsonFile<LibrarySettings>(root, LIBRARY_SETTINGS_PATH)
-      let settings = existing ?? defaultLibrarySettings()
+      return (await readJsonFile<LibrarySettings>(root, LIBRARY_SETTINGS_PATH)) ?? defaultLibrarySettings()
+    },
+    saveLibrarySettings: async (settings) => {
+      await writeJsonFile(root, LIBRARY_SETTINGS_PATH, settings)
+    },
+    // Deliberately does not replicate the Rust side's one-time migration of these fields out of
+    // the old nested-in-library-settings.json shape — same precedent as adapters/web/roles.ts:
+    // Rust is the authoritative migration layer for that. A web-build library still carrying
+    // credentials nested inside library-settings.json simply starts with empty credentials here;
+    // opening the library once in the desktop app runs the real migration for every adapter.
+    getLibraryCredentials: async () => {
+      let credentials =
+        (await readJsonFile<LibraryCredentials>(root, CREDENTIALS_PATH)) ?? defaultLibraryCredentials()
       const machine = readMachineSettings()
       // Reconcile once per load rather than only when the two happen to disagree — matches the
-      // Rust backend's load_library_settings, which always clears the legacy machine-local
-      // fields once they've been considered, whether or not the library's own value won.
+      // Rust backend's load_library_credentials, which always clears the legacy machine-local
+      // fields once they've been considered, whether or not the church's own value won.
       if (machine.esvApiKey || machine.apiBibleKey) {
-        const migrated = migrateLegacyBibleApiKeys(settings, machine)
-        settings = migrated.library
+        const migrated = migrateLegacyBibleApiKeys(credentials, machine)
+        credentials = migrated.credentials
         if (migrated.changed) {
-          await writeJsonFile(root, LIBRARY_SETTINGS_PATH, settings)
+          await writeJsonFile(root, CREDENTIALS_PATH, credentials)
         }
         localStorage.setItem(
           MACHINE_SETTINGS_KEY,
           JSON.stringify({ ...machine, esvApiKey: undefined, apiBibleKey: undefined }),
         )
       }
-      return settings
+      return credentials
     },
-    saveLibrarySettings: async (settings) => {
-      await writeJsonFile(root, LIBRARY_SETTINGS_PATH, settings)
+    saveLibraryCredentials: async (credentials) => {
+      await writeJsonFile(root, CREDENTIALS_PATH, credentials)
     },
     getMachineSettings: async () => readMachineSettings(),
     saveMachineSettings: async (settings) => {

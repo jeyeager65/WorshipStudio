@@ -2,28 +2,23 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { getAdapter } from '@/adapters'
 import { useAsyncStoreState } from '@/composables/useAsyncStoreState'
-import type { LibrarySettings, MachineSettings } from '@/models/settings'
+import type { LibraryCredentials, LibrarySettings, MachineSettings } from '@/models/settings'
 
 export const useSettingsStore = defineStore('settings', () => {
   const librarySettings = ref<LibrarySettings>()
+  const libraryCredentials = ref<LibraryCredentials>()
   const machineSettings = ref<MachineSettings>()
   const asyncState = useAsyncStoreState()
 
   async function load() {
     return asyncState.runLoad(async () => {
-      const [library, machine] = await Promise.all([
+      const [library, credentials, machine] = await Promise.all([
         getAdapter().settings.getLibrarySettings(),
+        getAdapter().settings.getLibraryCredentials(),
         getAdapter().settings.getMachineSettings(),
       ])
       librarySettings.value = {
         ...library,
-        // Browser-demo localStorage and older library-settings.json files predate the shared
-        // Canva integration block. Normalize once at the store boundary so every view can rely
-        // on the current shape.
-        canvaIntegration: library.canvaIntegration ?? { clientId: '', clientSecret: '' },
-        // Same story for the Dropbox/OneDrive integration blocks, added after canvaIntegration.
-        dropboxIntegration: library.dropboxIntegration ?? { appKey: '' },
-        oneDriveIntegration: library.oneDriveIntegration ?? { clientId: '' },
         // Same story for the bulletin block — browser-demo localStorage saved before it existed
         // has no `bulletin` key at all, which crashed BulletinView's render (every field access
         // assumes librarySettings.bulletin itself, not just librarySettings, is always present).
@@ -40,20 +35,22 @@ export const useSettingsStore = defineStore('settings', () => {
           servingScheduleRoleIds: [],
         },
       }
+      libraryCredentials.value = credentials
       machineSettings.value = machine
     })
   }
 
   async function save() {
-    if (!librarySettings.value || !machineSettings.value) return
+    if (!librarySettings.value || !libraryCredentials.value || !machineSettings.value) return
     // LibrarySettings is written beneath MachineSettings.libraryPath in the desktop adapter.
     // Persist the machine choice first so changing the library folder and saving in one action
     // writes shared settings into the newly selected folder, not the previously active one.
     await asyncState.runMutation(async () => {
       await getAdapter().settings.saveMachineSettings(machineSettings.value!)
       await getAdapter().settings.saveLibrarySettings(librarySettings.value!)
+      await getAdapter().settings.saveLibraryCredentials(libraryCredentials.value!)
     })
   }
 
-  return { librarySettings, machineSettings, ...asyncState, load, save }
+  return { librarySettings, libraryCredentials, machineSettings, ...asyncState, load, save }
 })
