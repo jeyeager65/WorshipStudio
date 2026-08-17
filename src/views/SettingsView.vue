@@ -368,7 +368,7 @@ async function saveSettings() {
           description="Songbooks and catalogs a song can belong to, each with its own number."
           icon="mdi-bookshelf"
         >
-          <SongCollectionsSection v-model="librarySettings.collections" />
+          <SongCollectionsSection />
         </SettingsPanel>
       </template>
 

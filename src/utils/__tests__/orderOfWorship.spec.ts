@@ -70,7 +70,7 @@ describe('buildOrderOfWorship', () => {
       items: [{ id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: [] } }],
     })
     const doc = buildOrderOfWorship(service, songs, slides, new Map(), new Map(), undefined, [
-      { name: 'hymnal', abbreviation: 'WH' },
+      { id: 'hymnal', name: 'hymnal', abbreviation: 'WH' },
     ])
     expect(doc.lines[0]?.text).toBe('Come Behold the Wondrous Mystery WH 184')
   })

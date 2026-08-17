@@ -16,7 +16,12 @@ export function roleDisplayLabel(role: string, roleGroups: RoleGroup[]): string 
   return group ? `${group.name} - ${role}` : role
 }
 
+/** Lives in its own `song-collections.json`, a peer of `library-settings.json`, not a field on
+ *  it — see `src-tauri/src/domain/song_collections.rs` and its one-time migration off the old
+ *  nested-in-settings, name-only shape. Referenced by id from `Song.collections[].collectionId`
+ *  (models/song.ts), not by name. */
 export interface SongCollectionDefinition {
+  id: string
   name: string
   /** Optional short label printed before a song's collection number in the bulletin. */
   abbreviation?: string
@@ -32,7 +37,6 @@ export interface ServiceTypeDefinition {
 /** library-settings.json — synced, shared across the church's setup. */
 export interface LibrarySettings {
   serviceTypes: ServiceTypeDefinition[]
-  collections: SongCollectionDefinition[]
   roleGroups: RoleGroup[]
   serviceTemplates: ServiceTemplate[]
   branding: {

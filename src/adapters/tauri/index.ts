@@ -32,7 +32,7 @@ import type {
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
 import type { SlideLibraryItem, MediaItem, Theme, Person } from '@/models/library'
-import type { LibrarySettings, MachineSettings } from '@/models/settings'
+import type { LibrarySettings, MachineSettings, SongCollectionDefinition } from '@/models/settings'
 import type { Announcement } from '@/models/announcement'
 import { friendlyDisplayName } from '@/utils/displayName'
 import { generateQrCodeDataUrl } from '@/utils/qrCode'
@@ -390,6 +390,12 @@ export function createTauriAdapter(): StudioAdapter {
       list: () => invoke<Theme[]>('list_themes'),
       save: (theme) => invoke('save_theme', { theme }),
       delete: (id) => invoke('delete_theme', { id }),
+    },
+    songCollections: {
+      list: () => invoke<SongCollectionDefinition[]>('list_song_collections'),
+      save: (collection) =>
+        invoke<SongCollectionDefinition>('save_song_collection', { collection }),
+      delete: (id) => invoke('delete_song_collection', { id }),
     },
     people: {
       list: () => invoke<Person[]>('list_people'),

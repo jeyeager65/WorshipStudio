@@ -31,6 +31,7 @@ import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useSettingsStore } from '@/stores/settings'
+import { useSongCollectionsStore } from '@/stores/songCollections'
 import { usePeopleStore } from '@/stores/people'
 import { useSyncStore } from '@/stores/sync'
 import { flattenService, type FlatSlide } from '@/utils/flattenService'
@@ -67,6 +68,7 @@ const mediaStore = useMediaStore()
 const themesStore = useThemesStore()
 const externalAppsStore = useExternalAppsStore()
 const settingsStore = useSettingsStore()
+const songCollectionsStore = useSongCollectionsStore()
 const peopleStore = usePeopleStore()
 const syncStore = useSyncStore()
 const { isPresenting } = storeToRefs(useLiveSessionStore())
@@ -290,6 +292,7 @@ onMounted(async () => {
   if (!externalAppsStore.loaded) await externalAppsStore.load()
   if (!peopleStore.loaded) await peopleStore.load()
   if (!settingsStore.loaded) await settingsStore.load()
+  if (!songCollectionsStore.loaded) await songCollectionsStore.load()
   const dependencyLoadError =
     songsStore.loadError ||
     slidesStore.loadError ||
@@ -297,7 +300,8 @@ onMounted(async () => {
     themesStore.loadError ||
     externalAppsStore.loadError ||
     peopleStore.loadError ||
-    settingsStore.loadError
+    settingsStore.loadError ||
+    songCollectionsStore.loadError
   if (dependencyLoadError) {
     workspaceLoadError.value = dependencyLoadError
     workspaceLoading.value = false
@@ -534,6 +538,7 @@ const flatSlides = computed<FlatSlide[]>(() =>
         externalAppProfilesById.value,
         scriptureFontRange.value,
         songFontRange.value,
+        songCollectionsStore.collections,
       )
     : [],
 )

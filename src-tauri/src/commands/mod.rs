@@ -12,6 +12,7 @@ pub mod scripture;
 pub mod services;
 pub mod settings;
 pub mod slides;
+pub mod song_collections;
 pub mod songs;
 pub mod stock_content;
 pub mod sync;

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
 import { useSongsStore } from '@/stores/songs'
 import { useSettingsStore } from '@/stores/settings'
+import { useSongCollectionsStore } from '@/stores/songCollections'
 import { useServicesStore } from '@/stores/services'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
@@ -21,6 +22,7 @@ const router = useRouter()
 const route = useRoute()
 const store = useSongsStore()
 const settingsStore = useSettingsStore()
+const songCollectionsStore = useSongCollectionsStore()
 const servicesStore = useServicesStore()
 const confirmDialog = useConfirmDialogStore()
 
@@ -61,6 +63,7 @@ onMounted(async () => {
   await Promise.all([
     store.loaded ? Promise.resolve() : store.load(),
     settingsStore.load(),
+    songCollectionsStore.loaded ? Promise.resolve() : songCollectionsStore.load(),
     selectionMode.value && !servicesStore.loaded ? servicesStore.load() : Promise.resolve(),
   ])
 })
@@ -78,19 +81,25 @@ const activeSongsCount = computed(() => allSongs.value.filter((song) => !song.ar
 const visibleSongs = computed(() =>
   allSongs.value.filter((song) => !!song.archived === showArchived.value),
 )
+// Falls back to the raw id for a song referencing a collection that's since been deleted from
+// Settings — rare, but better than the filter/label silently vanishing for that song.
+function collectionName(id: string): string {
+  return songCollectionsStore.collections.find((definition) => definition.id === id)?.name ?? id
+}
+
 const collectionFilters = computed(() => {
-  const names = new Set(
-    settingsStore.librarySettings?.collections.map((collection) => collection.name) ?? [],
-  )
+  const ids = new Set(songCollectionsStore.collections.map((collection) => collection.id))
   for (const song of visibleSongs.value)
-    for (const collection of song.collections) names.add(collection.collectionId)
-  return [...names]
+    for (const collection of song.collections) ids.add(collection.collectionId)
+  return [...ids]
     .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b))
-    .map((name) => ({
+    .map((id) => ({ id, name: collectionName(id) }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(({ id, name }) => ({
+      id,
       name,
       count: visibleSongs.value.filter((song) =>
-        song.collections.some((entry) => entry.collectionId === name),
+        song.collections.some((entry) => entry.collectionId === id),
       ).length,
     }))
 })
@@ -120,7 +129,7 @@ const filteredSongs = computed(() => {
     if ([song.title, song.author, song.artist].some((field) => field?.toLowerCase().includes(q)))
       return true
     if (song.tags.some((tag) => tag.toLowerCase().includes(q))) return true
-    return song.collections.some((c) => c.collectionId.toLowerCase().includes(q))
+    return song.collections.some((c) => collectionName(c.collectionId).toLowerCase().includes(q))
   })
 })
 const activeFilterCount = computed(
@@ -151,11 +160,13 @@ function creditLabel(song: Song): string {
   return song.artist || song.author || 'Unknown artist'
 }
 
-// A song's collections/hymnal number, e.g. "Hymns of Grace #184, Worship Hymnal #92" — omits
-// the number for a collection that doesn't have one set yet.
+// A song's collections/hymnal number, e.g. "Hymnal One #184, Hymnal Two #92" — omits the
+// number for a collection that doesn't have one set yet.
 function collectionsLabel(song: Song): string {
   return song.collections
-    .map((c) => (c.number ? `${c.collectionId} #${c.number}` : c.collectionId))
+    .map((c) =>
+      c.number ? `${collectionName(c.collectionId)} #${c.number}` : collectionName(c.collectionId),
+    )
     .join(', ')
 }
 
@@ -163,8 +174,8 @@ function firstCollectionLabel(song: Song): string | undefined {
   const collection = song.collections[0]
   if (!collection) return undefined
   return collection.number
-    ? `${collection.collectionId} #${collection.number}`
-    : collection.collectionId
+    ? `${collectionName(collection.collectionId)} #${collection.number}`
+    : collectionName(collection.collectionId)
 }
 
 // The same usage data as the Song Editor, split into two aligned lines in this directory — see
@@ -446,11 +457,11 @@ function finishSelection() {
             <div class="filter-heading">Collections</div>
             <button
               v-for="filter in collectionFilters"
-              :key="filter.name"
+              :key="filter.id"
               type="button"
               class="song-filter song-filter--collection"
-              :class="{ 'song-filter--active': activeCollection === filter.name }"
-              @click="activeCollection = activeCollection === filter.name ? undefined : filter.name"
+              :class="{ 'song-filter--active': activeCollection === filter.id }"
+              @click="activeCollection = activeCollection === filter.id ? undefined : filter.id"
             >
               <span class="song-filter-icon"><v-icon icon="mdi-bookshelf" size="17" /></span>
               <span>{{ filter.name }}</span>

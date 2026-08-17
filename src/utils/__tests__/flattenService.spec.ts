@@ -122,6 +122,41 @@ describe('flattenService', () => {
     expect(flat[0].footerText).toBe('Hymns of Grace #123')
   })
 
+  it("resolves the footer citation through collectionDefinitions by id, preferring the collection's abbreviation over its full name", () => {
+    const song = makeSong({ collections: [{ collectionId: 'collection-1', number: '184' }] })
+    const service = makeService({
+      items: [{ id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: ['v1'] } }],
+    })
+    const withAbbreviation = flattenService(
+      service,
+      new Map([['song-1', song]]),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      [{ id: 'collection-1', name: 'Hymnal One', abbreviation: 'H1' }],
+    )
+    expect(withAbbreviation[0].footerText).toBe('H1 #184')
+
+    const withoutAbbreviation = flattenService(
+      service,
+      new Map([['song-1', song]]),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      [{ id: 'collection-1', name: 'Hymnal One' }],
+    )
+    expect(withoutAbbreviation[0].footerText).toBe('Hymnal One #184')
+
+    // No matching definition (e.g. the collection was since deleted) -- falls back to the raw
+    // id rather than a blank/broken footer.
+    const withoutDefinition = flattenService(service, new Map([['song-1', song]]), undefined, undefined, undefined, undefined, undefined, [])
+    expect(withoutDefinition[0].footerText).toBe('collection-1 #184')
+  })
+
   it('omits the collection number when the entry has none, and returns an empty footer when there are no collections', () => {
     const withoutNumber = flattenService(
       makeService({

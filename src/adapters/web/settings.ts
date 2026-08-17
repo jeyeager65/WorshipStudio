@@ -21,7 +21,6 @@ const MACHINE_SETTINGS_KEY = 'worship-studio:web:machine-settings'
 function defaultLibrarySettings(): LibrarySettings {
   return {
     serviceTypes: [],
-    collections: [],
     roleGroups: [],
     serviceTemplates: [],
     branding: { churchName: '', primaryColor: '#1F3A5F', secondaryColor: '#C9A227' },

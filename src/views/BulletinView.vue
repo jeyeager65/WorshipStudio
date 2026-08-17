@@ -8,6 +8,7 @@ import { useSongsStore } from '@/stores/songs'
 import { useSlidesStore } from '@/stores/slides'
 import { usePeopleStore } from '@/stores/people'
 import { useSettingsStore } from '@/stores/settings'
+import { useSongCollectionsStore } from '@/stores/songCollections'
 import { useAnnouncementsStore } from '@/stores/announcements'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
@@ -36,6 +37,7 @@ const songsStore = useSongsStore()
 const slidesStore = useSlidesStore()
 const peopleStore = usePeopleStore()
 const settingsStore = useSettingsStore()
+const songCollectionsStore = useSongCollectionsStore()
 const announcementsStore = useAnnouncementsStore()
 const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsavedChangesStore())
 
@@ -64,6 +66,7 @@ onMounted(async () => {
     slidesStore.loaded ? Promise.resolve() : slidesStore.load(),
     peopleStore.loaded ? Promise.resolve() : peopleStore.load(),
     settingsStore.loaded ? Promise.resolve() : settingsStore.load(),
+    songCollectionsStore.loaded ? Promise.resolve() : songCollectionsStore.load(),
     announcementsStore.loaded ? Promise.resolve() : announcementsStore.load(),
   ])
   if (loaded) {
@@ -130,7 +133,7 @@ const bulletin = computed(() =>
         personNames.value,
         formalPersonNames.value,
         settingsStore.librarySettings?.bulletin,
-        settingsStore.librarySettings?.collections ?? [],
+        songCollectionsStore.collections,
       )
     : undefined,
 )

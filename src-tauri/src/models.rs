@@ -28,6 +28,9 @@ pub struct Arrangement {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SongCollectionEntry {
+    /// A `SongCollectionDefinition.id` — despite the field name, this held the collection's
+    /// plain *name* before the one-time migration in `commands::song_collections`; existing
+    /// libraries get rewritten in place the first time that migration runs.
     pub collection_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub number: Option<String>,
@@ -668,8 +671,6 @@ pub struct ApiBibleTranslation {
 pub struct LibrarySettings {
     #[serde(default, deserialize_with = "deserialize_service_types")]
     pub service_types: Vec<ServiceType>,
-    #[serde(default, deserialize_with = "deserialize_song_collection_definitions")]
-    pub collections: Vec<SongCollectionDefinition>,
     #[serde(default)]
     pub role_groups: Vec<RoleGroup>,
     #[serde(default)]
@@ -738,38 +739,17 @@ pub struct LibrarySettings {
     pub bulletin: BulletinSettings,
 }
 
+/// Lives in its own `song-collections.json`, a peer of `library-settings.json`, not a field
+/// on `LibrarySettings` — see `domain::song_collections` and `commands::song_collections`'s
+/// one-time migration off the old nested-in-settings, name-only shape. Referenced by id from
+/// `SongCollectionEntry::collection_id` (models::Song), not by name.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SongCollectionDefinition {
+    pub id: String,
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub abbreviation: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum StoredSongCollectionDefinition {
-    Name(String),
-    Definition(SongCollectionDefinition),
-}
-
-fn deserialize_song_collection_definitions<'de, D>(
-    deserializer: D,
-) -> Result<Vec<SongCollectionDefinition>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let stored = Vec::<StoredSongCollectionDefinition>::deserialize(deserializer)?;
-    Ok(stored
-        .into_iter()
-        .map(|entry| match entry {
-            StoredSongCollectionDefinition::Name(name) => SongCollectionDefinition {
-                name,
-                abbreviation: None,
-            },
-            StoredSongCollectionDefinition::Definition(definition) => definition,
-        })
-        .collect())
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -780,8 +760,7 @@ pub struct ServiceType {
     pub description: Option<String>,
 }
 
-/// Same "plain string or full object" flexibility as `StoredSongCollectionDefinition` — an
-/// already-configured library's `library-settings.json` has `serviceTypes` as a plain
+/// An already-configured library's `library-settings.json` has `serviceTypes` as a plain
 /// `Vec<String>` from before this field gained a description; deserializing straight into
 /// `Vec<ServiceType>` would otherwise hard-fail on that file instead of upgrading it in place.
 #[derive(Deserialize)]
@@ -1212,26 +1191,6 @@ mod tests {
         assert_eq!(settings.wayfinding_max_font_size_px, 150);
         assert!(settings.canva_integration.client_id.is_empty());
         assert!(settings.canva_integration.client_secret.is_empty());
-    }
-
-    #[test]
-    fn library_settings_migrates_string_collections_to_clean_definitions() {
-        let json = r##"{
-            "serviceTypes": [],
-            "collections": ["Hymns of Grace", { "name": "Worship Hymnal", "abbreviation": "WH" }],
-            "roleGroups": [],
-            "serviceTemplates": [],
-            "branding": { "churchName": "", "primaryColor": "#1F3A5F", "secondaryColor": "#C9A227" },
-            "mediaMaxSyncedFileSizeMb": 50
-        }"##;
-        let settings: LibrarySettings = serde_json::from_str(json).unwrap();
-        assert_eq!(settings.collections[0].name, "Hymns of Grace");
-        assert_eq!(settings.collections[0].abbreviation, None);
-        assert_eq!(settings.collections[1].name, "Worship Hymnal");
-        assert_eq!(settings.collections[1].abbreviation.as_deref(), Some("WH"));
-
-        let serialized = serde_json::to_value(settings).unwrap();
-        assert!(serialized["collections"][0].is_object());
     }
 
     #[test]

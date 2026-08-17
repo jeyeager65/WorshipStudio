@@ -8,6 +8,8 @@ import { useMediaStore } from '@/stores/media'
 import { usePeopleStore } from '@/stores/people'
 import { useServicesStore } from '@/stores/services'
 import { useSlidesStore } from '@/stores/slides'
+import { useSettingsStore } from '@/stores/settings'
+import { useSongCollectionsStore } from '@/stores/songCollections'
 import { useSongsStore } from '@/stores/songs'
 import { useSyncStore } from '@/stores/sync'
 import { useThemesStore } from '@/stores/themes'
@@ -23,6 +25,8 @@ const mediaStore = useMediaStore()
 const themesStore = useThemesStore()
 const peopleStore = usePeopleStore()
 const servicesStore = useServicesStore()
+const settingsStore = useSettingsStore()
+const songCollectionsStore = useSongCollectionsStore()
 
 const activePath = ref('')
 const activeOperation = ref('')
@@ -79,10 +83,14 @@ function kindLabel(kind: string): string {
     theme: 'Theme',
     person: 'Person',
     service: 'Service',
+    settings: 'Settings',
   }
   return labels[kind] ?? formatFieldName(kind)
 }
 
+// Root-level singleton files (library-settings.json, song-collections.json — see
+// src-tauri/src/domain/sync.rs's own root-file conflict scan) have no subdirectory, so the
+// "first path segment" that identifies every other kind is the whole filename here instead.
 function recoveryKind(relativePath: string): string | undefined {
   const directory = relativePath.replaceAll('\\', '/').split('/')[0]
   return {
@@ -92,16 +100,26 @@ function recoveryKind(relativePath: string): string | undefined {
     themes: 'theme',
     people: 'person',
     services: 'service',
+    'library-settings.json': 'library-settings',
+    'song-collections.json': 'song-collections',
   }[directory]
 }
 
-async function refreshLibraryKind(kind: string | undefined): Promise<boolean> {
+// `id` disambiguates which root-level singleton file a `kind === 'settings'` sync conflict
+// (see detect_conflicts's own doc comment) was actually on — recoveryKind above already
+// resolves straight to 'library-settings'/'song-collections' for the *recovery* (damaged-file)
+// path instead, so both land on the same two branches here either way.
+async function refreshLibraryKind(kind: string | undefined, id?: string): Promise<boolean> {
   if (kind === 'song') return songsStore.load()
   if (kind === 'slide') return slidesStore.load()
   if (kind === 'media') return mediaStore.load()
   if (kind === 'theme') return themesStore.load()
   if (kind === 'person') return peopleStore.load()
   if (kind === 'service') return servicesStore.load()
+  if (kind === 'song-collections' || (kind === 'settings' && id === 'song-collections'))
+    return songCollectionsStore.load()
+  if (kind === 'library-settings' || (kind === 'settings' && id === 'library-settings'))
+    return settingsStore.load()
   return true
 }
 
@@ -124,7 +142,7 @@ async function resolveConflict(conflict: ConflictedItem, keep: 'mine' | 'theirs'
   actionNotice.value = ''
   try {
     await store.resolve(conflict.conflictFilePath, keep)
-    const refreshed = await refreshLibraryKind(conflict.kind)
+    const refreshed = await refreshLibraryKind(conflict.kind, conflict.id)
     resolvedConflictCount.value += 1
     if (refreshed) actionNotice.value = `${conflict.label} now uses the version from ${chosenName}.`
     else

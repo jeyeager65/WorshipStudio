@@ -1,55 +1,48 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
-import type { SongCollectionDefinition } from '@/models/settings'
+import { useSongCollectionsStore } from '@/stores/songCollections'
 
-const props = defineProps<{ modelValue: SongCollectionDefinition[] }>()
-const emit = defineEmits<{ 'update:modelValue': [SongCollectionDefinition[]] }>()
+const store = useSongCollectionsStore()
 const confirmDialog = useConfirmDialogStore()
 const newCollectionName = ref('')
+
+onMounted(() => store.load())
 
 function addCollection() {
   const name = newCollectionName.value.trim()
   if (
     !name ||
-    props.modelValue.some((collection) => collection.name.toLowerCase() === name.toLowerCase())
+    store.collections.some((collection) => collection.name.toLowerCase() === name.toLowerCase())
   )
     return
-  emit('update:modelValue', [...props.modelValue, { name }])
+  store.save({ id: `collection-${crypto.randomUUID()}`, name })
   newCollectionName.value = ''
 }
 
-function updateAbbreviation(index: number, abbreviation: string) {
-  emit(
-    'update:modelValue',
-    props.modelValue.map((collection, collectionIndex) =>
-      collectionIndex === index
-        ? { ...collection, abbreviation: abbreviation || undefined }
-        : collection,
-    ),
-  )
+function updateAbbreviation(collectionId: string, abbreviation: string) {
+  const collection = store.collections.find((c) => c.id === collectionId)
+  if (!collection) return
+  store.save({ ...collection, abbreviation: abbreviation || undefined })
 }
 
-function trimAbbreviation(index: number) {
-  const abbreviation = props.modelValue[index]?.abbreviation?.trim() ?? ''
-  updateAbbreviation(index, abbreviation)
+function trimAbbreviation(collectionId: string) {
+  const collection = store.collections.find((c) => c.id === collectionId)
+  updateAbbreviation(collectionId, collection?.abbreviation?.trim() ?? '')
 }
 
-async function removeCollection(index: number) {
-  const collection = props.modelValue[index]
+async function removeCollection(collectionId: string) {
+  const collection = store.collections.find((c) => c.id === collectionId)
   if (!collection) return
   if (!(await confirmDialog.confirm(`Remove "${collection.name}"?`, 'Remove'))) return
-  emit(
-    'update:modelValue',
-    props.modelValue.filter((_, collectionIndex) => collectionIndex !== index),
-  )
+  store.remove(collectionId)
 }
 </script>
 
 <template>
   <div class="collection-settings">
-    <div v-if="modelValue.length" class="collection-list">
-      <div v-for="(collection, index) in modelValue" :key="collection.name" class="collection-row">
+    <div v-if="store.collections.length" class="collection-list">
+      <div v-for="collection in store.collections" :key="collection.id" class="collection-row">
         <div class="collection-identity">
           <v-icon icon="mdi-bookshelf" size="20" />
           <div>
@@ -70,15 +63,15 @@ async function removeCollection(index: number) {
           density="compact"
           maxlength="12"
           hide-details
-          @update:model-value="(value: string) => updateAbbreviation(index, value)"
-          @blur="trimAbbreviation(index)"
+          @update:model-value="(value: string) => updateAbbreviation(collection.id, value)"
+          @blur="trimAbbreviation(collection.id)"
         />
         <v-btn
           icon="mdi-trash-can-outline"
           variant="text"
           color="error"
           aria-label="Remove collection"
-          @click="removeCollection(index)"
+          @click="removeCollection(collection.id)"
         />
       </div>
     </div>

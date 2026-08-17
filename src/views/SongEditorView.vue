@@ -13,7 +13,7 @@ import EditorNotFoundState from '@/components/EditorNotFoundState.vue'
 import { errorMessage } from '@/composables/useAsyncStoreState'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import type { Song, SongBlock } from '@/models/song'
-import type { LibrarySettings } from '@/models/settings'
+import type { SongCollectionDefinition } from '@/models/settings'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,7 +22,7 @@ const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const confirmDialog = useConfirmDialogStore()
 
 const song = ref<Song>()
-const librarySettings = ref<LibrarySettings>()
+const songCollections = ref<SongCollectionDefinition[]>([])
 const editorLoading = ref(true)
 const editorLoadError = ref('')
 const notFound = ref(false)
@@ -57,9 +57,9 @@ async function loadEditor() {
   notFound.value = false
   const isNew = route.params.id === 'new'
   try {
-    const [loadedSong, settings] = await Promise.all([
+    const [loadedSong, collections] = await Promise.all([
       isNew ? Promise.resolve(blankSong()) : getAdapter().songs.get(route.params.id as string),
-      getAdapter().settings.getLibrarySettings(),
+      getAdapter().songCollections.list(),
     ])
     if (!loadedSong) {
       song.value = undefined
@@ -67,7 +67,7 @@ async function loadEditor() {
       return
     }
     song.value = loadedSong
-    librarySettings.value = settings
+    songCollections.value = collections
     // A freshly created song is inherently unsaved — starting dirty (rather than false, as
     // for an existing song) enables the Save button and the router guard's
     // leave-without-saving warning immediately, so it's never silently lost with no way to
@@ -275,11 +275,14 @@ function removeFromArrangement(index: number) {
           </div>
           <div v-if="song.collections.length" class="collection-list">
             <div v-for="(entry, index) in song.collections" :key="index" class="collection-row">
-              <v-combobox
+              <v-select
                 v-model="entry.collectionId"
-                :items="librarySettings?.collections.map((collection) => collection.name) ?? []"
+                :items="songCollections"
+                item-title="name"
+                item-value="id"
                 label="Collection"
                 variant="outlined"
+                no-data-text="No collections configured — add one in Settings first"
                 hide-details
               />
               <v-text-field v-model="entry.number" label="Number" variant="outlined" hide-details />

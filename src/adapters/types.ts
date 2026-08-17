@@ -8,7 +8,7 @@ import type {
   SlideScene,
   TextEffect,
 } from '@/models/library'
-import type { LibrarySettings, MachineSettings } from '@/models/settings'
+import type { LibrarySettings, MachineSettings, SongCollectionDefinition } from '@/models/settings'
 import type { Announcement } from '@/models/announcement'
 
 /**
@@ -212,6 +212,15 @@ export interface CanvaPort {
 export interface ThemePort {
   list(): Promise<Theme[]>
   save(theme: Theme): Promise<void>
+  delete(id: string): Promise<void>
+}
+
+/** A peer of `SettingsPort`, not part of it — song collections moved out of
+ *  `LibrarySettings.collections` into their own synced file so editing them doesn't share a
+ *  save/conflict surface with unrelated settings (branding, credentials, font sizing, ...). */
+export interface SongCollectionPort {
+  list(): Promise<SongCollectionDefinition[]>
+  save(collection: SongCollectionDefinition): Promise<SongCollectionDefinition>
   delete(id: string): Promise<void>
 }
 
@@ -662,6 +671,7 @@ export interface StudioAdapter {
   /** Tauri-only local Canva integration; absent from the static browser demo. */
   canva?: CanvaPort
   themes: ThemePort
+  songCollections: SongCollectionPort
   people: PersonPort
   announcements: AnnouncementPort
   settings: SettingsPort

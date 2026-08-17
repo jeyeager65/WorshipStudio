@@ -21,6 +21,7 @@ export const seedSongs = sampleSongs
 export const seedPeople = samplePeople
 export const seedThemes = sampleThemes
 export const seedServices = buildSampleServices()
+export const seedSongCollections = structuredClone(sampleCollections)
 
 export const seedSlides: SlideLibraryItem[] = []
 // Empty by default, matching the desktop app's real "no reasonable default media" stance — the
@@ -31,7 +32,6 @@ export const seedAnnouncements: Announcement[] = []
 
 export const seedLibrarySettings: LibrarySettings = {
   serviceTypes: [...sampleServiceTypes],
-  collections: structuredClone(sampleCollections),
   roleGroups: structuredClone(sampleRoleGroups),
   serviceTemplates: structuredClone(sampleServiceTemplates),
   branding: {

@@ -18,7 +18,7 @@ export const sampleSongs: Song[] = [
     id: 'song-sample-amazing-grace',
     title: 'Amazing Grace',
     author: 'John Newton',
-    collections: [{ collectionId: 'Hymnal One', number: '184' }],
+    collections: [{ collectionId: 'collection-sample-hymnal-one', number: '184' }],
     tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
@@ -51,7 +51,7 @@ export const sampleSongs: Song[] = [
     id: 'song-sample-holy-holy-holy',
     title: 'Holy, Holy, Holy',
     author: 'Reginald Heber',
-    collections: [{ collectionId: 'Hymnal One', number: '1' }],
+    collections: [{ collectionId: 'collection-sample-hymnal-one', number: '1' }],
     tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
@@ -79,7 +79,7 @@ export const sampleSongs: Song[] = [
     id: 'song-sample-it-is-well',
     title: 'It Is Well with My Soul',
     author: 'Horatio Spafford',
-    collections: [{ collectionId: 'Hymnal Two', number: '410' }],
+    collections: [{ collectionId: 'collection-sample-hymnal-two', number: '410' }],
     tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
@@ -107,7 +107,7 @@ export const sampleSongs: Song[] = [
     id: 'song-sample-great-is-thy-faithfulness',
     title: 'Great Is Thy Faithfulness',
     author: 'Thomas Chisholm',
-    collections: [{ collectionId: 'Hymnal Two', number: '58' }],
+    collections: [{ collectionId: 'collection-sample-hymnal-two', number: '58' }],
     tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
@@ -130,7 +130,7 @@ export const sampleSongs: Song[] = [
     id: 'song-sample-blessed-assurance',
     title: 'Blessed Assurance',
     author: 'Fanny Crosby',
-    collections: [{ collectionId: 'Hymnal One', number: '223' }],
+    collections: [{ collectionId: 'collection-sample-hymnal-one', number: '223' }],
     tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
@@ -153,7 +153,7 @@ export const sampleSongs: Song[] = [
     id: 'song-sample-come-thou-fount',
     title: 'Come Thou Fount of Every Blessing',
     author: 'Robert Robinson',
-    collections: [{ collectionId: 'Hymnal One', number: '92' }],
+    collections: [{ collectionId: 'collection-sample-hymnal-one', number: '92' }],
     tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
@@ -176,7 +176,7 @@ export const sampleSongs: Song[] = [
     id: 'song-sample-how-firm-a-foundation',
     title: 'How Firm a Foundation',
     author: 'John Rippon',
-    collections: [{ collectionId: 'Hymnal Two', number: '150' }],
+    collections: [{ collectionId: 'collection-sample-hymnal-two', number: '150' }],
     tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
@@ -199,7 +199,7 @@ export const sampleSongs: Song[] = [
     id: 'song-sample-what-a-friend',
     title: 'What a Friend We Have in Jesus',
     author: 'Joseph Scriven',
-    collections: [{ collectionId: 'Hymnal Two', number: '345' }],
+    collections: [{ collectionId: 'collection-sample-hymnal-two', number: '345' }],
     tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
@@ -322,13 +322,13 @@ export const sampleThemes: Theme[] = [
   },
 ]
 
-/** Collections sampleSongs use — merged into LibrarySettings.collections. "Hymnal Two" carries
- *  an abbreviation and "Hymnal One" doesn't, deliberately, so the seeded demo data shows both
- *  states: a collection whose bulletin citation uses its abbreviation and one that falls back
- *  to the bare name. */
+/** Collections sampleSongs' collectionId fields reference by id — merged into its own
+ *  song-collections.json, not LibrarySettings. "Hymnal Two" carries an abbreviation and
+ *  "Hymnal One" doesn't, deliberately, so the seeded demo data shows both states: a collection
+ *  whose bulletin citation uses its abbreviation and one that falls back to the bare name. */
 export const sampleCollections: SongCollectionDefinition[] = [
-  { name: 'Hymnal One' },
-  { name: 'Hymnal Two', abbreviation: 'H2' },
+  { id: 'collection-sample-hymnal-one', name: 'Hymnal One' },
+  { id: 'collection-sample-hymnal-two', name: 'Hymnal Two', abbreviation: 'H2' },
 ]
 
 /** Every role used by samplePeople/rosters below, organized into categories — merged into

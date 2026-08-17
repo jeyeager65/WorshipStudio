@@ -1,6 +1,7 @@
 import type { Service, ServiceItem } from '@/models/service'
 import type { Song } from '@/models/song'
 import type { PresentationThemeTarget, SlideLibraryItem, SlideScene } from '@/models/library'
+import type { SongCollectionDefinition } from '@/models/settings'
 import type { ScripturePassage, ExternalAppProfile } from '@/adapters/types'
 import {
   getBibleProgress,
@@ -64,9 +65,9 @@ export interface FlatSlide {
   lineWrap?: boolean
   /** Song blocks only — overrides the footer text PresentationView would otherwise show
    *  (subLabel, the block's own label) with the song's first collection citation instead (e.g.
-   *  "Hymns of Grace #123"). Empty string when the song has no collections (hide the footer
-   *  rather than fall back to the block label). Undefined for every other slide type, which
-   *  keeps showing subLabel as its footer exactly as before. */
+   *  "Hymnal One #123"). Empty string when the song has no collections (hide the footer rather
+   *  than fall back to the block label). Undefined for every other slide type, which keeps
+   *  showing subLabel as its footer exactly as before. */
   footerText?: string
   /** Song blocks only — set when this block is one of a *back-to-back* run of the same block
    *  (e.g. "2/2" for the second of two consecutive Chorus slides), so a same-block repeat
@@ -84,10 +85,14 @@ export interface FlatSlide {
 // collection citation) is more useful to a congregation following along in print than the
 // operator-facing block label ("Chorus") ever was. Empty string (not undefined) when the song
 // has no collections, so the caller can tell "no footer" apart from "not a song".
-function formatSongFooter(song: Song): string {
+function formatSongFooter(song: Song, collectionDefinitions: SongCollectionDefinition[]): string {
   const entry = song.collections[0]
   if (!entry?.collectionId) return ''
-  return entry.number ? `${entry.collectionId} #${entry.number}` : entry.collectionId
+  // Prefer the abbreviation (matches the printed bulletin's own citation style, orderOfWorship.ts)
+  // over the full name here — this footer renders small, live, on the audience display.
+  const definition = collectionDefinitions.find((d) => d.id === entry.collectionId)
+  const label = definition?.abbreviation?.trim() || definition?.name || entry.collectionId
+  return entry.number ? `${label} #${entry.number}` : label
 }
 
 function labelForOtherType(item: ServiceItem): string {
@@ -226,6 +231,7 @@ export function flattenService(
   externalAppProfilesById: Map<string, ExternalAppProfile> = new Map(),
   scriptureFontRange: FontSizeRange = DEFAULT_SCRIPTURE_FONT_RANGE,
   songFontRange: FontSizeRange = DEFAULT_SONG_FONT_RANGE,
+  collectionDefinitions: SongCollectionDefinition[] = [],
 ): FlatSlide[] {
   const flat: FlatSlide[] = []
   const serviceDateTime = serviceDateTimeIso(service)
@@ -235,7 +241,7 @@ export function flattenService(
       const song = songsById.get(item.songId)
       const itemLabel = song?.title ?? 'Unknown Song'
       const sequence = item.arrangement.sequence
-      const footerText = song ? formatSongFooter(song) : ''
+      const footerText = song ? formatSongFooter(song, collectionDefinitions) : ''
       if (sequence.length === 0) {
         flat.push({
           key: `${item.id}:0`,

@@ -65,7 +65,7 @@ function songLine(
   const collection = song?.collections[0]
   const number = collection?.number?.trim()
   const abbreviation = collectionDefinitions
-    .find((definition) => definition.name === collection?.collectionId)
+    .find((definition) => definition.id === collection?.collectionId)
     ?.abbreviation?.trim()
   const citation = number ? [abbreviation, number].filter(Boolean).join(' ') : ''
   return {

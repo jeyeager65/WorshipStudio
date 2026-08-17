@@ -12,6 +12,7 @@ import type {
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
 import type { MediaItem, Theme } from '@/models/library'
+import type { SongCollectionDefinition } from '@/models/settings'
 import { MockCollection, MockSingleton } from './collection'
 import { stockBackgrounds, stockThemes } from '@/data/stockContent'
 import { presentationThemeDefaults } from '@/utils/presentationTheme'
@@ -21,6 +22,7 @@ import {
   seedSlides,
   seedMedia,
   seedThemes,
+  seedSongCollections,
   seedPeople,
   seedAnnouncements,
   seedLibrarySettings,
@@ -97,6 +99,10 @@ export function createMockAdapter(): StudioAdapter {
   const slides = new MockCollection('slides', seedSlides)
   const media = new MockCollection('media', seedMedia)
   const themes = new MockCollection('themes', seedThemes)
+  const songCollections = new MockCollection<SongCollectionDefinition>(
+    'song-collections',
+    seedSongCollections,
+  )
   const people = new MockCollection('people', seedPeople)
   const announcements = new MockCollection('announcements', seedAnnouncements)
 
@@ -377,6 +383,18 @@ export function createMockAdapter(): StudioAdapter {
       list: () => themes.list(),
       save: (theme) => themes.save({ ...theme, ...nowStamp() }),
       delete: (id) => themes.delete(id),
+    },
+    songCollections: {
+      list: () => songCollections.list(),
+      // No updatedAt/updatedByDevice stamp -- unlike per-item content types, this whole small
+      // array-shaped file has no per-item audit fields (see SongCollectionDefinition's own
+      // doc comment); a real conflict on it is resolved at the whole-file level, same as any
+      // other singleton settings file.
+      save: async (collection) => {
+        await songCollections.save(collection)
+        return collection
+      },
+      delete: (id) => songCollections.delete(id),
     },
     people: {
       list: () => people.list(),

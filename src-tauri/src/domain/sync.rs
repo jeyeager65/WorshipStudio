@@ -261,6 +261,23 @@ fn label_for(kind: &str, value: &Value) -> String {
     }
 }
 
+/// "song-collections" -> "Song Collections". Root-level singleton settings files (see
+/// `scan_dir`'s `kind == "settings"` case below) hold a whole array or object as their
+/// content, not a single item with its own `id`/`name` field the way `label_for` above reads —
+/// there's nothing meaningful to pull a label from except the filename itself.
+fn humanize_stem(stem: &str) -> String {
+    stem.split(['-', '_'])
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn scan_dir(dir: &Path, kind: &str, out: &mut Vec<ConflictedItem>) -> std::io::Result<()> {
     if !dir.exists() {
         return Ok(());
@@ -304,7 +321,11 @@ fn scan_dir(dir: &Path, kind: &str, out: &mut Vec<ConflictedItem>) -> std::io::R
             .to_string();
         out.push(ConflictedItem {
             kind: kind.to_string(),
-            label: label_for(kind, &this_version),
+            label: if kind == "settings" {
+                humanize_stem(&stem)
+            } else {
+                label_for(kind, &this_version)
+            },
             id,
             this_version,
             other_version,
@@ -326,6 +347,14 @@ pub fn detect_conflicts(root: &Path) -> std::io::Result<Vec<ConflictedItem>> {
     scan_dir(&root.join("media-items"), "media", &mut out)?;
     scan_dir(&root.join("themes"), "theme", &mut out)?;
     scan_dir(&root.join("people"), "person", &mut out)?;
+    // scan_dir only ever looks at *files* directly inside the given directory (subdirectories
+    // are skipped, see its own `is_file()` check) — pointing it at the library root itself
+    // therefore only picks up root-level singleton files (library-settings.json,
+    // song-collections.json, and any future sibling of the same shape) and their conflict-copy
+    // artifacts, never reaching into songs/services/etc. This closes a real gap: before this,
+    // conflicts on these files were never detected at all, only ever noticed as a stray file
+    // sitting in the synced folder.
+    scan_dir(root, "settings", &mut out)?;
 
     let services_dir = root.join("services");
     if services_dir.exists() {
@@ -510,6 +539,42 @@ mod tests {
         let conflicts = detect_conflicts(dir.path()).unwrap();
         assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].kind, "service");
+    }
+
+    #[test]
+    fn detects_a_conflict_on_a_root_level_singleton_settings_file() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("song-collections.json"),
+            r#"[{"id":"collection-hymnal-one","name":"Hymnal One"}]"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.path()
+                .join("song-collections (Conflicted copy 2026-08-17).json"),
+            r#"[{"id":"collection-hymnal-one","name":"Hymnal Uno"}]"#,
+        )
+        .unwrap();
+
+        let conflicts = detect_conflicts(dir.path()).unwrap();
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].kind, "settings");
+        assert_eq!(conflicts[0].id, "song-collections");
+        assert_eq!(conflicts[0].label, "Song Collections");
+    }
+
+    #[test]
+    fn does_not_flag_the_pre_migration_snapshot_as_a_settings_conflict() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("library-settings.json"), r#"{"a":1}"#).unwrap();
+        fs::write(
+            dir.path()
+                .join("library-settings.pre-collection-id-migration.json"),
+            r#"{"a":1}"#,
+        )
+        .unwrap();
+
+        assert_eq!(detect_conflicts(dir.path()).unwrap().len(), 0);
     }
 
     #[test]

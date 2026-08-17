@@ -9,6 +9,7 @@ import { useServicesStore } from '@/stores/services'
 import { usePeopleStore } from '@/stores/people'
 import { useThemesStore } from '@/stores/themes'
 import { useMediaStore } from '@/stores/media'
+import { useSongCollectionsStore } from '@/stores/songCollections'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { clearStoredLibraryHandle } from '@/adapters/web/handlePersistence'
 import { disconnect as disconnectDropbox, isConnected as isDropboxConnected } from '@/adapters/tablet/providers/dropboxAuth'
@@ -37,6 +38,7 @@ const servicesStore = useServicesStore()
 const peopleStore = usePeopleStore()
 const themesStore = useThemesStore()
 const mediaStore = useMediaStore()
+const songCollectionsStore = useSongCollectionsStore()
 const confirmDialog = useConfirmDialogStore()
 
 // Every Data Tools action below persists immediately on its own (direct store/adapter calls,
@@ -296,19 +298,23 @@ async function addStockBackgrounds() {
   }
 }
 
-/** Deletes every existing song, service, person, and theme — shared by both destructive
- *  actions below (clearing outright, and loading sample data over the top of a clean slate). */
+/** Deletes every existing song, service, person, theme, and song collection — shared by both
+ *  destructive actions below (clearing outright, and loading sample data over the top of a
+ *  clean slate). */
 async function deleteAllLibraryContent() {
   await Promise.all([
     songsStore.load(),
     servicesStore.load(),
     peopleStore.load(),
     themesStore.load(),
+    songCollectionsStore.load(),
   ])
   for (const song of songsStore.songs) await songsStore.remove(song.id)
   for (const service of servicesStore.services) await servicesStore.remove(service.id)
   for (const person of peopleStore.people) await peopleStore.remove(person.id)
   for (const theme of themesStore.themes) await themesStore.remove(theme.id)
+  for (const collection of songCollectionsStore.collections)
+    await songCollectionsStore.remove(collection.id)
 }
 
 /** Real content worth protecting, matching exactly what deleteAllLibraryContent() destroys —
@@ -319,12 +325,14 @@ async function hasExistingLibraryContent(): Promise<boolean> {
     servicesStore.load(),
     peopleStore.load(),
     themesStore.load(),
+    songCollectionsStore.load(),
   ])
   return (
     songsStore.songs.length > 0 ||
     servicesStore.services.length > 0 ||
     peopleStore.people.length > 0 ||
-    themesStore.themes.length > 0
+    themesStore.themes.length > 0 ||
+    songCollectionsStore.collections.length > 0
   )
 }
 
@@ -365,6 +373,7 @@ async function loadSampleData() {
     for (const theme of sampleThemes) await themesStore.save(theme)
     for (const person of samplePeople) await peopleStore.save(person)
     for (const service of buildSampleServices()) await servicesStore.save(service)
+    for (const collection of sampleCollections) await songCollectionsStore.save(collection)
     // After deleteAllLibraryContent(), not before — it deletes every existing theme (including
     // any stock-background starter themes from an earlier import), so importing first would
     // just have them wiped out again a moment later.
@@ -374,7 +383,6 @@ async function loadSampleData() {
       librarySettings.value.serviceTypes = [...sampleServiceTypes]
       librarySettings.value.roleGroups = structuredClone(sampleRoleGroups)
       librarySettings.value.serviceTemplates = structuredClone(sampleServiceTemplates)
-      librarySettings.value.collections = structuredClone(sampleCollections)
       await store.save()
     }
     sampleDataLoaded.value = true
@@ -405,7 +413,6 @@ async function clearExistingData() {
     await deleteAllLibraryContent()
     if (librarySettings.value) {
       librarySettings.value.serviceTypes = []
-      librarySettings.value.collections = []
       librarySettings.value.roleGroups = []
       librarySettings.value.serviceTemplates = []
       await store.save()

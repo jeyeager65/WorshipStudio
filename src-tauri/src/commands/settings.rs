@@ -31,7 +31,6 @@ fn default_library_settings() -> LibrarySettings {
                 description: None,
             },
         ],
-        collections: vec![],
         role_groups: vec![],
         service_templates: vec![],
         branding: Branding {
