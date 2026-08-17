@@ -9,6 +9,9 @@ use crate::models::SongCollectionDefinition;
 use crate::paths::library_root;
 
 const LIBRARY_SETTINGS_FILE: &str = "library-settings.json";
+/// Shared with `commands::settings::clear_migration_snapshots` so the one-off cleanup command
+/// can never drift from the filename this migration actually writes.
+pub const MIGRATION_SNAPSHOT_FILE: &str = "library-settings.pre-collection-id-migration.json";
 
 fn normalize(name: &str) -> String {
     name.trim().to_lowercase()
@@ -104,7 +107,7 @@ pub fn migrate_if_needed(root: &Path) -> std::io::Result<()> {
     // given the stakes of rewriting real library data, this snapshot is never auto-cleaned.
     let settings_path = root.join(LIBRARY_SETTINGS_FILE);
     if let Ok(bytes) = std::fs::read(&settings_path) {
-        let snapshot = root.join("library-settings.pre-collection-id-migration.json");
+        let snapshot = root.join(MIGRATION_SNAPSHOT_FILE);
         if !snapshot.exists() {
             let _ = std::fs::write(&snapshot, &bytes);
         }

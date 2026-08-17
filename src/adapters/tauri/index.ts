@@ -449,6 +449,7 @@ export function createTauriAdapter(): StudioAdapter {
         const folder = await open({ directory: true, title: 'Select Local Media Folder' })
         return typeof folder === 'string' ? folder : undefined
       },
+      clearMigrationSnapshots: () => invoke('clear_migration_snapshots'),
     },
     scripture: {
       resolve: (reference, translationCode) =>

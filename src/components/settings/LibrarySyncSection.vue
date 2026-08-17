@@ -344,8 +344,11 @@ async function deleteAllLibraryContent() {
  *  those aren't counted here: a genuinely fresh library always has the 3 default service types
  *  auto-seeded (same defaults a brand-new install has always started with — see
  *  commands::service_types::migrate_if_needed), so counting them would make every fresh library
- *  look "non-empty" and defeat the lighter plain-confirm prompt below. Slides/media/
- *  announcements aren't included since those two actions don't touch them either. */
+ *  look "non-empty" and defeat the lighter plain-confirm prompt below. Media is counted even
+ *  though Load Sample Data never touches it (only Clear Existing Data does, see
+ *  clearExistingData()) — sharing this check across both just means Load Sample Data's
+ *  confirmation errs stricter than strictly necessary when only media exists, never looser.
+ *  Slides/announcements aren't included since neither destructive action touches them. */
 async function hasExistingLibraryContent(): Promise<boolean> {
   await Promise.all([
     songsStore.load(),
@@ -361,6 +364,7 @@ async function hasExistingLibraryContent(): Promise<boolean> {
     roleGroupsStore.load(),
     rolesStore.load(),
     serviceTemplatesStore.load(),
+    mediaStore.load(),
   ])
   return (
     songsStore.songs.length > 0 ||
@@ -370,7 +374,8 @@ async function hasExistingLibraryContent(): Promise<boolean> {
     songCollectionsStore.collections.length > 0 ||
     roleGroupsStore.roleGroups.length > 0 ||
     rolesStore.roles.length > 0 ||
-    serviceTemplatesStore.serviceTemplates.length > 0
+    serviceTemplatesStore.serviceTemplates.length > 0 ||
+    mediaStore.items.length > 0
   )
 }
 
@@ -433,11 +438,16 @@ async function loadSampleData() {
 // the old one out. Also resets the library-wide settings lists (service types, collections,
 // role categories, service templates) — otherwise "delete everything" would leave stale
 // categories/roles/templates behind since those live on LibrarySettings, not as their own
-// deletable records like songs/services/people/themes.
+// deletable records like songs/services/people/themes. Unlike loadSampleData(), this also
+// clears media — Clear Existing Data means "start over", and leftover media (including its
+// backing image/video files) would otherwise silently survive a wipe that claims to delete
+// everything. Also deletes the "library-settings.pre-*-id-migration.json" recovery snapshots
+// (see clearMigrationSnapshots's own doc comment) — those exist to help recover pre-migration
+// settings, which is moot once everything else in the library has just been deleted too.
 async function clearExistingData() {
   if (
     !(await confirmDestructiveAction(
-      'This permanently deletes ALL songs, services, people, themes, service types, collections, role categories, and service templates in this library. This cannot be undone — make sure this library is not currently in use before doing this.',
+      'This permanently deletes ALL songs, services, people, themes, media, service types, collections, role categories, and service templates in this library. This cannot be undone — make sure this library is not currently in use before doing this.',
       'Delete Everything',
     ))
   ) {
@@ -447,6 +457,9 @@ async function clearExistingData() {
   sampleDataLoaded.value = false
   try {
     await deleteAllLibraryContent()
+    await mediaStore.load()
+    for (const item of mediaStore.items) await mediaStore.remove(item.id)
+    await getAdapter().settings.clearMigrationSnapshots?.()
     dataCleared.value = true
     emit('bulk-data-change')
   } finally {
@@ -917,8 +930,8 @@ async function pickLocalMediaFolder() {
         {{ stockBackgroundsError }}
       </v-alert>
       <div v-if="dataCleared" class="text-caption text-medium-emphasis mt-2">
-        All songs, services, people, themes, service types, collections, role categories, and
-        service templates have been deleted.
+        All songs, services, people, themes, media, service types, collections, role categories,
+        and service templates have been deleted.
       </div>
     </SettingsPanel>
   </div>

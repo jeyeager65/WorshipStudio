@@ -1,3 +1,7 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { appDataDir } from '../helpers/appDataDir.js'
+
 describe('Settings — Library & Sync data tools', () => {
   it('loads sample data after confirming the destructive-action warning', async () => {
     // The library path picker/portable-folder buttons aren't covered here — actually changing
@@ -106,5 +110,98 @@ describe('Settings — Library & Sync data tools', () => {
     const reopenedLabelId = await reopenedLabel.getAttribute('id')
     const reopenedField = await $(`input[aria-labelledby="${reopenedLabelId}"]`)
     await expect(reopenedField).toHaveValue('C:\\E2E\\LocalMedia')
+  })
+
+  it('clears media and one-time migration snapshot files when clearing existing data', async () => {
+    // A stand-in for a real "library-settings.pre-*-id-migration.json" recovery snapshot — the
+    // real ones are only ever written once, the first time each id migration runs, so the
+    // shared E2E library (already fully migrated well before this spec runs) won't have one on
+    // its own; writing it directly is the only way to exercise clear_migration_snapshots here.
+    const libraryDir = path.join(appDataDir, 'Library')
+    fs.mkdirSync(libraryDir, { recursive: true })
+    const snapshotPath = path.join(
+      libraryDir,
+      'library-settings.pre-role-id-migration.json',
+    )
+    fs.writeFileSync(snapshotPath, '{}')
+
+    const skipLink = await $('button*=Skip setup')
+    if (await skipLink.isExisting()) await skipLink.click()
+
+    const settingsNav = await $('a[href="#/settings"]')
+    await settingsNav.waitForExist({ timeout: 15000 })
+    await settingsNav.click()
+
+    const syncSection = await $('.v-list-item*=Library & Sync')
+    await syncSection.waitForExist({ timeout: 10000 })
+    await syncSection.click()
+
+    // Guarantees real media exists to clear — idempotent/non-destructive, safe even if earlier
+    // specs in this run already added the stock backgrounds.
+    const addStockBtn = await $('button*=Add Stock Backgrounds')
+    await addStockBtn.waitForClickable({ timeout: 10000 })
+    await addStockBtn.click()
+    const stockAddedText = await $('div*=already-present ones were skipped')
+    await stockAddedText.waitForExist({ timeout: 15000 })
+
+    const clearBtn = await $('button*=Clear Existing Data')
+    await clearBtn.waitForClickable({ timeout: 10000 })
+    await clearBtn.click()
+
+    // The shared E2E library has real content well before this spec runs (see this file's other
+    // tests, plus every spec that ran earlier), so this is always the typed-DELETE path.
+    const phraseField = await $('label*=Type DELETE to confirm')
+    await phraseField.waitForExist({ timeout: 5000 })
+    const phraseLabelId = await phraseField.getAttribute('id')
+    const phraseInput = await $(`input[aria-labelledby="${phraseLabelId}"]`)
+    await phraseInput.setValue('DELETE')
+
+    const confirmBtn = await $('button*=Delete Everything')
+    await confirmBtn.waitForClickable({ timeout: 10000 })
+    await confirmBtn.click()
+
+    const clearedText = await $('div*=have been deleted')
+    await clearedText.waitForExist({ timeout: 20000 })
+    expect(await clearedText.getText()).toContain('media')
+
+    // Confirmed on disk, not just via the UI's own status message — deleting each media item
+    // through the store (rather than nuking the whole folder) leaves an empty directory behind
+    // rather than removing it, so this checks for an empty directory, not a missing one.
+    const mediaDir = path.join(libraryDir, 'media')
+    const mediaItemsDir = path.join(libraryDir, 'media-items')
+    for (const dir of [mediaDir, mediaItemsDir]) {
+      if (fs.existsSync(dir)) {
+        expect(fs.readdirSync(dir)).toHaveLength(0)
+      }
+    }
+    expect(fs.existsSync(snapshotPath)).toBe(false)
+
+    // This is the one test in the whole suite that actually empties the shared E2E library
+    // (service types included) rather than just adding to it — every other spec assumes at
+    // least the 3 default service types exist (Create Service's Type dropdown, the smoke test's
+    // "Create & Open Service" flow, etc.), and nothing re-seeds them once service-types.json
+    // already exists. Restoring via Load Sample Data (already proven by this file's first test)
+    // leaves the shared library in the same populated baseline specs later in the run expect,
+    // instead of this test silently breaking everything that runs after it.
+    const loadSampleBtn = await $('button*=Load Sample Data')
+    await loadSampleBtn.waitForClickable({ timeout: 10000 })
+    await loadSampleBtn.click()
+
+    // The library is empty at this point (just cleared above), so this is always the plain
+    // confirm path, not the typed-DELETE one — but handle both the same way the earlier test
+    // does, in case a future change alters what counts as "empty".
+    const restorePhraseField = await $('label*=Type DELETE to confirm')
+    if (await restorePhraseField.waitForExist({ timeout: 3000 }).catch(() => false)) {
+      const restorePhraseLabelId = await restorePhraseField.getAttribute('id')
+      const restorePhraseInput = await $(`input[aria-labelledby="${restorePhraseLabelId}"]`)
+      await restorePhraseInput.setValue('DELETE')
+    }
+    const restoreConfirmBtn = await $('button*=Delete Everything & Load Sample Data')
+    await restoreConfirmBtn.waitForClickable({ timeout: 10000 })
+    await restoreConfirmBtn.click()
+
+    const restoredText = await $('div*=Sample songs, services, people, and themes added')
+    await restoredText.waitForExist({ timeout: 45000 })
+    await expect(restoredText).toBeExisting()
   })
 })

@@ -1,6 +1,6 @@
 use tauri::AppHandle;
 
-use crate::domain::{read_json_file, write_json_file};
+use crate::domain::{delete_file_if_exists, read_json_file, write_json_file};
 use crate::models::{
     Branding, BulletinSettings, CanvaIntegration, DropboxIntegration, LibrarySettings,
     MachineSettings, OneDriveIntegration,
@@ -189,6 +189,29 @@ pub fn save_machine_settings(app: AppHandle, mut settings: MachineSettings) -> R
     paths::save_machine_settings(&app, &settings).map_err(|e| e.to_string())
 }
 
+/// Deletes the "library-settings.pre-*-id-migration.json" snapshots that
+/// `commands::{roles,service_types,song_collections,service_templates}::migrate_if_needed` each
+/// write once, right before their own one-time id migration, as a manual recovery escape hatch —
+/// normally never auto-cleaned. Offered from Settings > Library & Sync's "Clear Existing Data"
+/// only, since that's the one action that already deletes every other piece of real library
+/// content: at that point there's nothing left for these snapshots to help recover back to.
+fn clear_migration_snapshots_at(root: &std::path::Path) -> std::io::Result<()> {
+    for filename in [
+        crate::commands::song_collections::MIGRATION_SNAPSHOT_FILE,
+        crate::commands::service_types::MIGRATION_SNAPSHOT_FILE,
+        crate::commands::roles::MIGRATION_SNAPSHOT_FILE,
+        crate::commands::service_templates::MIGRATION_SNAPSHOT_FILE,
+    ] {
+        delete_file_if_exists(&root.join(filename))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn clear_migration_snapshots(app: AppHandle) -> Result<(), String> {
+    clear_migration_snapshots_at(&library_root(&app)).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -313,5 +336,35 @@ mod tests {
         ));
         assert_eq!(library.canva_integration.client_id, "new-church-id");
         assert!(library.canva_integration.client_secret.is_empty());
+    }
+
+    #[test]
+    fn clear_migration_snapshots_removes_every_known_pre_migration_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let filenames = [
+            crate::commands::song_collections::MIGRATION_SNAPSHOT_FILE,
+            crate::commands::service_types::MIGRATION_SNAPSHOT_FILE,
+            crate::commands::roles::MIGRATION_SNAPSHOT_FILE,
+            crate::commands::service_templates::MIGRATION_SNAPSHOT_FILE,
+        ];
+        for filename in filenames {
+            std::fs::write(root.join(filename), "{}").unwrap();
+        }
+        // An unrelated file must survive untouched.
+        std::fs::write(root.join(LIBRARY_SETTINGS_FILE), "{}").unwrap();
+
+        clear_migration_snapshots_at(root).unwrap();
+
+        for filename in filenames {
+            assert!(!root.join(filename).exists(), "{filename} should be gone");
+        }
+        assert!(root.join(LIBRARY_SETTINGS_FILE).exists());
+    }
+
+    #[test]
+    fn clear_migration_snapshots_is_a_no_op_when_none_exist() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(clear_migration_snapshots_at(dir.path()).is_ok());
     }
 }

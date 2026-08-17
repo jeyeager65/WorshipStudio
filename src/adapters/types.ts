@@ -284,6 +284,13 @@ export interface SettingsPort {
    *  tablet builds grant a separate FileSystemDirectoryHandle for this instead (see
    *  adapters/web/pickedLocalMediaRoot.ts), so localMediaPath itself is meaningless there. */
   pickLocalMediaFolder?(): Promise<string | undefined>
+  /** Deletes the "library-settings.pre-*-id-migration.json" snapshot files each settings-list
+   *  id migration writes once as a manual recovery escape hatch (see
+   *  src-tauri/src/commands/settings.rs's clear_migration_snapshots). Offered only from Clear
+   *  Existing Data, alongside every other piece of real library content it already deletes.
+   *  Tauri-only — the web/tablet builds never run these migrations, so the files never exist
+   *  there in the first place (see adapters/web/roles.ts's own doc comment). */
+  clearMigrationSnapshots?(): Promise<void>
 }
 
 export interface ScripturePassageVerse {
