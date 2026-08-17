@@ -12,11 +12,23 @@
 
 import type { LibrarySettings, MachineSettings } from '@/models/settings'
 import type { SettingsPort } from '@/adapters/types'
-import { readJsonFile, writeJsonFile } from './fsaStorage'
+import { backupPath, readJsonFile, removeFile, writeJsonFile } from './fsaStorage'
 import { storeLibraryHandle } from './handlePersistence'
 
 const LIBRARY_SETTINGS_PATH = 'library-settings.json'
 const MACHINE_SETTINGS_KEY = 'worship-studio:web:machine-settings'
+
+// Mirrors src-tauri/src/commands/settings.rs's clear_settings_list_backups exactly — same five
+// filenames (see each adapters/web/*.ts port's own *_PATH constant), same exclusion of
+// library-settings.json.backup (that file itself is never touched by Clear Existing Data, so its
+// backup shouldn't be swept away either).
+const SETTINGS_LIST_FILES = [
+  'song-collections.json',
+  'service-types.json',
+  'role-groups.json',
+  'roles.json',
+  'service-templates.json',
+]
 
 function defaultLibrarySettings(): LibrarySettings {
   return {
@@ -149,6 +161,11 @@ export function createWebSettingsPort(root: FileSystemDirectoryHandle): Settings
       }
       await storeLibraryHandle(handle)
       return handle.name
+    },
+    clearSettingsListBackups: async () => {
+      for (const filename of SETTINGS_LIST_FILES) {
+        await removeFile(root, backupPath(filename))
+      }
     },
   }
 }

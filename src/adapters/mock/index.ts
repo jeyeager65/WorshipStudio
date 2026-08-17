@@ -469,6 +469,8 @@ export function createMockAdapter(): StudioAdapter {
       saveMachineSettings: (next) => machineSettingsStore.save(next),
       // No real filesystem to pick a folder from in the browser demo.
       pickLibraryFolder: async () => undefined,
+      // MockCollection has no on-disk .backup concept at all — nothing to clear.
+      clearSettingsListBackups: async () => {},
     },
     scripture: {
       resolve: async (reference, translation): Promise<ScripturePassage> => {

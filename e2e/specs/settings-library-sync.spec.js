@@ -112,7 +112,7 @@ describe('Settings — Library & Sync data tools', () => {
     await expect(reopenedField).toHaveValue('C:\\E2E\\LocalMedia')
   })
 
-  it('clears media and one-time migration snapshot files when clearing existing data', async () => {
+  it('clears media, one-time migration snapshots, and settings-list backups when clearing existing data', async () => {
     // A stand-in for a real "library-settings.pre-*-id-migration.json" recovery snapshot — the
     // real ones are only ever written once, the first time each id migration runs, so the
     // shared E2E library (already fully migrated well before this spec runs) won't have one on
@@ -124,6 +124,18 @@ describe('Settings — Library & Sync data tools', () => {
       'library-settings.pre-role-id-migration.json',
     )
     fs.writeFileSync(snapshotPath, '{}')
+
+    // Same stand-in reasoning as the snapshot above — write_json_file only ever refreshes a
+    // .backup sibling on a write that already has a previous version to preserve, and the
+    // migration that seeded service-types.json ran long before this spec, so its own real
+    // .backup may or may not still be from that first write. Writing this one directly makes
+    // the assertion below deterministic regardless of what earlier specs happened to leave.
+    const serviceTypesBackupPath = path.join(libraryDir, 'service-types.json.backup')
+    fs.writeFileSync(serviceTypesBackupPath, '[]')
+    // Seeded the same deterministic way — library-settings.json itself is never touched by
+    // Clear Existing Data, so this backup must survive it untouched too.
+    const librarySettingsBackupPath = path.join(libraryDir, 'library-settings.json.backup')
+    fs.writeFileSync(librarySettingsBackupPath, '{}')
 
     const skipLink = await $('button*=Skip setup')
     if (await skipLink.isExisting()) await skipLink.click()
@@ -175,6 +187,10 @@ describe('Settings — Library & Sync data tools', () => {
       }
     }
     expect(fs.existsSync(snapshotPath)).toBe(false)
+    expect(fs.existsSync(serviceTypesBackupPath)).toBe(false)
+    // library-settings.json.backup is deliberately excluded — that file itself is never touched
+    // by Clear Existing Data, so its backup shouldn't be swept away either.
+    expect(fs.existsSync(librarySettingsBackupPath)).toBe(true)
 
     // This is the one test in the whole suite that actually empties the shared E2E library
     // (service types included) rather than just adding to it — every other spec assumes at

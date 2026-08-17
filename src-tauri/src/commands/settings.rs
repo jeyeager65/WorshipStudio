@@ -212,6 +212,32 @@ pub fn clear_migration_snapshots(app: AppHandle) -> Result<(), String> {
     clear_migration_snapshots_at(&library_root(&app)).map_err(|e| e.to_string())
 }
 
+/// Deletes the `.backup` sibling `write_json_file` keeps beside each of the five normalized
+/// settings-list files (service-types.json, song-collections.json, role-groups.json, roles.json,
+/// service-templates.json). Ordinary deletes only ever shrink these lists — they never delete the
+/// file itself, even once empty — so `write_json_file`'s own backup-of-the-previous-version keeps
+/// holding real, church-specific content indefinitely otherwise. `library-settings.json.backup`
+/// is deliberately excluded: unlike the five above, `library-settings.json` itself is never
+/// touched by Clear Existing Data (branding/credentials/tuning fields survive a content wipe), so
+/// its backup shouldn't be swept away either.
+fn clear_settings_list_backups_at(root: &std::path::Path) -> std::io::Result<()> {
+    for backup_path in [
+        crate::domain::song_collections::backup_path(root),
+        crate::domain::service_types::backup_path(root),
+        crate::domain::role_groups::backup_path(root),
+        crate::domain::roles::backup_path(root),
+        crate::domain::service_templates::backup_path(root),
+    ] {
+        delete_file_if_exists(&backup_path)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn clear_settings_list_backups(app: AppHandle) -> Result<(), String> {
+    clear_settings_list_backups_at(&library_root(&app)).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -366,5 +392,38 @@ mod tests {
     fn clear_migration_snapshots_is_a_no_op_when_none_exist() {
         let dir = tempfile::tempdir().unwrap();
         assert!(clear_migration_snapshots_at(dir.path()).is_ok());
+    }
+
+    #[test]
+    fn clear_settings_list_backups_removes_every_normalized_lists_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let backup_paths = [
+            crate::domain::song_collections::backup_path(root),
+            crate::domain::service_types::backup_path(root),
+            crate::domain::role_groups::backup_path(root),
+            crate::domain::roles::backup_path(root),
+            crate::domain::service_templates::backup_path(root),
+        ];
+        for path in &backup_paths {
+            std::fs::write(path, "[]").unwrap();
+        }
+        // library-settings.json's own backup must survive — Clear Existing Data never touches
+        // library-settings.json itself, so its backup shouldn't be swept away either.
+        let settings_backup = root.join("library-settings.json.backup");
+        std::fs::write(&settings_backup, "{}").unwrap();
+
+        clear_settings_list_backups_at(root).unwrap();
+
+        for path in &backup_paths {
+            assert!(!path.exists(), "{} should be gone", path.display());
+        }
+        assert!(settings_backup.exists());
+    }
+
+    #[test]
+    fn clear_settings_list_backups_is_a_no_op_when_none_exist() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(clear_settings_list_backups_at(dir.path()).is_ok());
     }
 }

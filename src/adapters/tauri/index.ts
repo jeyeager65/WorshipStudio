@@ -450,6 +450,7 @@ export function createTauriAdapter(): StudioAdapter {
         return typeof folder === 'string' ? folder : undefined
       },
       clearMigrationSnapshots: () => invoke('clear_migration_snapshots'),
+      clearSettingsListBackups: () => invoke('clear_settings_list_backups'),
     },
     scripture: {
       resolve: (reference, translationCode) =>

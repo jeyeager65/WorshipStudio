@@ -40,6 +40,14 @@ pub fn replace_all(root: &Path, items: &Vec<RoleGroupDefinition>) -> std::io::Re
     write_json_file(&role_groups_path(root), items)
 }
 
+/// The `.backup` sibling `write_json_file` keeps beside this file — never touched by ordinary
+/// deletes (which only ever shrink the list, never remove the file itself), so it can still hold
+/// church-specific content someone asked Clear Existing Data to erase. See
+/// `commands::settings::clear_settings_list_backups`, the one place this is used.
+pub fn backup_path(root: &Path) -> PathBuf {
+    super::backup_path(&role_groups_path(root))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -291,6 +291,15 @@ export interface SettingsPort {
    *  Tauri-only — the web/tablet builds never run these migrations, so the files never exist
    *  there in the first place (see adapters/web/roles.ts's own doc comment). */
   clearMigrationSnapshots?(): Promise<void>
+  /** Deletes the `.backup` sibling each of the five normalized settings-list files
+   *  (service-types.json, song-collections.json, role-groups.json, roles.json,
+   *  service-templates.json) keeps — ordinary deletes only ever shrink these lists, never
+   *  remove the file itself, so the backup keeps holding real, church-specific content
+   *  indefinitely otherwise. Every adapter's own write path maintains this backup (Rust's
+   *  write_json_file, the web build's own writeJsonFile in fsaStorage.ts), so unlike
+   *  clearMigrationSnapshots/pickLocalMediaFolder above this isn't Tauri-only — every adapter
+   *  kind implements it. Offered only from Clear Existing Data. */
+  clearSettingsListBackups(): Promise<void>
 }
 
 export interface ScripturePassageVerse {

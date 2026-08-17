@@ -148,6 +148,7 @@ pub fn run() {
             commands::settings::get_machine_settings,
             commands::settings::save_machine_settings,
             commands::settings::clear_migration_snapshots,
+            commands::settings::clear_settings_list_backups,
             commands::canva::get_canva_status,
             commands::canva::connect_canva,
             commands::canva::disconnect_canva,

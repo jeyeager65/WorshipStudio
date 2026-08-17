@@ -443,7 +443,10 @@ async function loadSampleData() {
 // backing image/video files) would otherwise silently survive a wipe that claims to delete
 // everything. Also deletes the "library-settings.pre-*-id-migration.json" recovery snapshots
 // (see clearMigrationSnapshots's own doc comment) — those exist to help recover pre-migration
-// settings, which is moot once everything else in the library has just been deleted too.
+// settings, which is moot once everything else in the library has just been deleted too. And
+// the settings-list files' own .backup siblings (see clearSettingsListBackups's own doc
+// comment) — each remove() above only ever shrinks those files, never deletes them, so their
+// backup would otherwise keep holding the pre-clear content indefinitely.
 async function clearExistingData() {
   if (
     !(await confirmDestructiveAction(
@@ -460,6 +463,7 @@ async function clearExistingData() {
     await mediaStore.load()
     for (const item of mediaStore.items) await mediaStore.remove(item.id)
     await getAdapter().settings.clearMigrationSnapshots?.()
+    await getAdapter().settings.clearSettingsListBackups()
     dataCleared.value = true
     emit('bulk-data-change')
   } finally {

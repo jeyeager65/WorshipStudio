@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createWebSettingsPort } from '../settings'
 import { createFakeRoot } from './fakeFsa'
+import { readJsonFile, writeJsonFile } from '../fsaStorage'
 
 const { storeLibraryHandle } = vi.hoisted(() => ({ storeLibraryHandle: vi.fn() }))
 vi.mock('../handlePersistence', () => ({ storeLibraryHandle }))
@@ -163,6 +164,45 @@ describe('createWebSettingsPort', () => {
       const port = createWebSettingsPort(createFakeRoot())
       await expect(port.pickLibraryFolder()).resolves.toBeUndefined()
       expect(storeLibraryHandle).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('clearSettingsListBackups', () => {
+    it('removes the .backup sibling of each normalized settings list file', async () => {
+      const root = createFakeRoot()
+      const port = createWebSettingsPort(root)
+      const filenames = [
+        'song-collections.json',
+        'service-types.json',
+        'role-groups.json',
+        'roles.json',
+        'service-templates.json',
+      ]
+      // A .backup sibling only ever appears after a second write (see write_json_file's own
+      // doc comment) — writing each file twice is what actually produces one, same as the
+      // real ports (adapters/web/roles.ts etc.) do in normal use.
+      for (const filename of filenames) {
+        await writeJsonFile(root, filename, [{ id: '1' }])
+        await writeJsonFile(root, filename, [{ id: '1' }, { id: '2' }])
+      }
+      await writeJsonFile(root, 'library-settings.json', { branding: {} })
+      await writeJsonFile(root, 'library-settings.json', { branding: { churchName: 'Hope' } })
+
+      await port.clearSettingsListBackups()
+
+      for (const filename of filenames) {
+        await expect(readJsonFile(root, `${filename}.backup`)).resolves.toBeNull()
+        // The primary file itself must survive untouched — only its backup is cleared.
+        await expect(readJsonFile(root, filename)).resolves.not.toBeNull()
+      }
+      // library-settings.json.backup is deliberately excluded — that file is never touched by
+      // Clear Existing Data, so its own backup shouldn't be swept away either.
+      await expect(readJsonFile(root, 'library-settings.json.backup')).resolves.not.toBeNull()
+    })
+
+    it('is a no-op when none of the backup files exist', async () => {
+      const port = createWebSettingsPort(createFakeRoot())
+      await expect(port.clearSettingsListBackups()).resolves.toBeUndefined()
     })
   })
 })
