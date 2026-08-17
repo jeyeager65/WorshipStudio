@@ -1,7 +1,7 @@
 import type { Song } from '@/models/song'
 import type { Service, RoleAssignment, ServiceTemplate } from '@/models/service'
 import type { Person, Theme } from '@/models/library'
-import type { RoleGroup } from '@/models/settings'
+import type { RoleGroup, ServiceTypeDefinition } from '@/models/settings'
 
 // Fixed (not random) IDs, all under a `sample-` sub-prefix — this is what makes "Load Sample
 // Data" idempotent: clicking it again just refreshes these same records in place (moving the
@@ -347,7 +347,11 @@ export const sampleRoleGroups: RoleGroup[] = [
 ]
 
 /** Every service type sampleServices uses — merged into LibrarySettings.serviceTypes. */
-export const sampleServiceTypes = ['Sunday Worship', 'Sunday Communion', 'Other']
+export const sampleServiceTypes: ServiceTypeDefinition[] = [
+  { name: 'Sunday Worship' },
+  { name: 'Sunday Communion', description: 'Includes the Lord\'s Supper' },
+  { name: 'Other' },
+]
 
 /** One example per templated service type — merged into LibrarySettings.serviceTemplates. Each
  *  mirrors a real printed bulletin's order (Welcome and Announcements through Closing Song),

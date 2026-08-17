@@ -30,7 +30,9 @@ const filteredTemplates = computed(() => {
 
 function effectiveDefaultTypes(template: ServiceTemplate): string[] {
   if (template.defaultForServiceTypes !== undefined) return template.defaultForServiceTypes
-  return settingsStore.librarySettings?.serviceTypes.includes(template.serviceType)
+  return settingsStore.librarySettings?.serviceTypes.some(
+    (type) => type.name === template.serviceType,
+  )
     ? [template.serviceType]
     : []
 }

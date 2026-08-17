@@ -6,7 +6,6 @@ import { useSettingsStore } from '@/stores/settings'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
-import ManagedStringList from '@/components/settings/ManagedStringList.vue'
 import SettingsPageHeader from '@/components/settings/SettingsPageHeader.vue'
 import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
@@ -22,6 +21,7 @@ import RemoteControlSection from '@/components/settings/RemoteControlSection.vue
 import BibleTranslationsSection from '@/components/settings/BibleTranslationsSection.vue'
 import CanvaSection from '@/components/settings/CanvaSection.vue'
 import SongCollectionsSection from '@/components/settings/SongCollectionsSection.vue'
+import ServiceTypesSection from '@/components/settings/ServiceTypesSection.vue'
 
 const store = useSettingsStore()
 const { librarySettings, machineSettings } = storeToRefs(store)
@@ -373,10 +373,7 @@ async function saveSettings() {
           description="The choices offered when creating a new service (e.g. Sunday Morning, Wednesday Bible Study)."
           icon="mdi-calendar-multiple"
         >
-          <ManagedStringList
-            v-model="librarySettings.serviceTypes"
-            add-label="Add a service type…"
-          />
+          <ServiceTypesSection v-model="librarySettings.serviceTypes" />
         </SettingsPanel>
       </template>
     </div>

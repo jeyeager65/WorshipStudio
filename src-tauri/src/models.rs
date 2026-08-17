@@ -666,8 +666,8 @@ pub struct ApiBibleTranslation {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct LibrarySettings {
-    #[serde(default)]
-    pub service_types: Vec<String>,
+    #[serde(default, deserialize_with = "deserialize_service_types")]
+    pub service_types: Vec<ServiceType>,
     #[serde(default, deserialize_with = "deserialize_song_collection_definitions")]
     pub collections: Vec<SongCollectionDefinition>,
     #[serde(default)]
@@ -768,6 +768,42 @@ where
                 abbreviation: None,
             },
             StoredSongCollectionDefinition::Definition(definition) => definition,
+        })
+        .collect())
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceType {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Same "plain string or full object" flexibility as `StoredSongCollectionDefinition` — an
+/// already-configured library's `library-settings.json` has `serviceTypes` as a plain
+/// `Vec<String>` from before this field gained a description; deserializing straight into
+/// `Vec<ServiceType>` would otherwise hard-fail on that file instead of upgrading it in place.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum StoredServiceType {
+    Name(String),
+    Definition(ServiceType),
+}
+
+fn deserialize_service_types<'de, D>(deserializer: D) -> Result<Vec<ServiceType>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let stored = Vec::<StoredServiceType>::deserialize(deserializer)?;
+    Ok(stored
+        .into_iter()
+        .map(|entry| match entry {
+            StoredServiceType::Name(name) => ServiceType {
+                name,
+                description: None,
+            },
+            StoredServiceType::Definition(definition) => definition,
         })
         .collect())
 }
@@ -1196,6 +1232,29 @@ mod tests {
 
         let serialized = serde_json::to_value(settings).unwrap();
         assert!(serialized["collections"][0].is_object());
+    }
+
+    #[test]
+    fn library_settings_migrates_string_service_types_to_clean_definitions() {
+        let json = r##"{
+            "serviceTypes": ["Sunday Morning Worship", { "name": "Wednesday Bible Study", "description": "Midweek study and prayer" }],
+            "collections": [],
+            "roleGroups": [],
+            "serviceTemplates": [],
+            "branding": { "churchName": "", "primaryColor": "#1F3A5F", "secondaryColor": "#C9A227" },
+            "mediaMaxSyncedFileSizeMb": 50
+        }"##;
+        let settings: LibrarySettings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.service_types[0].name, "Sunday Morning Worship");
+        assert_eq!(settings.service_types[0].description, None);
+        assert_eq!(settings.service_types[1].name, "Wednesday Bible Study");
+        assert_eq!(
+            settings.service_types[1].description.as_deref(),
+            Some("Midweek study and prayer")
+        );
+
+        let serialized = serde_json::to_value(settings).unwrap();
+        assert!(serialized["serviceTypes"][0].is_object());
     }
 
     #[test]

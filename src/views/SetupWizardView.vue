@@ -63,7 +63,7 @@ const validationMessage = ref('')
 onMounted(async () => {
   try {
     await store.load()
-    firstServiceType.value = store.librarySettings?.serviceTypes[0] ?? ''
+    firstServiceType.value = store.librarySettings?.serviceTypes[0]?.name ?? ''
     await Promise.all([loadDisplays(), loadTranslations()])
   } catch (error) {
     operationError.value = error instanceof Error ? error.message : 'Setup could not be loaded.'
@@ -145,7 +145,7 @@ const setsSummary = ref<ImportSetsSummary>()
 const setsUnavailable = ref(false)
 const pickingLibraryFolder = ref(false)
 const defaultServiceTypeForSets = computed(
-  () => store.librarySettings?.serviceTypes[0] ?? 'Sunday Morning Worship',
+  () => store.librarySettings?.serviceTypes[0]?.name ?? 'Sunday Morning Worship',
 )
 const importingStockBackgrounds = ref(false)
 const stockBackgroundsSummary = ref<{ mediaAdded: number; themesAdded: number }>()
@@ -244,7 +244,11 @@ function applyFirstServiceType() {
   const settings = store.librarySettings
   const chosen = firstServiceType.value.trim()
   if (!settings || !chosen) return
-  settings.serviceTypes = [chosen, ...settings.serviceTypes.filter((type) => type !== chosen)]
+  const existing = settings.serviceTypes.find((type) => type.name === chosen)
+  settings.serviceTypes = [
+    existing ?? { name: chosen },
+    ...settings.serviceTypes.filter((type) => type.name !== chosen),
+  ]
 }
 
 function validateCurrentStep(): boolean {
@@ -757,7 +761,7 @@ async function skipSetup() {
                 </div>
                 <v-combobox
                   v-model="firstServiceType"
-                  :items="store.librarySettings.serviceTypes"
+                  :items="store.librarySettings.serviceTypes.map((type) => type.name)"
                   variant="outlined"
                   density="compact"
                   hide-details

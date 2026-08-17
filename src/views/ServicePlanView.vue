@@ -636,6 +636,8 @@ async function applyTemplate() {
               ><v-select
                 v-model="serviceType"
                 :items="settingsStore.librarySettings?.serviceTypes ?? []"
+                item-title="name"
+                item-value="name"
                 label="Service Type"
                 variant="outlined" /></v-col
           ></v-row>

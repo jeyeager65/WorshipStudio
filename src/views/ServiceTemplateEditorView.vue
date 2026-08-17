@@ -58,8 +58,8 @@ async function initialize() {
     originalTemplateName.value = name
     const template = workingTemplates.value[index]!
     if (template.defaultForServiceTypes === undefined) {
-      template.defaultForServiceTypes = settingsStore.librarySettings?.serviceTypes.includes(
-        template.serviceType,
+      template.defaultForServiceTypes = settingsStore.librarySettings?.serviceTypes.some(
+        (type) => type.name === template.serviceType,
       )
         ? [template.serviceType]
         : []
@@ -191,7 +191,7 @@ async function saveTemplate() {
       v-else-if="settingsStore.librarySettings && selectedTemplate"
       v-model="workingTemplates"
       :role-groups="settingsStore.librarySettings.roleGroups"
-      :service-types="settingsStore.librarySettings.serviceTypes"
+      :service-types="settingsStore.librarySettings.serviceTypes.map((type) => type.name)"
       :initial-selected-index="selectedIndex"
       standalone
     />

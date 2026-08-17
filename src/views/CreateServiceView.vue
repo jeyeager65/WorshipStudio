@@ -36,7 +36,7 @@ watch(type, selectDefaultTemplate)
 onMounted(async () => {
   await Promise.all([settingsStore.load(), peopleStore.load()])
   const serviceTypes = settingsStore.librarySettings?.serviceTypes ?? []
-  if (serviceTypes.length > 0) type.value = serviceTypes[0]
+  if (serviceTypes.length > 0) type.value = serviceTypes[0]!.name
   else selectDefaultTemplate('')
 })
 
@@ -180,6 +180,8 @@ async function createService(destination: 'plan' | 'service') {
             <v-select
               v-model="type"
               :items="settingsStore.librarySettings?.serviceTypes ?? []"
+              item-title="name"
+              item-value="name"
               label="Service Type"
               variant="outlined"
               hide-details

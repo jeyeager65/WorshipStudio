@@ -3,7 +3,7 @@ use tauri::AppHandle;
 use crate::domain::{read_json_file, write_json_file};
 use crate::models::{
     Branding, BulletinSettings, CanvaIntegration, DropboxIntegration, LibrarySettings,
-    MachineSettings, OneDriveIntegration,
+    MachineSettings, OneDriveIntegration, ServiceType,
 };
 use crate::paths::{self, library_root, load_machine_settings};
 
@@ -18,9 +18,18 @@ const LIBRARY_SETTINGS_FILE: &str = "library-settings.json";
 fn default_library_settings() -> LibrarySettings {
     LibrarySettings {
         service_types: vec![
-            "Sunday Morning Worship".to_string(),
-            "Wednesday Bible Study".to_string(),
-            "Other".to_string(),
+            ServiceType {
+                name: "Sunday Morning Worship".to_string(),
+                description: None,
+            },
+            ServiceType {
+                name: "Wednesday Bible Study".to_string(),
+                description: None,
+            },
+            ServiceType {
+                name: "Other".to_string(),
+                description: None,
+            },
         ],
         collections: vec![],
         role_groups: vec![],

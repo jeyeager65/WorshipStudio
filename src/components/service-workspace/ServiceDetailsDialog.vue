@@ -101,6 +101,8 @@ function save() {
         <v-select
           v-model="editType"
           :items="settingsStore.librarySettings?.serviceTypes ?? []"
+          item-title="name"
+          item-value="name"
           label="Type"
           variant="outlined"
         />

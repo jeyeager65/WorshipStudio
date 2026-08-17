@@ -55,8 +55,10 @@ const summary = computed(() =>
 
 const serviceTypeOptions = computed(() => [
   { title: 'All Types', value: 'all' },
-  ...(settingsStore.librarySettings?.serviceTypes.map((type) => ({ title: type, value: type })) ??
-    []),
+  ...(settingsStore.librarySettings?.serviceTypes.map((type) => ({
+    title: type.name,
+    value: type.name,
+  })) ?? []),
 ])
 
 const reportRangeLabel = computed(() => {

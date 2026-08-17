@@ -22,9 +22,16 @@ export interface SongCollectionDefinition {
   abbreviation?: string
 }
 
+export interface ServiceTypeDefinition {
+  name: string
+  /** Optional explanation of what this service type is for (e.g. distinguishing a communion
+   *  service from an ordinary one) — shown alongside the name in Settings, nowhere else yet. */
+  description?: string
+}
+
 /** library-settings.json — synced, shared across the church's setup. */
 export interface LibrarySettings {
-  serviceTypes: string[]
+  serviceTypes: ServiceTypeDefinition[]
   collections: SongCollectionDefinition[]
   roleGroups: RoleGroup[]
   serviceTemplates: ServiceTemplate[]
