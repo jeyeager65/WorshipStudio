@@ -20,7 +20,7 @@ function sampleService(overrides: Partial<Service> = {}): Service {
     id: 'service-1',
     date: '2026-07-19',
     serviceTypeId: 'type-sunday-morning-worship',
-    serviceTemplateName: 'Sunday Worship',
+    serviceTemplateId: 'template-sunday-worship',
     items: [
       { id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: [] } },
       {
@@ -41,7 +41,11 @@ function sampleService(overrides: Partial<Service> = {}): Service {
 describe('ServiceCard', () => {
   it('shows the service type, date, subtitle, and song count', () => {
     const wrapper = mount(ServiceCard, {
-      props: { serviceTypeName: 'Sunday Morning Worship', service: sampleService() },
+      props: {
+        serviceTypeName: 'Sunday Morning Worship',
+        serviceTemplateName: 'Sunday Worship',
+        service: sampleService(),
+      },
       global: { plugins: [vuetify, router] },
     })
     const text = wrapper.text()
@@ -67,7 +71,11 @@ describe('ServiceCard', () => {
 
   it('shows a plural song count and "not yet started" when empty', () => {
     const wrapper = mount(ServiceCard, {
-      props: { serviceTypeName: 'Sunday Morning Worship', service: sampleService({ items: [] }) },
+      props: {
+        serviceTypeName: 'Sunday Morning Worship',
+        serviceTemplateName: 'Sunday Worship',
+        service: sampleService({ items: [] }),
+      },
       global: { plugins: [vuetify, router] },
     })
     expect(wrapper.text()).toContain('0 songs')
@@ -76,14 +84,21 @@ describe('ServiceCard', () => {
 
   it('shows the applied template and hides progress ratios when no template is applied', () => {
     const withTemplate = mount(ServiceCard, {
-      props: { serviceTypeName: 'Sunday Morning Worship', service: sampleService() },
+      props: {
+        serviceTypeName: 'Sunday Morning Worship',
+        serviceTemplateName: 'Sunday Worship',
+        service: sampleService(),
+      },
       global: { plugins: [vuetify, router] },
     })
     expect(withTemplate.text()).toContain('Sunday Worship')
     expect(withTemplate.text()).toContain('1 of 1 songs')
 
     const withoutTemplate = mount(ServiceCard, {
-      props: { serviceTypeName: 'Sunday Morning Worship', service: sampleService({ serviceTemplateName: undefined }) },
+      props: {
+        serviceTypeName: 'Sunday Morning Worship',
+        service: sampleService({ serviceTemplateId: undefined }),
+      },
       global: { plugins: [vuetify, router] },
     })
     expect(withoutTemplate.text()).toContain('No template applied')

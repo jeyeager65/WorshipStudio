@@ -13,6 +13,7 @@ import { useSongCollectionsStore } from '@/stores/songCollections'
 import { useServiceTypesStore } from '@/stores/serviceTypes'
 import { useRoleGroupsStore } from '@/stores/roleGroups'
 import { useRolesStore } from '@/stores/roles'
+import { useServiceTemplatesStore } from '@/stores/serviceTemplates'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { clearStoredLibraryHandle } from '@/adapters/web/handlePersistence'
 import { disconnect as disconnectDropbox, isConnected as isDropboxConnected } from '@/adapters/tablet/providers/dropboxAuth'
@@ -35,7 +36,7 @@ import {
 import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 
 const store = useSettingsStore()
-const { librarySettings, machineSettings } = storeToRefs(store)
+const { machineSettings } = storeToRefs(store)
 const syncStore = useSyncStore()
 const songsStore = useSongsStore()
 const servicesStore = useServicesStore()
@@ -46,6 +47,7 @@ const songCollectionsStore = useSongCollectionsStore()
 const serviceTypesStore = useServiceTypesStore()
 const roleGroupsStore = useRoleGroupsStore()
 const rolesStore = useRolesStore()
+const serviceTemplatesStore = useServiceTemplatesStore()
 const confirmDialog = useConfirmDialogStore()
 
 // Every Data Tools action below persists immediately on its own (direct store/adapter calls,
@@ -318,6 +320,7 @@ async function deleteAllLibraryContent() {
     serviceTypesStore.load(),
     roleGroupsStore.load(),
     rolesStore.load(),
+    serviceTemplatesStore.load(),
   ])
   for (const song of songsStore.songs) await songsStore.remove(song.id)
   for (const service of servicesStore.services) await servicesStore.remove(service.id)
@@ -327,9 +330,12 @@ async function deleteAllLibraryContent() {
     await songCollectionsStore.remove(collection.id)
   for (const serviceType of serviceTypesStore.serviceTypes)
     await serviceTypesStore.remove(serviceType.id)
-  // Roles before groups — a role with a dangling groupId is a smaller, more graceful glitch
-  // than the other way around wouldn't be different anyway (both stores are re-loaded fresh
-  // right after), but this keeps the intermediate state consistent while it's happening.
+  // Templates and roles before groups — a role with a dangling groupId is a smaller, more
+  // graceful glitch than the other way around wouldn't be different anyway (every store is
+  // re-loaded fresh right after), but this keeps the intermediate state consistent while it's
+  // happening.
+  for (const template of serviceTemplatesStore.serviceTemplates)
+    await serviceTemplatesStore.remove(template.id)
   for (const role of rolesStore.roles) await rolesStore.remove(role.id)
   for (const group of roleGroupsStore.roleGroups) await roleGroupsStore.remove(group.id)
 }
@@ -347,11 +353,14 @@ async function hasExistingLibraryContent(): Promise<boolean> {
     peopleStore.load(),
     themesStore.load(),
     songCollectionsStore.load(),
-    // Unlike service types, roles/role groups have no auto-seeded defaults on a genuinely
-    // fresh library (see commands::roles::migrate_if_needed) — safe to count here without
-    // the same "always looks non-empty" problem.
+    // Unlike service types, roles/role groups/service templates have no auto-seeded defaults
+    // on a genuinely fresh library (see commands::roles::migrate_if_needed and
+    // commands::service_templates, which starts empty since there's no reasonable default for
+    // church-specific template names) — safe to count here without the same "always looks
+    // non-empty" problem.
     roleGroupsStore.load(),
     rolesStore.load(),
+    serviceTemplatesStore.load(),
   ])
   return (
     songsStore.songs.length > 0 ||
@@ -360,7 +369,8 @@ async function hasExistingLibraryContent(): Promise<boolean> {
     themesStore.themes.length > 0 ||
     songCollectionsStore.collections.length > 0 ||
     roleGroupsStore.roleGroups.length > 0 ||
-    rolesStore.roles.length > 0
+    rolesStore.roles.length > 0 ||
+    serviceTemplatesStore.serviceTemplates.length > 0
   )
 }
 
@@ -404,16 +414,13 @@ async function loadSampleData() {
     for (const serviceType of sampleServiceTypes) await serviceTypesStore.save(serviceType)
     for (const group of sampleRoleGroups) await roleGroupsStore.save(group)
     for (const role of sampleRoles) await rolesStore.save(role)
+    for (const template of sampleServiceTemplates) await serviceTemplatesStore.save(template)
     for (const service of buildSampleServices()) await servicesStore.save(service)
     // After deleteAllLibraryContent(), not before — it deletes every existing theme (including
     // any stock-background starter themes from an earlier import), so importing first would
     // just have them wiped out again a moment later.
     stockBackgroundsAdded.value = await importStockBackgroundsInto()
 
-    if (librarySettings.value) {
-      librarySettings.value.serviceTemplates = structuredClone(sampleServiceTemplates)
-      await store.save()
-    }
     sampleDataLoaded.value = true
     emit('bulk-data-change')
   } finally {
@@ -440,10 +447,6 @@ async function clearExistingData() {
   sampleDataLoaded.value = false
   try {
     await deleteAllLibraryContent()
-    if (librarySettings.value) {
-      librarySettings.value.serviceTemplates = []
-      await store.save()
-    }
     dataCleared.value = true
     emit('bulk-data-change')
   } finally {

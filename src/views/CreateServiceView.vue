@@ -5,6 +5,7 @@ import { useServicesStore } from '@/stores/services'
 import { useSettingsStore } from '@/stores/settings'
 import { usePeopleStore } from '@/stores/people'
 import { useServiceTypesStore } from '@/stores/serviceTypes'
+import { useServiceTemplatesStore } from '@/stores/serviceTemplates'
 import type { Service } from '@/models/service'
 import { personFormalName, sortByPreferredRole } from '@/models/library'
 import { applyServiceTemplate, defaultServiceTemplate } from '@/utils/serviceTemplate'
@@ -18,6 +19,7 @@ const store = useServicesStore()
 const settingsStore = useSettingsStore()
 const peopleStore = usePeopleStore()
 const serviceTypesStore = useServiceTypesStore()
+const serviceTemplatesStore = useServiceTemplatesStore()
 
 const date = ref(localCalendarDate())
 const time = ref('')
@@ -25,18 +27,22 @@ const serviceTypeId = ref('')
 const sermonTitle = ref('')
 const keyPassage = ref('')
 const preacherId = ref<string>()
-const templateName = ref<string | null>(null)
+const templateId = ref<string | null>(null)
 
 function selectDefaultTemplate(serviceType: string) {
-  templateName.value =
-    defaultServiceTemplate(settingsStore.librarySettings?.serviceTemplates, serviceType)
-      ?.serviceType ?? null
+  templateId.value =
+    defaultServiceTemplate(serviceTemplatesStore.serviceTemplates, serviceType)?.id ?? null
 }
 
 watch(serviceTypeId, selectDefaultTemplate)
 
 onMounted(async () => {
-  await Promise.all([settingsStore.load(), peopleStore.load(), serviceTypesStore.load()])
+  await Promise.all([
+    settingsStore.load(),
+    peopleStore.load(),
+    serviceTypesStore.load(),
+    serviceTemplatesStore.load(),
+  ])
   const serviceTypes = serviceTypesStore.serviceTypes
   if (serviceTypes.length > 0) serviceTypeId.value = serviceTypes[0]!.id
   else selectDefaultTemplate('')
@@ -53,25 +59,18 @@ const preacherOptions = computed(() =>
   })),
 )
 
-const templateOptions = computed(() =>
-  (settingsStore.librarySettings?.serviceTemplates ?? []).map((template) => {
-    const defaultTemplate = defaultServiceTemplate(
-      settingsStore.librarySettings?.serviceTemplates,
-      serviceTypeId.value,
-    )
-    return {
-      title:
-        template.serviceType === defaultTemplate?.serviceType
-          ? `${template.serviceType} (Default)`
-          : template.serviceType,
-      value: template.serviceType,
-    }
-  }),
-)
+const templateOptions = computed(() => {
+  const defaultTemplate = defaultServiceTemplate(
+    serviceTemplatesStore.serviceTemplates,
+    serviceTypeId.value,
+  )
+  return serviceTemplatesStore.serviceTemplates.map((template) => ({
+    title: template.id === defaultTemplate?.id ? `${template.name} (Default)` : template.name,
+    value: template.id,
+  }))
+})
 const selectedTemplate = computed(() =>
-  settingsStore.librarySettings?.serviceTemplates.find(
-    (template) => template.serviceType === templateName.value,
-  ),
+  serviceTemplatesStore.serviceTemplates.find((template) => template.id === templateId.value),
 )
 const templateContentCount = computed(
   () => selectedTemplate.value?.items.filter((item) => item.kind !== 'role-only').length ?? 0,
@@ -117,7 +116,7 @@ async function createService(destination: 'plan' | 'service') {
     date: date.value,
     time: time.value || undefined,
     serviceTypeId: serviceTypeId.value,
-    serviceTemplateName: selectedTemplate.value?.serviceType,
+    serviceTemplateId: selectedTemplate.value?.id,
     items,
     assignments,
     updatedAt: '',
@@ -195,7 +194,7 @@ async function createService(destination: 'plan' | 'service') {
               class="service-type-field"
             />
             <v-select
-              v-model="templateName"
+              v-model="templateId"
               :items="templateOptions"
               label="Service Template"
               placeholder="Blank Service"
@@ -281,7 +280,7 @@ async function createService(destination: 'plan' | 'service') {
           <template v-if="selectedTemplate">
             <div class="template-name">
               <v-icon icon="mdi-file-tree-outline" size="19" /><span>{{
-                selectedTemplate.serviceType
+                selectedTemplate.name
               }}</span>
             </div>
             <div class="template-stats">

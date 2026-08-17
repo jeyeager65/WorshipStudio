@@ -14,11 +14,10 @@ const LIBRARY_SETTINGS_FILE: &str = "library-settings.json";
 // genuinely unusable (e.g. Create Service's Type dropdown would have nothing to pick).
 // Service types now live in their own file (commands::service_types::migrate_if_needed seeds
 // the same defaults there for a genuinely fresh library), as do role groups/roles
-// (commands::roles::migrate_if_needed); service_templates is left empty since there's no
-// reasonable default for church-specific names.
+// (commands::roles::migrate_if_needed) and service templates (commands::service_templates,
+// left empty there since there's no reasonable default for church-specific names).
 fn default_library_settings() -> LibrarySettings {
     LibrarySettings {
-        service_templates: vec![],
         branding: Branding {
             church_name: "".to_string(),
             logo_media_id: None,

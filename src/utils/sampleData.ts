@@ -402,14 +402,15 @@ export const sampleServiceTypes: ServiceTypeDefinition[] = [
   { id: 'type-sample-other', name: 'Other' },
 ]
 
-/** One example per templated service type — merged into LibrarySettings.serviceTemplates. Each
+/** One example per templated service type — served from its own service-templates.json. Each
  *  mirrors a real printed bulletin's order (Welcome and Announcements through Closing Song),
  *  mixing bulletin-note items, content placeholders, a sermon placeholder, and role-only entries
  *  for roles with no line of their own in the order of service. 'Other' has no template — it's
  *  the free-form catch-all for anything that doesn't fit the two structured types. */
 export const sampleServiceTemplates: ServiceTemplate[] = [
   {
-    serviceType: 'Sunday Worship',
+    id: 'template-sample-sunday-worship',
+    name: 'Sunday Worship',
     description: 'The complete Sunday morning worship order, music through sermon to close.',
     defaultForServiceTypeIds: ['type-sample-sunday-worship'],
     items: [
@@ -476,7 +477,8 @@ export const sampleServiceTemplates: ServiceTemplate[] = [
     ],
   },
   {
-    serviceType: 'Sunday Communion',
+    id: 'template-sample-sunday-communion',
+    name: 'Sunday Communion',
     description: "Communion Sunday's order, including the Lord's Supper before the close.",
     defaultForServiceTypeIds: ['type-sample-sunday-communion'],
     items: [

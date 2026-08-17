@@ -2,12 +2,11 @@
 import { computed, onMounted, onUnmounted, ref, toRaw } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
-import { getAdapter } from '@/adapters'
 import ServiceTemplateEditor from '@/components/settings/ServiceTemplateEditor.vue'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import { errorMessage } from '@/composables/useAsyncStoreState'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
-import { useSettingsStore } from '@/stores/settings'
+import { useServiceTemplatesStore } from '@/stores/serviceTemplates'
 import { useServiceTypesStore } from '@/stores/serviceTypes'
 import { useRoleGroupsStore } from '@/stores/roleGroups'
 import { useRolesStore } from '@/stores/roles'
@@ -16,21 +15,18 @@ import type { ServiceTemplate } from '@/models/service'
 
 const route = useRoute()
 const router = useRouter()
-const settingsStore = useSettingsStore()
+const serviceTemplatesStore = useServiceTemplatesStore()
 const serviceTypesStore = useServiceTypesStore()
 const roleGroupsStore = useRoleGroupsStore()
 const rolesStore = useRolesStore()
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
-const workingTemplates = ref<ServiceTemplate[]>([])
-const selectedIndex = ref(0)
+const workingTemplate = ref<ServiceTemplate>()
 const validationMessage = ref('')
 const saveMessage = ref('')
 const missingTemplate = ref(false)
-const originalTemplateName = ref('')
-const documentHistory = useDocumentHistory(workingTemplates, 'service template')
+const documentHistory = useDocumentHistory(workingTemplate, 'service template')
 
-const selectedTemplate = computed(() => workingTemplates.value[selectedIndex.value])
-const heading = computed(() => selectedTemplate.value?.serviceType.trim() || 'New Service Template')
+const heading = computed(() => workingTemplate.value?.name.trim() || 'New Service Template')
 
 function persistenceClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
@@ -40,44 +36,31 @@ onMounted(initialize)
 
 async function initialize() {
   documentHistory.stop()
-  const [settingsLoaded] = await Promise.all([
-    settingsStore.load(),
+  const [templatesLoaded] = await Promise.all([
+    serviceTemplatesStore.loaded ? Promise.resolve(true) : serviceTemplatesStore.load(),
     serviceTypesStore.loaded ? Promise.resolve(true) : serviceTypesStore.load(),
     roleGroupsStore.loaded ? Promise.resolve(true) : roleGroupsStore.load(),
     rolesStore.loaded ? Promise.resolve(true) : rolesStore.load(),
   ])
-  if (!settingsLoaded) return
-  const storedTemplates = settingsStore.librarySettings?.serviceTemplates ?? []
-  workingTemplates.value = structuredClone(toRaw(storedTemplates))
+  if (!templatesLoaded) return
 
   if (route.name === 'service-template-new') {
-    selectedIndex.value = workingTemplates.value.length
-    workingTemplates.value.push({
-      serviceType: '',
+    workingTemplate.value = {
+      id: `template-${crypto.randomUUID()}`,
+      name: '',
       description: '',
       defaultForServiceTypeIds: [],
       items: [],
-    })
+    }
     isDirty.value = true
   } else {
-    const name = String(route.params.templateName ?? '')
-    const index = workingTemplates.value.findIndex((template) => template.serviceType === name)
-    if (index === -1) {
+    const id = String(route.params.templateId ?? '')
+    const found = serviceTemplatesStore.serviceTemplates.find((template) => template.id === id)
+    if (!found) {
       missingTemplate.value = true
       return
     }
-    selectedIndex.value = index
-    originalTemplateName.value = name
-    const template = workingTemplates.value[index]!
-    if (template.defaultForServiceTypeIds === undefined) {
-      // Legacy fallback: a template with no explicit list defaults to whichever service type
-      // shares its own (still name-based) `serviceType` field — resolved to that type's real id
-      // here, since defaultForServiceTypeIds holds ids, not names.
-      const matchingType = serviceTypesStore.serviceTypes.find(
-        (type) => type.name === template.serviceType,
-      )
-      template.defaultForServiceTypeIds = matchingType ? [matchingType.id] : []
-    }
+    workingTemplate.value = structuredClone(toRaw(found))
     isDirty.value = false
   }
 
@@ -92,19 +75,17 @@ onUnmounted(() => {
 })
 
 async function saveTemplate() {
-  const template = selectedTemplate.value
-  if (!template || !settingsStore.librarySettings || saving.value) return
-  const name = template.serviceType.trim()
+  const template = workingTemplate.value
+  if (!template || saving.value) return
+  const name = template.name.trim()
   if (!name) {
     validationMessage.value = 'Enter a template name before saving.'
     saveMessage.value = ''
     return
   }
   if (
-    workingTemplates.value.some(
-      (candidate, index) =>
-        index !== selectedIndex.value &&
-        candidate.serviceType.trim().toLowerCase() === name.toLowerCase(),
+    serviceTemplatesStore.serviceTemplates.some(
+      (candidate) => candidate.id !== template.id && candidate.name.trim().toLowerCase() === name.toLowerCase(),
     )
   ) {
     validationMessage.value = 'A template with this name already exists.'
@@ -112,7 +93,7 @@ async function saveTemplate() {
     return
   }
 
-  template.serviceType = name
+  template.name = name
   template.description = template.description?.trim() || undefined
   validationMessage.value = ''
   saveMessage.value = ''
@@ -120,17 +101,12 @@ async function saveTemplate() {
   try {
     // Vue can leave nested editor values wrapped in reactive proxies. Serialize at the IPC
     // boundary both to unwrap them reliably and to produce exactly the JSON shape Tauri receives.
-    const nextLibrarySettings = persistenceClone(toRaw(settingsStore.librarySettings))
-    nextLibrarySettings.serviceTemplates = persistenceClone(toRaw(workingTemplates.value))
-    await settingsStore.runMutation(() =>
-      getAdapter().settings.saveLibrarySettings(nextLibrarySettings),
-    )
-    settingsStore.librarySettings = nextLibrarySettings
+    const toSave = persistenceClone(toRaw(template))
+    await serviceTemplatesStore.save(toSave)
     isDirty.value = false
     saveMessage.value = 'Template saved.'
-    if (route.name === 'service-template-new' || originalTemplateName.value !== name) {
-      originalTemplateName.value = name
-      await router.replace({ name: 'service-template-editor', params: { templateName: name } })
+    if (route.name === 'service-template-new') {
+      await router.replace({ name: 'service-template-editor', params: { templateId: toSave.id } })
     }
   } catch (error) {
     console.error('Failed to save service template:', error)
@@ -159,13 +135,13 @@ async function saveTemplate() {
     </header>
 
     <v-alert
-      v-if="settingsStore.mutationError"
+      v-if="serviceTemplatesStore.mutationError"
       type="error"
       variant="tonal"
       closable
       class="mb-4"
-      @click:close="settingsStore.clearMutationError"
-      >Template changes were not saved: {{ settingsStore.mutationError }}</v-alert
+      @click:close="serviceTemplatesStore.clearMutationError"
+      >Template changes were not saved: {{ serviceTemplatesStore.mutationError }}</v-alert
     >
     <v-alert
       v-if="validationMessage"
@@ -187,9 +163,9 @@ async function saveTemplate() {
       >{{ saveMessage }}</v-alert
     >
     <AsyncLoadState
-      v-if="!settingsStore.loaded"
-      :loading="settingsStore.loading"
-      :error="settingsStore.loadError"
+      v-if="!serviceTemplatesStore.loaded"
+      :loading="serviceTemplatesStore.loading"
+      :error="serviceTemplatesStore.loadError"
       label="service template"
       @retry="initialize"
     />
@@ -202,13 +178,11 @@ async function saveTemplate() {
       >
     </section>
     <ServiceTemplateEditor
-      v-else-if="settingsStore.librarySettings && selectedTemplate"
-      v-model="workingTemplates"
+      v-else-if="workingTemplate"
+      v-model="workingTemplate"
       :role-groups="roleGroupsStore.roleGroups"
       :roles="rolesStore.roles"
       :service-types="serviceTypesStore.serviceTypes"
-      :initial-selected-index="selectedIndex"
-      standalone
     />
   </main>
 </template>

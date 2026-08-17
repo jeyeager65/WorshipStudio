@@ -1,5 +1,5 @@
 import type { Song } from '@/models/song'
-import type { Service } from '@/models/service'
+import type { Service, ServiceTemplate } from '@/models/service'
 import type {
   SlideLibraryItem,
   MediaItem,
@@ -249,6 +249,13 @@ export interface RoleGroupPort {
 export interface RolePort {
   list(): Promise<RoleDefinition[]>
   save(role: RoleDefinition): Promise<RoleDefinition>
+  delete(id: string): Promise<void>
+}
+
+/** A peer of `SettingsPort`, not part of it — same reasoning as `SongCollectionPort`. */
+export interface ServiceTemplatePort {
+  list(): Promise<ServiceTemplate[]>
+  save(template: ServiceTemplate): Promise<ServiceTemplate>
   delete(id: string): Promise<void>
 }
 
@@ -703,6 +710,7 @@ export interface StudioAdapter {
   serviceTypes: ServiceTypePort
   roleGroups: RoleGroupPort
   roles: RolePort
+  serviceTemplates: ServiceTemplatePort
   people: PersonPort
   announcements: AnnouncementPort
   settings: SettingsPort

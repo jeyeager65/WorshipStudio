@@ -19,6 +19,10 @@ const props = defineProps<{
   /** Resolved by the parent from service.serviceTypeId via the service types store — same
    *  "dumb presentational prop" reasoning as preacherName above. */
   serviceTypeName: string
+  /** Resolved by the parent from service.serviceTemplateId via the service templates store —
+   *  same "dumb presentational prop" reasoning as preacherName above. Undefined/empty means no
+   *  template has been applied. */
+  serviceTemplateName?: string
 }>()
 const emit = defineEmits<{ delete: [] }>()
 
@@ -67,7 +71,7 @@ const assignmentProgressLabel = computed(() =>
     ? `${filledAssignmentCount.value} of ${assignmentCount.value} assigned`
     : 'No assignments',
 )
-const hasAppliedTemplate = computed(() => !!props.service.serviceTemplateName?.trim())
+const hasAppliedTemplate = computed(() => !!props.serviceTemplateName?.trim())
 
 const statusLabel = computed(() => {
   if (props.service.items.length === 0) return 'not yet started'
@@ -125,9 +129,9 @@ function openPlan() {
         >
         <span
           class="service-template-status"
-          :title="service.serviceTemplateName || 'No template applied'"
+          :title="serviceTemplateName || 'No template applied'"
           ><v-icon icon="mdi-file-tree-outline" size="17" />{{
-            service.serviceTemplateName || 'No template applied'
+            serviceTemplateName || 'No template applied'
           }}</span
         >
         <span v-if="hasAppliedTemplate"

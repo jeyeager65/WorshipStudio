@@ -30,7 +30,7 @@ import type {
   DiagnosticSummary,
 } from '@/adapters/types'
 import type { Song } from '@/models/song'
-import type { Service } from '@/models/service'
+import type { Service, ServiceTemplate } from '@/models/service'
 import type { SlideLibraryItem, MediaItem, Theme, Person } from '@/models/library'
 import type {
   LibrarySettings,
@@ -419,6 +419,12 @@ export function createTauriAdapter(): StudioAdapter {
       list: () => invoke<RoleDefinition[]>('list_roles'),
       save: (role) => invoke<RoleDefinition>('save_role', { role }),
       delete: (id) => invoke('delete_role', { id }),
+    },
+    serviceTemplates: {
+      list: () => invoke<ServiceTemplate[]>('list_service_templates'),
+      save: (serviceTemplate) =>
+        invoke<ServiceTemplate>('save_service_template', { serviceTemplate }),
+      delete: (id) => invoke('delete_service_template', { id }),
     },
     people: {
       list: () => invoke<Person[]>('list_people'),

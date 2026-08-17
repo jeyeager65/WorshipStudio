@@ -1,5 +1,3 @@
-import type { ServiceTemplate } from './service'
-
 /** Lives in its own `role-groups.json`, a peer of `library-settings.json`, not a field on it —
  *  see `src-tauri/src/domain/role_groups.rs` and `src-tauri/src/commands/roles.rs`'s one-time
  *  migration off the old nested-in-settings shape (`RoleGroup { name, roles: string[] }`, where
@@ -65,7 +63,6 @@ export interface ServiceTypeDefinition {
 
 /** library-settings.json — synced, shared across the church's setup. */
 export interface LibrarySettings {
-  serviceTemplates: ServiceTemplate[]
   branding: {
     churchName: string
     logoMediaId?: string

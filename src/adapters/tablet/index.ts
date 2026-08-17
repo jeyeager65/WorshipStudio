@@ -38,6 +38,7 @@ import { createWebSlidesPort } from '@/adapters/web/slides'
 import { createWebServiceTypesPort } from '@/adapters/web/serviceTypes'
 import { createWebRoleGroupsPort } from '@/adapters/web/roleGroups'
 import { createWebRolesPort } from '@/adapters/web/roles'
+import { createWebServiceTemplatesPort } from '@/adapters/web/serviceTemplates'
 import { createWebSongCollectionsPort } from '@/adapters/web/songCollections'
 import { createWebSongsPort } from '@/adapters/web/songs'
 import { createWebThemesPort } from '@/adapters/web/themes'
@@ -95,6 +96,7 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
   const serviceTypes = createWebServiceTypesPort(trackedRoot)
   const roleGroups = createWebRoleGroupsPort(trackedRoot)
   const roles = createWebRolesPort(trackedRoot)
+  const serviceTemplates = createWebServiceTemplatesPort(trackedRoot)
   const services = createWebServicesPort(trackedRoot, settings, songs)
   const slides = createWebSlidesPort(trackedRoot, settings)
   const media = createWebMediaPort(trackedRoot, settings, themes, createTabletLocalMediaRoot(rawRoot))
@@ -119,6 +121,7 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
     serviceTypes,
     roleGroups,
     roles,
+    serviceTemplates,
     people,
     announcements,
     settings,

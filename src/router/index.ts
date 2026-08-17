@@ -152,7 +152,7 @@ const router = createRouter({
       meta: { helpTopic: 'service-templates' },
     },
     {
-      path: '/library/service-templates/edit/:templateName',
+      path: '/library/service-templates/edit/:templateId',
       name: 'service-template-editor',
       component: () => import('@/views/ServiceTemplateEditorView.vue'),
       meta: { helpTopic: 'service-templates' },

@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useServiceTypesStore } from '@/stores/serviceTypes'
+import { useServiceTemplatesStore } from '@/stores/serviceTemplates'
 import { usePeopleStore } from '@/stores/people'
 import {
   applySermonEdit,
@@ -19,9 +20,11 @@ const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
 
 const settingsStore = useSettingsStore()
 const serviceTypesStore = useServiceTypesStore()
+const serviceTemplatesStore = useServiceTemplatesStore()
 const peopleStore = usePeopleStore()
 
 if (!serviceTypesStore.loaded) serviceTypesStore.load()
+if (!serviceTemplatesStore.loaded) serviceTemplatesStore.load()
 
 const editDate = ref('')
 const editTime = ref('')
@@ -70,11 +73,6 @@ function save() {
     editPreacherId.value ||
     findSermonItem(svc)
   ) {
-    // defaultSermonRole still matches ServiceTemplate.serviceType by name (see that field's own
-    // doc comment) -- resolved once here rather than changing that established, still name-based
-    // matching convention.
-    const serviceTypeName =
-      serviceTypesStore.serviceTypes.find((t) => t.id === svc.serviceTypeId)?.name ?? ''
     applySermonEdit(
       svc,
       {
@@ -82,7 +80,7 @@ function save() {
         passageReference: editKeyPassage.value,
         preacherId: editPreacherId.value,
       },
-      defaultSermonRole(settingsStore.librarySettings?.serviceTemplates, serviceTypeName),
+      defaultSermonRole(serviceTemplatesStore.serviceTemplates, svc.serviceTypeId),
       settingsStore.librarySettings?.defaultTranslationCode ?? 'KJV',
     )
   }

@@ -39,6 +39,7 @@ import { createWebSlidesPort } from './slides'
 import { createWebServiceTypesPort } from './serviceTypes'
 import { createWebRoleGroupsPort } from './roleGroups'
 import { createWebRolesPort } from './roles'
+import { createWebServiceTemplatesPort } from './serviceTemplates'
 import { createWebSongCollectionsPort } from './songCollections'
 import { createWebSongsPort } from './songs'
 import { createWebThemesPort } from './themes'
@@ -52,6 +53,7 @@ export function createWebAdapter(root: FileSystemDirectoryHandle): StudioAdapter
   const serviceTypes = createWebServiceTypesPort(root)
   const roleGroups = createWebRoleGroupsPort(root)
   const roles = createWebRolesPort(root)
+  const serviceTemplates = createWebServiceTemplatesPort(root)
   const services = createWebServicesPort(root, settings, songs)
   const slides = createWebSlidesPort(root, settings)
   const media = createWebMediaPort(root, settings, themes, createPickedLocalMediaRoot())
@@ -69,6 +71,7 @@ export function createWebAdapter(root: FileSystemDirectoryHandle): StudioAdapter
     serviceTypes,
     roleGroups,
     roles,
+    serviceTemplates,
     people,
     announcements,
     settings,

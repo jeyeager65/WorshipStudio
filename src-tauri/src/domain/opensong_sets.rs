@@ -142,7 +142,7 @@ pub fn import_sets(
             service_type_id: default_service_type_id.to_string(),
             planning_notes: None,
             planning_song_ids: None,
-            service_template_name: None,
+            service_template_id: None,
             items,
             presenter_notes: None,
             assignments: None,

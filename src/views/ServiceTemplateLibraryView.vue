@@ -1,37 +1,27 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
-import { useSettingsStore } from '@/stores/settings'
+import { useServiceTemplatesStore } from '@/stores/serviceTemplates'
 import { useServiceTypesStore } from '@/stores/serviceTypes'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import type { ServiceTemplate } from '@/models/service'
 
 const router = useRouter()
-const settingsStore = useSettingsStore()
+const serviceTemplatesStore = useServiceTemplatesStore()
 const serviceTypesStore = useServiceTypesStore()
 const confirmDialog = useConfirmDialogStore()
 const searchQuery = ref('')
-const saving = ref(false)
 
 onMounted(() => {
-  settingsStore.load()
+  serviceTemplatesStore.load()
   serviceTypesStore.load()
 })
 
-const templates = computed(() => settingsStore.librarySettings?.serviceTemplates ?? [])
-
-// Ids, not names — see effectiveDefaultTypeNames below for the display-text version.
-function effectiveDefaultTypes(template: ServiceTemplate): string[] {
-  if (template.defaultForServiceTypeIds !== undefined) return template.defaultForServiceTypeIds
-  const matchingType = serviceTypesStore.serviceTypes.find(
-    (type) => type.name === template.serviceType,
-  )
-  return matchingType ? [matchingType.id] : []
-}
+const templates = computed(() => serviceTemplatesStore.serviceTemplates)
 
 function effectiveDefaultTypeNames(template: ServiceTemplate): string[] {
-  return effectiveDefaultTypes(template).map(
+  return (template.defaultForServiceTypeIds ?? []).map(
     (id) => serviceTypesStore.serviceTypes.find((type) => type.id === id)?.name ?? id,
   )
 }
@@ -39,11 +29,11 @@ function effectiveDefaultTypeNames(template: ServiceTemplate): string[] {
 const filteredTemplates = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   return [...templates.value]
-    .sort((a, b) => a.serviceType.localeCompare(b.serviceType))
+    .sort((a, b) => a.name.localeCompare(b.name))
     .filter(
       (template) =>
         !query ||
-        template.serviceType.toLowerCase().includes(query) ||
+        template.name.toLowerCase().includes(query) ||
         template.description?.toLowerCase().includes(query) ||
         effectiveDefaultTypeNames(template).some((name) => name.toLowerCase().includes(query)),
     )
@@ -60,7 +50,7 @@ function roleCount(template: ServiceTemplate): number {
 function openTemplate(template: ServiceTemplate) {
   void router.push({
     name: 'service-template-editor',
-    params: { templateName: template.serviceType },
+    params: { templateId: template.id },
   })
 }
 
@@ -68,46 +58,33 @@ function createTemplate() {
   void router.push({ name: 'service-template-new' })
 }
 
-async function persistTemplates(next: ServiceTemplate[]) {
-  if (!settingsStore.librarySettings) return
-  saving.value = true
-  try {
-    settingsStore.librarySettings.serviceTemplates = structuredClone(toRaw(next))
-    await settingsStore.save()
-  } finally {
-    saving.value = false
-  }
-}
-
 async function duplicateTemplate(template: ServiceTemplate) {
-  const baseName = `${template.serviceType} Copy`
+  const baseName = `${template.name} Copy`
   let name = baseName
   let suffix = 2
-  while (
-    templates.value.some((candidate) => candidate.serviceType.toLowerCase() === name.toLowerCase())
-  ) {
+  while (templates.value.some((candidate) => candidate.name.toLowerCase() === name.toLowerCase())) {
     name = `${baseName} ${suffix++}`
   }
   const duplicate: ServiceTemplate = {
     ...structuredClone(toRaw(template)),
-    serviceType: name,
+    id: `template-${crypto.randomUUID()}`,
+    name,
     description: template.description
-      ? `Copy of ${template.serviceType}. ${template.description}`
-      : `Copy of ${template.serviceType}.`,
+      ? `Copy of ${template.name}. ${template.description}`
+      : `Copy of ${template.name}.`,
     defaultForServiceTypeIds: [],
     items: template.items.map((item) => ({
       ...structuredClone(toRaw(item)),
       id: `template-item-${crypto.randomUUID()}`,
     })),
   }
-  await persistTemplates([...templates.value, duplicate])
+  await serviceTemplatesStore.save(duplicate)
   openTemplate(duplicate)
 }
 
 async function deleteTemplate(template: ServiceTemplate) {
-  if (!(await confirmDialog.confirm(`Delete the "${template.serviceType}" template?`, 'Delete')))
-    return
-  await persistTemplates(templates.value.filter((candidate) => candidate !== template))
+  if (!(await confirmDialog.confirm(`Delete the "${template.name}" template?`, 'Delete'))) return
+  await serviceTemplatesStore.remove(template.id)
 }
 </script>
 
@@ -157,31 +134,31 @@ async function deleteTemplate(template: ServiceTemplate) {
       </div>
 
       <AsyncLoadState
-        v-if="!settingsStore.loaded"
-        :loading="settingsStore.loading"
-        :error="settingsStore.loadError"
+        v-if="!serviceTemplatesStore.loaded"
+        :loading="serviceTemplatesStore.loading"
+        :error="serviceTemplatesStore.loadError"
         label="service templates"
-        @retry="settingsStore.load"
+        @retry="serviceTemplatesStore.load"
       />
       <AsyncLoadState
-        v-if="settingsStore.loaded && settingsStore.loadError"
+        v-if="serviceTemplatesStore.loaded && serviceTemplatesStore.loadError"
         :loading="false"
-        :error="settingsStore.loadError"
+        :error="serviceTemplatesStore.loadError"
         label="updated service templates"
         compact
         class="mb-3"
-        @retry="settingsStore.load"
+        @retry="serviceTemplatesStore.load"
       />
       <v-alert
-        v-if="settingsStore.mutationError"
+        v-if="serviceTemplatesStore.mutationError"
         type="error"
         variant="tonal"
         density="compact"
         class="mb-3"
       >
-        Could not save template changes: {{ settingsStore.mutationError }}
+        Could not save template changes: {{ serviceTemplatesStore.mutationError }}
       </v-alert>
-      <div v-if="settingsStore.loaded && templates.length === 0" class="empty-state">
+      <div v-if="serviceTemplatesStore.loaded && templates.length === 0" class="empty-state">
         <span><v-icon icon="mdi-file-tree-outline" size="30" /></span>
         <h2>No Service Templates Yet</h2>
         <p>Create a reusable order and staffing plan for your first service type.</p>
@@ -189,22 +166,25 @@ async function deleteTemplate(template: ServiceTemplate) {
           >New Template</v-btn
         >
       </div>
-      <div v-else-if="settingsStore.loaded && filteredTemplates.length === 0" class="empty-state">
+      <div
+        v-else-if="serviceTemplatesStore.loaded && filteredTemplates.length === 0"
+        class="empty-state"
+      >
         <span><v-icon icon="mdi-file-search-outline" size="30" /></span>
         <h2>No Matching Templates</h2>
         <p>Try a different name, description, or service type.</p>
       </div>
-      <div v-else-if="settingsStore.loaded" class="template-grid">
+      <div v-else-if="serviceTemplatesStore.loaded" class="template-grid">
         <article
           v-for="template in filteredTemplates"
-          :key="template.serviceType"
+          :key="template.id"
           class="template-card"
           @click="openTemplate(template)"
         >
           <header>
             <span class="card-icon"><v-icon icon="mdi-file-tree-outline" size="22" /></span>
             <div>
-              <h3>{{ template.serviceType }}</h3>
+              <h3>{{ template.name }}</h3>
               <p>{{ template.description || 'No description added yet.' }}</p>
             </div>
             <v-menu location="bottom end" @click.stop>
@@ -247,7 +227,7 @@ async function deleteTemplate(template: ServiceTemplate) {
           </div>
           <footer>
             <div class="default-types">
-              <template v-if="effectiveDefaultTypes(template).length">
+              <template v-if="effectiveDefaultTypeNames(template).length">
                 <span v-for="(name, index) in effectiveDefaultTypeNames(template)" :key="index">{{
                   name
                 }}</span>

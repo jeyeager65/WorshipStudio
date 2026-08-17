@@ -5,6 +5,7 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { usePeopleStore } from '@/stores/people'
 import { useSongsStore } from '@/stores/songs'
 import { useServiceTypesStore } from '@/stores/serviceTypes'
+import { useServiceTemplatesStore } from '@/stores/serviceTemplates'
 import ServiceCard from '@/components/ServiceCard.vue'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import type { Service } from '@/models/service'
@@ -18,9 +19,15 @@ const confirmDialog = useConfirmDialogStore()
 const peopleStore = usePeopleStore()
 const songsStore = useSongsStore()
 const serviceTypesStore = useServiceTypesStore()
+const serviceTemplatesStore = useServiceTemplatesStore()
 
 function serviceTypeName(id: string): string {
   return serviceTypesStore.serviceTypes.find((t) => t.id === id)?.name ?? id
+}
+
+function serviceTemplateName(id: string | undefined): string | undefined {
+  if (!id) return undefined
+  return serviceTemplatesStore.serviceTemplates.find((t) => t.id === id)?.name ?? id
 }
 
 async function deleteService(service: Service) {
@@ -40,6 +47,7 @@ onMounted(() => {
   if (!store.loaded) store.load()
   if (!peopleStore.loaded) peopleStore.load()
   if (!serviceTypesStore.loaded) serviceTypesStore.load()
+  if (!serviceTemplatesStore.loaded) serviceTemplatesStore.load()
 })
 
 function preacherName(service: Service): string | undefined {
@@ -295,6 +303,7 @@ const browseResults = computed(() => {
                 :service="service"
                 :preacher-name="preacherName(service)"
                 :service-type-name="serviceTypeName(service.serviceTypeId)"
+                :service-template-name="serviceTemplateName(service.serviceTemplateId)"
                 badge="TODAY"
                 @delete="deleteService(service)"
               />
@@ -316,6 +325,7 @@ const browseResults = computed(() => {
                 :service="service"
                 :preacher-name="preacherName(service)"
                 :service-type-name="serviceTypeName(service.serviceTypeId)"
+                :service-template-name="serviceTemplateName(service.serviceTemplateId)"
                 @delete="deleteService(service)"
               />
             </div>
@@ -368,6 +378,7 @@ const browseResults = computed(() => {
                   :service="service"
                   :preacher-name="preacherName(service)"
                 :service-type-name="serviceTypeName(service.serviceTypeId)"
+                :service-template-name="serviceTemplateName(service.serviceTemplateId)"
                   @delete="deleteService(service)"
                 />
               </div>
@@ -543,6 +554,7 @@ const browseResults = computed(() => {
                 :service="service"
                 :preacher-name="preacherName(service)"
                 :service-type-name="serviceTypeName(service.serviceTypeId)"
+                :service-template-name="serviceTemplateName(service.serviceTemplateId)"
                 @delete="deleteService(service)"
               />
             </div>

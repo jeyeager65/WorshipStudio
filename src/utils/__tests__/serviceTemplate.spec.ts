@@ -7,31 +7,39 @@ import {
 import type { Service, ServiceTemplate } from '@/models/service'
 
 describe('defaultServiceTemplate', () => {
-  it('prefers an explicit service-type association over the legacy same-name default', () => {
+  it('returns the template whose defaultForServiceTypeIds includes the given service type id', () => {
     const templates: ServiceTemplate[] = [
-      { serviceType: 'Sunday Worship', items: [] },
-      { serviceType: 'Communion', defaultForServiceTypeIds: ['Sunday Worship'], items: [] },
+      { id: 'template-sunday', name: 'Sunday Worship', items: [] },
+      {
+        id: 'template-communion',
+        name: 'Communion',
+        defaultForServiceTypeIds: ['type-sunday'],
+        items: [],
+      },
     ]
-    expect(defaultServiceTemplate(templates, 'Sunday Worship')?.serviceType).toBe('Communion')
+    expect(defaultServiceTemplate(templates, 'type-sunday')?.name).toBe('Communion')
   })
 
-  it('keeps legacy same-name templates as defaults when no association has been saved', () => {
-    const templates: ServiceTemplate[] = [{ serviceType: 'Sunday Worship', items: [] }]
-    expect(defaultServiceTemplate(templates, 'Sunday Worship')?.serviceType).toBe('Sunday Worship')
+  it('returns undefined when no template defaults to this service type id', () => {
+    const templates: ServiceTemplate[] = [
+      { id: 'template-sunday', name: 'Sunday Worship', items: [] },
+    ]
+    expect(defaultServiceTemplate(templates, 'type-sunday')).toBeUndefined()
   })
 
-  it('honors an explicit empty association instead of restoring the legacy default', () => {
+  it('honors an explicit empty association', () => {
     const templates: ServiceTemplate[] = [
-      { serviceType: 'Sunday Worship', defaultForServiceTypeIds: [], items: [] },
+      { id: 'template-sunday', name: 'Sunday Worship', defaultForServiceTypeIds: [], items: [] },
     ]
-    expect(defaultServiceTemplate(templates, 'Sunday Worship')).toBeUndefined()
+    expect(defaultServiceTemplate(templates, 'type-sunday')).toBeUndefined()
   })
 })
 
 describe('applyServiceTemplate', () => {
   it("seeds only assignments for a 'role-only' entry, no order-of-service item", () => {
     const template: ServiceTemplate = {
-      serviceType: 'Sunday Morning Worship',
+      id: 'template-1',
+      name: 'Sunday Morning Worship',
       items: [{ id: 't1', kind: 'role-only', label: 'Greeter', roleId: 'Greeter', count: 2 }],
     }
     const { items, assignments } = applyServiceTemplate(template)
@@ -44,7 +52,8 @@ describe('applyServiceTemplate', () => {
 
   it("defaults a 'role-only' entry's count to 1 when unset", () => {
     const template: ServiceTemplate = {
-      serviceType: 'Sunday Morning Worship',
+      id: 'template-1',
+      name: 'Sunday Morning Worship',
       items: [{ id: 't1', kind: 'role-only', label: 'Announcer', roleId: 'Announcer' }],
     }
     const { assignments } = applyServiceTemplate(template)
@@ -53,7 +62,8 @@ describe('applyServiceTemplate', () => {
 
   it("inserts a real bulletin-note item (and its role's assignment) for a 'bulletin-note' entry", () => {
     const template: ServiceTemplate = {
-      serviceType: 'Sunday Morning Worship',
+      id: 'template-1',
+      name: 'Sunday Morning Worship',
       items: [
         {
           id: 't1',
@@ -78,7 +88,8 @@ describe('applyServiceTemplate', () => {
 
   it('inserts a placeholder item with its suggested tab, role, and bulletin note for every other kind', () => {
     const template: ServiceTemplate = {
-      serviceType: 'Sunday Morning Worship',
+      id: 'template-1',
+      name: 'Sunday Morning Worship',
       items: [
         { id: 't1', kind: 'song', label: 'Opening Song', note: '(please stand)' },
         { id: 't2', kind: 'scripture', label: 'Scripture Reading', roleId: 'Scripture Reader' },
@@ -108,7 +119,8 @@ describe('applyServiceTemplate', () => {
 
   it('preserves the template item order in the seeded items', () => {
     const template: ServiceTemplate = {
-      serviceType: 'Sunday Morning Worship',
+      id: 'template-1',
+      name: 'Sunday Morning Worship',
       items: [
         { id: 't1', kind: 'bulletin-note', label: 'Welcome and Announcements' },
         { id: 't2', kind: 'song', label: 'Opening Song' },
@@ -123,7 +135,8 @@ describe('applyServiceTemplate', () => {
 
   it('gives every seeded item a unique id', () => {
     const template: ServiceTemplate = {
-      serviceType: 'Sunday Morning Worship',
+      id: 'template-1',
+      name: 'Sunday Morning Worship',
       items: [
         { id: 't1', kind: 'song', label: 'Opening Song' },
         { id: 't2', kind: 'bulletin-note', label: 'Closing Prayer' },
@@ -143,7 +156,8 @@ describe('planAssignmentResetFromTemplate', () => {
 
   it('adds a missing role-only assignment introduced by the template', () => {
     const template: ServiceTemplate = {
-      serviceType: 'Sunday Morning Worship',
+      id: 'template-1',
+      name: 'Sunday Morning Worship',
       items: [{ id: 't1', kind: 'role-only', label: 'Greeter', roleId: 'Greeter', count: 2 }],
     }
     const plan = planAssignmentResetFromTemplate(service(), template)
@@ -155,7 +169,7 @@ describe('planAssignmentResetFromTemplate', () => {
   })
 
   it('removes a role-only assignment no longer in the template', () => {
-    const template: ServiceTemplate = { serviceType: 'Sunday Morning Worship', items: [] }
+    const template: ServiceTemplate = { id: 'template-1', name: 'Sunday Morning Worship', items: [] }
     const existing = { roleId: 'Greeter', personId: 'person-1', tentative: false }
     const plan = planAssignmentResetFromTemplate(service({ assignments: [existing] }), template)
     expect(plan.toAdd).toEqual([])
@@ -164,7 +178,8 @@ describe('planAssignmentResetFromTemplate', () => {
 
   it('trims unassigned rows before assigned ones when a count shrinks', () => {
     const template: ServiceTemplate = {
-      serviceType: 'Sunday Morning Worship',
+      id: 'template-1',
+      name: 'Sunday Morning Worship',
       items: [{ id: 't1', kind: 'role-only', label: 'Greeter', roleId: 'Greeter', count: 1 }],
     }
     const assigned = { roleId: 'Greeter', personId: 'person-1', tentative: false }
@@ -179,7 +194,8 @@ describe('planAssignmentResetFromTemplate', () => {
 
   it('leaves an existing role-only assignment alone when the template count already matches', () => {
     const template: ServiceTemplate = {
-      serviceType: 'Sunday Morning Worship',
+      id: 'template-1',
+      name: 'Sunday Morning Worship',
       items: [{ id: 't1', kind: 'role-only', label: 'Greeter', roleId: 'Greeter', count: 1 }],
     }
     const existing = { roleId: 'Greeter', personId: 'person-1', tentative: false }
@@ -189,7 +205,7 @@ describe('planAssignmentResetFromTemplate', () => {
   })
 
   it("never touches a role tied to an actual service item, even if the template's role-only items disagree", () => {
-    const template: ServiceTemplate = { serviceType: 'Sunday Morning Worship', items: [] }
+    const template: ServiceTemplate = { id: 'template-1', name: 'Sunday Morning Worship', items: [] }
     const preacherAssignment = { roleId: 'Preacher', personId: 'person-1', tentative: false }
     const plan = planAssignmentResetFromTemplate(
       service({

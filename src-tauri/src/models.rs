@@ -370,30 +370,28 @@ pub struct ServiceTemplateItem {
     pub count: Option<u32>,
 }
 
-/// An ordered shell for a service type — songs, scripture, sermon, bulletin notes, role-only
-/// assignments — filled in once per church and applied at service creation (see
-/// applyServiceTemplate on the frontend); never re-applied to already-created services
-/// afterward. Order matters: items seed `Service::items` in this same order.
+/// Lives in its own `service-templates.json`, a peer of `library-settings.json` — see
+/// `domain::service_templates` and `commands::service_templates`'s one-time migration off the
+/// old nested-in-settings shape. An ordered shell for a service type — songs, scripture, sermon,
+/// bulletin notes, role-only assignments — filled in once per church and applied at service
+/// creation (see applyServiceTemplate on the frontend); never re-applied to already-created
+/// services afterward. Order matters: items seed `Service::items` in this same order.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceTemplate {
-    /// The template's own stable name — deliberately still name-based, not this phase's
-    /// migration. Historically this also implied which service type used it;
-    /// default_for_service_type_ids now makes that association explicit (and id-based) while
-    /// this field keeps doing double duty as the template's own display identity. A future
-    /// phase (see notes on ServiceTemplate normalization) gives templates a real independent
-    /// name/id instead of overloading this field for both.
-    pub service_type: String,
+    pub id: String,
+    /// The template's own name — a real, independent identity field. Was named `serviceType`
+    /// and did double duty as both this template's display name *and* (before
+    /// `default_for_service_type_ids` existed) an implicit link to the service type sharing
+    /// that same name; the one-time migration in `commands::service_templates` splits that
+    /// apart, leaving this purely a display name.
+    pub name: String,
     /// Optional planning note explaining when this template should be used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// `ServiceType.id`s that choose this template by default (was a list of service type
     /// *names* before the one-time migration in `commands::service_types` — see
-    /// `Service::service_type_id`'s own doc comment for why). None preserves the legacy
-    /// behavior where a template defaults to the service type with the same *name* as
-    /// `service_type` below (still name-based — see that field's own doc comment on why it
-    /// isn't part of this migration); Some(empty) explicitly means this template is not a
-    /// default for any type.
+    /// `Service::service_type_id`'s own doc comment for why).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_for_service_type_ids: Option<Vec<String>>,
     #[serde(default)]
@@ -503,9 +501,11 @@ pub struct Service {
     /// Songs being considered or ordered during planning, separate from the service order.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub planning_song_ids: Option<Vec<String>>,
-    /// The template most recently applied to this service, for planning context.
+    /// The template most recently applied to this service, for planning context. A
+    /// `ServiceTemplate.id` — was named `serviceTemplateName` and held the template's plain
+    /// *name* before the one-time migration in `commands::service_templates`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub service_template_name: Option<String>,
+    pub service_template_id: Option<String>,
     #[serde(default)]
     pub items: Vec<ServiceItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -706,8 +706,6 @@ pub struct ApiBibleTranslation {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct LibrarySettings {
-    #[serde(default)]
-    pub service_templates: Vec<ServiceTemplate>,
     pub branding: Branding,
     #[serde(default)]
     pub canva_integration: CanvaIntegration,

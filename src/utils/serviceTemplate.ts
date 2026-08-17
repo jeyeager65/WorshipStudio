@@ -16,20 +16,12 @@ const SUGGESTED_TAB_BY_KIND: Partial<Record<ServiceTemplateItem['kind'], string>
   sermon: 'sermon',
 }
 
-/** Resolves the configured default while keeping pre-association libraries compatible. An
- * explicit association wins; only templates without the new field use the historical
- * same-name behavior. */
+/** Resolves the service type's configured default template, if any. */
 export function defaultServiceTemplate(
   templates: ServiceTemplate[] | undefined,
-  serviceType: string,
+  serviceTypeId: string,
 ): ServiceTemplate | undefined {
-  return (
-    templates?.find((template) => template.defaultForServiceTypeIds?.includes(serviceType)) ??
-    templates?.find(
-      (template) =>
-        template.defaultForServiceTypeIds === undefined && template.serviceType === serviceType,
-    )
-  )
+  return templates?.find((template) => template.defaultForServiceTypeIds?.includes(serviceTypeId))
 }
 
 /**

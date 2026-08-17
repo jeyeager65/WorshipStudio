@@ -8,6 +8,7 @@ import { useServicesStore } from '@/stores/services'
 import { usePeopleStore } from '@/stores/people'
 import { useSettingsStore } from '@/stores/settings'
 import { useServiceTypesStore } from '@/stores/serviceTypes'
+import { useServiceTemplatesStore } from '@/stores/serviceTemplates'
 import { useRoleGroupsStore } from '@/stores/roleGroups'
 import { useRolesStore } from '@/stores/roles'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
@@ -40,6 +41,7 @@ const servicesStore = useServicesStore()
 const peopleStore = usePeopleStore()
 const settingsStore = useSettingsStore()
 const serviceTypesStore = useServiceTypesStore()
+const serviceTemplatesStore = useServiceTemplatesStore()
 const roleGroupsStore = useRoleGroupsStore()
 const rolesStore = useRolesStore()
 const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsavedChangesStore())
@@ -69,6 +71,7 @@ async function loadAssignments() {
       peopleStore.load(),
       settingsStore.load(),
       serviceTypesStore.load(),
+      serviceTemplatesStore.load(),
       roleGroupsStore.load(),
       rolesStore.load(),
     ])
@@ -267,10 +270,7 @@ function onAddRole(roleId: string | null) {
 // sermon's Preacher) are never touched, template or no template.
 const resetDialogOpen = ref(false)
 const resetTemplate = computed(() =>
-  defaultServiceTemplate(
-    settingsStore.librarySettings?.serviceTemplates,
-    service.value?.serviceTypeId ?? '',
-  ),
+  defaultServiceTemplate(serviceTemplatesStore.serviceTemplates, service.value?.serviceTypeId ?? ''),
 )
 const resetPlan = computed(() => {
   if (!service.value || !resetTemplate.value) return null

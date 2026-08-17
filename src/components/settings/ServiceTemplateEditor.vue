@@ -1,21 +1,17 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { VueDraggable } from 'vue-draggable-plus'
-import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import type { ServiceTemplate, ServiceTemplateItem } from '@/models/service'
 import type { RoleGroupDefinition, RoleDefinition, ServiceTypeDefinition } from '@/models/settings'
 import { roleOptionsFor } from '@/utils/roleOptions'
 
 const props = defineProps<{
-  modelValue: ServiceTemplate[]
+  modelValue: ServiceTemplate
   roleGroups: RoleGroupDefinition[]
   roles: RoleDefinition[]
   serviceTypes: ServiceTypeDefinition[]
-  standalone?: boolean
-  initialSelectedIndex?: number
 }>()
-const emit = defineEmits<{ 'update:modelValue': [ServiceTemplate[]] }>()
-const confirmDialog = useConfirmDialogStore()
+const emit = defineEmits<{ 'update:modelValue': [ServiceTemplate] }>()
 
 const KIND_OPTIONS: { title: string; value: ServiceTemplateItem['kind']; icon: string }[] = [
   { title: 'Song', value: 'song', icon: 'mdi-music-note-outline' },
@@ -33,44 +29,21 @@ function roleName(roleId: string | undefined): string | undefined {
   return roleId ? props.roles.find((role) => role.id === roleId)?.name : undefined
 }
 
-const selectedIndex = ref(props.initialSelectedIndex ?? 0)
 const activeMode = ref<'order' | 'roles' | 'defaults'>('order')
-const selectedOrderItemId = ref('')
-const selectedRoleItemId = ref('')
-const creatingTemplate = ref(false)
-const templateNameToAdd = ref('')
-const renamingTemplate = ref(false)
-const templateNameDraft = ref('')
-
-const selectedTemplate = computed(() => props.modelValue[selectedIndex.value])
 const serviceOrderItems = computed(
-  () => selectedTemplate.value?.items.filter((item) => item.kind !== 'role-only') ?? [],
+  () => props.modelValue.items.filter((item) => item.kind !== 'role-only'),
 )
 const roleOnlyItems = computed(
-  () => selectedTemplate.value?.items.filter((item) => item.kind === 'role-only') ?? [],
+  () => props.modelValue.items.filter((item) => item.kind === 'role-only'),
 )
+const selectedOrderItemId = ref(serviceOrderItems.value[0]?.id ?? '')
+const selectedRoleItemId = ref(roleOnlyItems.value[0]?.id ?? '')
 const selectedOrderItem = computed(() =>
   serviceOrderItems.value.find((item) => item.id === selectedOrderItemId.value),
 )
 const selectedRoleItem = computed(() =>
   roleOnlyItems.value.find((item) => item.id === selectedRoleItemId.value),
 )
-const templateNameError = computed(() => {
-  const name = templateNameToAdd.value.trim().toLowerCase()
-  return name && props.modelValue.some((template) => template.serviceType.toLowerCase() === name)
-    ? 'A template with this name already exists.'
-    : ''
-})
-const renameError = computed(() => {
-  const name = templateNameDraft.value.trim().toLowerCase()
-  if (!name) return 'Enter a template name.'
-  return props.modelValue.some(
-    (template, index) =>
-      index !== selectedIndex.value && template.serviceType.toLowerCase() === name,
-  )
-    ? 'A template with this name already exists.'
-    : ''
-})
 const groupedRoleOnlyItems = computed(() => {
   const groups: Array<{ category: string; items: ServiceTemplateItem[] }> = []
   const categorizedIds = new Set<string>()
@@ -94,22 +67,6 @@ const groupedRoleOnlyItems = computed(() => {
   return groups
 })
 
-watch(
-  () => props.modelValue.length,
-  (length) => {
-    selectedIndex.value = length ? Math.min(selectedIndex.value, length - 1) : 0
-  },
-)
-watch(
-  selectedIndex,
-  () => {
-    selectedOrderItemId.value = serviceOrderItems.value[0]?.id ?? ''
-    selectedRoleItemId.value = roleOnlyItems.value[0]?.id ?? ''
-    templateNameDraft.value = selectedTemplate.value?.serviceType ?? ''
-  },
-  { immediate: true },
-)
-
 function itemOption(kind: ServiceTemplateItem['kind']) {
   return KIND_OPTIONS.find((option) => option.value === kind)
 }
@@ -118,148 +75,21 @@ function itemTitle(item: ServiceTemplateItem) {
   return item.label.trim() || itemOption(item.kind)?.title || 'Service Item'
 }
 
-function serviceItemCount(template: ServiceTemplate) {
-  return template.items.filter((item) => item.kind !== 'role-only').length
-}
-
-function roleRequirementCount(template: ServiceTemplate) {
-  return template.items.filter((item) => item.kind === 'role-only').length
-}
-
-// Returns ids (matching what v-select below and defaultForServiceTypeIds both need) even in
-// the legacy fallback branch: a template with no explicit list defaults to whichever service
-// type shares its own (still name-based) `serviceType` field, resolved to that type's real id.
-function effectiveDefaultTypes(template: ServiceTemplate): string[] {
-  if (template.defaultForServiceTypeIds !== undefined) return template.defaultForServiceTypeIds
-  const matchingType = props.serviceTypes.find((type) => type.name === template.serviceType)
-  return matchingType ? [matchingType.id] : []
-}
-
-function selectTemplate(index: number) {
-  selectedIndex.value = index
-  activeMode.value = 'order'
-  renamingTemplate.value = false
-  templateNameDraft.value = props.modelValue[index]?.serviceType ?? ''
-}
-
-function beginRenameTemplate() {
-  if (!selectedTemplate.value) return
-  templateNameDraft.value = selectedTemplate.value.serviceType
-  renamingTemplate.value = true
-}
-
-function cancelRenameTemplate() {
-  templateNameDraft.value = selectedTemplate.value?.serviceType ?? ''
-  renamingTemplate.value = false
-}
-
-function commitTemplateName() {
-  const template = selectedTemplate.value
-  const name = templateNameDraft.value.trim()
-  if (!template || renameError.value) return
-  const templates = [...props.modelValue]
-  templates[selectedIndex.value] = {
-    ...template,
-    serviceType: name,
-    // Legacy templates inferred their default from serviceType. Make that relationship explicit
-    // before changing the name so renaming never silently changes creation behavior.
-    defaultForServiceTypeIds: template.defaultForServiceTypeIds ?? effectiveDefaultTypes(template),
-  }
-  emit('update:modelValue', templates)
-  renamingTemplate.value = false
-}
-
-function addTemplate() {
-  const name = templateNameToAdd.value.trim()
-  if (
-    !name ||
-    props.modelValue.some((template) => template.serviceType.toLowerCase() === name.toLowerCase())
-  )
-    return
-  emit('update:modelValue', [
-    ...props.modelValue,
-    { serviceType: name, defaultForServiceTypeIds: [], items: [] },
-  ])
-  selectedIndex.value = props.modelValue.length
-  activeMode.value = 'order'
-  templateNameToAdd.value = ''
-  creatingTemplate.value = false
-}
-
-function cancelAddTemplate() {
-  templateNameToAdd.value = ''
-  creatingTemplate.value = false
-}
-
-function duplicateSelectedTemplate() {
-  const template = selectedTemplate.value
-  if (!template) return
-  const baseName = `${template.serviceType} Copy`
-  let name = baseName
-  let suffix = 2
-  while (
-    props.modelValue.some((candidate) => candidate.serviceType.toLowerCase() === name.toLowerCase())
-  ) {
-    name = `${baseName} ${suffix++}`
-  }
-  emit('update:modelValue', [
-    ...props.modelValue,
-    {
-      ...template,
-      serviceType: name,
-      defaultForServiceTypeIds: [],
-      items: template.items.map((item) => ({
-        ...item,
-        id: `template-item-${crypto.randomUUID()}`,
-      })),
-    },
-  ])
-  selectedIndex.value = props.modelValue.length
-  activeMode.value = 'order'
-  templateNameDraft.value = name
-  renamingTemplate.value = true
-}
-
-async function removeSelectedTemplate() {
-  const template = selectedTemplate.value
-  if (!template) return
-  if (
-    !(await confirmDialog.confirm(
-      `Remove the "${template.serviceType}" service template?`,
-      'Remove',
-    ))
-  )
-    return
-  const remaining = props.modelValue.filter((_, index) => index !== selectedIndex.value)
-  const nextIndex = remaining.length ? Math.min(selectedIndex.value, remaining.length - 1) : 0
-  emit('update:modelValue', remaining)
-  selectedIndex.value = nextIndex
-  templateNameDraft.value = remaining[nextIndex]?.serviceType ?? ''
-  renamingTemplate.value = false
-}
+const effectiveDefaultTypes = computed(() => props.modelValue.defaultForServiceTypeIds ?? [])
 
 function setItems(items: ServiceTemplateItem[]) {
-  const template = selectedTemplate.value
-  if (!template) return
-  const templates = [...props.modelValue]
-  templates[selectedIndex.value] = { ...template, items }
-  emit('update:modelValue', templates)
+  emit('update:modelValue', { ...props.modelValue, items })
 }
 
 function setSelectedTemplate(patch: Partial<ServiceTemplate>) {
-  const template = selectedTemplate.value
-  if (!template) return
-  const templates = [...props.modelValue]
-  templates[selectedIndex.value] = { ...template, ...patch }
-  emit('update:modelValue', templates)
+  emit('update:modelValue', { ...props.modelValue, ...patch })
 }
 
 function setItem(itemId: string, patch: Partial<ServiceTemplateItem>) {
-  const template = selectedTemplate.value
-  const itemIndex = template?.items.findIndex((item) => item.id === itemId) ?? -1
-  const item = itemIndex >= 0 ? template?.items[itemIndex] : undefined
-  if (!template || !item) return
-  const items = [...template.items]
+  const itemIndex = props.modelValue.items.findIndex((item) => item.id === itemId)
+  const item = itemIndex >= 0 ? props.modelValue.items[itemIndex] : undefined
+  if (!item) return
+  const items = [...props.modelValue.items]
   items[itemIndex] = { ...item, ...patch } as ServiceTemplateItem
   setItems(items)
 }
@@ -295,9 +125,7 @@ function addRoleRequirement() {
 }
 
 function removeItem(itemId: string) {
-  const template = selectedTemplate.value
-  if (!template) return
-  const remaining = template.items.filter((item) => item.id !== itemId)
+  const remaining = props.modelValue.items.filter((item) => item.id !== itemId)
   setItems(remaining)
   if (selectedOrderItemId.value === itemId) {
     selectedOrderItemId.value = remaining.find((item) => item.kind !== 'role-only')?.id ?? ''
@@ -307,113 +135,30 @@ function removeItem(itemId: string) {
   }
 }
 
-function setDefaultTypes(serviceTypes: string[]) {
-  const selected = new Set(serviceTypes)
-  emit(
-    'update:modelValue',
-    props.modelValue.map((template, index) => ({
-      ...template,
-      defaultForServiceTypeIds:
-        index === selectedIndex.value
-          ? [...selected]
-          : effectiveDefaultTypes(template).filter((type) => !selected.has(type)),
-    })),
-  )
+function setDefaultTypes(serviceTypeIds: string[]) {
+  setSelectedTemplate({ defaultForServiceTypeIds: [...serviceTypeIds] })
 }
 </script>
 
 <template>
-  <div class="template-workspace" :class="{ 'template-workspace--standalone': standalone }">
-    <aside v-if="!standalone" class="template-directory">
-      <header class="directory-heading">
-        <div>
-          <span>Templates</span>
-          <strong>{{ modelValue.length }}</strong>
-        </div>
-        <v-btn
-          size="small"
-          variant="flat"
-          color="primary"
-          prepend-icon="mdi-plus"
-          @click="creatingTemplate = true"
-        >
-          New
-        </v-btn>
-      </header>
-
-      <v-expand-transition>
-        <div v-if="creatingTemplate" class="directory-create">
-          <v-text-field
-            v-model="templateNameToAdd"
-            label="Template name"
-            placeholder="Sunday Worship"
-            variant="outlined"
-            density="compact"
-            autofocus
-            :error-messages="templateNameError"
-            @keydown.enter="addTemplate"
-            @keydown.esc="cancelAddTemplate"
-          />
-          <div>
-            <v-btn size="small" variant="text" @click="cancelAddTemplate">Cancel</v-btn>
-            <v-btn
-              size="small"
-              variant="flat"
-              color="primary"
-              :disabled="!templateNameToAdd.trim() || !!templateNameError"
-              @click="addTemplate"
-            >
-              Create
-            </v-btn>
-          </div>
-        </div>
-      </v-expand-transition>
-
-      <div class="template-list">
-        <button
-          v-for="(template, index) in modelValue"
-          :key="`${template.serviceType}-${index}`"
-          type="button"
-          class="template-list-item"
-          :class="{ 'template-list-item--active': selectedIndex === index }"
-          @click="selectTemplate(index)"
-        >
-          <span class="template-list-icon">
-            <v-icon icon="mdi-file-tree-outline" size="18" />
-          </span>
-          <span class="template-list-copy">
-            <strong>{{ template.serviceType }}</strong>
-            <small>
-              {{ serviceItemCount(template) }} order · {{ roleRequirementCount(template) }} roles
-            </small>
-          </span>
-          <v-icon icon="mdi-chevron-right" size="16" />
-        </button>
-        <div v-if="modelValue.length === 0" class="directory-empty">
-          <v-icon icon="mdi-file-plus-outline" size="24" />
-          <span>No templates yet</span>
-          <button type="button" @click="creatingTemplate = true">Create the first one</button>
-        </div>
-      </div>
-    </aside>
-
-    <section v-if="selectedTemplate" class="template-editor">
-      <header v-if="standalone" class="standalone-details">
+  <div class="template-workspace">
+    <section class="template-editor">
+      <header class="standalone-details">
         <div>
           <span>Template name</span>
           <v-text-field
-            :model-value="selectedTemplate.serviceType"
+            :model-value="modelValue.name"
             placeholder="Sunday Worship"
             variant="outlined"
             density="compact"
             hide-details
-            @update:model-value="(serviceType: string) => setSelectedTemplate({ serviceType })"
+            @update:model-value="(name: string) => setSelectedTemplate({ name })"
           />
         </div>
         <div>
           <span>Description <small>Optional</small></span>
           <v-textarea
-            :model-value="selectedTemplate.description"
+            :model-value="modelValue.description"
             placeholder="Describe when this template is useful or what makes it different."
             variant="outlined"
             density="compact"
@@ -424,68 +169,6 @@ function setDefaultTypes(serviceTypes: string[]) {
               (description: string) =>
                 setSelectedTemplate({ description: description || undefined })
             "
-          />
-        </div>
-      </header>
-
-      <header v-else class="editor-heading">
-        <div class="editor-title">
-          <span>Service template</span>
-          <div v-if="renamingTemplate" class="template-name-editor">
-            <v-text-field
-              v-model="templateNameDraft"
-              label="Template name"
-              variant="outlined"
-              density="compact"
-              autofocus
-              :error-messages="renameError"
-              @keydown.enter="commitTemplateName"
-              @keydown.esc="cancelRenameTemplate"
-            />
-            <v-btn
-              icon="mdi-check"
-              size="small"
-              variant="flat"
-              color="primary"
-              aria-label="Save template name"
-              :disabled="!!renameError"
-              @click="commitTemplateName"
-            />
-            <v-btn
-              icon="mdi-close"
-              size="small"
-              variant="text"
-              aria-label="Cancel renaming template"
-              @click="cancelRenameTemplate"
-            />
-          </div>
-          <div v-else class="template-name-display">
-            <h3>{{ selectedTemplate.serviceType }}</h3>
-            <v-btn
-              icon="mdi-pencil-outline"
-              size="x-small"
-              variant="text"
-              aria-label="Rename template"
-              @click="beginRenameTemplate"
-            />
-          </div>
-        </div>
-        <div class="editor-actions">
-          <v-btn
-            size="small"
-            variant="text"
-            prepend-icon="mdi-content-copy"
-            @click="duplicateSelectedTemplate"
-          >
-            Duplicate
-          </v-btn>
-          <v-btn
-            size="small"
-            variant="text"
-            color="error"
-            icon="mdi-delete-outline"
-            aria-label="Remove template"
-            @click="removeSelectedTemplate"
           />
         </div>
       </header>
@@ -519,8 +202,7 @@ function setDefaultTypes(serviceTypes: string[]) {
         >
           <v-icon icon="mdi-tune-variant" size="19" />
           <span
-            ><strong>Defaults</strong
-            ><small>{{ effectiveDefaultTypes(selectedTemplate).length }} service types</small></span
+            ><strong>Defaults</strong><small>{{ effectiveDefaultTypes.length }} service types</small></span
           >
         </button>
       </nav>
@@ -806,7 +488,7 @@ function setDefaultTypes(serviceTypes: string[]) {
             template can still be chosen manually.
           </p>
           <v-select
-            :model-value="effectiveDefaultTypes(selectedTemplate)"
+            :model-value="effectiveDefaultTypes"
             :items="serviceTypes"
             item-title="name"
             item-value="id"
@@ -822,181 +504,16 @@ function setDefaultTypes(serviceTypes: string[]) {
         </div>
       </section>
     </section>
-
-    <section v-else class="workspace-empty">
-      <span><v-icon icon="mdi-file-plus-outline" size="29" /></span>
-      <h3>Create your first service template</h3>
-      <p>Templates provide a consistent starting order whenever a service is created.</p>
-      <v-btn
-        color="primary"
-        variant="flat"
-        prepend-icon="mdi-plus"
-        @click="creatingTemplate = true"
-      >
-        New Template
-      </v-btn>
-    </section>
   </div>
 </template>
 
 <style scoped>
 .template-workspace {
-  display: grid;
-  min-height: 610px;
-  grid-template-columns: 250px minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.09);
   border-radius: 12px;
   background: rgba(var(--v-theme-surface), 0.65);
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.08);
-}
-.template-workspace--standalone {
-  display: block;
-  min-height: 0;
-}
-.template-directory {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  border-right: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  background: rgba(var(--v-theme-background), 0.28);
-}
-.directory-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 15px;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-}
-.directory-heading div {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-.directory-heading span {
-  color: rgba(var(--v-theme-on-surface), 0.52);
-  font-size: 0.69rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.directory-heading strong {
-  color: rgb(var(--v-theme-primary));
-  font-size: 0.73rem;
-}
-.directory-create {
-  padding: 12px;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  background: rgba(var(--v-theme-primary), 0.045);
-}
-.directory-create > div:last-child {
-  display: flex;
-  justify-content: flex-end;
-  gap: 5px;
-  margin-top: 9px;
-}
-.template-list {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 3px;
-  padding: 9px;
-}
-.template-list-item {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 9px;
-  padding: 9px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-}
-.template-list-item:hover {
-  background: rgba(var(--v-theme-on-surface), 0.045);
-}
-.template-list-item--active {
-  border-color: rgba(var(--v-theme-primary), 0.18);
-  background: rgba(var(--v-theme-primary), 0.1);
-}
-.template-list-icon,
-.order-icon,
-.role-row-icon,
-.inspector-icon,
-.defaults-icon {
-  display: grid;
-  place-items: center;
-  border-radius: 8px;
-  background: rgba(var(--v-theme-primary), 0.09);
-  color: rgb(var(--v-theme-primary));
-}
-.template-list-icon {
-  width: 31px;
-  height: 31px;
-}
-.template-list-copy,
-.template-list-copy strong,
-.template-list-copy small,
-.order-copy,
-.order-copy strong,
-.order-copy small,
-.role-row > span:nth-child(2) {
-  display: block;
-  min-width: 0;
-}
-.template-list-copy strong,
-.role-row strong {
-  overflow: hidden;
-  font-size: 0.72rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.order-copy strong {
-  overflow: hidden;
-  font-size: 0.94rem;
-  font-weight: 650;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.template-list-copy small,
-.role-row small {
-  display: block;
-  margin-top: 2px;
-  color: rgba(var(--v-theme-on-surface), 0.44);
-  font-size: 0.61rem;
-}
-.order-copy small {
-  display: block;
-  margin-top: 3px;
-  color: rgba(var(--v-theme-on-surface), 0.48);
-  font-size: 0.72rem;
-}
-.directory-empty,
-.outline-empty,
-.inspector-empty,
-.workspace-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  color: rgba(var(--v-theme-on-surface), 0.44);
-  text-align: center;
-}
-.directory-empty {
-  min-height: 170px;
-  gap: 5px;
-  font-size: 0.7rem;
-}
-.directory-empty button {
-  border: 0;
-  background: transparent;
-  color: rgb(var(--v-theme-primary));
-  cursor: pointer;
-  font: inherit;
 }
 .template-editor {
   min-width: 0;
@@ -1021,44 +538,6 @@ function setDefaultTypes(serviceTypes: string[]) {
   color: rgba(var(--v-theme-on-surface), 0.4);
   font-size: 0.62rem;
   font-weight: 500;
-}
-.editor-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-.editor-title {
-  min-width: 0;
-}
-.editor-heading > div:first-child > span {
-  color: rgb(var(--v-theme-primary));
-  font-size: 0.62rem;
-  font-weight: 720;
-  letter-spacing: 0.075em;
-  text-transform: uppercase;
-}
-.editor-heading h3 {
-  margin: 2px 0 0;
-  font-size: 1.08rem;
-}
-.template-name-display {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-.template-name-editor {
-  display: grid;
-  width: min(430px, 54vw);
-  grid-template-columns: minmax(180px, 1fr) auto auto;
-  align-items: start;
-  gap: 5px;
-  margin-top: 5px;
-}
-.editor-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
 }
 .editor-modes {
   display: grid;
@@ -1179,6 +658,15 @@ function setDefaultTypes(serviceTypes: string[]) {
   min-height: 250px;
   gap: 4px;
 }
+.outline-empty,
+.inspector-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  color: rgba(var(--v-theme-on-surface), 0.44);
+  text-align: center;
+}
 .outline-empty strong,
 .inspector-empty strong {
   margin-top: 5px;
@@ -1206,11 +694,21 @@ function setDefaultTypes(serviceTypes: string[]) {
 .inspector-icon {
   width: 38px;
   height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-primary), 0.09);
+  color: rgb(var(--v-theme-primary));
 }
 .inspector-icon--role,
 .role-row-icon {
   background: rgba(var(--v-theme-teal), 0.09);
   color: rgb(var(--v-theme-teal));
+}
+.role-row-icon {
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
 }
 .inspector-heading small,
 .inspector-heading strong {
@@ -1310,6 +808,11 @@ function setDefaultTypes(serviceTypes: string[]) {
 .defaults-icon {
   width: 46px;
   height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-primary), 0.09);
+  color: rgb(var(--v-theme-primary));
 }
 .defaults-copy > span {
   color: rgb(var(--v-theme-primary));
@@ -1329,29 +832,6 @@ function setDefaultTypes(serviceTypes: string[]) {
   font-size: 0.7rem;
   line-height: 1.5;
 }
-.workspace-empty {
-  min-height: 500px;
-  padding: 40px;
-}
-.workspace-empty > span {
-  display: grid;
-  width: 54px;
-  height: 54px;
-  place-items: center;
-  border-radius: 13px;
-  background: rgba(var(--v-theme-primary), 0.1);
-  color: rgb(var(--v-theme-primary));
-}
-.workspace-empty h3 {
-  margin: 14px 0 4px;
-  font-size: 0.9rem;
-}
-.workspace-empty p {
-  max-width: 350px;
-  margin: 0 0 16px;
-  color: rgba(var(--v-theme-on-surface), 0.48);
-  font-size: 0.7rem;
-}
 @media (max-width: 1050px) {
   .builder-layout {
     grid-template-columns: 1fr;
@@ -1359,19 +839,6 @@ function setDefaultTypes(serviceTypes: string[]) {
   .outline-panel {
     border-right: 0;
     border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  }
-}
-@media (max-width: 800px) {
-  .template-workspace {
-    grid-template-columns: 1fr;
-  }
-  .template-directory {
-    border-right: 0;
-    border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  }
-  .template-list {
-    max-height: 230px;
-    overflow-y: auto;
   }
 }
 @media (max-width: 560px) {

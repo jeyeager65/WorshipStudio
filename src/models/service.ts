@@ -118,24 +118,22 @@ export interface ServiceTemplateItem {
   count?: number
 }
 
-/** An ordered shell for a service type — songs, scripture, sermon, bulletin notes, role-only
- *  assignments — filled in once per church and applied at service creation (see
- *  applyServiceTemplate, called from CreateServiceView); never re-applied to already-created
- *  services afterward. Order matters: items seed Service.items in this same order. */
+/** Lives in its own `service-templates.json`, a peer of `library-settings.json` — see
+ *  `src-tauri/src/domain/service_templates.rs` and `src-tauri/src/commands/service_templates.rs`'s
+ *  one-time migration off the old nested-in-settings shape. An ordered shell for a service type —
+ *  songs, scripture, sermon, bulletin notes, role-only assignments — filled in once per church and
+ *  applied at service creation (see applyServiceTemplate, called from CreateServiceView); never
+ *  re-applied to already-created services afterward. Order matters: items seed Service.items in
+ *  this same order. */
 export interface ServiceTemplate {
-  /** The template's own stable name — deliberately still name-based, not id-based (see
-   *  models/settings.ts's ServiceTypeDefinition doc comment for the concepts that already
-   *  got real ids). Historically this also implied which service type used it;
-   *  defaultForServiceTypeIds now makes that association explicit (and id-based) while this
-   *  field keeps doing double duty as the template's own display identity. A future phase
-   *  gives templates a real independent name/id instead of overloading this field for both. */
-  serviceType: string
+  id: string
+  /** The template's own real, independent display name — no longer overloaded with a service
+   *  type association (see defaultForServiceTypeIds below). */
+  name: string
   /** Optional planning note explaining when this template should be used. */
   description?: string
-  /** ServiceTypeDefinition ids that select this template by default (was a list of service
-   *  type *names* before the one-time migration in src-tauri/src/commands/service_types.rs).
-   *  Undefined means a legacy template, which still defaults to the service type with the same
-   *  *name* as `serviceType` above (still name-based); an empty array explicitly means none. */
+  /** ServiceTypeDefinition ids that select this template by default; an absent/empty array
+   *  means none. */
   defaultForServiceTypeIds?: string[]
   items: ServiceTemplateItem[]
 }
@@ -155,8 +153,10 @@ export interface Service {
   planningNotes?: string
   /** Songs being considered or ordered during planning; separate from the actual service items. */
   planningSongIds?: string[]
-  /** The template most recently applied to this service, for planning context. */
-  serviceTemplateName?: string
+  /** The template most recently applied to this service, for planning context. A
+   *  ServiceTemplate id — was named `serviceTemplateName` and held the template's plain *name*
+   *  before the one-time migration in src-tauri/src/commands/service_templates.rs. */
+  serviceTemplateId?: string
   items: ServiceItem[]
   /** Operator-only notes, keyed by service item id. */
   presenterNotes?: Record<string, string>

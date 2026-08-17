@@ -26,6 +26,7 @@ export const seedSongCollections = structuredClone(sampleCollections)
 export const seedServiceTypes = structuredClone(sampleServiceTypes)
 export const seedRoleGroups = structuredClone(sampleRoleGroups)
 export const seedRoles = structuredClone(sampleRoles)
+export const seedServiceTemplates = structuredClone(sampleServiceTemplates)
 
 export const seedSlides: SlideLibraryItem[] = []
 // Empty by default, matching the desktop app's real "no reasonable default media" stance — the
@@ -35,7 +36,6 @@ export const seedMedia: MediaItem[] = []
 export const seedAnnouncements: Announcement[] = []
 
 export const seedLibrarySettings: LibrarySettings = {
-  serviceTemplates: structuredClone(sampleServiceTemplates),
   branding: {
     churchName: 'Worship Studio Church',
     primaryColor: '#1F3A5F',

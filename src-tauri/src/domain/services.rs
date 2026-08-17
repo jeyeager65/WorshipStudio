@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::models::{
     DisplayMode, LibrarySettings, RoleAssignment, SermonPassage, Service, ServiceItem,
-    ServiceItemContent, ServiceTemplateItemKind,
+    ServiceItemContent, ServiceTemplate, ServiceTemplateItemKind,
 };
 
 use super::{delete_file_if_exists, read_json_dir, read_json_file, write_json_file};
@@ -105,15 +105,7 @@ pub fn list_upcoming(root: &Path, from_date: &str, to_date: &str) -> std::io::Re
 pub fn migrate_legacy_sermon_fields(root: &Path, device: &str, now: &str) -> std::io::Result<()> {
     let library_settings: Option<LibrarySettings> =
         read_json_file(&root.join("library-settings.json"))?;
-    // ServiceTemplate::service_type is still name-based (see its own doc comment — not this
-    // migration's concern), but Service::service_type_id is now an id; resolved once here so
-    // the two can still be compared by name below.
-    let service_type_names: std::collections::HashMap<String, String> =
-        crate::domain::service_types::list(root)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|t| (t.id, t.name))
-            .collect();
+    let service_templates = crate::domain::service_templates::list(root).unwrap_or_default();
 
     for service in list(root)? {
         let year = year_of(&service.date).to_string();
@@ -137,14 +129,6 @@ pub fn migrate_legacy_sermon_fields(root: &Path, device: &str, now: &str) -> std
             continue;
         }
 
-        // Falls back to the still-raw legacy `type` key when this service hasn't been through
-        // commands::service_types's own migration yet — this function's caller makes no
-        // guarantee about which of the two independent one-time migrations runs first.
-        let service_type_name = if service.service_type_id.is_empty() {
-            raw.get("type").and_then(|v| v.as_str()).map(str::to_string)
-        } else {
-            service_type_names.get(&service.service_type_id).cloned()
-        };
         let mut service = service;
         if apply_legacy_sermon_fields(
             &mut service,
@@ -152,7 +136,7 @@ pub fn migrate_legacy_sermon_fields(root: &Path, device: &str, now: &str) -> std
             legacy_passage,
             legacy_preacher_id,
             library_settings.as_ref(),
-            service_type_name.as_deref(),
+            &service_templates,
         ) {
             save(root, service, device, now)?;
         }
@@ -169,7 +153,7 @@ fn apply_legacy_sermon_fields(
     legacy_passage: Option<String>,
     legacy_preacher_id: Option<String>,
     library_settings: Option<&LibrarySettings>,
-    service_type_name: Option<&str>,
+    service_templates: &[ServiceTemplate],
 ) -> bool {
     let mut changed = false;
 
@@ -258,16 +242,19 @@ fn apply_legacy_sermon_fields(
     }
 
     // Resolve a role id to attach the legacy preacher to: the item's own role if it already
-    // has one, else whatever role the church's configured ServiceTemplate uses for this service
-    // type's sermon row — never a fabricated default (a hardcoded "Preacher" role would be wrong
-    // for churches whose actual configured role is named something else entirely, and could
-    // create a stray assignment nothing else ever references).
+    // has one, else whatever role the church's configured ServiceTemplate defaults to for this
+    // service's own service type's sermon row — never a fabricated default (a hardcoded
+    // "Preacher" role would be wrong for churches whose actual configured role is named
+    // something else entirely, and could create a stray assignment nothing else ever
+    // references).
+    let service_type_id = service.service_type_id.clone();
     let role_id = service.items[index].role_id.clone().or_else(|| {
-        library_settings
-            .and_then(|s| {
-                s.service_templates
-                    .iter()
-                    .find(|t| Some(t.service_type.as_str()) == service_type_name)
+        service_templates
+            .iter()
+            .find(|t| {
+                t.default_for_service_type_ids
+                    .as_ref()
+                    .is_some_and(|ids| ids.contains(&service_type_id))
             })
             .and_then(|t| {
                 t.items
@@ -318,7 +305,7 @@ mod tests {
             service_type_id: "type-sunday-morning-worship".to_string(),
             planning_notes: None,
             planning_song_ids: None,
-            service_template_name: None,
+            service_template_id: None,
             items: vec![],
             presenter_notes: None,
             assignments: None,
@@ -433,26 +420,22 @@ mod tests {
     #[test]
     fn migration_recovers_a_role_from_the_service_template_when_nothing_else_has_one() {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(
-            dir.path().join("library-settings.json"),
-            serde_json::to_vec_pretty(&serde_json::json!({
-                "serviceTypes": [],
-                "collections": [],
-                "serviceTemplates": [{
-                    "serviceType": "Sunday Morning Worship",
-                    "items": [{ "id": "t1", "kind": "sermon", "label": "Sermon", "roleId": "role-worship-through-the-word" }],
+        write_json_file(
+            &dir.path().join("service-templates.json"),
+            &vec![ServiceTemplate {
+                id: "template-sunday-morning-worship".to_string(),
+                name: "Sunday Morning Worship".to_string(),
+                description: None,
+                default_for_service_type_ids: Some(vec!["type-sunday-morning-worship".to_string()]),
+                items: vec![crate::models::ServiceTemplateItem {
+                    id: "t1".to_string(),
+                    kind: ServiceTemplateItemKind::Sermon,
+                    label: "Sermon".to_string(),
+                    note: None,
+                    role_id: Some("role-worship-through-the-word".to_string()),
+                    count: None,
                 }],
-                "branding": { "churchName": "", "primaryColor": "#000", "secondaryColor": "#000" },
-                "apiBibleTranslations": [],
-                "mediaMaxSyncedFileSizeMb": 50,
-                "scriptureMinFontSizePx": 28,
-                "scriptureMaxFontSizePx": 72,
-                "songMinFontSizePx": 16,
-                "songMaxFontSizePx": 72,
-                "slideHeaderFontSizePx": 24,
-                "slideFooterFontSizePx": 24,
-            }))
-            .unwrap(),
+            }],
         )
         .unwrap();
         // No existing sermon item or placeholder at all — the append path.
@@ -460,7 +443,11 @@ mod tests {
             dir.path(),
             "svc-1",
             "2026-07-19",
-            serde_json::json!({ "sermonTitle": "Grace Alone", "preacherId": "person-1" }),
+            serde_json::json!({
+                "serviceTypeId": "type-sunday-morning-worship",
+                "sermonTitle": "Grace Alone",
+                "preacherId": "person-1",
+            }),
         );
 
         migrate_legacy_sermon_fields(dir.path(), "d", "migrated-time").unwrap();

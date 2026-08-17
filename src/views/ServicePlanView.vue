@@ -7,6 +7,7 @@ import { useServicesStore } from '@/stores/services'
 import { usePeopleStore } from '@/stores/people'
 import { useSettingsStore } from '@/stores/settings'
 import { useServiceTypesStore } from '@/stores/serviceTypes'
+import { useServiceTemplatesStore } from '@/stores/serviceTemplates'
 import { useRoleGroupsStore } from '@/stores/roleGroups'
 import { useRolesStore } from '@/stores/roles'
 import { useSongsStore } from '@/stores/songs'
@@ -46,6 +47,7 @@ const servicesStore = useServicesStore()
 const peopleStore = usePeopleStore()
 const settingsStore = useSettingsStore()
 const serviceTypesStore = useServiceTypesStore()
+const serviceTemplatesStore = useServiceTemplatesStore()
 const roleGroupsStore = useRoleGroupsStore()
 const rolesStore = useRolesStore()
 const songsStore = useSongsStore()
@@ -83,14 +85,19 @@ const preacherOptions = computed(() =>
   peopleStore.people.map((person) => ({ title: personFormalName(person), value: person.id })),
 )
 const templateOptions = computed(() =>
-  (settingsStore.librarySettings?.serviceTemplates ?? []).map((template) => ({
-    title: template.serviceType,
-    value: template.serviceType,
+  serviceTemplatesStore.serviceTemplates.map((template) => ({
+    title: template.name,
+    value: template.id,
   })),
 )
 const serviceTypeName = computed(
   () => serviceTypesStore.serviceTypes.find((t) => t.id === serviceType.value)?.name ?? '',
 )
+const appliedTemplateName = computed(() => {
+  const id = service.value?.serviceTemplateId
+  if (!id) return undefined
+  return serviceTemplatesStore.serviceTemplates.find((template) => template.id === id)?.name ?? id
+})
 const assignmentSummary = computed(() => {
   const assignments = service.value?.assignments ?? []
   const assigned = assignments.filter((assignment) => !!assignment.personId).length
@@ -258,7 +265,7 @@ watch([sermonTitle, passage, preacherId], () => {
   applySermonEdit(
     current,
     { title: sermonTitle.value, passageReference: passage.value, preacherId: preacherId.value },
-    defaultSermonRole(settingsStore.librarySettings?.serviceTemplates, current.serviceTypeId),
+    defaultSermonRole(serviceTemplatesStore.serviceTemplates, current.serviceTypeId),
     settingsStore.librarySettings?.defaultTranslationCode ?? 'KJV',
   )
 })
@@ -378,6 +385,7 @@ onMounted(async () => {
       peopleStore.loaded ? Promise.resolve() : peopleStore.load(),
       settingsStore.loaded ? Promise.resolve() : settingsStore.load(),
       serviceTypesStore.loaded ? Promise.resolve() : serviceTypesStore.load(),
+      serviceTemplatesStore.loaded ? Promise.resolve() : serviceTemplatesStore.load(),
       roleGroupsStore.loaded ? Promise.resolve() : roleGroupsStore.load(),
       rolesStore.loaded ? Promise.resolve() : rolesStore.load(),
       songsStore.loaded ? Promise.resolve() : songsStore.load(),
@@ -415,7 +423,7 @@ async function savePlan() {
       applySermonEdit(
         current,
         { title: sermonTitle.value, passageReference: passage.value, preacherId: preacherId.value },
-        defaultSermonRole(settingsStore.librarySettings?.serviceTemplates, current.serviceTypeId),
+        defaultSermonRole(serviceTemplatesStore.serviceTemplates, current.serviceTypeId),
         settingsStore.librarySettings?.defaultTranslationCode ?? 'KJV',
       )
     }
@@ -469,8 +477,8 @@ function saveSongOrder() {
 
 async function applyTemplate() {
   const current = service.value
-  const template = settingsStore.librarySettings?.serviceTemplates.find(
-    (item) => item.serviceType === templateToApply.value,
+  const template = serviceTemplatesStore.serviceTemplates.find(
+    (item) => item.id === templateToApply.value,
   )
   if (!current || !template || applyingTemplate.value) return
   applyingTemplate.value = true
@@ -574,7 +582,7 @@ async function applyTemplate() {
       )
       if (preacherAssignment) preacherAssignment.personId = existingPreacherId
     }
-    current.serviceTemplateName = template.serviceType
+    current.serviceTemplateId = template.id
     syncPlannedSongs()
     await servicesStore.save(current)
     isDirty.value = false
@@ -620,9 +628,7 @@ async function applyTemplate() {
                 variant="tonal"
                 prepend-icon="mdi-file-tree-outline"
                 @click="templateDialog = true"
-                >{{
-                  service.serviceTemplateName ? service.serviceTemplateName : 'Apply Template'
-                }}</v-btn
+                >{{ appliedTemplateName ? appliedTemplateName : 'Apply Template' }}</v-btn
               ><v-btn
                 variant="tonal"
                 prepend-icon="mdi-file-document-outline"
@@ -920,11 +926,11 @@ async function applyTemplate() {
           ><v-card
             ><v-card-title>Service Template</v-card-title
             ><v-card-text
-              ><template v-if="service.serviceTemplateName"
+              ><template v-if="appliedTemplateName"
                 ><div class="current-template">
                   <v-icon icon="mdi-file-tree-outline" size="22" />
                   <div>
-                    <span>Current template</span><strong>{{ service.serviceTemplateName }}</strong>
+                    <span>Current template</span><strong>{{ appliedTemplateName }}</strong>
                   </div>
                 </div>
                 <p class="template-dialog-copy">
@@ -938,7 +944,7 @@ async function applyTemplate() {
               <v-select
                 v-model="templateToApply"
                 :items="templateOptions"
-                :label="service.serviceTemplateName ? 'Change template' : 'Choose template'"
+                :label="appliedTemplateName ? 'Change template' : 'Choose template'"
                 variant="outlined"
                 hide-details
                 clearable /></v-card-text
@@ -950,7 +956,7 @@ async function applyTemplate() {
                 :disabled="!templateToApply"
                 :loading="applyingTemplate"
                 @click="applyTemplate"
-                >{{ service.serviceTemplateName ? 'Apply New Template' : 'Apply Template' }}</v-btn
+                >{{ appliedTemplateName ? 'Apply New Template' : 'Apply Template' }}</v-btn
               ></v-card-actions
             ></v-card
           ></v-dialog

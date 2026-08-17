@@ -10,7 +10,7 @@ import type {
   DiagnosticSummary,
 } from '@/adapters/types'
 import type { Song } from '@/models/song'
-import type { Service } from '@/models/service'
+import type { Service, ServiceTemplate } from '@/models/service'
 import type { MediaItem, Theme } from '@/models/library'
 import type {
   SongCollectionDefinition,
@@ -31,6 +31,7 @@ import {
   seedServiceTypes,
   seedRoleGroups,
   seedRoles,
+  seedServiceTemplates,
   seedPeople,
   seedAnnouncements,
   seedLibrarySettings,
@@ -117,6 +118,10 @@ export function createMockAdapter(): StudioAdapter {
   )
   const roleGroups = new MockCollection<RoleGroupDefinition>('role-groups', seedRoleGroups)
   const roles = new MockCollection<RoleDefinition>('roles', seedRoles)
+  const serviceTemplates = new MockCollection<ServiceTemplate>(
+    'service-templates',
+    seedServiceTemplates,
+  )
   const people = new MockCollection('people', seedPeople)
   const announcements = new MockCollection('announcements', seedAnnouncements)
 
@@ -433,6 +438,14 @@ export function createMockAdapter(): StudioAdapter {
         return role
       },
       delete: (id) => roles.delete(id),
+    },
+    serviceTemplates: {
+      list: () => serviceTemplates.list(),
+      save: async (serviceTemplate) => {
+        await serviceTemplates.save(serviceTemplate)
+        return serviceTemplate
+      },
+      delete: (id) => serviceTemplates.delete(id),
     },
     people: {
       list: () => people.list(),

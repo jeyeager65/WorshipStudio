@@ -10,6 +10,7 @@ pub mod people;
 pub mod remote;
 pub mod roles;
 pub mod scripture;
+pub mod service_templates;
 pub mod service_types;
 pub mod services;
 pub mod settings;
