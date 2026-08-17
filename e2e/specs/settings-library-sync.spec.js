@@ -63,4 +63,48 @@ describe('Settings — Library & Sync data tools', () => {
     await serviceCard.waitForExist({ timeout: 10000 })
     await expect(serviceCard).toBeExisting()
   })
+
+  it('edits the local media path, saves, and it persists after navigating away and back', async () => {
+    // Browse… opens a real native OS folder dialog, which webdriver can't drive — typing
+    // directly into the field (same approach settings-general.spec.js uses for computer name)
+    // still exercises the part that matters: the field renders, binds, and persists.
+    const skipLink = await $('button*=Skip setup')
+    if (await skipLink.isExisting()) await skipLink.click()
+
+    const settingsNav = await $('a[href="#/settings"]')
+    await settingsNav.waitForExist({ timeout: 15000 })
+    await settingsNav.click()
+
+    const syncSection = await $('.v-list-item*=Library & Sync')
+    await syncSection.waitForExist({ timeout: 10000 })
+    await syncSection.click()
+
+    const pathLabel = await $('label*=Local media path')
+    await pathLabel.waitForExist({ timeout: 10000 })
+    const labelId = await pathLabel.getAttribute('id')
+    const pathField = await $(`input[aria-labelledby="${labelId}"]`)
+    await pathField.click()
+    await browser.keys(['Control', 'a', 'Control'])
+    await browser.keys('Backspace')
+    await pathField.addValue('C:\\E2E\\LocalMedia')
+
+    const saveBtn = await $('button*=Save')
+    await saveBtn.waitForClickable({ timeout: 10000 })
+    await saveBtn.click()
+
+    const servicesNav = await $('a[href="#/"]')
+    await servicesNav.waitForClickable({ timeout: 10000 })
+    await servicesNav.click()
+    await settingsNav.waitForClickable({ timeout: 10000 })
+    await settingsNav.click()
+    const reopenedSyncSection = await $('.v-list-item*=Library & Sync')
+    await reopenedSyncSection.waitForExist({ timeout: 10000 })
+    await reopenedSyncSection.click()
+
+    const reopenedLabel = await $('label*=Local media path')
+    await reopenedLabel.waitForExist({ timeout: 10000 })
+    const reopenedLabelId = await reopenedLabel.getAttribute('id')
+    const reopenedField = await $(`input[aria-labelledby="${reopenedLabelId}"]`)
+    await expect(reopenedField).toHaveValue('C:\\E2E\\LocalMedia')
+  })
 })

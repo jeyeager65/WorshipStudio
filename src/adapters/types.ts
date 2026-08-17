@@ -279,6 +279,11 @@ export interface SettingsPort {
   /** Opens a native folder picker for the synced library root (e.g. a Dropbox folder). Returns
    *  undefined if cancelled — no equivalent in the browser demo, which always returns undefined. */
   pickLibraryFolder(): Promise<string | undefined>
+  /** Opens a native folder picker for MachineSettings.localMediaPath, the never-synced folder
+   *  where 'local'-location media's actual bytes live on this machine. Tauri-only — the web/
+   *  tablet builds grant a separate FileSystemDirectoryHandle for this instead (see
+   *  adapters/web/pickedLocalMediaRoot.ts), so localMediaPath itself is meaningless there. */
+  pickLocalMediaFolder?(): Promise<string | undefined>
 }
 
 export interface ScripturePassageVerse {

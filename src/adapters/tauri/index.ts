@@ -445,6 +445,10 @@ export function createTauriAdapter(): StudioAdapter {
         const folder = await open({ directory: true, title: 'Select Library Sync Folder' })
         return typeof folder === 'string' ? folder : undefined
       },
+      pickLocalMediaFolder: async () => {
+        const folder = await open({ directory: true, title: 'Select Local Media Folder' })
+        return typeof folder === 'string' ? folder : undefined
+      },
     },
     scripture: {
       resolve: (reference, translationCode) =>

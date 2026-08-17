@@ -483,6 +483,17 @@ async function pickLibraryFolder() {
     pickingLibraryFolder.value = false
   }
 }
+
+const pickingLocalMediaFolder = ref(false)
+async function pickLocalMediaFolder() {
+  pickingLocalMediaFolder.value = true
+  try {
+    const folder = await getAdapter().settings.pickLocalMediaFolder?.()
+    if (folder && machineSettings.value) machineSettings.value.localMediaPath = folder
+  } finally {
+    pickingLocalMediaFolder.value = false
+  }
+}
 </script>
 
 <template>
@@ -544,6 +555,36 @@ async function pickLibraryFolder() {
       >
         Connect Dropbox or OneDrive Instead
       </v-btn>
+    </SettingsPanel>
+
+    <SettingsPanel
+      v-if="adapterKind === 'tauri'"
+      title="Local-only media folder"
+      description="Where media marked &quot;Local Only&quot; (too large to sync to every computer) is stored on this machine. Left blank, it defaults to Worship Studio's own app-data folder."
+      icon="mdi-folder-outline"
+    >
+      <div class="path-setting">
+        <v-text-field
+          v-model="machineSettings!.localMediaPath"
+          label="Local media path"
+          placeholder="C:\\WorshipStudio\\LocalMedia"
+          variant="outlined"
+          density="compact"
+          hint="Absolute path on this computer. Never synced."
+          persistent-hint
+          class="library-path-field"
+        />
+        <div class="path-setting-actions">
+          <v-btn
+            variant="outlined"
+            prepend-icon="mdi-folder-open-outline"
+            :loading="pickingLocalMediaFolder"
+            @click="pickLocalMediaFolder"
+          >
+            Browse…
+          </v-btn>
+        </div>
+      </div>
     </SettingsPanel>
 
     <SettingsPanel
