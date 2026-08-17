@@ -39,6 +39,13 @@ const themesStore = useThemesStore()
 const mediaStore = useMediaStore()
 const confirmDialog = useConfirmDialogStore()
 
+// Every Data Tools action below persists immediately on its own (direct store/adapter calls,
+// not the Settings page's own Save button) and has no reasonable "undo" back to a half-deleted
+// state — so each one tells the parent to re-baseline the page's undo/save-dirty tracking
+// against the now-current, already-saved state, rather than leaving a stale "unsaved changes"
+// prompt (or a misleading Undo entry) behind for something that already happened for real.
+const emit = defineEmits<{ 'bulk-data-change': [] }>()
+
 // This one page now covers every adapter kind's idea of "where the library lives" — a real
 // folder (tauri/web) or a cloud provider connection (tablet, over whichever of
 // adapters/tablet/providers/*.ts this device connected through). Data tools works identically
@@ -252,9 +259,24 @@ async function importOpenSong() {
   try {
     const imported = await songsStore.importFromOpenSong()
     openSongImportedCount.value = imported.length
+    emit('bulk-data-change')
   } finally {
     importingOpenSong.value = false
   }
+}
+
+// Shared by the standalone "Add Stock Backgrounds" button below and by loadSampleData(), which
+// includes the same stock backgrounds as part of a one-click demo library rather than making
+// that a separate action to remember. Only ever adds whichever of the 6 stock images/2 starter
+// themes aren't already present (fixed ids make it idempotent) — safe to call unconditionally.
+async function importStockBackgroundsInto() {
+  const result = await getAdapter().media.importStockBackgrounds()
+  // The Media and Themes stores may already be loaded (from an earlier visit to either library
+  // this session) with no way to know new items just appeared on disk underneath them —
+  // without this, the new backgrounds/themes are real and saved, just invisible until
+  // something else happens to reload one of these two stores (e.g. a full page reload).
+  await Promise.all([mediaStore.load(), themesStore.load()])
+  return result
 }
 
 // Non-destructive and re-runnable any time — unlike Load Sample Data/Clear Existing Data,
@@ -264,12 +286,8 @@ async function addStockBackgrounds() {
   addingStockBackgrounds.value = true
   stockBackgroundsError.value = ''
   try {
-    stockBackgroundsAdded.value = await getAdapter().media.importStockBackgrounds()
-    // The Media and Themes stores may already be loaded (from an earlier visit to either
-    // library this session) with no way to know new items just appeared on disk underneath
-    // them — without this, the new backgrounds/themes are real and saved, just invisible until
-    // something else happens to reload one of these two stores (e.g. a full page reload).
-    await Promise.all([mediaStore.load(), themesStore.load()])
+    stockBackgroundsAdded.value = await importStockBackgroundsInto()
+    emit('bulk-data-change')
   } catch (error) {
     stockBackgroundsError.value =
       error instanceof Error ? error.message : 'Stock backgrounds could not be added.'
@@ -339,6 +357,7 @@ async function loadSampleData() {
   loadingSampleData.value = true
   sampleDataLoaded.value = false
   dataCleared.value = false
+  stockBackgroundsError.value = ''
   try {
     await deleteAllLibraryContent()
 
@@ -346,18 +365,20 @@ async function loadSampleData() {
     for (const theme of sampleThemes) await themesStore.save(theme)
     for (const person of samplePeople) await peopleStore.save(person)
     for (const service of buildSampleServices()) await servicesStore.save(service)
+    // After deleteAllLibraryContent(), not before — it deletes every existing theme (including
+    // any stock-background starter themes from an earlier import), so importing first would
+    // just have them wiped out again a moment later.
+    stockBackgroundsAdded.value = await importStockBackgroundsInto()
 
     if (librarySettings.value) {
       librarySettings.value.serviceTypes = [...sampleServiceTypes]
       librarySettings.value.roleGroups = structuredClone(sampleRoleGroups)
       librarySettings.value.serviceTemplates = structuredClone(sampleServiceTemplates)
-      librarySettings.value.collections = sampleCollections.map((name) => ({
-        name,
-        abbreviation: name === 'Worship Hymnal' ? 'WH' : undefined,
-      }))
+      librarySettings.value.collections = structuredClone(sampleCollections)
       await store.save()
     }
     sampleDataLoaded.value = true
+    emit('bulk-data-change')
   } finally {
     loadingSampleData.value = false
   }
@@ -390,6 +411,7 @@ async function clearExistingData() {
       await store.save()
     }
     dataCleared.value = true
+    emit('bulk-data-change')
   } finally {
     clearingData.value = false
   }

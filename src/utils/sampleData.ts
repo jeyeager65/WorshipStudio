@@ -1,7 +1,7 @@
 import type { Song } from '@/models/song'
 import type { Service, RoleAssignment, ServiceTemplate } from '@/models/service'
 import type { Person, Theme } from '@/models/library'
-import type { RoleGroup, ServiceTypeDefinition } from '@/models/settings'
+import type { RoleGroup, ServiceTypeDefinition, SongCollectionDefinition } from '@/models/settings'
 
 // Fixed (not random) IDs, all under a `sample-` sub-prefix — this is what makes "Load Sample
 // Data" idempotent: clicking it again just refreshes these same records in place (moving the
@@ -18,7 +18,7 @@ export const sampleSongs: Song[] = [
     id: 'song-sample-amazing-grace',
     title: 'Amazing Grace',
     author: 'John Newton',
-    collections: [{ collectionId: 'Hymns of Grace', number: '184' }],
+    collections: [{ collectionId: 'Hymnal One', number: '184' }],
     tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
@@ -51,7 +51,7 @@ export const sampleSongs: Song[] = [
     id: 'song-sample-holy-holy-holy',
     title: 'Holy, Holy, Holy',
     author: 'Reginald Heber',
-    collections: [{ collectionId: 'Hymns of Grace', number: '1' }],
+    collections: [{ collectionId: 'Hymnal One', number: '1' }],
     tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
@@ -79,7 +79,7 @@ export const sampleSongs: Song[] = [
     id: 'song-sample-it-is-well',
     title: 'It Is Well with My Soul',
     author: 'Horatio Spafford',
-    collections: [{ collectionId: 'Worship Hymnal', number: '410' }],
+    collections: [{ collectionId: 'Hymnal Two', number: '410' }],
     tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
@@ -107,7 +107,7 @@ export const sampleSongs: Song[] = [
     id: 'song-sample-great-is-thy-faithfulness',
     title: 'Great Is Thy Faithfulness',
     author: 'Thomas Chisholm',
-    collections: [{ collectionId: 'Worship Hymnal', number: '58' }],
+    collections: [{ collectionId: 'Hymnal Two', number: '58' }],
     tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
@@ -130,7 +130,7 @@ export const sampleSongs: Song[] = [
     id: 'song-sample-blessed-assurance',
     title: 'Blessed Assurance',
     author: 'Fanny Crosby',
-    collections: [{ collectionId: 'Hymns of Grace', number: '223' }],
+    collections: [{ collectionId: 'Hymnal One', number: '223' }],
     tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
@@ -153,7 +153,7 @@ export const sampleSongs: Song[] = [
     id: 'song-sample-come-thou-fount',
     title: 'Come Thou Fount of Every Blessing',
     author: 'Robert Robinson',
-    collections: [{ collectionId: 'Hymns of Grace', number: '92' }],
+    collections: [{ collectionId: 'Hymnal One', number: '92' }],
     tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
@@ -176,7 +176,7 @@ export const sampleSongs: Song[] = [
     id: 'song-sample-how-firm-a-foundation',
     title: 'How Firm a Foundation',
     author: 'John Rippon',
-    collections: [{ collectionId: 'Worship Hymnal', number: '150' }],
+    collections: [{ collectionId: 'Hymnal Two', number: '150' }],
     tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
@@ -199,7 +199,7 @@ export const sampleSongs: Song[] = [
     id: 'song-sample-what-a-friend',
     title: 'What a Friend We Have in Jesus',
     author: 'Joseph Scriven',
-    collections: [{ collectionId: 'Worship Hymnal', number: '345' }],
+    collections: [{ collectionId: 'Hymnal Two', number: '345' }],
     tags: ['Hymn', 'Public Domain'],
     blocks: [
       {
@@ -222,9 +222,9 @@ export const sampleSongs: Song[] = [
 
 export const samplePeople: Person[] = [
   {
-    id: 'person-sample-james-caldwell',
+    id: 'person-sample-james-smith',
     firstName: 'James',
-    lastName: 'Caldwell',
+    lastName: 'Smith',
     preferredName: 'Jim',
     title: 'Pastor',
     preferredRoles: ['Sermon'],
@@ -322,8 +322,14 @@ export const sampleThemes: Theme[] = [
   },
 ]
 
-/** Collections sampleSongs use — merged into LibrarySettings.collections. */
-export const sampleCollections = ['Hymns of Grace', 'Worship Hymnal']
+/** Collections sampleSongs use — merged into LibrarySettings.collections. "Hymnal Two" carries
+ *  an abbreviation and "Hymnal One" doesn't, deliberately, so the seeded demo data shows both
+ *  states: a collection whose bulletin citation uses its abbreviation and one that falls back
+ *  to the bare name. */
+export const sampleCollections: SongCollectionDefinition[] = [
+  { name: 'Hymnal One' },
+  { name: 'Hymnal Two', abbreviation: 'H2' },
+]
 
 /** Every role used by samplePeople/rosters below, organized into categories — merged into
  *  LibrarySettings.roleGroups. */
@@ -539,7 +545,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
   const future = nthSundayAfter(referenceDate, 3)
 
   const pastRoster: RoleAssignment[] = [
-    { role: 'Sermon', personId: 'person-sample-james-caldwell', tentative: false },
+    { role: 'Sermon', personId: 'person-sample-james-smith', tentative: false },
     { role: 'Vocals', personId: 'person-sample-sarah-mitchell', tentative: false },
     { role: 'Piano', personId: 'person-sample-marcus-johnson', tentative: false },
     { role: 'Guitar', personId: 'person-sample-priya-patel', tentative: false },
@@ -551,7 +557,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
   // Marcus is deliberately double-booked (Piano AND Open) — exercises the roster's
   // same-week-two-roles conflict detection (see rosterConflicts.ts).
   const soonRoster: RoleAssignment[] = [
-    { role: 'Sermon', personId: 'person-sample-james-caldwell', tentative: false },
+    { role: 'Sermon', personId: 'person-sample-james-smith', tentative: false },
     { role: 'Vocals', personId: 'person-sample-sarah-mitchell', tentative: false },
     { role: 'Piano', personId: 'person-sample-marcus-johnson', tentative: false },
     { role: 'Open', personId: 'person-sample-marcus-johnson', tentative: false },
@@ -725,7 +731,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
         },
       ],
       assignments: [
-        { role: 'Sermon', personId: 'person-sample-james-caldwell', tentative: false },
+        { role: 'Sermon', personId: 'person-sample-james-smith', tentative: false },
         { role: 'Sound Booth', personId: 'person-sample-rachel-nguyen', tentative: false },
       ],
       updatedAt: now,

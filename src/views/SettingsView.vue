@@ -174,11 +174,24 @@ onMounted(async () => {
   savedCanvaCallbackPort.value = machineSettings.value?.canvaCallbackPort
   isDirty.value = false
   // Start history after loading so persisted machine and church settings form the baseline.
-  documentHistory.start((dirty) => (isDirty.value = dirty))
+  rebaselineHistory()
   // The Save button itself lives in the persistent app bar (App.vue), not a per-page
   // toolbar that would scroll out of view — this view just supplies the action.
   saveHandler.value = saveSettings
 })
+
+// Re-registers document history against whatever librarySettings/machineSettings currently
+// are, discarding any recorded undo entries and clearing dirty state — the correct response to
+// something *other* than this page's own Save button already persisting a change on its own
+// (LibrarySyncSection.vue's Data Tools actions: Load Sample Data, Clear Existing Data, Add
+// Stock Backgrounds, Import OpenSong). Those mutate librarySettings directly and save
+// immediately, so without this the page would otherwise show a stale "unsaved changes" prompt,
+// or worse, offer an Undo that could only ever revert the settings-list portion of an action
+// that already deleted/replaced real library content elsewhere — not a state this editor's
+// undo stack could ever correctly restore.
+function rebaselineHistory() {
+  documentHistory.start((dirty) => (isDirty.value = dirty))
+}
 onUnmounted(() => {
   documentHistory.stop()
   isDirty.value = false
@@ -331,7 +344,10 @@ async function saveSettings() {
            feature check the nav itself uses, so they never mount at all on a build/platform
            that doesn't support them. -->
       <GeneralSection v-show="activeSection === 'general'" />
-      <LibrarySyncSection v-show="activeSection === 'sync'" />
+      <LibrarySyncSection
+        v-show="activeSection === 'sync'"
+        @bulk-data-change="rebaselineHistory"
+      />
       <AboutSection v-show="activeSection === 'about'" />
       <AppearanceSection v-show="activeSection === 'appearance'" />
       <BrandingSection v-show="activeSection === 'branding'" />

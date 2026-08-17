@@ -31,10 +31,7 @@ export const seedAnnouncements: Announcement[] = []
 
 export const seedLibrarySettings: LibrarySettings = {
   serviceTypes: [...sampleServiceTypes],
-  collections: sampleCollections.map((name) => ({
-    name,
-    abbreviation: name === 'Worship Hymnal' ? 'WH' : undefined,
-  })),
+  collections: structuredClone(sampleCollections),
   roleGroups: structuredClone(sampleRoleGroups),
   serviceTemplates: structuredClone(sampleServiceTemplates),
   branding: {
