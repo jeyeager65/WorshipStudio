@@ -320,7 +320,7 @@ pub struct RoleGroupDefinition {
 /// Lives in its own `roles.json`, a peer of `library-settings.json` and `role-groups.json` — see
 /// `domain::roles` and `commands::roles`'s one-time migration. Referenced by id from
 /// `RoleAssignment::role_id`, `ServiceItem::role_id`, `ServiceTemplateItem::role_id`,
-/// `Person::preferred_role_ids`, and `BulletinSettings::serving_schedule_role_ids` — not by name.
+/// `Person::preferred_role_ids`, and `BulletinPage2::serving_schedule::role_ids` — not by name.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RoleDefinition {
@@ -748,44 +748,84 @@ pub struct LibrarySettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_translation_code: Option<String>,
     pub media_max_synced_file_size_mb: u32,
+    /// Every auto-fit/fixed slide typography range in one place — purely a readability grouping
+    /// (see `FontSizesPx`'s own doc comment), no behavior or semantics change from when these
+    /// were 8 flat fields directly on `LibrarySettings`. See
+    /// `commands::settings::migrate_library_settings_shape` for the one-time reshape of an
+    /// existing library-settings.json still using the old flat keys.
+    #[serde(default)]
+    pub font_sizes_px: FontSizesPx,
+    /// Bulletin/Order of Worship export customization — every label here is this church's own
+    /// choice, not a fixed English string (see frontend's orderOfWorship.ts/bulletinPage2.ts,
+    /// which read these rather than hardcoding "Order of Worship"/"Heart Preparation"/etc.).
+    #[serde(default)]
+    pub bulletin: BulletinSettings,
+}
+
+/// A min/max auto-fit range in pixels — `FontSizesPx`'s scripture/song/wayfinding fields all
+/// share this shape (see each field's own doc comment for what "auto-fit" means for that
+/// content type specifically).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct FontSizeRange {
+    pub min: u32,
+    pub max: u32,
+}
+
+/// Slide header/footer are two independently fixed sizes, not a min/max pair of each other —
+/// `FontSizesPx.slide` groups them only because they're both fixed-position slide chrome, not
+/// because they relate to one another the way a range's min/max do.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SlideFontSizes {
+    pub header: u32,
+    pub footer: u32,
+}
+
+/// Was 8 flat fields directly on `LibrarySettings` (`scriptureMinFontSizePx`,
+/// `scriptureMaxFontSizePx`, `songMinFontSizePx`, ..., `wayfindingMaxFontSizePx`) — grouped here
+/// purely for readability, not a synced-file split like `LibraryCredentials`: this is still part
+/// of `LibrarySettings` itself, just nested. See `commands::settings::migrate_library_settings_shape`
+/// for the one-time reshape of the old flat keys.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct FontSizesPx {
     /// Scripture slides auto-fit as large as possible within this range (never below the
     /// minimum — a passage that still doesn't fit at minimum size splits across slides at
     /// verse boundaries instead of shrinking further). Defaults match the size range the
     /// static CSS clamp used before this was configurable.
-    #[serde(default = "default_scripture_min_font_size_px")]
-    pub scripture_min_font_size_px: u32,
-    #[serde(default = "default_scripture_max_font_size_px")]
-    pub scripture_max_font_size_px: u32,
+    #[serde(default = "default_scripture_font_range")]
+    pub scripture: FontSizeRange,
     /// Song lyric slides auto-fit as large as possible within this range, shrinking to fit
     /// the whole block on one slide (a block is already the atomic unit a worship leader
     /// chose, so unlike scripture it never auto-splits across slides). Unlike scripture, a
     /// line that still doesn't fit at the minimum size is left as-is rather than wrapped at a
     /// word boundary — see utils/textAutoFit.ts's wrapLineAtPunctuation on the frontend.
-    #[serde(default = "default_song_min_font_size_px")]
-    pub song_min_font_size_px: u32,
-    #[serde(default = "default_song_max_font_size_px")]
-    pub song_max_font_size_px: u32,
+    #[serde(default = "default_song_font_range")]
+    pub song: FontSizeRange,
     /// Slide header (the reference/title above the text, e.g. "John 3:16-17") and footer (the
     /// translation/sub-label below it, e.g. "ESV") — fixed position, fixed size, unlike the
     /// auto-fit main text, so they don't move or resize as the main text shrinks/grows.
-    #[serde(default = "default_slide_header_font_size_px")]
-    pub slide_header_font_size_px: u32,
-    #[serde(default = "default_slide_footer_font_size_px")]
-    pub slide_footer_font_size_px: u32,
+    #[serde(default = "default_slide_font_sizes")]
+    pub slide: SlideFontSizes,
     /// Reference-only scripture display's "wayfinding" visual (surrounding book names fading
     /// out toward the edges, centered on the reference itself) — the reference and nearest book
     /// approach the max size, the farthest book shown uses the min, everything between is
     /// linearly interpolated by distance. Unlike scripture/song, there's no auto-fit shrink-to-
     /// fit safety net for this text.
-    #[serde(default = "default_wayfinding_min_font_size_px")]
-    pub wayfinding_min_font_size_px: u32,
-    #[serde(default = "default_wayfinding_max_font_size_px")]
-    pub wayfinding_max_font_size_px: u32,
-    /// Bulletin/Order of Worship export customization — every label here is this church's own
-    /// choice, not a fixed English string (see frontend's orderOfWorship.ts/hopeHappenings.ts,
-    /// which read these rather than hardcoding "Order of Worship"/"Heart Preparation"/etc.).
-    #[serde(default)]
-    pub bulletin: BulletinSettings,
+    #[serde(default = "default_wayfinding_font_range")]
+    pub wayfinding: FontSizeRange,
+}
+
+impl Default for FontSizesPx {
+    fn default() -> Self {
+        Self {
+            scripture: default_scripture_font_range(),
+            song: default_song_font_range(),
+            slide: default_slide_font_sizes(),
+            wayfinding: default_wayfinding_font_range(),
+        }
+    }
 }
 
 /// Lives in its own `song-collections.json`, a peer of `library-settings.json`, not a field
@@ -815,7 +855,7 @@ pub struct ServiceType {
     pub description: Option<String>,
 }
 
-/// See LibrarySettings::bulletin's own doc comment. `#[serde(default)]` per boolean field
+/// See LibrarySettings::bulletin's own doc comment. `#[serde(default)]` per nested struct field
 /// (rather than only on the whole struct) means an old library-settings.json missing this
 /// section entirely still gets these same "on" defaults via BulletinSettings::default() below —
 /// the per-field defaults exist for the narrower case of a *partially* present bulletin object
@@ -823,46 +863,70 @@ pub struct ServiceType {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BulletinSettings {
-    #[serde(default = "default_bulletin_page1_title")]
-    pub page1_title: String,
-    #[serde(default = "default_bulletin_page2_title")]
-    pub page2_title: String,
-    #[serde(default = "default_bulletin_page1_footer_title")]
-    pub page1_footer_title: String,
-    #[serde(default = "default_bulletin_true")]
-    pub page1_footer_enabled: bool,
-    #[serde(default = "default_bulletin_page2_footer_title")]
-    pub page2_footer_title: String,
-    #[serde(default = "default_bulletin_true")]
-    pub page2_footer_enabled: bool,
-    #[serde(default = "default_bulletin_true")]
-    pub page2_enabled: bool,
-    #[serde(default = "default_bulletin_true")]
-    pub show_announcements: bool,
-    #[serde(default = "default_bulletin_true")]
-    pub show_serving_schedule: bool,
-    /// `RoleDefinition.id`s (e.g. "Nursery", "Sound Booth") that become columns in the serving
-    /// schedule table — was named `servingScheduleRoles` and held role plain *names* before the
-    /// one-time migration in `commands::roles`.
-    #[serde(default)]
-    pub serving_schedule_role_ids: Vec<String>,
+    #[serde(default = "default_bulletin_page1")]
+    pub page1: BulletinPage1,
+    #[serde(default = "default_bulletin_page2")]
+    pub page2: BulletinPage2,
 }
 
 impl Default for BulletinSettings {
     fn default() -> Self {
         Self {
-            page1_title: default_bulletin_page1_title(),
-            page2_title: default_bulletin_page2_title(),
-            page1_footer_title: default_bulletin_page1_footer_title(),
-            page1_footer_enabled: true,
-            page2_footer_title: default_bulletin_page2_footer_title(),
-            page2_footer_enabled: true,
-            page2_enabled: true,
-            show_announcements: true,
-            show_serving_schedule: true,
-            serving_schedule_role_ids: Vec::new(),
+            page1: default_bulletin_page1(),
+            page2: default_bulletin_page2(),
         }
     }
+}
+
+/// A page's own optional footer quote — shared shape between page1 and page2 (each church picks
+/// its own title, and can turn either footer off independently).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BulletinPageFooter {
+    pub title: String,
+    pub enabled: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BulletinPage1 {
+    #[serde(default = "default_bulletin_page1_title")]
+    pub title: String,
+    #[serde(default = "default_bulletin_page1_footer")]
+    pub footer: BulletinPageFooter,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BulletinAnnouncements {
+    pub enabled: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BulletinServingSchedule {
+    pub enabled: bool,
+    /// `RoleDefinition.id`s (e.g. "Nursery", "Sound Booth") that become columns in the serving
+    /// schedule table — was named `servingScheduleRoles` and held role plain *names* before the
+    /// one-time migration in `commands::roles`.
+    #[serde(default)]
+    pub role_ids: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BulletinPage2 {
+    /// Whole back page on/off — a church that only wants the front-page liturgy.
+    #[serde(default = "default_bulletin_true")]
+    pub enabled: bool,
+    #[serde(default = "default_bulletin_page2_title")]
+    pub title: String,
+    #[serde(default = "default_bulletin_page2_footer")]
+    pub footer: BulletinPageFooter,
+    #[serde(default = "default_bulletin_announcements")]
+    pub announcements: BulletinAnnouncements,
+    #[serde(default = "default_bulletin_serving_schedule")]
+    pub serving_schedule: BulletinServingSchedule,
 }
 
 fn default_bulletin_true() -> bool {
@@ -877,44 +941,65 @@ fn default_bulletin_page2_title() -> String {
     "Announcements".to_string()
 }
 
-fn default_bulletin_page1_footer_title() -> String {
-    "Heart Preparation".to_string()
+fn default_bulletin_page1_footer() -> BulletinPageFooter {
+    BulletinPageFooter {
+        title: "Heart Preparation".to_string(),
+        enabled: true,
+    }
 }
 
-fn default_bulletin_page2_footer_title() -> String {
-    "Thought to Ponder".to_string()
+fn default_bulletin_page2_footer() -> BulletinPageFooter {
+    BulletinPageFooter {
+        title: "Thought to Ponder".to_string(),
+        enabled: true,
+    }
 }
 
-fn default_scripture_min_font_size_px() -> u32 {
-    72
+fn default_bulletin_announcements() -> BulletinAnnouncements {
+    BulletinAnnouncements { enabled: true }
 }
 
-fn default_scripture_max_font_size_px() -> u32 {
-    120
+fn default_bulletin_serving_schedule() -> BulletinServingSchedule {
+    BulletinServingSchedule {
+        enabled: true,
+        role_ids: Vec::new(),
+    }
 }
 
-fn default_song_min_font_size_px() -> u32 {
-    16
+fn default_bulletin_page1() -> BulletinPage1 {
+    BulletinPage1 {
+        title: default_bulletin_page1_title(),
+        footer: default_bulletin_page1_footer(),
+    }
 }
 
-fn default_song_max_font_size_px() -> u32 {
-    120
+fn default_bulletin_page2() -> BulletinPage2 {
+    BulletinPage2 {
+        enabled: true,
+        title: default_bulletin_page2_title(),
+        footer: default_bulletin_page2_footer(),
+        announcements: default_bulletin_announcements(),
+        serving_schedule: default_bulletin_serving_schedule(),
+    }
 }
 
-fn default_slide_header_font_size_px() -> u32 {
-    48
+fn default_scripture_font_range() -> FontSizeRange {
+    FontSizeRange { min: 72, max: 120 }
 }
 
-fn default_slide_footer_font_size_px() -> u32 {
-    48
+fn default_song_font_range() -> FontSizeRange {
+    FontSizeRange { min: 16, max: 120 }
 }
 
-fn default_wayfinding_min_font_size_px() -> u32 {
-    56
+fn default_slide_font_sizes() -> SlideFontSizes {
+    SlideFontSizes {
+        header: 48,
+        footer: 48,
+    }
 }
 
-fn default_wayfinding_max_font_size_px() -> u32 {
-    150
+fn default_wayfinding_font_range() -> FontSizeRange {
+    FontSizeRange { min: 56, max: 150 }
 }
 
 /// api.bible sends an explicit JSON `null` for some entries' `description` (not merely an
@@ -1210,14 +1295,14 @@ mod tests {
             "mediaMaxSyncedFileSizeMb": 50
         }"##;
         let settings: LibrarySettings = serde_json::from_str(json).unwrap();
-        assert_eq!(settings.scripture_min_font_size_px, 72);
-        assert_eq!(settings.scripture_max_font_size_px, 120);
-        assert_eq!(settings.song_min_font_size_px, 16);
-        assert_eq!(settings.song_max_font_size_px, 120);
-        assert_eq!(settings.slide_header_font_size_px, 48);
-        assert_eq!(settings.slide_footer_font_size_px, 48);
-        assert_eq!(settings.wayfinding_min_font_size_px, 56);
-        assert_eq!(settings.wayfinding_max_font_size_px, 150);
+        assert_eq!(settings.font_sizes_px.scripture.min, 72);
+        assert_eq!(settings.font_sizes_px.scripture.max, 120);
+        assert_eq!(settings.font_sizes_px.song.min, 16);
+        assert_eq!(settings.font_sizes_px.song.max, 120);
+        assert_eq!(settings.font_sizes_px.slide.header, 48);
+        assert_eq!(settings.font_sizes_px.slide.footer, 48);
+        assert_eq!(settings.font_sizes_px.wayfinding.min, 56);
+        assert_eq!(settings.font_sizes_px.wayfinding.max, 150);
     }
 
     #[test]

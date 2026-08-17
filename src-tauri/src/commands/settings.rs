@@ -4,7 +4,7 @@ use tauri::AppHandle;
 
 use crate::domain::{delete_file_if_exists, read_json_file, write_json_file};
 use crate::models::{
-    Branding, BulletinSettings, LibraryCredentials, LibrarySettings, MachineSettings,
+    Branding, BulletinSettings, FontSizesPx, LibraryCredentials, LibrarySettings, MachineSettings,
 };
 use crate::paths::{self, library_root, load_machine_settings};
 
@@ -33,14 +33,7 @@ fn default_library_settings() -> LibrarySettings {
         // default for a brand-new library rather than leaving the picker with nothing selected.
         default_translation_code: Some("KJV".to_string()),
         media_max_synced_file_size_mb: 50,
-        scripture_min_font_size_px: 72,
-        scripture_max_font_size_px: 120,
-        song_min_font_size_px: 16,
-        song_max_font_size_px: 120,
-        slide_header_font_size_px: 48,
-        slide_footer_font_size_px: 48,
-        wayfinding_min_font_size_px: 56,
-        wayfinding_max_font_size_px: 150,
+        font_sizes_px: FontSizesPx::default(),
         bulletin: BulletinSettings::default(),
     }
 }
@@ -107,6 +100,142 @@ fn migrate_credentials_into_own_file(root: &Path) -> std::io::Result<()> {
         if changed {
             write_json_file(&settings_path, &serde_json::Value::Object(obj))?;
         }
+    }
+    Ok(())
+}
+
+/// One-time reshape of `library-settings.json`'s font-size and bulletin fields from flat to
+/// nested — see `FontSizesPx`/`BulletinSettings`'s own doc comments for the target shape. Purely
+/// a readability grouping, no behavior or semantics change and no ids involved, but still needs a
+/// real migration (not just `#[serde(default)]` on the new nested fields): a straight typed
+/// deserialize of an old flat file into the new nested struct would find no `fontSizesPx`/
+/// `bulletin.page1` key at all and silently fall back to defaults, discarding whatever a church
+/// had actually customized. Must run after `commands::roles::migrate_if_needed` — that migration
+/// still writes the flat `bulletin.servingScheduleRoleIds` key this one reads, converting a
+/// church's legacy `servingScheduleRoles` (plain names) to ids first.
+fn migrate_library_settings_shape(root: &Path) -> std::io::Result<()> {
+    let path = root.join(LIBRARY_SETTINGS_FILE);
+    let Some(mut raw) = read_json_file::<serde_json::Value>(&path)? else {
+        return Ok(());
+    };
+    let Some(obj) = raw.as_object_mut() else {
+        return Ok(());
+    };
+    let mut changed = false;
+
+    if !obj.contains_key("fontSizesPx") {
+        fn take_u32(
+            obj: &serde_json::Map<String, serde_json::Value>,
+            key: &str,
+            default: u32,
+        ) -> u32 {
+            obj.get(key)
+                .and_then(serde_json::Value::as_u64)
+                .map(|v| v as u32)
+                .unwrap_or(default)
+        }
+        let font_sizes_px = serde_json::json!({
+            "scripture": {
+                "min": take_u32(obj, "scriptureMinFontSizePx", 72),
+                "max": take_u32(obj, "scriptureMaxFontSizePx", 120),
+            },
+            "song": {
+                "min": take_u32(obj, "songMinFontSizePx", 16),
+                "max": take_u32(obj, "songMaxFontSizePx", 120),
+            },
+            "slide": {
+                "header": take_u32(obj, "slideHeaderFontSizePx", 48),
+                "footer": take_u32(obj, "slideFooterFontSizePx", 48),
+            },
+            "wayfinding": {
+                "min": take_u32(obj, "wayfindingMinFontSizePx", 56),
+                "max": take_u32(obj, "wayfindingMaxFontSizePx", 150),
+            },
+        });
+        for key in [
+            "scriptureMinFontSizePx",
+            "scriptureMaxFontSizePx",
+            "songMinFontSizePx",
+            "songMaxFontSizePx",
+            "slideHeaderFontSizePx",
+            "slideFooterFontSizePx",
+            "wayfindingMinFontSizePx",
+            "wayfindingMaxFontSizePx",
+        ] {
+            obj.remove(key);
+        }
+        obj.insert("fontSizesPx".to_string(), font_sizes_px);
+        changed = true;
+    }
+
+    if let Some(bulletin) = obj
+        .get_mut("bulletin")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        if !bulletin.contains_key("page1") {
+            fn take_str(
+                obj: &serde_json::Map<String, serde_json::Value>,
+                key: &str,
+                default: &str,
+            ) -> String {
+                obj.get(key)
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| default.to_string())
+            }
+            fn take_bool(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> bool {
+                obj.get(key)
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(true)
+            }
+            let role_ids = bulletin
+                .get("servingScheduleRoleIds")
+                .and_then(serde_json::Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let page1 = serde_json::json!({
+                "title": take_str(bulletin, "page1Title", "Order of Worship"),
+                "footer": {
+                    "title": take_str(bulletin, "page1FooterTitle", "Heart Preparation"),
+                    "enabled": take_bool(bulletin, "page1FooterEnabled"),
+                },
+            });
+            let page2 = serde_json::json!({
+                "enabled": take_bool(bulletin, "page2Enabled"),
+                "title": take_str(bulletin, "page2Title", "Announcements"),
+                "footer": {
+                    "title": take_str(bulletin, "page2FooterTitle", "Thought to Ponder"),
+                    "enabled": take_bool(bulletin, "page2FooterEnabled"),
+                },
+                "announcements": { "enabled": take_bool(bulletin, "showAnnouncements") },
+                "servingSchedule": {
+                    "enabled": take_bool(bulletin, "showServingSchedule"),
+                    "roleIds": role_ids,
+                },
+            });
+            for key in [
+                "page1Title",
+                "page2Title",
+                "page1FooterTitle",
+                "page1FooterEnabled",
+                "page2FooterTitle",
+                "page2FooterEnabled",
+                "page2Enabled",
+                "showAnnouncements",
+                "showServingSchedule",
+                "servingScheduleRoleIds",
+                "servingScheduleRoles",
+            ] {
+                bulletin.remove(key);
+            }
+            bulletin.insert("page1".to_string(), page1);
+            bulletin.insert("page2".to_string(), page2);
+            changed = true;
+        }
+    }
+
+    if changed {
+        write_json_file(&path, &raw)?;
     }
     Ok(())
 }
@@ -201,7 +330,7 @@ pub fn load_library_settings(app: &AppHandle) -> Result<LibrarySettings, String>
     let root = library_root(app);
     let path = root.join(LIBRARY_SETTINGS_FILE);
     // Eager, unlike service_types/song_collections (which only migrate when their own list
-    // command runs) — ServiceTemplateItem.role_id and BulletinSettings.serving_schedule_role_ids
+    // command runs) — ServiceTemplateItem.role_id and BulletinPage2.serving_schedule.role_ids
     // stay nested inside LibrarySettings, so they need to be correct as soon as anything reads
     // settings at all, not only once someone happens to open Settings > Roles first. See
     // commands::roles::migrate_if_needed's own doc comment.
@@ -210,6 +339,8 @@ pub fn load_library_settings(app: &AppHandle) -> Result<LibrarySettings, String>
     // directly and early. Harmless to call unconditionally: gated on credentials.json not
     // existing yet, and load_library_credentials below calls it again just as cheaply.
     migrate_credentials_into_own_file(&root).map_err(|error| error.to_string())?;
+    // Must run after roles::migrate_if_needed above — see this function's own doc comment.
+    migrate_library_settings_shape(&root).map_err(|error| error.to_string())?;
     let settings = match read_json_file(&path).map_err(|error| error.to_string())? {
         Some(settings) => settings,
         None => default_library_settings(),
@@ -625,5 +756,100 @@ mod tests {
     fn clear_settings_list_backups_is_a_no_op_when_none_exist() {
         let dir = tempfile::tempdir().unwrap();
         assert!(clear_settings_list_backups_at(dir.path()).is_ok());
+    }
+
+    #[test]
+    fn migrates_flat_font_sizes_and_bulletin_into_the_nested_shape_preserving_real_values() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_json_file(
+            &root.join(LIBRARY_SETTINGS_FILE),
+            &serde_json::json!({
+                "branding": { "churchName": "Hope Church", "primaryColor": "#000", "secondaryColor": "#000" },
+                "apiBibleTranslations": [],
+                "mediaMaxSyncedFileSizeMb": 50,
+                // Deliberately non-default values — a real church's customization must survive.
+                "scriptureMinFontSizePx": 80,
+                "scriptureMaxFontSizePx": 130,
+                "songMinFontSizePx": 20,
+                "songMaxFontSizePx": 110,
+                "slideHeaderFontSizePx": 40,
+                "slideFooterFontSizePx": 44,
+                "wayfindingMinFontSizePx": 60,
+                "wayfindingMaxFontSizePx": 140,
+                "bulletin": {
+                    "page1Title": "Custom Order Title",
+                    "page2Title": "Custom Announcements Title",
+                    "page1FooterTitle": "Custom Heart Prep",
+                    "page1FooterEnabled": false,
+                    "page2FooterTitle": "Custom Thought",
+                    "page2FooterEnabled": false,
+                    "page2Enabled": false,
+                    "showAnnouncements": false,
+                    "showServingSchedule": false,
+                    "servingScheduleRoleIds": ["role-nursery"],
+                },
+            }),
+        )
+        .unwrap();
+
+        migrate_library_settings_shape(root).unwrap();
+
+        let settings: LibrarySettings = read_json_file(&root.join(LIBRARY_SETTINGS_FILE))
+            .unwrap()
+            .unwrap();
+        assert_eq!(settings.font_sizes_px.scripture.min, 80);
+        assert_eq!(settings.font_sizes_px.scripture.max, 130);
+        assert_eq!(settings.font_sizes_px.song.min, 20);
+        assert_eq!(settings.font_sizes_px.song.max, 110);
+        assert_eq!(settings.font_sizes_px.slide.header, 40);
+        assert_eq!(settings.font_sizes_px.slide.footer, 44);
+        assert_eq!(settings.font_sizes_px.wayfinding.min, 60);
+        assert_eq!(settings.font_sizes_px.wayfinding.max, 140);
+        assert_eq!(settings.bulletin.page1.title, "Custom Order Title");
+        assert_eq!(settings.bulletin.page1.footer.title, "Custom Heart Prep");
+        assert!(!settings.bulletin.page1.footer.enabled);
+        assert_eq!(settings.bulletin.page2.title, "Custom Announcements Title");
+        assert!(!settings.bulletin.page2.enabled);
+        assert_eq!(settings.bulletin.page2.footer.title, "Custom Thought");
+        assert!(!settings.bulletin.page2.footer.enabled);
+        assert!(!settings.bulletin.page2.announcements.enabled);
+        assert!(!settings.bulletin.page2.serving_schedule.enabled);
+        assert_eq!(
+            settings.bulletin.page2.serving_schedule.role_ids,
+            vec!["role-nursery".to_string()]
+        );
+
+        // Old flat keys must be gone, not just shadowed by the new nested ones.
+        let raw: serde_json::Value = read_json_file(&root.join(LIBRARY_SETTINGS_FILE))
+            .unwrap()
+            .unwrap();
+        assert!(raw.get("scriptureMinFontSizePx").is_none());
+        assert!(raw["bulletin"].get("page1Title").is_none());
+        assert!(raw["bulletin"].get("servingScheduleRoleIds").is_none());
+    }
+
+    #[test]
+    fn migrate_library_settings_shape_is_a_no_op_once_already_nested() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_json_file(
+            &root.join(LIBRARY_SETTINGS_FILE),
+            &default_library_settings(),
+        )
+        .unwrap();
+
+        migrate_library_settings_shape(root).unwrap();
+
+        let settings: LibrarySettings = read_json_file(&root.join(LIBRARY_SETTINGS_FILE))
+            .unwrap()
+            .unwrap();
+        assert_eq!(settings.font_sizes_px.scripture.min, 72);
+    }
+
+    #[test]
+    fn migrate_library_settings_shape_is_a_no_op_on_a_genuinely_fresh_library() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(migrate_library_settings_shape(dir.path()).is_ok());
     }
 }

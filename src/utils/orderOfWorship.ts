@@ -241,7 +241,7 @@ export function buildOrderOfWorship(
   formalPersonNames: Map<string, string> = personNames,
   // Optional (defaults to the same church-chosen defaults Settings itself starts with) so every
   // existing caller/test that predates Settings → Bulletin keeps working unchanged.
-  bulletin?: Pick<BulletinSettings, 'page1Title' | 'page1FooterEnabled' | 'page1FooterTitle'>,
+  bulletin?: BulletinSettings['page1'],
   collectionDefinitions: SongCollectionDefinition[] = [],
 ): OrderOfWorshipDoc {
   const songs = new Map(songList.map((s) => [s.id, s]))
@@ -254,10 +254,10 @@ export function buildOrderOfWorship(
   })
   const timeLabel = formatServiceTime(service.time)
   const dateLine = `${dateLabel}${timeLabel ? ` · ${timeLabel}` : ''}`
-  const footerEnabled = bulletin?.page1FooterEnabled ?? true
+  const footerEnabled = bulletin?.footer.enabled ?? true
 
   return {
-    title: bulletin?.page1Title ?? 'Order of Worship',
+    title: bulletin?.title ?? 'Order of Worship',
     dateLine,
     // A bulletin is a formal document, so titles apply to every participant—not only the
     // preacher. The ordinary-name map remains the fallback for older callers that do not yet
@@ -266,7 +266,7 @@ export function buildOrderOfWorship(
     footer:
       footerEnabled && service.bulletinPage1Footer
         ? {
-            title: bulletin?.page1FooterTitle ?? 'Heart Preparation',
+            title: bulletin?.footer.title ?? 'Heart Preparation',
             text: service.bulletinPage1Footer,
           }
         : undefined,

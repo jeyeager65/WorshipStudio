@@ -325,10 +325,10 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
       footerText: slide.footerText,
       repeatLabel: slide.repeatLabel,
       outlineTitle: slide.outlineTitle,
-      headerFontSizePx: settingsStore.librarySettings?.slideHeaderFontSizePx,
-      footerFontSizePx: settingsStore.librarySettings?.slideFooterFontSizePx,
-      wayfindingMinFontSizePx: settingsStore.librarySettings?.wayfindingMinFontSizePx,
-      wayfindingMaxFontSizePx: settingsStore.librarySettings?.wayfindingMaxFontSizePx,
+      headerFontSizePx: settingsStore.librarySettings?.fontSizesPx.slide.header,
+      footerFontSizePx: settingsStore.librarySettings?.fontSizesPx.slide.footer,
+      wayfindingMinFontSizePx: settingsStore.librarySettings?.fontSizesPx.wayfinding.min,
+      wayfindingMaxFontSizePx: settingsStore.librarySettings?.fontSizesPx.wayfinding.max,
     }
   }
   const liveContentPayload = computed<LiveSlideContent | undefined>(() => {

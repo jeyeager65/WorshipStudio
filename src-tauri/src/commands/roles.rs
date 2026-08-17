@@ -166,7 +166,7 @@ fn people_json_paths(root: &Path) -> std::io::Result<Vec<PathBuf>> {
 /// held the role's plain name directly. Runs once, the first time `roles.json` doesn't exist
 /// yet — unlike `service_types`/`song_collections`, this is called eagerly from
 /// `commands::settings::load_library_settings` (not just from `list_roles`/`list_role_groups`),
-/// since `ServiceTemplateItem.role_id` and `BulletinSettings.serving_schedule_role_ids` stay
+/// since `ServiceTemplateItem.role_id` and `BulletinPage2.serving_schedule.role_ids` stay
 /// nested inside `LibrarySettings` (a future phase splits `ServiceTemplate` into its own file)
 /// and need to be correct as soon as anything reads settings at all, not only once someone
 /// happens to open Settings > Roles first.

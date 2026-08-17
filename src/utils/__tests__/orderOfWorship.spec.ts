@@ -214,9 +214,8 @@ describe('buildOrderOfWorship', () => {
     expect(withoutSettings.title).toBe('Order of Worship')
 
     const withSettings = buildOrderOfWorship(baseService(), songs, slides, new Map(), new Map(), {
-      page1Title: 'Liturgy',
-      page1FooterEnabled: true,
-      page1FooterTitle: 'Heart Preparation',
+      title: 'Liturgy',
+      footer: { enabled: true, title: 'Heart Preparation' },
     })
     expect(withSettings.title).toBe('Liturgy')
   })
@@ -229,9 +228,8 @@ describe('buildOrderOfWorship', () => {
       new Map(),
       new Map(),
       {
-        page1Title: 'Order of Worship',
-        page1FooterEnabled: true,
-        page1FooterTitle: 'Heart Preparation',
+        title: 'Order of Worship',
+        footer: { enabled: true, title: 'Heart Preparation' },
       },
     )
     expect(withFooter.footer).toEqual({ title: 'Heart Preparation', text: 'Be still and know.' })
@@ -246,9 +244,8 @@ describe('buildOrderOfWorship', () => {
       new Map(),
       new Map(),
       {
-        page1Title: 'Order of Worship',
-        page1FooterEnabled: false,
-        page1FooterTitle: 'Heart Preparation',
+        title: 'Order of Worship',
+        footer: { enabled: false, title: 'Heart Preparation' },
       },
     )
     expect(disabled.footer).toBeUndefined()

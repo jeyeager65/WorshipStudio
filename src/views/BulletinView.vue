@@ -140,7 +140,7 @@ const bulletin = computed(() =>
         slidesStore.slides,
         personNames.value,
         formalPersonNames.value,
-        settingsStore.librarySettings?.bulletin,
+        settingsStore.librarySettings?.bulletin.page1,
         songCollectionsStore.collections,
       )
     : undefined,
@@ -152,7 +152,7 @@ const nextWeekService = computed(() =>
   service.value ? findNextWeekService(servicesStore.services, service.value) : undefined,
 )
 const bulletinPage2 = computed(() =>
-  service.value && settingsStore.librarySettings?.bulletin.page2Enabled
+  service.value && settingsStore.librarySettings?.bulletin.page2.enabled
     ? buildBulletinPage2(
         service.value,
         nextWeekService.value,
@@ -307,17 +307,17 @@ async function copyBulletin() {
 
     <section
       v-if="
-        settingsStore.librarySettings?.bulletin.page1FooterEnabled ||
-        settingsStore.librarySettings?.bulletin.page2FooterEnabled
+        settingsStore.librarySettings?.bulletin.page1.footer.enabled ||
+        settingsStore.librarySettings?.bulletin.page2.footer.enabled
       "
       class="bulletin-footer-card"
     >
       <h2 class="footer-card-heading">Footer Content</h2>
       <div class="bulletin-footers">
         <v-textarea
-          v-if="settingsStore.librarySettings?.bulletin.page1FooterEnabled"
+          v-if="settingsStore.librarySettings?.bulletin.page1.footer.enabled"
           v-model="service.bulletinPage1Footer"
-          :label="settingsStore.librarySettings.bulletin.page1FooterTitle"
+          :label="settingsStore.librarySettings.bulletin.page1.footer.title"
           variant="outlined"
           density="compact"
           rows="2"
@@ -325,9 +325,9 @@ async function copyBulletin() {
           hide-details
         />
         <v-textarea
-          v-if="settingsStore.librarySettings?.bulletin.page2FooterEnabled"
+          v-if="settingsStore.librarySettings?.bulletin.page2.footer.enabled"
           v-model="service.bulletinPage2Footer"
-          :label="settingsStore.librarySettings.bulletin.page2FooterTitle"
+          :label="settingsStore.librarySettings.bulletin.page2.footer.title"
           variant="outlined"
           density="compact"
           rows="2"

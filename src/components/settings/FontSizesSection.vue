@@ -17,7 +17,7 @@ const { librarySettings } = storeToRefs(useSettingsStore())
     >
       <div class="number-field-grid">
         <v-text-field
-          v-model.number="librarySettings!.scriptureMinFontSizePx"
+          v-model.number="librarySettings!.fontSizesPx.scripture.min"
           label="Minimum size (px)"
           type="number"
           variant="outlined"
@@ -26,7 +26,7 @@ const { librarySettings } = storeToRefs(useSettingsStore())
           hide-details
         />
         <v-text-field
-          v-model.number="librarySettings!.scriptureMaxFontSizePx"
+          v-model.number="librarySettings!.fontSizesPx.scripture.max"
           label="Maximum size (px)"
           type="number"
           variant="outlined"
@@ -44,7 +44,7 @@ const { librarySettings } = storeToRefs(useSettingsStore())
     >
       <div class="number-field-grid">
         <v-text-field
-          v-model.number="librarySettings!.songMinFontSizePx"
+          v-model.number="librarySettings!.fontSizesPx.song.min"
           label="Minimum size (px)"
           type="number"
           variant="outlined"
@@ -53,7 +53,7 @@ const { librarySettings } = storeToRefs(useSettingsStore())
           hide-details
         />
         <v-text-field
-          v-model.number="librarySettings!.songMaxFontSizePx"
+          v-model.number="librarySettings!.fontSizesPx.song.max"
           label="Maximum size (px)"
           type="number"
           variant="outlined"
@@ -71,7 +71,7 @@ const { librarySettings } = storeToRefs(useSettingsStore())
     >
       <div class="number-field-grid">
         <v-text-field
-          v-model.number="librarySettings!.slideHeaderFontSizePx"
+          v-model.number="librarySettings!.fontSizesPx.slide.header"
           label="Header size (px)"
           type="number"
           variant="outlined"
@@ -80,7 +80,7 @@ const { librarySettings } = storeToRefs(useSettingsStore())
           hide-details
         />
         <v-text-field
-          v-model.number="librarySettings!.slideFooterFontSizePx"
+          v-model.number="librarySettings!.fontSizesPx.slide.footer"
           label="Footer size (px)"
           type="number"
           variant="outlined"
@@ -98,7 +98,7 @@ const { librarySettings } = storeToRefs(useSettingsStore())
     >
       <div class="number-field-grid">
         <v-text-field
-          v-model.number="librarySettings!.wayfindingMinFontSizePx"
+          v-model.number="librarySettings!.fontSizesPx.wayfinding.min"
           label="Minimum size (px)"
           type="number"
           variant="outlined"
@@ -107,7 +107,7 @@ const { librarySettings } = storeToRefs(useSettingsStore())
           hide-details
         />
         <v-text-field
-          v-model.number="librarySettings!.wayfindingMaxFontSizePx"
+          v-model.number="librarySettings!.fontSizesPx.wayfinding.max"
           label="Maximum size (px)"
           type="number"
           variant="outlined"

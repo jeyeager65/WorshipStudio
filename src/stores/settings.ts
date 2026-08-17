@@ -22,17 +22,21 @@ export const useSettingsStore = defineStore('settings', () => {
         // Same story for the bulletin block — browser-demo localStorage saved before it existed
         // has no `bulletin` key at all, which crashed BulletinView's render (every field access
         // assumes librarySettings.bulletin itself, not just librarySettings, is always present).
+        // adapters/web/settings.ts's own migrateLibrarySettingsShape only reshapes an *existing*
+        // (old flat-shaped) bulletin block — it leaves a genuinely absent one alone, so this
+        // fallback still covers that narrower case.
         bulletin: library.bulletin ?? {
-          page1Title: 'Order of Worship',
-          page2Title: 'Announcements',
-          page1FooterTitle: 'Heart Preparation',
-          page1FooterEnabled: true,
-          page2FooterTitle: 'Thought to Ponder',
-          page2FooterEnabled: true,
-          page2Enabled: true,
-          showAnnouncements: true,
-          showServingSchedule: true,
-          servingScheduleRoleIds: [],
+          page1: {
+            title: 'Order of Worship',
+            footer: { title: 'Heart Preparation', enabled: true },
+          },
+          page2: {
+            enabled: true,
+            title: 'Announcements',
+            footer: { title: 'Thought to Ponder', enabled: true },
+            announcements: { enabled: true },
+            servingSchedule: { enabled: true, roleIds: [] },
+          },
         },
       }
       libraryCredentials.value = credentials

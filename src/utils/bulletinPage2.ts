@@ -131,7 +131,7 @@ function buildServingSchedule(
  * Builds the bulletin's second-page content — announcements/upcoming events, the This Week/Next
  * Week serving schedule, and its own footer quote. Analogous to orderOfWorship.ts's
  * buildOrderOfWorship, kept UI-agnostic so it's testable without the report-rendering layer. The
- * page's own title is a church-chosen label (BulletinSettings.page2Title) — nothing in here
+ * page's own title is a church-chosen label (BulletinSettings.page2.title) — nothing in here
  * assumes any particular name for it.
  */
 export function buildBulletinPage2(
@@ -142,21 +142,21 @@ export function buildBulletinPage2(
   personNames: Map<string, string>,
   roleNames: Map<string, string> = new Map(),
 ): BulletinPage2Doc {
-  const { upcoming, general } = bulletin.showAnnouncements
+  const { upcoming, general } = bulletin.page2.announcements.enabled
     ? splitForBulletin(announcements, service.date)
     : { upcoming: [], general: [] }
   const referenceYear = new Date(`${service.date}T00:00:00`).getFullYear()
 
   return {
-    title: bulletin.page2Title,
+    title: bulletin.page2.title,
     upcoming: upcoming.map((a) => ({
       dateLabel: announcementDateLabel(a.eventDate!, a.eventEndDate, a.eventTime, referenceYear),
       text: a.text,
     })),
     general: general.map((a) => ({ text: a.text })),
-    servingSchedule: bulletin.showServingSchedule
+    servingSchedule: bulletin.page2.servingSchedule.enabled
       ? buildServingSchedule(
-          bulletin.servingScheduleRoleIds,
+          bulletin.page2.servingSchedule.roleIds,
           service,
           nextWeekService,
           personNames,
@@ -164,8 +164,8 @@ export function buildBulletinPage2(
         )
       : undefined,
     footer:
-      bulletin.page2FooterEnabled && service.bulletinPage2Footer
-        ? { title: bulletin.page2FooterTitle, text: service.bulletinPage2Footer }
+      bulletin.page2.footer.enabled && service.bulletinPage2Footer
+        ? { title: bulletin.page2.footer.title, text: service.bulletinPage2Footer }
         : undefined,
   }
 }

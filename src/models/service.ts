@@ -162,7 +162,7 @@ export interface Service {
   presenterNotes?: Record<string, string>
   assignments?: RoleAssignment[]
   /** This week's front-page (Order of Worship) bulletin footer quote — entered fresh each week;
-   *  the footer's title is a church-wide choice (LibrarySettings.bulletin.page1FooterTitle). */
+   *  the footer's title is a church-wide choice (LibrarySettings.bulletin.page1.footer.title). */
   bulletinPage1Footer?: string
   /** This week's back-page (Announcements) bulletin footer quote. */
   bulletinPage2Footer?: string

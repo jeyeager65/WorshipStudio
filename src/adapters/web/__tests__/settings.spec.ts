@@ -20,7 +20,8 @@ describe('createWebSettingsPort', () => {
     const port = createWebSettingsPort(createFakeRoot())
     const settings = await port.getLibrarySettings()
     expect(settings.defaultTranslationCode).toBe('KJV')
-    expect(settings.bulletin.page1Title).toBe('Order of Worship')
+    expect(settings.bulletin.page1.title).toBe('Order of Worship')
+    expect(settings.fontSizesPx.scripture).toEqual({ min: 72, max: 120 })
   })
 
   it('round-trips saved library settings through the picked folder', async () => {
@@ -31,6 +32,81 @@ describe('createWebSettingsPort', () => {
 
     const reloaded = await port.getLibrarySettings()
     expect(reloaded.branding.churchName).toBe('Hope Church')
+  })
+
+  // Mirrors src-tauri/src/commands/settings.rs's migrate_library_settings_shape tests exactly —
+  // font sizes and bulletin settings used to be flat fields/flat bulletin keys, reshaped into
+  // fontSizesPx/bulletin.page1/bulletin.page2 purely for readability. A real church's customized
+  // values must survive the reshape, not silently reset to defaults.
+  describe('font size and bulletin shape migration', () => {
+    it('reshapes flat font-size and bulletin keys, preserving customized values', async () => {
+      const root = createFakeRoot()
+      await writeJsonFile(root, 'library-settings.json', {
+        branding: { churchName: 'Hope Church', primaryColor: '#000', secondaryColor: '#000' },
+        apiBibleTranslations: [],
+        mediaMaxSyncedFileSizeMb: 50,
+        scriptureMinFontSizePx: 80,
+        scriptureMaxFontSizePx: 130,
+        songMinFontSizePx: 20,
+        songMaxFontSizePx: 110,
+        slideHeaderFontSizePx: 40,
+        slideFooterFontSizePx: 44,
+        wayfindingMinFontSizePx: 60,
+        wayfindingMaxFontSizePx: 140,
+        bulletin: {
+          page1Title: 'Custom Order Title',
+          page2Title: 'Custom Announcements Title',
+          page1FooterTitle: 'Custom Heart Prep',
+          page1FooterEnabled: false,
+          page2FooterTitle: 'Custom Thought',
+          page2FooterEnabled: false,
+          page2Enabled: false,
+          showAnnouncements: false,
+          showServingSchedule: false,
+          servingScheduleRoleIds: ['role-nursery'],
+        },
+      })
+      const port = createWebSettingsPort(root)
+
+      const settings = await port.getLibrarySettings()
+
+      expect(settings.fontSizesPx).toEqual({
+        scripture: { min: 80, max: 130 },
+        song: { min: 20, max: 110 },
+        slide: { header: 40, footer: 44 },
+        wayfinding: { min: 60, max: 140 },
+      })
+      expect(settings.bulletin).toEqual({
+        page1: {
+          title: 'Custom Order Title',
+          footer: { title: 'Custom Heart Prep', enabled: false },
+        },
+        page2: {
+          enabled: false,
+          title: 'Custom Announcements Title',
+          footer: { title: 'Custom Thought', enabled: false },
+          announcements: { enabled: false },
+          servingSchedule: { enabled: false, roleIds: ['role-nursery'] },
+        },
+      })
+
+      // Persisted, not just returned in-memory — old flat keys must be gone on disk too.
+      const raw = await readJsonFile<Record<string, unknown>>(root, 'library-settings.json')
+      expect(raw?.scriptureMinFontSizePx).toBeUndefined()
+      expect((raw?.bulletin as Record<string, unknown>).page1Title).toBeUndefined()
+    })
+
+    it('is a no-op once the file is already in the nested shape', async () => {
+      const root = createFakeRoot()
+      const port = createWebSettingsPort(root)
+      const original = await port.getLibrarySettings()
+      original.fontSizesPx.scripture.min = 99
+      await port.saveLibrarySettings(original)
+
+      const reloaded = await port.getLibrarySettings()
+
+      expect(reloaded.fontSizesPx.scripture.min).toBe(99)
+    })
   })
 
   it('returns first-run defaults for machine settings when localStorage is empty', async () => {

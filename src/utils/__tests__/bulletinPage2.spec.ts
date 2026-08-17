@@ -20,16 +20,17 @@ function service(overrides: Partial<Service> = {}): Service {
 // the concept (see buildBulletinPage2's own doc comment) — proves the title is genuinely
 // read from settings, not assumed.
 const bulletinDefaults: BulletinSettings = {
-  page1Title: 'Order of Worship',
-  page2Title: 'Hope Happenings',
-  page1FooterTitle: 'Heart Preparation',
-  page1FooterEnabled: true,
-  page2FooterTitle: 'Thought to Ponder',
-  page2FooterEnabled: true,
-  page2Enabled: true,
-  showAnnouncements: true,
-  showServingSchedule: true,
-  servingScheduleRoleIds: ['Nursery', 'Greeters'],
+  page1: {
+    title: 'Order of Worship',
+    footer: { title: 'Heart Preparation', enabled: true },
+  },
+  page2: {
+    enabled: true,
+    title: 'Hope Happenings',
+    footer: { title: 'Thought to Ponder', enabled: true },
+    announcements: { enabled: true },
+    servingSchedule: { enabled: true, roleIds: ['Nursery', 'Greeters'] },
+  },
 }
 
 describe('findNextWeekService', () => {
@@ -222,7 +223,7 @@ describe('buildBulletinPage2', () => {
     ])
   })
 
-  it('omits announcements entirely when showAnnouncements is off', () => {
+  it('omits announcements entirely when page2.announcements.enabled is off', () => {
     const announcements: Announcement[] = [
       { id: 'a1', text: 'x', eventDate: '2026-06-07', updatedAt: '', updatedByDevice: '' },
     ]
@@ -230,7 +231,10 @@ describe('buildBulletinPage2', () => {
       service(),
       undefined,
       announcements,
-      { ...bulletinDefaults, showAnnouncements: false },
+      {
+        ...bulletinDefaults,
+        page2: { ...bulletinDefaults.page2, announcements: { enabled: false } },
+      },
       personNames,
     )
     expect(doc.upcoming).toEqual([])
@@ -273,12 +277,18 @@ describe('buildBulletinPage2', () => {
     ])
   })
 
-  it('omits the serving schedule entirely when showServingSchedule is off', () => {
+  it('omits the serving schedule entirely when page2.servingSchedule.enabled is off', () => {
     const doc = buildBulletinPage2(
       service(),
       undefined,
       [],
-      { ...bulletinDefaults, showServingSchedule: false },
+      {
+        ...bulletinDefaults,
+        page2: {
+          ...bulletinDefaults.page2,
+          servingSchedule: { ...bulletinDefaults.page2.servingSchedule, enabled: false },
+        },
+      },
       personNames,
     )
     expect(doc.servingSchedule).toBeUndefined()
@@ -301,7 +311,13 @@ describe('buildBulletinPage2', () => {
       service({ bulletinPage2Footer: 'Grace upon grace.' }),
       undefined,
       [],
-      { ...bulletinDefaults, page2FooterEnabled: false },
+      {
+        ...bulletinDefaults,
+        page2: {
+          ...bulletinDefaults.page2,
+          footer: { ...bulletinDefaults.page2.footer, enabled: false },
+        },
+      },
       personNames,
     )
     expect(disabled.footer).toBeUndefined()

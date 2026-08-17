@@ -539,12 +539,12 @@ async function openReadinessIssue(issue: ReadinessIssue) {
   }
 }
 const scriptureFontRange = computed(() => ({
-  minPx: settingsStore.librarySettings?.scriptureMinFontSizePx ?? 72,
-  maxPx: settingsStore.librarySettings?.scriptureMaxFontSizePx ?? 120,
+  minPx: settingsStore.librarySettings?.fontSizesPx.scripture.min ?? 72,
+  maxPx: settingsStore.librarySettings?.fontSizesPx.scripture.max ?? 120,
 }))
 const songFontRange = computed(() => ({
-  minPx: settingsStore.librarySettings?.songMinFontSizePx ?? 16,
-  maxPx: settingsStore.librarySettings?.songMaxFontSizePx ?? 120,
+  minPx: settingsStore.librarySettings?.fontSizesPx.song.min ?? 16,
+  maxPx: settingsStore.librarySettings?.fontSizesPx.song.max ?? 120,
 }))
 const flatSlides = computed<FlatSlide[]>(() =>
   service.value

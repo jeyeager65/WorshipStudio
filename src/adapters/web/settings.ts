@@ -38,27 +38,118 @@ function defaultLibrarySettings(): LibrarySettings {
     apiBibleTranslations: [],
     defaultTranslationCode: 'KJV',
     mediaMaxSyncedFileSizeMb: 50,
-    scriptureMinFontSizePx: 72,
-    scriptureMaxFontSizePx: 120,
-    songMinFontSizePx: 16,
-    songMaxFontSizePx: 120,
-    slideHeaderFontSizePx: 48,
-    slideFooterFontSizePx: 48,
-    wayfindingMinFontSizePx: 56,
-    wayfindingMaxFontSizePx: 150,
+    fontSizesPx: {
+      scripture: { min: 72, max: 120 },
+      song: { min: 16, max: 120 },
+      slide: { header: 48, footer: 48 },
+      wayfinding: { min: 56, max: 150 },
+    },
     bulletin: {
-      page1Title: 'Order of Worship',
-      page2Title: 'Announcements',
-      page1FooterTitle: 'Heart Preparation',
-      page1FooterEnabled: true,
-      page2FooterTitle: 'Thought to Ponder',
-      page2FooterEnabled: true,
-      page2Enabled: true,
-      showAnnouncements: true,
-      showServingSchedule: true,
-      servingScheduleRoleIds: [],
+      page1: {
+        title: 'Order of Worship',
+        footer: { title: 'Heart Preparation', enabled: true },
+      },
+      page2: {
+        enabled: true,
+        title: 'Announcements',
+        footer: { title: 'Thought to Ponder', enabled: true },
+        announcements: { enabled: true },
+        servingSchedule: { enabled: true, roleIds: [] },
+      },
     },
   }
+}
+
+/** One-time reshape of library-settings.json's font-size and bulletin fields from flat to
+ *  nested — mirrors src-tauri/src/commands/settings.rs's migrate_library_settings_shape exactly
+ *  (same target shape, same reasoning). Unlike the credentials/roles migrations, this one IS
+ *  replicated here rather than deferred to Rust as authoritative — it's a pure key reshape with
+ *  no ids or cross-machine convergence involved (unlike e.g. adapters/web/roles.ts's deliberately
+ *  *not* replicating the id migration there), so there's no reason a web-only library should ever
+ *  lose a church's customized font sizes/bulletin wording to this. Operates on a loosely-typed
+ *  raw object, not LibrarySettings itself — readJsonFile's `as T` cast means an old flat file
+ *  would otherwise silently type-check as the new shape while `fontSizesPx`/`bulletin.page1` are
+ *  actually undefined at runtime. */
+function migrateLibrarySettingsShape(raw: Record<string, unknown>): {
+  settings: Record<string, unknown>
+  changed: boolean
+} {
+  let changed = false
+  const settings = { ...raw }
+
+  if (!('fontSizesPx' in settings)) {
+    const takeNumber = (key: string, fallback: number): number => {
+      const value = settings[key]
+      return typeof value === 'number' ? value : fallback
+    }
+    settings.fontSizesPx = {
+      scripture: {
+        min: takeNumber('scriptureMinFontSizePx', 72),
+        max: takeNumber('scriptureMaxFontSizePx', 120),
+      },
+      song: {
+        min: takeNumber('songMinFontSizePx', 16),
+        max: takeNumber('songMaxFontSizePx', 120),
+      },
+      slide: {
+        header: takeNumber('slideHeaderFontSizePx', 48),
+        footer: takeNumber('slideFooterFontSizePx', 48),
+      },
+      wayfinding: {
+        min: takeNumber('wayfindingMinFontSizePx', 56),
+        max: takeNumber('wayfindingMaxFontSizePx', 150),
+      },
+    }
+    for (const key of [
+      'scriptureMinFontSizePx',
+      'scriptureMaxFontSizePx',
+      'songMinFontSizePx',
+      'songMaxFontSizePx',
+      'slideHeaderFontSizePx',
+      'slideFooterFontSizePx',
+      'wayfindingMinFontSizePx',
+      'wayfindingMaxFontSizePx',
+    ]) {
+      delete settings[key]
+    }
+    changed = true
+  }
+
+  const bulletin = settings.bulletin
+  if (bulletin && typeof bulletin === 'object' && !('page1' in bulletin)) {
+    const b = bulletin as Record<string, unknown>
+    const takeString = (key: string, fallback: string): string => {
+      const value = b[key]
+      return typeof value === 'string' ? value : fallback
+    }
+    const takeBool = (key: string): boolean => {
+      const value = b[key]
+      return typeof value === 'boolean' ? value : true
+    }
+    const roleIds = Array.isArray(b.servingScheduleRoleIds) ? b.servingScheduleRoleIds : []
+    settings.bulletin = {
+      page1: {
+        title: takeString('page1Title', 'Order of Worship'),
+        footer: {
+          title: takeString('page1FooterTitle', 'Heart Preparation'),
+          enabled: takeBool('page1FooterEnabled'),
+        },
+      },
+      page2: {
+        enabled: takeBool('page2Enabled'),
+        title: takeString('page2Title', 'Announcements'),
+        footer: {
+          title: takeString('page2FooterTitle', 'Thought to Ponder'),
+          enabled: takeBool('page2FooterEnabled'),
+        },
+        announcements: { enabled: takeBool('showAnnouncements') },
+        servingSchedule: { enabled: takeBool('showServingSchedule'), roleIds },
+      },
+    }
+    changed = true
+  }
+
+  return { settings, changed }
 }
 
 function defaultLibraryCredentials(): LibraryCredentials {
@@ -116,7 +207,13 @@ function migrateLegacyBibleApiKeys(
 export function createWebSettingsPort(root: FileSystemDirectoryHandle): SettingsPort {
   return {
     getLibrarySettings: async () => {
-      return (await readJsonFile<LibrarySettings>(root, LIBRARY_SETTINGS_PATH)) ?? defaultLibrarySettings()
+      const raw = await readJsonFile<Record<string, unknown>>(root, LIBRARY_SETTINGS_PATH)
+      if (!raw) return defaultLibrarySettings()
+      const { settings, changed } = migrateLibrarySettingsShape(raw)
+      if (changed) {
+        await writeJsonFile(root, LIBRARY_SETTINGS_PATH, settings)
+      }
+      return settings as unknown as LibrarySettings
     },
     saveLibrarySettings: async (settings) => {
       await writeJsonFile(root, LIBRARY_SETTINGS_PATH, settings)

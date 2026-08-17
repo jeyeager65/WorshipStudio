@@ -14,8 +14,8 @@ export interface RoleGroupDefinition {
  *  `src-tauri/src/domain/roles.rs` and `src-tauri/src/commands/roles.rs`'s one-time migration.
  *  Referenced by id from `RoleAssignment.roleId`, `ServiceItem.roleId`,
  *  `ServiceTemplateItem.roleId`, `Person.preferredRoleIds`, and
- *  `BulletinSettings.servingScheduleRoleIds` (models/service.ts, models/library.ts), not by
- *  name. */
+ *  `BulletinSettings.page2.servingSchedule.roleIds` (models/service.ts, models/library.ts), not
+ *  by name. */
 export interface RoleDefinition {
   id: string
   name: string
@@ -132,58 +132,80 @@ export interface LibrarySettings {
   }[]
   defaultTranslationCode?: string
   mediaMaxSyncedFileSizeMb: number
-  /**
-   * Scripture slides auto-fit as large as possible within this range (never below the
-   * minimum) — a passage that still doesn't fit at the minimum splits across slides at verse
-   * boundaries instead of shrinking further.
-   */
-  scriptureMinFontSizePx: number
-  scriptureMaxFontSizePx: number
-  /**
-   * Song lyric slides auto-fit as large as possible within this range, shrinking to fit the
-   * whole part (Verse, Chorus, etc.) on one slide — a part is already the atomic unit a
-   * worship leader chose, so unlike scripture it never auto-splits across slides. Unlike
-   * scripture, a line that still doesn't fit at the minimum is left as-is rather than wrapped
-   * at a word boundary (see utils/textAutoFit.ts's wrapLineAtPunctuation).
-   */
-  songMinFontSizePx: number
-  songMaxFontSizePx: number
-  /**
-   * Slide header (the reference/title above the text, e.g. "John 3:16-17") and footer (the
-   * translation/sub-label below it, e.g. "ESV") — fixed position, fixed size, unlike the
-   * auto-fit main text, so they don't move or resize as the main text shrinks/grows.
-   */
-  slideHeaderFontSizePx: number
-  slideFooterFontSizePx: number
-  /**
-   * Reference-only scripture display's "wayfinding" visual (surrounding book names fading out
-   * toward the edges, centered on the reference itself) — the reference and nearest book
-   * approach the max size, the farthest book shown uses the min, everything between is linearly
-   * interpolated by distance. Unlike scripture/song, there's no auto-fit shrink-to-fit safety
-   * net for this text.
-   */
-  wayfindingMinFontSizePx: number
-  wayfindingMaxFontSizePx: number
+  /** Every auto-fit/fixed slide typography range in one place — purely a readability grouping
+   *  (see `FontSizesPx`'s own doc comment), no behavior or semantics change from when these were
+   *  8 flat fields directly on `LibrarySettings`. */
+  fontSizesPx: FontSizesPx
   /** Bulletin/Order of Worship export customization — every label here is this church's own
    *  choice, not a fixed English string (see utils/orderOfWorship.ts and utils/bulletinPage2.ts,
    *  which read these rather than hardcoding "Order of Worship"/"Heart Preparation"/etc.). */
   bulletin: BulletinSettings
 }
 
+/** A min/max auto-fit range in pixels — `FontSizesPx`'s scripture/song/wayfinding fields all
+ *  share this shape (see each field's own doc comment for what "auto-fit" means for that
+ *  content type specifically). */
+export interface FontSizeRange {
+  min: number
+  max: number
+}
+
+/** Was 8 flat fields directly on `LibrarySettings` (`scriptureMinFontSizePx`,
+ *  `scriptureMaxFontSizePx`, `songMinFontSizePx`, ..., `wayfindingMaxFontSizePx`) — grouped here
+ *  purely for readability, not a synced-file split like `LibraryCredentials`: this is still part
+ *  of `LibrarySettings` itself, just nested. See
+ *  `src-tauri/src/commands/settings.rs`'s `migrate_library_settings_shape` for the one-time
+ *  reshape of the old flat keys. */
+export interface FontSizesPx {
+  /** Scripture slides auto-fit as large as possible within this range (never below the
+   *  minimum) — a passage that still doesn't fit at the minimum splits across slides at verse
+   *  boundaries instead of shrinking further. */
+  scripture: FontSizeRange
+  /** Song lyric slides auto-fit as large as possible within this range, shrinking to fit the
+   *  whole part (Verse, Chorus, etc.) on one slide — a part is already the atomic unit a
+   *  worship leader chose, so unlike scripture it never auto-splits across slides. Unlike
+   *  scripture, a line that still doesn't fit at the minimum is left as-is rather than wrapped
+   *  at a word boundary (see utils/textAutoFit.ts's wrapLineAtPunctuation). */
+  song: FontSizeRange
+  /** Slide header (the reference/title above the text, e.g. "John 3:16-17") and footer (the
+   *  translation/sub-label below it, e.g. "ESV") — fixed position, fixed size, unlike the
+   *  auto-fit main text, so they don't move or resize as the main text shrinks/grows. Two
+   *  independently-set fixed sizes, not a min/max pair of each other — grouped here only
+   *  because they're both fixed-position slide chrome. */
+  slide: { header: number; footer: number }
+  /** Reference-only scripture display's "wayfinding" visual (surrounding book names fading out
+   *  toward the edges, centered on the reference itself) — the reference and nearest book
+   *  approach the max size, the farthest book shown uses the min, everything between is linearly
+   *  interpolated by distance. Unlike scripture/song, there's no auto-fit shrink-to-fit safety
+   *  net for this text. */
+  wayfinding: FontSizeRange
+}
+
+/** A page's own optional footer quote — shared shape between page1 and page2 (each church picks
+ *  its own title, and can turn either footer off independently). */
+export interface BulletinPageFooter {
+  title: string
+  enabled: boolean
+}
+
 export interface BulletinSettings {
-  page1Title: string
-  page2Title: string
-  page1FooterTitle: string
-  page1FooterEnabled: boolean
-  page2FooterTitle: string
-  page2FooterEnabled: boolean
-  /** Whole back page on/off — a church that only wants the front-page liturgy. */
-  page2Enabled: boolean
-  showAnnouncements: boolean
-  showServingSchedule: boolean
-  /** RoleDefinition ids (e.g. "Nursery", "Sound Booth") that become columns in the serving
-   *  schedule table — opt-in, since not every role (e.g. Praise Team parts) belongs in it. */
-  servingScheduleRoleIds: string[]
+  page1: {
+    title: string
+    footer: BulletinPageFooter
+  }
+  page2: {
+    /** Whole back page on/off — a church that only wants the front-page liturgy. */
+    enabled: boolean
+    title: string
+    footer: BulletinPageFooter
+    announcements: { enabled: boolean }
+    servingSchedule: {
+      enabled: boolean
+      /** RoleDefinition ids (e.g. "Nursery", "Sound Booth") that become columns in the serving
+       *  schedule table — opt-in, since not every role (e.g. Praise Team parts) belongs in it. */
+      roleIds: string[]
+    }
+  }
 }
 
 /** Per-machine settings — Tauri app-data dir, never synced. */
