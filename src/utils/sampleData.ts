@@ -1,7 +1,12 @@
 import type { Song } from '@/models/song'
 import type { Service, RoleAssignment, ServiceTemplate } from '@/models/service'
 import type { Person, Theme } from '@/models/library'
-import type { RoleGroup, ServiceTypeDefinition, SongCollectionDefinition } from '@/models/settings'
+import type {
+  RoleGroupDefinition,
+  RoleDefinition,
+  ServiceTypeDefinition,
+  SongCollectionDefinition,
+} from '@/models/settings'
 
 // Fixed (not random) IDs, all under a `sample-` sub-prefix — this is what makes "Load Sample
 // Data" idempotent: clicking it again just refreshes these same records in place (moving the
@@ -227,7 +232,7 @@ export const samplePeople: Person[] = [
     lastName: 'Smith',
     preferredName: 'Jim',
     title: 'Pastor',
-    preferredRoles: ['Sermon'],
+    preferredRoleIds: ['role-sample-sermon'],
     unavailableDateRanges: [],
     updatedAt: now,
     updatedByDevice: device,
@@ -236,7 +241,7 @@ export const samplePeople: Person[] = [
     id: 'person-sample-sarah-mitchell',
     firstName: 'Sarah',
     lastName: 'Mitchell',
-    preferredRoles: ['Vocals'],
+    preferredRoleIds: ['role-sample-vocals'],
     unavailableDateRanges: [],
     updatedAt: now,
     updatedByDevice: device,
@@ -245,7 +250,7 @@ export const samplePeople: Person[] = [
     id: 'person-sample-marcus-johnson',
     firstName: 'Marcus',
     lastName: 'Johnson',
-    preferredRoles: ['Piano'],
+    preferredRoleIds: ['role-sample-piano'],
     unavailableDateRanges: [],
     updatedAt: now,
     updatedByDevice: device,
@@ -254,7 +259,7 @@ export const samplePeople: Person[] = [
     id: 'person-sample-priya-patel',
     firstName: 'Priya',
     lastName: 'Patel',
-    preferredRoles: ['Guitar'],
+    preferredRoleIds: ['role-sample-guitar'],
     unavailableDateRanges: [],
     updatedAt: now,
     updatedByDevice: device,
@@ -263,7 +268,7 @@ export const samplePeople: Person[] = [
     id: 'person-sample-daniel-kim',
     firstName: 'Daniel',
     lastName: 'Kim',
-    preferredRoles: ['Drums'],
+    preferredRoleIds: ['role-sample-drums'],
     unavailableDateRanges: [],
     updatedAt: now,
     updatedByDevice: device,
@@ -272,7 +277,7 @@ export const samplePeople: Person[] = [
     id: 'person-sample-rachel-nguyen',
     firstName: 'Rachel',
     lastName: 'Nguyen',
-    preferredRoles: ['Sound Booth'],
+    preferredRoleIds: ['role-sample-sound-booth'],
     unavailableDateRanges: [],
     updatedAt: now,
     updatedByDevice: device,
@@ -281,7 +286,7 @@ export const samplePeople: Person[] = [
     id: 'person-sample-tom-alvarez',
     firstName: 'Tom',
     lastName: 'Alvarez',
-    preferredRoles: ['Scripture Reading'],
+    preferredRoleIds: ['role-sample-scripture-reading'],
     unavailableDateRanges: [],
     updatedAt: now,
     updatedByDevice: device,
@@ -290,7 +295,7 @@ export const samplePeople: Person[] = [
     id: 'person-sample-linda-brooks',
     firstName: 'Linda',
     lastName: 'Brooks',
-    preferredRoles: ['Greeter', 'Nursery'],
+    preferredRoleIds: ['role-sample-greeter', 'role-sample-nursery'],
     unavailableDateRanges: [],
     updatedAt: now,
     updatedByDevice: device,
@@ -331,24 +336,57 @@ export const sampleCollections: SongCollectionDefinition[] = [
   { id: 'collection-sample-hymnal-two', name: 'Hymnal Two', abbreviation: 'H2' },
 ]
 
-/** Every role used by samplePeople/rosters below, organized into categories — merged into
- *  LibrarySettings.roleGroups. */
-export const sampleRoleGroups: RoleGroup[] = [
-  { name: 'Praise Team', roles: ['Drums', 'Guitar', 'Piano', 'Vocals'] },
-  { name: 'Building', roles: ['Open', 'Close'] },
+/** Categories for sampleRoles below — merged into its own role-groups.json, not
+ *  LibrarySettings. */
+export const sampleRoleGroups: RoleGroupDefinition[] = [
+  { id: 'group-sample-praise-team', name: 'Praise Team' },
+  { id: 'group-sample-building', name: 'Building' },
+  { id: 'group-sample-service-items', name: 'Service Items' },
+  { id: 'group-sample-general', name: 'General' },
+]
+
+/** Every role used by samplePeople/rosters below — merged into its own roles.json, not
+ *  LibrarySettings. */
+export const sampleRoles: RoleDefinition[] = [
+  { id: 'role-sample-drums', name: 'Drums', groupId: 'group-sample-praise-team' },
+  { id: 'role-sample-guitar', name: 'Guitar', groupId: 'group-sample-praise-team' },
+  { id: 'role-sample-piano', name: 'Piano', groupId: 'group-sample-praise-team' },
+  { id: 'role-sample-vocals', name: 'Vocals', groupId: 'group-sample-praise-team' },
+  { id: 'role-sample-open', name: 'Open', groupId: 'group-sample-building' },
+  { id: 'role-sample-close', name: 'Close', groupId: 'group-sample-building' },
   {
-    name: 'Service Items',
-    roles: [
-      'Welcome and Announcements',
-      'Scripture Reading',
-      'Prayer of Praise and Confession',
-      'Sermon',
-      'Prayer of Thanksgiving and Petition',
-    ],
+    id: 'role-sample-welcome-announcements',
+    name: 'Welcome and Announcements',
+    groupId: 'group-sample-service-items',
   },
   {
-    name: 'General',
-    roles: ['Greeter', 'Sound Booth', 'Nursery', "Children's Church K-2", "Children's Church 3-4"],
+    id: 'role-sample-scripture-reading',
+    name: 'Scripture Reading',
+    groupId: 'group-sample-service-items',
+  },
+  {
+    id: 'role-sample-prayer-praise',
+    name: 'Prayer of Praise and Confession',
+    groupId: 'group-sample-service-items',
+  },
+  { id: 'role-sample-sermon', name: 'Sermon', groupId: 'group-sample-service-items' },
+  {
+    id: 'role-sample-prayer-thanksgiving',
+    name: 'Prayer of Thanksgiving and Petition',
+    groupId: 'group-sample-service-items',
+  },
+  { id: 'role-sample-greeter', name: 'Greeter', groupId: 'group-sample-general' },
+  { id: 'role-sample-sound-booth', name: 'Sound Booth', groupId: 'group-sample-general' },
+  { id: 'role-sample-nursery', name: 'Nursery', groupId: 'group-sample-general' },
+  {
+    id: 'role-sample-kids-k2',
+    name: "Children's Church K-2",
+    groupId: 'group-sample-general',
+  },
+  {
+    id: 'role-sample-kids-34',
+    name: "Children's Church 3-4",
+    groupId: 'group-sample-general',
   },
 ]
 
@@ -379,7 +417,7 @@ export const sampleServiceTemplates: ServiceTemplate[] = [
         id: 'tpl-welcome',
         kind: 'bulletin-note',
         label: 'Welcome and Announcements',
-        role: 'Welcome and Announcements',
+        roleId: 'role-sample-welcome-announcements',
       },
       {
         id: 'tpl-silent-prep',
@@ -394,7 +432,7 @@ export const sampleServiceTemplates: ServiceTemplate[] = [
         id: 'tpl-prayer-praise',
         kind: 'bulletin-note',
         label: 'Prayer of Praise and Confession',
-        role: 'Prayer of Praise and Confession',
+        roleId: 'role-sample-prayer-praise',
       },
       { id: 'tpl-song-3', kind: 'song', label: '' },
       { id: 'tpl-song-4', kind: 'song', label: '' },
@@ -402,16 +440,21 @@ export const sampleServiceTemplates: ServiceTemplate[] = [
         id: 'tpl-scripture-reading',
         kind: 'scripture',
         label: 'Scripture Reading',
-        role: 'Scripture Reading',
+        roleId: 'role-sample-scripture-reading',
       },
       {
         id: 'tpl-prayer-thanksgiving',
         kind: 'bulletin-note',
         label: 'Prayer of Thanksgiving and Petition',
-        role: 'Prayer of Thanksgiving and Petition',
+        roleId: 'role-sample-prayer-thanksgiving',
       },
       { id: 'tpl-tithes-offering', kind: 'song', label: 'Tithes and Offerings' },
-      { id: 'tpl-sermon', kind: 'sermon', label: 'Worship Through the Word', role: 'Sermon' },
+      {
+        id: 'tpl-sermon',
+        kind: 'sermon',
+        label: 'Worship Through the Word',
+        roleId: 'role-sample-sermon',
+      },
       {
         id: 'tpl-silent-reflection',
         kind: 'bulletin-note',
@@ -419,17 +462,17 @@ export const sampleServiceTemplates: ServiceTemplate[] = [
         note: "(please spend the next few moments silently reflecting on today's service)",
       },
       { id: 'tpl-closing-song', kind: 'song', label: 'Closing Song' },
-      { id: 'tpl-drums', kind: 'role-only', label: '', role: 'Drums' },
-      { id: 'tpl-guitar', kind: 'role-only', label: '', role: 'Guitar' },
-      { id: 'tpl-piano', kind: 'role-only', label: '', role: 'Piano' },
-      { id: 'tpl-vocals', kind: 'role-only', label: '', role: 'Vocals', count: 2 },
-      { id: 'tpl-greeter', kind: 'role-only', label: '', role: 'Greeter', count: 2 },
-      { id: 'tpl-sound-booth', kind: 'role-only', label: '', role: 'Sound Booth' },
-      { id: 'tpl-nursery', kind: 'role-only', label: '', role: 'Nursery', count: 2 },
-      { id: 'tpl-kids-k2', kind: 'role-only', label: '', role: "Children's Church K-2" },
-      { id: 'tpl-kids-34', kind: 'role-only', label: '', role: "Children's Church 3-4" },
-      { id: 'tpl-open', kind: 'role-only', label: '', role: 'Open' },
-      { id: 'tpl-close', kind: 'role-only', label: '', role: 'Close' },
+      { id: 'tpl-drums', kind: 'role-only', label: '', roleId: 'role-sample-drums' },
+      { id: 'tpl-guitar', kind: 'role-only', label: '', roleId: 'role-sample-guitar' },
+      { id: 'tpl-piano', kind: 'role-only', label: '', roleId: 'role-sample-piano' },
+      { id: 'tpl-vocals', kind: 'role-only', label: '', roleId: 'role-sample-vocals', count: 2 },
+      { id: 'tpl-greeter', kind: 'role-only', label: '', roleId: 'role-sample-greeter', count: 2 },
+      { id: 'tpl-sound-booth', kind: 'role-only', label: '', roleId: 'role-sample-sound-booth' },
+      { id: 'tpl-nursery', kind: 'role-only', label: '', roleId: 'role-sample-nursery', count: 2 },
+      { id: 'tpl-kids-k2', kind: 'role-only', label: '', roleId: 'role-sample-kids-k2' },
+      { id: 'tpl-kids-34', kind: 'role-only', label: '', roleId: 'role-sample-kids-34' },
+      { id: 'tpl-open', kind: 'role-only', label: '', roleId: 'role-sample-open' },
+      { id: 'tpl-close', kind: 'role-only', label: '', roleId: 'role-sample-close' },
     ],
   },
   {
@@ -441,7 +484,7 @@ export const sampleServiceTemplates: ServiceTemplate[] = [
         id: 'tpl-communion-welcome',
         kind: 'bulletin-note',
         label: 'Welcome and Announcements',
-        role: 'Welcome and Announcements',
+        roleId: 'role-sample-welcome-announcements',
       },
       {
         id: 'tpl-communion-silent-prep',
@@ -459,7 +502,7 @@ export const sampleServiceTemplates: ServiceTemplate[] = [
         id: 'tpl-communion-prayer-praise',
         kind: 'bulletin-note',
         label: 'Prayer of Praise and Confession',
-        role: 'Prayer of Praise and Confession',
+        roleId: 'role-sample-prayer-praise',
       },
       { id: 'tpl-communion-song-2', kind: 'song', label: '' },
       { id: 'tpl-communion-song-3', kind: 'song', label: '' },
@@ -467,20 +510,20 @@ export const sampleServiceTemplates: ServiceTemplate[] = [
         id: 'tpl-communion-scripture-reading',
         kind: 'scripture',
         label: 'Scripture Reading',
-        role: 'Scripture Reading',
+        roleId: 'role-sample-scripture-reading',
       },
       {
         id: 'tpl-communion-prayer-thanksgiving',
         kind: 'bulletin-note',
         label: 'Prayer of Thanksgiving and Petition',
-        role: 'Prayer of Thanksgiving and Petition',
+        roleId: 'role-sample-prayer-thanksgiving',
       },
       { id: 'tpl-communion-tithes-offering', kind: 'song', label: 'Tithes and Offerings' },
       {
         id: 'tpl-communion-sermon',
         kind: 'sermon',
         label: 'Worship Through the Word',
-        role: 'Sermon',
+        roleId: 'role-sample-sermon',
       },
       { id: 'tpl-communion-song-4', kind: 'song', label: '' },
       {
@@ -490,27 +533,50 @@ export const sampleServiceTemplates: ServiceTemplate[] = [
         note: '(we will sing during the serving of the cup)',
       },
       { id: 'tpl-communion-closing-song', kind: 'song', label: 'Closing Song' },
-      { id: 'tpl-communion-drums', kind: 'role-only', label: '', role: 'Drums' },
-      { id: 'tpl-communion-guitar', kind: 'role-only', label: '', role: 'Guitar' },
-      { id: 'tpl-communion-piano', kind: 'role-only', label: '', role: 'Piano' },
-      { id: 'tpl-communion-vocals', kind: 'role-only', label: '', role: 'Vocals', count: 2 },
-      { id: 'tpl-communion-greeter', kind: 'role-only', label: '', role: 'Greeter', count: 2 },
-      { id: 'tpl-communion-sound-booth', kind: 'role-only', label: '', role: 'Sound Booth' },
-      { id: 'tpl-communion-nursery', kind: 'role-only', label: '', role: 'Nursery', count: 2 },
+      { id: 'tpl-communion-drums', kind: 'role-only', label: '', roleId: 'role-sample-drums' },
+      { id: 'tpl-communion-guitar', kind: 'role-only', label: '', roleId: 'role-sample-guitar' },
+      { id: 'tpl-communion-piano', kind: 'role-only', label: '', roleId: 'role-sample-piano' },
+      {
+        id: 'tpl-communion-vocals',
+        kind: 'role-only',
+        label: '',
+        roleId: 'role-sample-vocals',
+        count: 2,
+      },
+      {
+        id: 'tpl-communion-greeter',
+        kind: 'role-only',
+        label: '',
+        roleId: 'role-sample-greeter',
+        count: 2,
+      },
+      {
+        id: 'tpl-communion-sound-booth',
+        kind: 'role-only',
+        label: '',
+        roleId: 'role-sample-sound-booth',
+      },
+      {
+        id: 'tpl-communion-nursery',
+        kind: 'role-only',
+        label: '',
+        roleId: 'role-sample-nursery',
+        count: 2,
+      },
       {
         id: 'tpl-communion-kids-k2',
         kind: 'role-only',
         label: '',
-        role: "Children's Church K-2",
+        roleId: 'role-sample-kids-k2',
       },
       {
         id: 'tpl-communion-kids-34',
         kind: 'role-only',
         label: '',
-        role: "Children's Church 3-4",
+        roleId: 'role-sample-kids-34',
       },
-      { id: 'tpl-communion-open', kind: 'role-only', label: '', role: 'Open' },
-      { id: 'tpl-communion-close', kind: 'role-only', label: '', role: 'Close' },
+      { id: 'tpl-communion-open', kind: 'role-only', label: '', roleId: 'role-sample-open' },
+      { id: 'tpl-communion-close', kind: 'role-only', label: '', roleId: 'role-sample-close' },
     ],
   },
 ]
@@ -550,25 +616,37 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
   const future = nthSundayAfter(referenceDate, 3)
 
   const pastRoster: RoleAssignment[] = [
-    { role: 'Sermon', personId: 'person-sample-james-smith', tentative: false },
-    { role: 'Vocals', personId: 'person-sample-sarah-mitchell', tentative: false },
-    { role: 'Piano', personId: 'person-sample-marcus-johnson', tentative: false },
-    { role: 'Guitar', personId: 'person-sample-priya-patel', tentative: false },
-    { role: 'Drums', personId: 'person-sample-daniel-kim', tentative: false },
-    { role: 'Sound Booth', personId: 'person-sample-rachel-nguyen', tentative: false },
-    { role: 'Scripture Reading', personId: 'person-sample-tom-alvarez', tentative: false },
+    { roleId: 'role-sample-sermon', personId: 'person-sample-james-smith', tentative: false },
+    { roleId: 'role-sample-vocals', personId: 'person-sample-sarah-mitchell', tentative: false },
+    { roleId: 'role-sample-piano', personId: 'person-sample-marcus-johnson', tentative: false },
+    { roleId: 'role-sample-guitar', personId: 'person-sample-priya-patel', tentative: false },
+    { roleId: 'role-sample-drums', personId: 'person-sample-daniel-kim', tentative: false },
+    {
+      roleId: 'role-sample-sound-booth',
+      personId: 'person-sample-rachel-nguyen',
+      tentative: false,
+    },
+    {
+      roleId: 'role-sample-scripture-reading',
+      personId: 'person-sample-tom-alvarez',
+      tentative: false,
+    },
   ]
 
   // Marcus is deliberately double-booked (Piano AND Open) — exercises the roster's
   // same-week-two-roles conflict detection (see rosterConflicts.ts).
   const soonRoster: RoleAssignment[] = [
-    { role: 'Sermon', personId: 'person-sample-james-smith', tentative: false },
-    { role: 'Vocals', personId: 'person-sample-sarah-mitchell', tentative: false },
-    { role: 'Piano', personId: 'person-sample-marcus-johnson', tentative: false },
-    { role: 'Open', personId: 'person-sample-marcus-johnson', tentative: false },
-    { role: 'Guitar', personId: 'person-sample-priya-patel', tentative: true },
-    { role: 'Sound Booth', personId: 'person-sample-rachel-nguyen', tentative: false },
-    { role: 'Greeter', personId: 'person-sample-linda-brooks', tentative: false },
+    { roleId: 'role-sample-sermon', personId: 'person-sample-james-smith', tentative: false },
+    { roleId: 'role-sample-vocals', personId: 'person-sample-sarah-mitchell', tentative: false },
+    { roleId: 'role-sample-piano', personId: 'person-sample-marcus-johnson', tentative: false },
+    { roleId: 'role-sample-open', personId: 'person-sample-marcus-johnson', tentative: false },
+    { roleId: 'role-sample-guitar', personId: 'person-sample-priya-patel', tentative: true },
+    {
+      roleId: 'role-sample-sound-booth',
+      personId: 'person-sample-rachel-nguyen',
+      tentative: false,
+    },
+    { roleId: 'role-sample-greeter', personId: 'person-sample-linda-brooks', tentative: false },
   ]
 
   return [
@@ -629,7 +707,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
           ],
           mainPassageId: 'passage-sermon',
           outline: [],
-          role: 'Sermon',
+          roleId: 'role-sample-sermon',
         },
       ],
       assignments: pastRoster,
@@ -692,7 +770,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
           ],
           mainPassageId: 'passage-sermon',
           outline: [],
-          role: 'Sermon',
+          roleId: 'role-sample-sermon',
         },
       ],
       assignments: soonRoster,
@@ -732,12 +810,16 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
           ],
           mainPassageId: 'passage-sermon',
           outline: [],
-          role: 'Sermon',
+          roleId: 'role-sample-sermon',
         },
       ],
       assignments: [
-        { role: 'Sermon', personId: 'person-sample-james-smith', tentative: false },
-        { role: 'Sound Booth', personId: 'person-sample-rachel-nguyen', tentative: false },
+        { roleId: 'role-sample-sermon', personId: 'person-sample-james-smith', tentative: false },
+        {
+          roleId: 'role-sample-sound-booth',
+          personId: 'person-sample-rachel-nguyen',
+          tentative: false,
+        },
       ],
       updatedAt: now,
       updatedByDevice: device,
@@ -757,7 +839,9 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
           arrangement: { sequence: ['v1', 'v2'] },
         },
       ],
-      assignments: [{ role: 'Vocals', personId: 'person-sample-sarah-mitchell', tentative: true }],
+      assignments: [
+        { roleId: 'role-sample-vocals', personId: 'person-sample-sarah-mitchell', tentative: true },
+      ],
       updatedAt: now,
       updatedByDevice: device,
     },

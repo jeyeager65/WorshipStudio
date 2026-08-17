@@ -29,7 +29,7 @@ const bulletinDefaults: BulletinSettings = {
   page2Enabled: true,
   showAnnouncements: true,
   showServingSchedule: true,
-  servingScheduleRoles: ['Nursery', 'Greeters'],
+  servingScheduleRoleIds: ['Nursery', 'Greeters'],
 }
 
 describe('findNextWeekService', () => {
@@ -241,16 +241,16 @@ describe('buildBulletinPage2', () => {
     const thisWeek = service({
       date: '2026-06-07',
       assignments: [
-        { role: 'Nursery', personId: 'p-suzie', tentative: false },
-        { role: 'Greeters', personId: 'p-rob', tentative: false },
-        { role: 'Greeters', personId: 'p-anne', tentative: false },
-        { role: 'Guitar', personId: 'p-rob', tentative: false }, // not a configured column
+        { roleId: 'Nursery', personId: 'p-suzie', tentative: false },
+        { roleId: 'Greeters', personId: 'p-rob', tentative: false },
+        { roleId: 'Greeters', personId: 'p-anne', tentative: false },
+        { roleId: 'Guitar', personId: 'p-rob', tentative: false }, // not a configured column
       ],
     })
     const nextWeek = service({
       id: 'svc-2',
       date: '2026-06-14',
-      assignments: [{ role: 'Nursery', personId: 'p-rob', tentative: false }],
+      assignments: [{ roleId: 'Nursery', personId: 'p-rob', tentative: false }],
     })
     const doc = buildBulletinPage2(thisWeek, nextWeek, [], bulletinDefaults, personNames)
     expect(doc.servingSchedule).toEqual({
@@ -264,7 +264,7 @@ describe('buildBulletinPage2', () => {
 
   it('shows "TBD" (not an error, not blank) when a role has no one assigned yet', () => {
     const thisWeek = service({
-      assignments: [{ role: 'Nursery', personId: 'p-suzie', tentative: false }],
+      assignments: [{ roleId: 'Nursery', personId: 'p-suzie', tentative: false }],
     })
     const doc = buildBulletinPage2(thisWeek, undefined, [], bulletinDefaults, personNames)
     expect(doc.servingSchedule?.rows).toEqual([

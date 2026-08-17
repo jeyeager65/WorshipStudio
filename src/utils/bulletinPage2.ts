@@ -13,6 +13,7 @@ export interface BulletinPage2Line {
 }
 
 export interface ServingScheduleRow {
+  /** Resolved display name, not the underlying RoleDefinition id — printed directly. */
   role: string
   /** One entry per person assigned to this role — kept as a list (not pre-joined into one
    *  comma-separated string) so the bulletin can print one name per line. `['TBD']` when no one
@@ -95,12 +96,12 @@ function addDays(date: string, days: number): string {
 }
 
 function namesForRole(
-  role: string,
+  roleId: string,
   service: Service | undefined,
   personNames: Map<string, string>,
 ): string[] {
   const names = (service?.assignments ?? [])
-    .filter((a) => a.role === role && a.personId)
+    .filter((a) => a.roleId === roleId && a.personId)
     .map((a) => personNames.get(a.personId!))
     .filter((name): name is string => !!name)
   // No one assigned yet — most often "Next Week" simply hasn't been staffed at bulletin-print
@@ -109,18 +110,19 @@ function namesForRole(
 }
 
 function buildServingSchedule(
-  roles: string[],
+  roleIds: string[],
   thisWeek: Service,
   nextWeek: Service | undefined,
   personNames: Map<string, string>,
+  roleNames: Map<string, string>,
 ): ServingScheduleTable | undefined {
-  if (roles.length === 0) return undefined
+  if (roleIds.length === 0) return undefined
   return {
     headers: ['Role', 'This Week', 'Next Week'],
-    rows: roles.map((role) => ({
-      role,
-      thisWeek: namesForRole(role, thisWeek, personNames),
-      nextWeek: namesForRole(role, nextWeek, personNames),
+    rows: roleIds.map((roleId) => ({
+      role: roleNames.get(roleId) ?? roleId,
+      thisWeek: namesForRole(roleId, thisWeek, personNames),
+      nextWeek: namesForRole(roleId, nextWeek, personNames),
     })),
   }
 }
@@ -138,6 +140,7 @@ export function buildBulletinPage2(
   announcements: Announcement[],
   bulletin: BulletinSettings,
   personNames: Map<string, string>,
+  roleNames: Map<string, string> = new Map(),
 ): BulletinPage2Doc {
   const { upcoming, general } = bulletin.showAnnouncements
     ? splitForBulletin(announcements, service.date)
@@ -152,7 +155,13 @@ export function buildBulletinPage2(
     })),
     general: general.map((a) => ({ text: a.text })),
     servingSchedule: bulletin.showServingSchedule
-      ? buildServingSchedule(bulletin.servingScheduleRoles, service, nextWeekService, personNames)
+      ? buildServingSchedule(
+          bulletin.servingScheduleRoleIds,
+          service,
+          nextWeekService,
+          personNames,
+          roleNames,
+        )
       : undefined,
     footer:
       bulletin.page2FooterEnabled && service.bulletinPage2Footer

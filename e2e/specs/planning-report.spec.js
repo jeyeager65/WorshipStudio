@@ -50,7 +50,7 @@ describe('Multi-Week Planning Report', () => {
           id: personId,
           firstName: 'Jordan',
           lastName: 'E2EReport',
-          preferredRoles: [],
+          preferredRoleIds: [],
           unavailableDateRanges: [],
           updatedAt: '2026-07-26T00:00:00Z',
           updatedByDevice: 'e2e',
@@ -70,7 +70,7 @@ describe('Multi-Week Planning Report', () => {
         {
           id: serviceId,
           date: futureDate,
-          type: 'Sunday Morning Worship',
+          serviceTypeId: 'type-e2e-planning-report',
           // The sermon ServiceItem is the sole source of truth for title/passage/preacher now
           // (see utils/sermonInfo.ts) — there's no separate service-level sermon field anymore.
           items: [
@@ -84,7 +84,7 @@ describe('Multi-Week Planning Report', () => {
               outline: [],
             },
           ],
-          assignments: [{ role: 'Piano', personId, tentative: false }],
+          assignments: [{ roleId: 'Piano', personId, tentative: false }],
           updatedAt: '2026-07-26T00:00:00Z',
           updatedByDevice: 'e2e',
         },

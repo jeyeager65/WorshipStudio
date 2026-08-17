@@ -251,7 +251,7 @@ mod tests {
                     song_id: song_id.to_string(),
                     arrangement: Arrangement { sequence: vec![] },
                 },
-                role: None,
+                role_id: None,
                 bulletin_label: None,
                 bulletin_note: None,
                 auto_advance: None,

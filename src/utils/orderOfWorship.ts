@@ -38,12 +38,12 @@ export interface OrderOfWorshipDoc {
 // it there is what fills this in. Absent role (or no matching/unassigned RoleAssignment) means
 // no one shows, same as before — e.g. a "Silent Preparation" bulletin note needs no one at all.
 function resolveRolePerson(
-  role: string | undefined,
+  roleId: string | undefined,
   assignments: RoleAssignment[] | undefined,
   personNames: Map<string, string>,
 ): string | undefined {
-  if (!role) return undefined
-  const assignment = assignments?.find((a) => a.role === role)
+  if (!roleId) return undefined
+  const assignment = assignments?.find((a) => a.roleId === roleId)
   return assignment?.personId ? personNames.get(assignment.personId) : undefined
 }
 
@@ -71,7 +71,7 @@ function songLine(
   return {
     role: roleFor(item, undefined),
     text: `${song?.title ?? 'Unknown song'}${citation ? ` ${citation}` : ''}`,
-    person: resolveRolePerson(item.role, assignments, personNames),
+    person: resolveRolePerson(item.roleId, assignments, personNames),
     note: item.bulletinNote,
   }
 }
@@ -89,7 +89,7 @@ function slideRefLine(
   return {
     role: roleFor(item, slide?.label ?? 'Slide'),
     text: '',
-    person: resolveRolePerson(item.role, assignments, personNames),
+    person: resolveRolePerson(item.roleId, assignments, personNames),
     note: item.bulletinNote,
   }
 }
@@ -153,7 +153,7 @@ function lineFor(
       return {
         role: roleFor(item, 'Scripture Reading:'),
         text: item.reference,
-        person: resolveRolePerson(item.role, assignments, personNames),
+        person: resolveRolePerson(item.roleId, assignments, personNames),
         note: item.bulletinNote,
       }
     case 'slide-ref':
@@ -162,7 +162,7 @@ function lineFor(
       return {
         role: roleFor(item, item.slides[0]?.label ?? 'Custom Slide'),
         text: '',
-        person: resolveRolePerson(item.role, assignments, personNames),
+        person: resolveRolePerson(item.roleId, assignments, personNames),
         note: item.bulletinNote,
       }
     case 'media':
@@ -171,21 +171,21 @@ function lineFor(
       return {
         role: roleFor(item, undefined),
         text: '',
-        person: resolveRolePerson(item.role, assignments, personNames),
+        person: resolveRolePerson(item.roleId, assignments, personNames),
         note: item.bulletinNote,
       }
     case 'video':
       return {
         role: roleFor(item, undefined),
         text: '',
-        person: resolveRolePerson(item.role, assignments, personNames),
+        person: resolveRolePerson(item.roleId, assignments, personNames),
         note: item.bulletinNote,
       }
     case 'audio':
       return {
         role: roleFor(item, undefined),
         text: '[Audio]',
-        person: resolveRolePerson(item.role, assignments, personNames),
+        person: resolveRolePerson(item.roleId, assignments, personNames),
         note: item.bulletinNote,
       }
     case 'external-app':
@@ -194,7 +194,7 @@ function lineFor(
       return {
         role: roleFor(item, undefined),
         text: '[External App]',
-        person: resolveRolePerson(item.role, assignments, personNames),
+        person: resolveRolePerson(item.roleId, assignments, personNames),
         note: item.bulletinNote,
       }
     case 'sermon': {
@@ -212,7 +212,7 @@ function lineFor(
       return {
         role: roleFor(item, item.title ?? 'Worship Through the Word'),
         text: '',
-        person: resolveRolePerson(item.role, assignments, personNames),
+        person: resolveRolePerson(item.roleId, assignments, personNames),
         note: item.bulletinNote ?? titleWithPassage,
       }
     }
@@ -220,14 +220,14 @@ function lineFor(
       return {
         role: roleFor(item, 'Note'),
         text: '',
-        person: resolveRolePerson(item.role, assignments, personNames),
+        person: resolveRolePerson(item.roleId, assignments, personNames),
         note: item.bulletinNote,
       }
     case 'placeholder':
       return {
         role: roleFor(item, item.label),
         text: '(to be filled in)',
-        person: resolveRolePerson(item.role, assignments, personNames),
+        person: resolveRolePerson(item.roleId, assignments, personNames),
         note: item.bulletinNote,
       }
   }

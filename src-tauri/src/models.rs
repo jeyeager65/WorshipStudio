@@ -195,15 +195,16 @@ pub struct ServiceItem {
     /// default for the item's content type is resolved by the frontend.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme_id: Option<String>,
-    /// Who's doing this part (Elder leading prayer, scripture reader, etc.) — a role name from
-    /// the same catalog Assignments uses (LibrarySettings::role_groups), not a Person id
-    /// directly: the actual person is whoever that service's Assignments has for this role, so
-    /// assigning it there is what fills this in (and keeps conflict-detection/templates
-    /// consistent). Optional and often absent — a "Silent Preparation" bulletin note, for
-    /// example, needs no one assigned at all. For the sermon item this is how its preacher is
-    /// resolved too — the same role/assignments mechanism as every other item type.
+    /// Who's doing this part (Elder leading prayer, scripture reader, etc.) — a `RoleDefinition`
+    /// id from the same catalog Assignments uses (`domain::roles`), not a Person id directly:
+    /// the actual person is whoever that service's Assignments has for this role, so assigning
+    /// it there is what fills this in (and keeps conflict-detection/templates consistent).
+    /// Optional and often absent — a "Silent Preparation" bulletin note, for example, needs no
+    /// one assigned at all. For the sermon item this is how its preacher is resolved too — the
+    /// same role/assignments mechanism as every other item type. Was named `role` and held the
+    /// role's plain *name* before the one-time migration in `commands::roles`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub role: Option<String>,
+    pub role_id: Option<String>,
     /// Overrides this item's default Order of Worship heading (e.g. Scripture's hardcoded
     /// "Scripture Reading:" becomes "Scriptural Call to Worship:"; a song, which has no default
     /// label at all, can be given one like "Tithes and Offerings:").
@@ -236,7 +237,9 @@ pub struct AutoAdvance {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RoleAssignment {
-    pub role: String,
+    /// A `RoleDefinition.id` — was named `role` and held the role's plain *name* before the
+    /// one-time migration in `commands::roles`.
+    pub role_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub person_id: Option<String>,
     pub tentative: bool,
@@ -262,9 +265,11 @@ pub struct Person {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
     /// Not a restriction — just makes this person show up first when filling roles for
-    /// these (see design/sketches/volunteer-editor.html).
+    /// these (see design/sketches/volunteer-editor.html). `RoleDefinition.id`s — was named
+    /// `preferredRoles` and held role plain *names* before the one-time migration in
+    /// `commands::roles`.
     #[serde(default)]
-    pub preferred_roles: Vec<String>,
+    pub preferred_role_ids: Vec<String>,
     #[serde(default)]
     pub unavailable_date_ranges: Vec<UnavailableDateRange>,
     pub updated_at: String,
@@ -298,15 +303,32 @@ pub struct Announcement {
     pub updated_by_device: String,
 }
 
-/// A named category of roles (e.g. "Praise Team" grouping Drums/Guitar/Piano/Vocals) — purely
-/// organizational, since a role itself is still just a plain string referenced by
-/// RoleAssignment::role/ServiceTemplateItem::role.
+/// Lives in its own `role-groups.json`, a peer of `library-settings.json`, not a field on it —
+/// see `domain::role_groups` and `commands::roles`'s one-time migration off the old
+/// nested-in-settings shape (`RoleGroup { name, roles: Vec<String> }`, where a role was just a
+/// bare string living inside whichever group's `roles` array contained it). A role group no
+/// longer owns its member roles directly — see `RoleDefinition::group_id` below for the
+/// many-to-one link, chosen so a role can be reassigned to a different group later without
+/// losing its identity or any of its historical references.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct RoleGroup {
+pub struct RoleGroupDefinition {
+    pub id: String,
     pub name: String,
-    #[serde(default)]
-    pub roles: Vec<String>,
+}
+
+/// Lives in its own `roles.json`, a peer of `library-settings.json` and `role-groups.json` — see
+/// `domain::roles` and `commands::roles`'s one-time migration. Referenced by id from
+/// `RoleAssignment::role_id`, `ServiceItem::role_id`, `ServiceTemplateItem::role_id`,
+/// `Person::preferred_role_ids`, and `BulletinSettings::serving_schedule_role_ids` — not by name.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RoleDefinition {
+    pub id: String,
+    pub name: String,
+    /// The `RoleGroupDefinition.id` this role belongs to — many-to-one (a role belongs to
+    /// exactly one group).
+    pub group_id: String,
 }
 
 /// What a single ServiceTemplate entry seeds when a new service is created from its template:
@@ -338,9 +360,11 @@ pub struct ServiceTemplateItem {
     /// this is the item body; for content entries, it appears beneath the item in the bulletin.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
-    /// Optional for content kinds, required for RoleOnly.
+    /// Optional for content kinds, required for RoleOnly. A `RoleDefinition.id` — was named
+    /// `role` and held the role's plain *name* before the one-time migration in
+    /// `commands::roles`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub role: Option<String>,
+    pub role_id: Option<String>,
     /// RoleOnly kind only, default 1 (e.g. 2 Greeters).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub count: Option<u32>,
@@ -683,8 +707,6 @@ pub struct ApiBibleTranslation {
 #[serde(rename_all = "camelCase")]
 pub struct LibrarySettings {
     #[serde(default)]
-    pub role_groups: Vec<RoleGroup>,
-    #[serde(default)]
     pub service_templates: Vec<ServiceTemplate>,
     pub branding: Branding,
     #[serde(default)]
@@ -803,10 +825,11 @@ pub struct BulletinSettings {
     pub show_announcements: bool,
     #[serde(default = "default_bulletin_true")]
     pub show_serving_schedule: bool,
-    /// Individual role names (drawn from LibrarySettings::role_groups' own roles, e.g.
-    /// "Nursery", "Sound Booth") that become columns in the serving schedule table.
+    /// `RoleDefinition.id`s (e.g. "Nursery", "Sound Booth") that become columns in the serving
+    /// schedule table — was named `servingScheduleRoles` and held role plain *names* before the
+    /// one-time migration in `commands::roles`.
     #[serde(default)]
-    pub serving_schedule_roles: Vec<String>,
+    pub serving_schedule_role_ids: Vec<String>,
 }
 
 impl Default for BulletinSettings {
@@ -821,7 +844,7 @@ impl Default for BulletinSettings {
             page2_enabled: true,
             show_announcements: true,
             show_serving_schedule: true,
-            serving_schedule_roles: Vec::new(),
+            serving_schedule_role_ids: Vec::new(),
         }
     }
 }

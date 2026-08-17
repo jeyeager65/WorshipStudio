@@ -13,6 +13,8 @@ import type {
   MachineSettings,
   SongCollectionDefinition,
   ServiceTypeDefinition,
+  RoleGroupDefinition,
+  RoleDefinition,
 } from '@/models/settings'
 import type { Announcement } from '@/models/announcement'
 
@@ -233,6 +235,20 @@ export interface SongCollectionPort {
 export interface ServiceTypePort {
   list(): Promise<ServiceTypeDefinition[]>
   save(serviceType: ServiceTypeDefinition): Promise<ServiceTypeDefinition>
+  delete(id: string): Promise<void>
+}
+
+/** A peer of `SettingsPort`, not part of it — same reasoning as `SongCollectionPort`. */
+export interface RoleGroupPort {
+  list(): Promise<RoleGroupDefinition[]>
+  save(roleGroup: RoleGroupDefinition): Promise<RoleGroupDefinition>
+  delete(id: string): Promise<void>
+}
+
+/** A peer of `SettingsPort`, not part of it — same reasoning as `SongCollectionPort`. */
+export interface RolePort {
+  list(): Promise<RoleDefinition[]>
+  save(role: RoleDefinition): Promise<RoleDefinition>
   delete(id: string): Promise<void>
 }
 
@@ -685,6 +701,8 @@ export interface StudioAdapter {
   themes: ThemePort
   songCollections: SongCollectionPort
   serviceTypes: ServiceTypePort
+  roleGroups: RoleGroupPort
+  roles: RolePort
   people: PersonPort
   announcements: AnnouncementPort
   settings: SettingsPort

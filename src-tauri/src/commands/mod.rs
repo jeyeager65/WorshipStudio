@@ -8,6 +8,7 @@ pub mod media;
 pub mod opensong;
 pub mod people;
 pub mod remote;
+pub mod roles;
 pub mod scripture;
 pub mod service_types;
 pub mod services;

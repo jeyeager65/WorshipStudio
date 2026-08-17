@@ -1,6 +1,6 @@
 import type { Service } from '@/models/service'
 import type { Song } from '@/models/song'
-import type { RoleGroup } from '@/models/settings'
+import type { RoleGroupDefinition, RoleDefinition } from '@/models/settings'
 import { findSermonItem, sermonPreacherId } from '@/utils/sermonInfo'
 import { formatServiceTime } from '@/utils/serviceTime'
 
@@ -16,6 +16,7 @@ export interface PlanningReportRow {
 }
 
 export interface PlanningRosterAssignment {
+  /** Resolved display name, not the underlying RoleDefinition id — printed directly. */
   role: string
   person: string
   tentative: boolean
@@ -44,7 +45,8 @@ export function buildPlanningReport(
   services: Service[],
   songs: Song[],
   personNames: Map<string, string>,
-  roleGroups: RoleGroup[],
+  roles: RoleDefinition[],
+  roleGroups: RoleGroupDefinition[],
   filter: PlanningReportFilter,
   formalPersonNames: Map<string, string> = personNames,
   serviceTypeNames: Map<string, string> = new Map(),
@@ -70,14 +72,15 @@ export function buildPlanningReport(
     const rosterGroups: PlanningRosterGroup[] = []
     for (const assignment of service.assignments ?? []) {
       if (!assignment.personId) continue
-      const category = roleGroups.find((group) => group.roles.includes(assignment.role))?.name
+      const role = roles.find((r) => r.id === assignment.roleId)
+      const category = roleGroups.find((group) => group.id === role?.groupId)?.name
       let group = rosterGroups.find((candidate) => candidate.category === category)
       if (!group) {
         group = { category, assignments: [] }
         rosterGroups.push(group)
       }
       group.assignments.push({
-        role: assignment.role,
+        role: role?.name ?? assignment.roleId,
         person: personNames.get(assignment.personId) ?? 'Unassigned',
         tentative: assignment.tentative,
       })

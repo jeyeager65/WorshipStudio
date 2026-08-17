@@ -204,7 +204,7 @@ fn apply_legacy_sermon_fields(
                 theme_id: None,
                 id: format!("sermon-migrated-{}", service.id),
                 content: blank_sermon(),
-                role: None,
+                role_id: None,
                 bulletin_label: None,
                 bulletin_note: None,
                 auto_advance: None,
@@ -257,12 +257,12 @@ fn apply_legacy_sermon_fields(
         }
     }
 
-    // Resolve a role name to attach the legacy preacher to: the item's own role if it already
+    // Resolve a role id to attach the legacy preacher to: the item's own role if it already
     // has one, else whatever role the church's configured ServiceTemplate uses for this service
     // type's sermon row — never a fabricated default (a hardcoded "Preacher" role would be wrong
     // for churches whose actual configured role is named something else entirely, and could
     // create a stray assignment nothing else ever references).
-    let role = service.items[index].role.clone().or_else(|| {
+    let role_id = service.items[index].role_id.clone().or_else(|| {
         library_settings
             .and_then(|s| {
                 s.service_templates
@@ -274,17 +274,17 @@ fn apply_legacy_sermon_fields(
                     .iter()
                     .find(|i| matches!(i.kind, ServiceTemplateItemKind::Sermon))
             })
-            .and_then(|i| i.role.clone())
+            .and_then(|i| i.role_id.clone())
     });
 
-    if let Some(role) = role {
-        if service.items[index].role.is_none() {
-            service.items[index].role = Some(role.clone());
+    if let Some(role_id) = role_id {
+        if service.items[index].role_id.is_none() {
+            service.items[index].role_id = Some(role_id.clone());
             changed = true;
         }
         if let Some(person_id) = legacy_preacher_id {
             let assignments = service.assignments.get_or_insert_with(Vec::new);
-            if let Some(existing) = assignments.iter_mut().find(|a| a.role == role) {
+            if let Some(existing) = assignments.iter_mut().find(|a| a.role_id == role_id) {
                 if existing.person_id.is_none() {
                     existing.person_id = Some(person_id);
                     changed = true;
@@ -294,7 +294,7 @@ fn apply_legacy_sermon_fields(
                 // than guessed at.
             } else {
                 assignments.push(RoleAssignment {
-                    role,
+                    role_id,
                     person_id: Some(person_id),
                     tentative: false,
                 });
@@ -438,10 +438,9 @@ mod tests {
             serde_json::to_vec_pretty(&serde_json::json!({
                 "serviceTypes": [],
                 "collections": [],
-                "roleGroups": [],
                 "serviceTemplates": [{
                     "serviceType": "Sunday Morning Worship",
-                    "items": [{ "id": "t1", "kind": "sermon", "label": "Sermon", "role": "Worship Through the Word" }],
+                    "items": [{ "id": "t1", "kind": "sermon", "label": "Sermon", "roleId": "role-worship-through-the-word" }],
                 }],
                 "branding": { "churchName": "", "primaryColor": "#000", "secondaryColor": "#000" },
                 "apiBibleTranslations": [],
@@ -469,12 +468,12 @@ mod tests {
         let service = get(dir.path(), "svc-1").unwrap().unwrap();
         assert_eq!(service.items.len(), 1);
         assert_eq!(
-            service.items[0].role.as_deref(),
-            Some("Worship Through the Word")
+            service.items[0].role_id.as_deref(),
+            Some("role-worship-through-the-word")
         );
         let assignments = service.assignments.unwrap();
         assert_eq!(assignments.len(), 1);
-        assert_eq!(assignments[0].role, "Worship Through the Word");
+        assert_eq!(assignments[0].role_id, "role-worship-through-the-word");
         assert_eq!(assignments[0].person_id.as_deref(), Some("person-1"));
     }
 
@@ -490,12 +489,12 @@ mod tests {
                 "items": [{
                     "id": "item-1",
                     "type": "sermon",
-                    "role": "Worship Through the Word",
+                    "roleId": "role-worship-through-the-word",
                     "passages": [],
                     "mainPassageId": "",
                     "outline": [],
                 }],
-                "assignments": [{ "role": "Worship Through the Word", "personId": "person-already-assigned", "tentative": false }],
+                "assignments": [{ "roleId": "role-worship-through-the-word", "personId": "person-already-assigned", "tentative": false }],
             }),
         );
 

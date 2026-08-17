@@ -16,14 +16,14 @@ export function sermonMainReference(item: SermonItem): string {
   return mainPassage?.reference ?? ''
 }
 
-/** The sermon's preacher is resolved the same way as every other item's "who" — a role name
- *  pointing into `service.assignments` — rather than a direct Person id of its own. */
+/** The sermon's preacher is resolved the same way as every other item's "who" — a RoleDefinition
+ *  id pointing into `service.assignments` — rather than a direct Person id of its own. */
 export function sermonPreacherId(
   service: Service,
   sermonItem = findSermonItem(service),
 ): string | undefined {
-  if (!sermonItem?.role) return undefined
-  return service.assignments?.find((a) => a.role === sermonItem.role)?.personId
+  if (!sermonItem?.roleId) return undefined
+  return service.assignments?.find((a) => a.roleId === sermonItem.roleId)?.personId
 }
 
 /** Whatever role a church's ServiceTemplate assigns to this service type's sermon row, if any —
@@ -35,7 +35,7 @@ export function defaultSermonRole(
 ): string | undefined {
   return defaultServiceTemplate(serviceTemplates, serviceType)?.items.find(
     (i) => i.kind === 'sermon',
-  )?.role
+  )?.roleId
 }
 
 export interface SermonEditInput {
@@ -54,7 +54,7 @@ export interface SermonEditInput {
 export function applySermonEdit(
   service: Service,
   input: SermonEditInput,
-  defaultRole: string | undefined,
+  defaultRoleId: string | undefined,
   defaultTranslationCode: string,
 ): void {
   const existingIndex = service.items.findIndex((i) => i.type === 'sermon')
@@ -72,7 +72,7 @@ export function applySermonEdit(
       passages: [],
       mainPassageId: '',
       outline: [],
-      role: placeholder.role,
+      roleId: placeholder.roleId,
       bulletinLabel: placeholder.bulletinLabel,
       bulletinNote: placeholder.bulletinNote,
     })
@@ -120,15 +120,15 @@ export function applySermonEdit(
     item.presentMainPassage = false
   }
 
-  const role = item.role ?? defaultRole
-  if (role) {
-    item.role = role
+  const roleId = item.roleId ?? defaultRoleId
+  if (roleId) {
+    item.roleId = roleId
     const assignments = service.assignments ?? (service.assignments = [])
-    const existingAssignment = assignments.find((a) => a.role === role)
+    const existingAssignment = assignments.find((a) => a.roleId === roleId)
     if (existingAssignment) {
       existingAssignment.personId = input.preacherId
     } else {
-      assignments.push({ role, personId: input.preacherId, tentative: false })
+      assignments.push({ roleId, personId: input.preacherId, tentative: false })
     }
   }
 }

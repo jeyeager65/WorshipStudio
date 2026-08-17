@@ -2,18 +2,28 @@
 import { ref, toRaw, watch } from 'vue'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import type { UnavailableDateRange, Person } from '@/models/library'
-import type { RoleGroup } from '@/models/settings'
+import type { RoleDefinition } from '@/models/settings'
 
-const props = defineProps<{ modelValue: boolean; person?: Person; roleGroups: RoleGroup[] }>()
+const props = defineProps<{
+  modelValue: boolean
+  person?: Person
+  /** Grouped by category, roles as RoleDefinition ids — see AssignmentsView's DisplayGroup. */
+  roleGroups: { name: string; roles: string[] }[]
+  roles: RoleDefinition[]
+}>()
 const emit = defineEmits<{ 'update:modelValue': [boolean]; save: [Person] }>()
 const confirmDialog = useConfirmDialogStore()
+
+function roleName(roleId: string): string {
+  return props.roles.find((role) => role.id === roleId)?.name ?? roleId
+}
 
 function blank(): Person {
   return {
     id: `person-${crypto.randomUUID()}`,
     firstName: '',
     lastName: '',
-    preferredRoles: [],
+    preferredRoleIds: [],
     unavailableDateRanges: [],
     updatedAt: '',
     updatedByDevice: '',
@@ -49,10 +59,10 @@ watch(
   },
 )
 
-function toggleRole(role: string) {
-  const index = draft.value.preferredRoles.indexOf(role)
-  if (index === -1) draft.value.preferredRoles.push(role)
-  else draft.value.preferredRoles.splice(index, 1)
+function toggleRole(roleId: string) {
+  const index = draft.value.preferredRoleIds.indexOf(roleId)
+  if (index === -1) draft.value.preferredRoleIds.push(roleId)
+  else draft.value.preferredRoleIds.splice(index, 1)
 }
 
 function addUnavailableRange() {
@@ -181,11 +191,11 @@ function save() {
                   v-for="role in group.roles"
                   :key="role"
                   :color="categoryColors[groupIndex % categoryColors.length]"
-                  :variant="draft.preferredRoles.includes(role) ? 'flat' : 'outlined'"
-                  :prepend-icon="draft.preferredRoles.includes(role) ? 'mdi-check' : undefined"
+                  :variant="draft.preferredRoleIds.includes(role) ? 'flat' : 'outlined'"
+                  :prepend-icon="draft.preferredRoleIds.includes(role) ? 'mdi-check' : undefined"
                   @click="toggleRole(role)"
                 >
-                  {{ role }}
+                  {{ roleName(role) }}
                 </v-chip>
               </div>
             </template>

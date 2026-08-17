@@ -35,7 +35,11 @@ describe('buildPlanningReport', () => {
     ['person-2', 'Jason'],
     ['person-3', 'Pastor Dan'],
   ])
-  const roleGroups = [{ name: 'Praise Team', roles: ['Piano', 'Guitar'] }]
+  const roleGroups = [{ id: 'group-praise-team', name: 'Praise Team' }]
+  const roles = [
+    { id: 'role-piano', name: 'Piano', groupId: 'group-praise-team' },
+    { id: 'role-guitar', name: 'Guitar', groupId: 'group-praise-team' },
+  ]
 
   it('lists rows sorted by date with song titles and roster resolved', () => {
     const services: Service[] = [
@@ -49,16 +53,16 @@ describe('buildPlanningReport', () => {
             id: 'i2',
             type: 'sermon',
             title: 'Grace Abounds',
-            role: 'Preacher',
+            roleId: 'Preacher',
             passages: [],
             mainPassageId: '',
             outline: [],
           },
         ],
         assignments: [
-          { role: 'Piano', personId: 'person-1', tentative: false },
-          { role: 'Guitar', personId: 'person-2', tentative: false },
-          { role: 'Preacher', personId: 'person-3', tentative: false },
+          { roleId: 'role-piano', personId: 'person-1', tentative: false },
+          { roleId: 'role-guitar', personId: 'person-2', tentative: false },
+          { roleId: 'Preacher', personId: 'person-3', tentative: false },
         ],
       }),
       service({
@@ -66,11 +70,11 @@ describe('buildPlanningReport', () => {
         date: '2026-01-05',
         serviceTypeId: 'type-sunday-morning-worship',
         items: [{ id: 'i1', type: 'song', songId: 'song-1', arrangement: { sequence: [] } }],
-        assignments: [{ role: 'Guitar', personId: 'person-2', tentative: true }],
+        assignments: [{ roleId: 'role-guitar', personId: 'person-2', tentative: true }],
       }),
     ]
 
-    const rows = buildPlanningReport(services, songs, personNames, roleGroups, {
+    const rows = buildPlanningReport(services, songs, personNames, roles, roleGroups, {
       fromDate: '2026-01-01',
       toDate: '2026-12-31',
     })
@@ -109,13 +113,13 @@ describe('buildPlanningReport', () => {
       service({ id: 'svc-1', date: '2026-01-01', serviceTypeId: 'type-sunday-morning-worship' }),
     ]
     expect(
-      buildPlanningReport(services, songs, personNames, roleGroups, {
+      buildPlanningReport(services, songs, personNames, roles, roleGroups, {
         fromDate: '2026-01-01',
         toDate: '2026-01-01',
       }),
     ).toHaveLength(1)
     expect(
-      buildPlanningReport(services, songs, personNames, roleGroups, {
+      buildPlanningReport(services, songs, personNames, roles, roleGroups, {
         fromDate: '2026-01-02',
         toDate: '2026-01-31',
       }),
@@ -127,7 +131,7 @@ describe('buildPlanningReport', () => {
       service({ id: 'svc-1', date: '2026-01-05', serviceTypeId: 'type-sunday-morning-worship' }),
       service({ id: 'svc-2', date: '2026-01-06', serviceTypeId: 'type-wednesday-bible-study' }),
     ]
-    const rows = buildPlanningReport(services, songs, personNames, roleGroups, {
+    const rows = buildPlanningReport(services, songs, personNames, roles, roleGroups, {
       fromDate: '2026-01-01',
       toDate: '2026-12-31',
       serviceType: 'type-wednesday-bible-study',
@@ -139,7 +143,7 @@ describe('buildPlanningReport', () => {
     const services = [
       service({ id: 'svc-1', date: '2026-01-05', serviceTypeId: 'type-sunday-morning-worship' }),
     ]
-    const rows = buildPlanningReport(services, songs, personNames, roleGroups, {
+    const rows = buildPlanningReport(services, songs, personNames, roles, roleGroups, {
       fromDate: '2026-01-01',
       toDate: '2026-12-31',
     })

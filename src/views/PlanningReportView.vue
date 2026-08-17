@@ -5,6 +5,8 @@ import { useSongsStore } from '@/stores/songs'
 import { usePeopleStore } from '@/stores/people'
 import { useSettingsStore } from '@/stores/settings'
 import { useServiceTypesStore } from '@/stores/serviceTypes'
+import { useRoleGroupsStore } from '@/stores/roleGroups'
+import { useRolesStore } from '@/stores/roles'
 import { buildPlanningReport } from '@/utils/planningReport'
 import { personDisplayName, personFormalName } from '@/models/library'
 import { reportBranding } from '@/reports/branding'
@@ -21,6 +23,8 @@ const songsStore = useSongsStore()
 const peopleStore = usePeopleStore()
 const settingsStore = useSettingsStore()
 const serviceTypesStore = useServiceTypesStore()
+const roleGroupsStore = useRoleGroupsStore()
+const rolesStore = useRolesStore()
 
 // Defaults to today through 3 months out — planning ahead is forward-looking, unlike CCLI's
 // backward-looking usage report. Local calendar-date components (not toISOString, which
@@ -48,6 +52,8 @@ onMounted(async () => {
     peopleStore.load(),
     settingsStore.load(),
     serviceTypesStore.load(),
+    roleGroupsStore.load(),
+    rolesStore.load(),
   ])
 })
 
@@ -66,7 +72,8 @@ const rows = computed(() =>
     servicesStore.services,
     songsStore.songs,
     personNames.value,
-    settingsStore.librarySettings?.roleGroups ?? [],
+    rolesStore.roles,
+    roleGroupsStore.roleGroups,
     {
       fromDate: fromDate.value,
       toDate: toDate.value,

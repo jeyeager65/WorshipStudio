@@ -36,6 +36,8 @@ import { createWebServicesPort } from '@/adapters/web/services'
 import { createWebSettingsPort } from '@/adapters/web/settings'
 import { createWebSlidesPort } from '@/adapters/web/slides'
 import { createWebServiceTypesPort } from '@/adapters/web/serviceTypes'
+import { createWebRoleGroupsPort } from '@/adapters/web/roleGroups'
+import { createWebRolesPort } from '@/adapters/web/roles'
 import { createWebSongCollectionsPort } from '@/adapters/web/songCollections'
 import { createWebSongsPort } from '@/adapters/web/songs'
 import { createWebThemesPort } from '@/adapters/web/themes'
@@ -91,6 +93,8 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
   const themes = createWebThemesPort(trackedRoot, settings)
   const songCollections = createWebSongCollectionsPort(trackedRoot)
   const serviceTypes = createWebServiceTypesPort(trackedRoot)
+  const roleGroups = createWebRoleGroupsPort(trackedRoot)
+  const roles = createWebRolesPort(trackedRoot)
   const services = createWebServicesPort(trackedRoot, settings, songs)
   const slides = createWebSlidesPort(trackedRoot, settings)
   const media = createWebMediaPort(trackedRoot, settings, themes, createTabletLocalMediaRoot(rawRoot))
@@ -113,6 +117,8 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
     themes,
     songCollections,
     serviceTypes,
+    roleGroups,
+    roles,
     people,
     announcements,
     settings,

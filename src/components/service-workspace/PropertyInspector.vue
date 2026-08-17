@@ -15,9 +15,9 @@ const props = defineProps<{
   themeOverrideOptions: { title: string; value: string }[]
   itemRoleOptions: Array<{ type?: 'subheader'; title: string; value?: string }>
   rolePersonOptions: PersonOption[]
-  assignedPersonId: (role: string | undefined) => string | undefined
-  updateItemRole: (itemId: string, role: string | undefined) => void
-  updateRolePerson: (role: string, personId: string | undefined) => void
+  assignedPersonId: (roleId: string | undefined) => string | undefined
+  updateItemRole: (itemId: string, roleId: string | undefined) => void
+  updateRolePerson: (roleId: string, personId: string | undefined) => void
   updatePresenterNote: (itemId: string, note: string) => void
 }>()
 
@@ -169,7 +169,7 @@ function updateBulletinNote(value: string) {
       <label class="property-row">
         <span>Role</span>
         <v-select
-          :model-value="selectedItem.role"
+          :model-value="selectedItem.roleId"
           :items="itemRoleOptions"
           variant="outlined"
           density="compact"
@@ -181,10 +181,10 @@ function updateBulletinNote(value: string) {
           "
         />
       </label>
-      <label v-if="selectedItem.role" class="property-row">
+      <label v-if="selectedItem.roleId" class="property-row">
         <span>Assigned</span>
         <v-select
-          :model-value="assignedPersonId(selectedItem.role)"
+          :model-value="assignedPersonId(selectedItem.roleId)"
           :items="rolePersonOptions"
           variant="outlined"
           density="compact"
@@ -192,7 +192,7 @@ function updateBulletinNote(value: string) {
           hide-details
           placeholder="Not assigned"
           @update:model-value="
-            (value: string | undefined) => updateRolePerson(selectedItem.role!, value)
+            (value: string | undefined) => updateRolePerson(selectedItem.roleId!, value)
           "
         />
       </label>

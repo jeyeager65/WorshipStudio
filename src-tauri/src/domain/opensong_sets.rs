@@ -115,7 +115,7 @@ pub fn import_sets(
                             song_id: song.id.clone(),
                             arrangement: song.default_arrangement.clone(),
                         },
-                        role: None,
+                        role_id: None,
                         bulletin_label: None,
                         bulletin_note: None,
                         auto_advance: None,

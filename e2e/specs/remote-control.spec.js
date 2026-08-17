@@ -18,7 +18,7 @@ describe('Remote Control', () => {
           id: personId,
           firstName: 'Jordan',
           lastName: 'E2ERemote',
-          preferredRoles: [],
+          preferredRoleIds: [],
           unavailableDateRanges: [],
           updatedAt: '2026-07-26T00:00:00Z',
           updatedByDevice: 'e2e',

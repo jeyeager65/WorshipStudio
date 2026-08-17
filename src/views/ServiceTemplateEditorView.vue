@@ -9,6 +9,8 @@ import { errorMessage } from '@/composables/useAsyncStoreState'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import { useSettingsStore } from '@/stores/settings'
 import { useServiceTypesStore } from '@/stores/serviceTypes'
+import { useRoleGroupsStore } from '@/stores/roleGroups'
+import { useRolesStore } from '@/stores/roles'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import type { ServiceTemplate } from '@/models/service'
 
@@ -16,6 +18,8 @@ const route = useRoute()
 const router = useRouter()
 const settingsStore = useSettingsStore()
 const serviceTypesStore = useServiceTypesStore()
+const roleGroupsStore = useRoleGroupsStore()
+const rolesStore = useRolesStore()
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const workingTemplates = ref<ServiceTemplate[]>([])
 const selectedIndex = ref(0)
@@ -39,6 +43,8 @@ async function initialize() {
   const [settingsLoaded] = await Promise.all([
     settingsStore.load(),
     serviceTypesStore.loaded ? Promise.resolve(true) : serviceTypesStore.load(),
+    roleGroupsStore.loaded ? Promise.resolve(true) : roleGroupsStore.load(),
+    rolesStore.loaded ? Promise.resolve(true) : rolesStore.load(),
   ])
   if (!settingsLoaded) return
   const storedTemplates = settingsStore.librarySettings?.serviceTemplates ?? []
@@ -198,7 +204,8 @@ async function saveTemplate() {
     <ServiceTemplateEditor
       v-else-if="settingsStore.librarySettings && selectedTemplate"
       v-model="workingTemplates"
-      :role-groups="settingsStore.librarySettings.roleGroups"
+      :role-groups="roleGroupsStore.roleGroups"
+      :roles="rolesStore.roles"
       :service-types="serviceTypesStore.serviceTypes"
       :initial-selected-index="selectedIndex"
       standalone

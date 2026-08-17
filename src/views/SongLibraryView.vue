@@ -296,7 +296,7 @@ async function saveSelectedSongOrder() {
       return {
         ...song,
         id: item.id,
-        role: item.role,
+        roleId: item.roleId,
         bulletinLabel: item.bulletinLabel,
         bulletinNote: item.bulletinNote,
       }

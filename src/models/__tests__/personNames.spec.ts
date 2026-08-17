@@ -7,7 +7,7 @@ function person(overrides: Partial<Person> = {}): Person {
     id: 'person-1',
     firstName: 'Michael',
     lastName: 'Sanders',
-    preferredRoles: [],
+    preferredRoleIds: [],
     unavailableDateRanges: [],
     updatedAt: '',
     updatedByDevice: '',

@@ -6,6 +6,8 @@ pub mod opensong;
 pub mod opensong_sets;
 pub mod people;
 pub mod remote;
+pub mod role_groups;
+pub mod roles;
 pub mod scripture;
 pub mod service_types;
 pub mod services;

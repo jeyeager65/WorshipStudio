@@ -7,6 +7,8 @@ import { useServicesStore } from '@/stores/services'
 import { usePeopleStore } from '@/stores/people'
 import { useSettingsStore } from '@/stores/settings'
 import { useServiceTypesStore } from '@/stores/serviceTypes'
+import { useRoleGroupsStore } from '@/stores/roleGroups'
+import { useRolesStore } from '@/stores/roles'
 import { useSongsStore } from '@/stores/songs'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useHistoryStore } from '@/stores/history'
@@ -44,6 +46,8 @@ const servicesStore = useServicesStore()
 const peopleStore = usePeopleStore()
 const settingsStore = useSettingsStore()
 const serviceTypesStore = useServiceTypesStore()
+const roleGroupsStore = useRoleGroupsStore()
+const rolesStore = useRolesStore()
 const songsStore = useSongsStore()
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const historyStore = useHistoryStore()
@@ -108,10 +112,16 @@ const assignmentRows = computed(() =>
       : undefined,
   })),
 )
+function roleName(roleId: string): string {
+  return rolesStore.roles.find((role) => role.id === roleId)?.name ?? roleId
+}
 const assignmentGroups = computed(() => {
   const remaining = [...assignmentRows.value]
-  const groups = (settingsStore.librarySettings?.roleGroups ?? []).flatMap((group) => {
-    const rows = remaining.filter((assignment) => group.roles.includes(assignment.role))
+  const groups = roleGroupsStore.roleGroups.flatMap((group) => {
+    const roleIdsInGroup = new Set(
+      rolesStore.roles.filter((role) => role.groupId === group.id).map((role) => role.id),
+    )
+    const rows = remaining.filter((assignment) => roleIdsInGroup.has(assignment.roleId))
     for (const row of rows) remaining.splice(remaining.indexOf(row), 1)
     return rows.length ? [{ name: group.name, rows }] : []
   })
@@ -280,7 +290,7 @@ function fillScriptureSlot() {
     reference: scriptureDraft.value.reference,
     translation: scriptureDraft.value.translation,
     displayMode: scriptureDraft.value.displayMode,
-    role: slot.role,
+    roleId: slot.roleId,
     bulletinLabel: slot.type === 'placeholder' ? slot.label : slot.bulletinLabel,
     bulletinNote: slot.bulletinNote,
   })
@@ -368,6 +378,8 @@ onMounted(async () => {
       peopleStore.loaded ? Promise.resolve() : peopleStore.load(),
       settingsStore.loaded ? Promise.resolve() : settingsStore.load(),
       serviceTypesStore.loaded ? Promise.resolve() : serviceTypesStore.load(),
+      roleGroupsStore.loaded ? Promise.resolve() : roleGroupsStore.load(),
+      rolesStore.loaded ? Promise.resolve() : rolesStore.load(),
       songsStore.loaded ? Promise.resolve() : songsStore.load(),
     ])
     try {
@@ -489,7 +501,7 @@ async function applyTemplate() {
         (item) =>
           !usedItemIds.has(item.id) &&
           matchesKind(item) &&
-          (!slot.role || item.role === slot.role) &&
+          (!slot.roleId || item.roleId === slot.roleId) &&
           (!slot.bulletinLabel || !item.bulletinLabel || item.bulletinLabel === slot.bulletinLabel),
       )
       if (match) usedItemIds.add(match.id)
@@ -497,7 +509,7 @@ async function applyTemplate() {
     }
     let songIndex = 0
     let sermonPlaced = false
-    let sermonRole: string | undefined
+    let sermonRoleId: string | undefined
 
     current.items = seeded.items.map((templateItem) => {
       if (templateItem.type === 'bulletin-note') {
@@ -506,7 +518,7 @@ async function applyTemplate() {
           ? {
               ...existing,
               id: templateItem.id,
-              role: templateItem.role ?? existing.role,
+              roleId: templateItem.roleId ?? existing.roleId,
               bulletinLabel: templateItem.bulletinLabel ?? existing.bulletinLabel,
               bulletinNote: templateItem.bulletinNote ?? existing.bulletinNote,
             }
@@ -520,11 +532,11 @@ async function applyTemplate() {
       }
       if (templateItem.suggestedTab === 'sermon' && plannedSermon) {
         sermonPlaced = true
-        sermonRole = templateItem.role ?? plannedSermon.role
+        sermonRoleId = templateItem.roleId ?? plannedSermon.roleId
         return {
           ...plannedSermon,
           id: templateItem.id,
-          role: sermonRole,
+          roleId: sermonRoleId,
           bulletinLabel: templateItem.label ?? plannedSermon.bulletinLabel,
           bulletinNote: templateItem.bulletinNote ?? plannedSermon.bulletinNote,
         }
@@ -534,7 +546,7 @@ async function applyTemplate() {
         ? {
             ...existing,
             id: templateItem.id,
-            role: templateItem.role ?? existing.role,
+            roleId: templateItem.roleId ?? existing.roleId,
             bulletinLabel: templateItem.label ?? existing.bulletinLabel,
             bulletinNote: templateItem.bulletinNote ?? existing.bulletinNote,
           }
@@ -546,7 +558,7 @@ async function applyTemplate() {
     const usedAssignments = new Set<number>()
     current.assignments = seeded.assignments.map((assignment) => {
       const index = existingAssignments.findIndex(
-        (existing, i) => !usedAssignments.has(i) && existing.role === assignment.role,
+        (existing, i) => !usedAssignments.has(i) && existing.roleId === assignment.roleId,
       )
       if (index === -1) return assignment
       usedAssignments.add(index)
@@ -556,9 +568,9 @@ async function applyTemplate() {
         tentative: existingAssignments[index].tentative,
       }
     })
-    if (sermonRole && existingPreacherId) {
+    if (sermonRoleId && existingPreacherId) {
       const preacherAssignment = current.assignments.find(
-        (assignment) => assignment.role === sermonRole,
+        (assignment) => assignment.roleId === sermonRoleId,
       )
       if (preacherAssignment) preacherAssignment.personId = existingPreacherId
     }
@@ -880,7 +892,7 @@ async function applyTemplate() {
               <div class="assignment-list">
                 <div
                   v-for="(assignment, index) in group.rows"
-                  :key="`${assignment.role}-${assignment.personId ?? 'missing'}-${index}`"
+                  :key="`${assignment.roleId}-${assignment.personId ?? 'missing'}-${index}`"
                   class="assignment-row"
                   :class="{
                     'assignment-row--missing': !assignment.person,
@@ -893,7 +905,7 @@ async function applyTemplate() {
                     "
                     size="18"
                   /><span
-                    ><strong>{{ assignment.role }}</strong
+                    ><strong>{{ roleName(assignment.roleId) }}</strong
                     ><small v-if="assignment.person"
                       >{{ personFormalName(assignment.person)
                       }}<template v-if="assignment.tentative"> · Tentative</template></small

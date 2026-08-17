@@ -43,7 +43,7 @@ mod tests {
             preferred_name: None,
             title: None,
             email: Some("ashley.combs@email.com".to_string()),
-            preferred_roles: vec!["Vocals".to_string()],
+            preferred_role_ids: vec!["role-vocals".to_string()],
             unavailable_date_ranges: vec![],
             updated_at: String::new(),
             updated_by_device: String::new(),

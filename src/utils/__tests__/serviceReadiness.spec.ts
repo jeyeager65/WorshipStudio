@@ -46,6 +46,7 @@ function context(overrides: Partial<ServiceReadinessContext> = {}): ServiceReadi
     externalAppVerificationAvailable: false,
     libraryConflictLabels: new Map(),
     audienceDisplayAvailable: true,
+    roleNames: new Map(),
     ...overrides,
   }
 }
@@ -91,10 +92,10 @@ describe('evaluateServiceReadiness', () => {
     const result = evaluateServiceReadiness(
       service({
         assignments: [
-          { role: 'Piano', tentative: false },
-          { role: 'Vocals', personId: 'person-1', tentative: false },
-          { role: 'Nursery', personId: 'person-1', tentative: false },
-          { role: 'Reader', personId: 'missing', tentative: false },
+          { roleId: 'Piano', tentative: false },
+          { roleId: 'Vocals', personId: 'person-1', tentative: false },
+          { roleId: 'Nursery', personId: 'person-1', tentative: false },
+          { roleId: 'Reader', personId: 'missing', tentative: false },
         ],
       }),
       context({
@@ -105,7 +106,7 @@ describe('evaluateServiceReadiness', () => {
               id: 'person-1',
               firstName: 'Jordan',
               lastName: 'Lee',
-              preferredRoles: [],
+              preferredRoleIds: [],
               unavailableDateRanges: [{ start: '2026-08-02', end: '2026-08-02' }],
               updatedAt: '',
               updatedByDevice: '',

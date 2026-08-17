@@ -50,23 +50,23 @@ export function applyServiceTemplate(template: ServiceTemplate): {
 
   for (const templateItem of template.items) {
     if (templateItem.kind === 'role-only') {
-      if (!templateItem.role) continue
+      if (!templateItem.roleId) continue
       const count = templateItem.count ?? 1
       for (let i = 0; i < count; i++) {
-        assignments.push({ role: templateItem.role, tentative: false })
+        assignments.push({ roleId: templateItem.roleId, tentative: false })
       }
       continue
     }
 
-    if (templateItem.role) {
-      assignments.push({ role: templateItem.role, tentative: false })
+    if (templateItem.roleId) {
+      assignments.push({ roleId: templateItem.roleId, tentative: false })
     }
 
     if (templateItem.kind === 'bulletin-note') {
       items.push({
         id: `item-${crypto.randomUUID()}`,
         type: 'bulletin-note',
-        role: templateItem.role,
+        roleId: templateItem.roleId,
         bulletinLabel: templateItem.label,
         bulletinNote: templateItem.note,
       })
@@ -76,7 +76,7 @@ export function applyServiceTemplate(template: ServiceTemplate): {
         type: 'placeholder',
         label: templateItem.label,
         suggestedTab: SUGGESTED_TAB_BY_KIND[templateItem.kind],
-        role: templateItem.role,
+        roleId: templateItem.roleId,
         bulletinNote: templateItem.note,
       })
     }
@@ -104,33 +104,33 @@ export function planAssignmentResetFromTemplate(
   template: ServiceTemplate,
 ): AssignmentResetPlan {
   const itemRoles = new Set(
-    service.items.map((item) => item.role).filter((role): role is string => !!role),
+    service.items.map((item) => item.roleId).filter((roleId): roleId is string => !!roleId),
   )
 
   const desiredCounts = new Map<string, number>()
   for (const templateItem of template.items) {
-    if (templateItem.kind !== 'role-only' || !templateItem.role) continue
+    if (templateItem.kind !== 'role-only' || !templateItem.roleId) continue
     desiredCounts.set(
-      templateItem.role,
-      (desiredCounts.get(templateItem.role) ?? 0) + (templateItem.count ?? 1),
+      templateItem.roleId,
+      (desiredCounts.get(templateItem.roleId) ?? 0) + (templateItem.count ?? 1),
     )
   }
 
   const existingByRole = new Map<string, RoleAssignment[]>()
   for (const assignment of service.assignments ?? []) {
-    if (itemRoles.has(assignment.role)) continue
-    const list = existingByRole.get(assignment.role) ?? []
+    if (itemRoles.has(assignment.roleId)) continue
+    const list = existingByRole.get(assignment.roleId) ?? []
     list.push(assignment)
-    existingByRole.set(assignment.role, list)
+    existingByRole.set(assignment.roleId, list)
   }
 
   const toAdd: RoleAssignment[] = []
   const toRemove: RoleAssignment[] = []
-  for (const role of new Set([...desiredCounts.keys(), ...existingByRole.keys()])) {
-    const existing = existingByRole.get(role) ?? []
-    const desired = desiredCounts.get(role) ?? 0
+  for (const roleId of new Set([...desiredCounts.keys(), ...existingByRole.keys()])) {
+    const existing = existingByRole.get(roleId) ?? []
+    const desired = desiredCounts.get(roleId) ?? 0
     if (existing.length < desired) {
-      for (let i = existing.length; i < desired; i++) toAdd.push({ role, tentative: false })
+      for (let i = existing.length; i < desired; i++) toAdd.push({ roleId, tentative: false })
     } else if (existing.length > desired) {
       // Unassigned rows are trimmed before assigned ones, so a person already picked for a
       // role is the last thing dropped when a template's count shrinks.

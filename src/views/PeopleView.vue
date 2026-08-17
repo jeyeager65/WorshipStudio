@@ -2,7 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePeopleStore } from '@/stores/people'
-import { useSettingsStore } from '@/stores/settings'
+import { useRoleGroupsStore } from '@/stores/roleGroups'
+import { useRolesStore } from '@/stores/roles'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import LibraryEmptyState from '@/components/LibraryEmptyState.vue'
@@ -11,11 +12,12 @@ import { isElder, personDisplayName } from '@/models/library'
 
 const router = useRouter()
 const peopleStore = usePeopleStore()
-const settingsStore = useSettingsStore()
+const roleGroupsStore = useRoleGroupsStore()
+const rolesStore = useRolesStore()
 const confirmDialog = useConfirmDialogStore()
 
 onMounted(async () => {
-  await Promise.all([peopleStore.load(), settingsStore.load()])
+  await Promise.all([peopleStore.load(), roleGroupsStore.load(), rolesStore.load()])
 })
 
 function personLabel(person: Person): string {
@@ -24,10 +26,16 @@ function personLabel(person: Person): string {
   return preferred === legalName ? legalName : `${preferred} (${legalName})`
 }
 
+function roleName(roleId: string): string {
+  return rolesStore.roles.find((role) => role.id === roleId)?.name ?? roleId
+}
+
 // A role's own category (e.g. "Praise Team" for "Guitar") — searched alongside the role's own
 // name, so typing a category finds everyone with any role in it, not just an exact role match.
-function categoryFor(role: string): string | undefined {
-  return (settingsStore.librarySettings?.roleGroups ?? []).find((g) => g.roles.includes(role))?.name
+function categoryFor(roleId: string): string | undefined {
+  const role = rolesStore.roles.find((r) => r.id === roleId)
+  if (!role) return undefined
+  return roleGroupsStore.roleGroups.find((g) => g.id === role.groupId)?.name
 }
 
 function sortKey(person: Person): string {
@@ -71,14 +79,19 @@ const availabilityDateLabel = computed(() =>
     : '',
 )
 const categoryFilters = computed(() =>
-  (settingsStore.librarySettings?.roleGroups ?? []).map((group, index) => ({
-    value: `category:${group.name}`,
-    label: group.name,
-    color: CATEGORY_COLORS[index % CATEGORY_COLORS.length],
-    count: peopleStore.people.filter((person) =>
-      person.preferredRoles.some((role) => group.roles.includes(role)),
-    ).length,
-  })),
+  roleGroupsStore.roleGroups.map((group, index) => {
+    const roleIdsInGroup = new Set(
+      rolesStore.roles.filter((role) => role.groupId === group.id).map((role) => role.id),
+    )
+    return {
+      value: `category:${group.id}`,
+      label: group.name,
+      color: CATEGORY_COLORS[index % CATEGORY_COLORS.length],
+      count: peopleStore.people.filter((person) =>
+        person.preferredRoleIds.some((roleId) => roleIdsInGroup.has(roleId)),
+      ).length,
+    }
+  }),
 )
 const activeFilterLabel = computed(() => {
   if (activeFilter.value === 'all') return 'All People'
@@ -95,26 +108,28 @@ const filteredPeople = computed(() => {
   const q = (searchQuery.value ?? '').trim().toLowerCase()
   const matches = peopleStore.people.filter((person) => {
     if (activeFilter.value === 'elder' && !isElder(person)) return false
-    if (activeFilter.value === 'unassigned' && person.preferredRoles.length > 0) return false
+    if (activeFilter.value === 'unassigned' && person.preferredRoleIds.length > 0) return false
     if (
       activeFilter.value === 'unavailable' &&
       !isUnavailableOnDate(person, availabilityDate.value)
     )
       return false
     if (activeFilter.value.startsWith('category:')) {
-      const groupName = activeFilter.value.slice('category:'.length)
-      const group = settingsStore.librarySettings?.roleGroups.find(
-        (candidate) => candidate.name === groupName,
+      const groupId = activeFilter.value.slice('category:'.length)
+      const roleIdsInGroup = new Set(
+        rolesStore.roles.filter((role) => role.groupId === groupId).map((role) => role.id),
       )
-      if (!group || !person.preferredRoles.some((role) => group.roles.includes(role))) return false
+      if (!person.preferredRoleIds.some((roleId) => roleIdsInGroup.has(roleId))) return false
     }
     if (!q) return true
     if (person.firstName.toLowerCase().includes(q)) return true
     if (person.lastName.toLowerCase().includes(q)) return true
     if (person.preferredName?.toLowerCase().includes(q)) return true
     if (person.title?.toLowerCase().includes(q)) return true
-    return person.preferredRoles.some(
-      (role) => role.toLowerCase().includes(q) || categoryFor(role)?.toLowerCase().includes(q),
+    return person.preferredRoleIds.some(
+      (roleId) =>
+        roleName(roleId).toLowerCase().includes(q) ||
+        categoryFor(roleId)?.toLowerCase().includes(q),
     )
   })
   return [...matches].sort((a, b) => sortKey(a).localeCompare(sortKey(b)))
@@ -135,29 +150,33 @@ function clearAvailabilityDate() {
 // category — same "leftover -> Other" pattern as the Assignments/Service Template editors, for
 // a preferred role that no longer belongs to any current category.
 interface PersonRoleGroup {
+  groupId: string
   name: string
   roles: string[]
 }
 function roleGroupsFor(person: Person): PersonRoleGroup[] {
   const groups: PersonRoleGroup[] = []
   const accountedFor = new Set<string>()
-  for (const group of settingsStore.librarySettings?.roleGroups ?? []) {
-    const roles = group.roles.filter((r) => person.preferredRoles.includes(r))
+  for (const group of roleGroupsStore.roleGroups) {
+    const roles = rolesStore.roles.filter(
+      (role) => role.groupId === group.id && person.preferredRoleIds.includes(role.id),
+    )
     if (!roles.length) continue
-    groups.push({ name: group.name, roles })
-    roles.forEach((r) => accountedFor.add(r))
+    groups.push({ groupId: group.id, name: group.name, roles: roles.map((role) => role.name) })
+    roles.forEach((role) => accountedFor.add(role.id))
   }
-  const leftover = person.preferredRoles.filter((r) => !accountedFor.has(r))
-  if (leftover.length) groups.push({ name: 'Other', roles: leftover })
+  const leftover = person.preferredRoleIds
+    .filter((roleId) => !accountedFor.has(roleId))
+    .map((roleId) => roleName(roleId))
+  if (leftover.length) groups.push({ groupId: 'other', name: 'Other', roles: leftover })
   return groups
 }
 
 // Stable per-category color: same category always gets the same color on this screen, driven
 // by the category's own position in Settings > Roles rather than a hash, so reordering
 // categories there is the only thing that would ever change a color.
-function categoryColor(role: string): string {
-  const groups = settingsStore.librarySettings?.roleGroups ?? []
-  const index = groups.findIndex((g) => g.roles.includes(role))
+function categoryColor(groupId: string): string {
+  const index = roleGroupsStore.roleGroups.findIndex((g) => g.id === groupId)
   return index === -1 ? 'slate' : CATEGORY_COLORS[index % CATEGORY_COLORS.length]
 }
 
@@ -166,7 +185,7 @@ function initials(person: Person): string {
 }
 
 const peopleWithRolesCount = computed(
-  () => peopleStore.people.filter((person) => person.preferredRoles.length > 0).length,
+  () => peopleStore.people.filter((person) => person.preferredRoleIds.length > 0).length,
 )
 const peopleWithAvailabilityCount = computed(
   () => peopleStore.people.filter((person) => person.unavailableDateRanges.length > 0).length,
@@ -443,13 +462,13 @@ async function remove(person: Person) {
                 </v-menu>
               </header>
 
-              <div v-if="person.preferredRoles.length" class="person-roles">
+              <div v-if="person.preferredRoleIds.length" class="person-roles">
                 <div
                   v-for="group in roleGroupsFor(person)"
                   :key="group.name"
                   class="person-role-group"
                   :style="{
-                    '--category-color': `rgb(var(--v-theme-${categoryColor(group.roles[0] ?? '')}))`,
+                    '--category-color': `rgb(var(--v-theme-${categoryColor(group.groupId)}))`,
                   }"
                 >
                   <div class="person-role-category">

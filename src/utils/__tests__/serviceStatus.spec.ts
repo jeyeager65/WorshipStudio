@@ -24,7 +24,7 @@ describe('isServiceIncomplete', () => {
     const result = isServiceIncomplete(
       service({
         items: [{ id: 'item-1', type: 'bulletin-note' }],
-        assignments: [{ role: 'Worship Leader', personId: 'person-1', tentative: false }],
+        assignments: [{ roleId: 'Worship Leader', personId: 'person-1', tentative: false }],
       }),
     )
     expect(result).toBe(false)
@@ -39,7 +39,7 @@ describe('isServiceIncomplete', () => {
 
   it('is true when a role has no person assigned', () => {
     const result = isServiceIncomplete(
-      service({ assignments: [{ role: 'Worship Leader', personId: undefined, tentative: false }] }),
+      service({ assignments: [{ roleId: 'Worship Leader', personId: undefined, tentative: false }] }),
     )
     expect(result).toBe(true)
   })

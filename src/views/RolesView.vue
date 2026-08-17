@@ -1,47 +1,21 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
-import { storeToRefs } from 'pinia'
-import { useSettingsStore } from '@/stores/settings'
-import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
+import { computed, onMounted } from 'vue'
+import { useRoleGroupsStore } from '@/stores/roleGroups'
+import { useRolesStore } from '@/stores/roles'
 import RoleGroupEditor from '@/components/settings/RoleGroupEditor.vue'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
-import { useDocumentHistory } from '@/composables/useDocumentHistory'
 
-const settingsStore = useSettingsStore()
-const { librarySettings } = storeToRefs(settingsStore)
-const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
-const documentHistory = useDocumentHistory(librarySettings, 'roles')
+const roleGroupsStore = useRoleGroupsStore()
+const rolesStore = useRolesStore()
 
-const categoryCount = computed(() => librarySettings.value?.roleGroups.length ?? 0)
-const totalRoles = computed(() =>
-  (librarySettings.value?.roleGroups ?? []).reduce((total, group) => total + group.roles.length, 0),
-)
+const categoryCount = computed(() => roleGroupsStore.roleGroups.length)
+const totalRoles = computed(() => rolesStore.roles.length)
 
 onMounted(initialize)
 
-async function initialize() {
-  saveHandler.value = saveRoles
-  if (!(await settingsStore.load())) return
-  isDirty.value = false
-  documentHistory.start((dirty) => (isDirty.value = dirty))
-}
-
-onUnmounted(() => {
-  documentHistory.stop()
-  isDirty.value = false
-  saving.value = false
-  saveHandler.value = undefined
-})
-
-async function saveRoles() {
-  if (!librarySettings.value || saving.value) return
-  saving.value = true
-  try {
-    await settingsStore.save()
-    isDirty.value = false
-  } finally {
-    saving.value = false
-  }
+function initialize() {
+  roleGroupsStore.load()
+  rolesStore.load()
 }
 </script>
 
@@ -66,25 +40,30 @@ async function saveRoles() {
     </header>
 
     <AsyncLoadState
-      v-if="!settingsStore.loaded"
-      :loading="settingsStore.loading"
-      :error="settingsStore.loadError"
+      v-if="!roleGroupsStore.loaded || !rolesStore.loaded"
+      :loading="roleGroupsStore.loading || rolesStore.loading"
+      :error="roleGroupsStore.loadError || rolesStore.loadError"
       label="roles"
       @retry="initialize"
     />
     <template v-else>
       <v-alert
-        v-if="settingsStore.mutationError"
+        v-if="roleGroupsStore.mutationError || rolesStore.mutationError"
         type="error"
         variant="tonal"
         closable
         class="roles-directory mb-4"
-        @click:close="settingsStore.clearMutationError"
+        @click:close="
+          () => {
+            roleGroupsStore.clearMutationError()
+            rolesStore.clearMutationError()
+          }
+        "
       >
-        Role changes were not saved: {{ settingsStore.mutationError }}
+        Role changes were not saved: {{ roleGroupsStore.mutationError || rolesStore.mutationError }}
       </v-alert>
       <div class="roles-directory">
-        <RoleGroupEditor v-if="librarySettings" v-model="librarySettings.roleGroups" />
+        <RoleGroupEditor />
       </div>
     </template>
   </main>

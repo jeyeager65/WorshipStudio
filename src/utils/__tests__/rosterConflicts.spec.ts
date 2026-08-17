@@ -3,37 +3,37 @@ import { findRoleConflicts, isDateUnavailable } from '@/utils/rosterConflicts'
 import type { RoleAssignment } from '@/models/service'
 
 function assignment(overrides: Partial<RoleAssignment> = {}): RoleAssignment {
-  return { role: 'Vocals', personId: 'person-1', tentative: false, ...overrides }
+  return { roleId: 'Vocals', personId: 'person-1', tentative: false, ...overrides }
 }
 
 describe('findRoleConflicts', () => {
   it('flags a person assigned to two distinct roles', () => {
     const assignments = [
-      assignment({ role: 'Vocals', personId: 'ashley' }),
-      assignment({ role: 'Nursery', personId: 'ashley' }),
+      assignment({ roleId: 'Vocals', personId: 'ashley' }),
+      assignment({ roleId: 'Nursery', personId: 'ashley' }),
     ]
     const conflicts = findRoleConflicts(assignments)
-    expect(conflicts).toEqual([{ personId: 'ashley', roles: ['Vocals', 'Nursery'] }])
+    expect(conflicts).toEqual([{ personId: 'ashley', roleIds: ['Vocals', 'Nursery'] }])
   })
 
   it('does not flag the same person twice in the same role', () => {
     const assignments = [
-      assignment({ role: 'Greeters', personId: 'tom' }),
-      assignment({ role: 'Greeters', personId: 'tom' }),
+      assignment({ roleId: 'Greeters', personId: 'tom' }),
+      assignment({ roleId: 'Greeters', personId: 'tom' }),
     ]
     expect(findRoleConflicts(assignments)).toEqual([])
   })
 
   it('does not flag different people in different roles', () => {
     const assignments = [
-      assignment({ role: 'Piano', personId: 'marlene' }),
-      assignment({ role: 'Drums', personId: 'mark' }),
+      assignment({ roleId: 'Piano', personId: 'marlene' }),
+      assignment({ roleId: 'Drums', personId: 'mark' }),
     ]
     expect(findRoleConflicts(assignments)).toEqual([])
   })
 
   it('ignores unfilled roles', () => {
-    expect(findRoleConflicts([assignment({ role: 'Piano', personId: undefined })])).toEqual([])
+    expect(findRoleConflicts([assignment({ roleId: 'Piano', personId: undefined })])).toEqual([])
   })
 })
 

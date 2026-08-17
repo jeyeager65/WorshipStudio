@@ -3,11 +3,13 @@ import { computed, ref, watch } from 'vue'
 import { VueDraggable } from 'vue-draggable-plus'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import type { ServiceTemplate, ServiceTemplateItem } from '@/models/service'
-import type { RoleGroup, ServiceTypeDefinition } from '@/models/settings'
+import type { RoleGroupDefinition, RoleDefinition, ServiceTypeDefinition } from '@/models/settings'
+import { roleOptionsFor } from '@/utils/roleOptions'
 
 const props = defineProps<{
   modelValue: ServiceTemplate[]
-  roleGroups: RoleGroup[]
+  roleGroups: RoleGroupDefinition[]
+  roles: RoleDefinition[]
   serviceTypes: ServiceTypeDefinition[]
   standalone?: boolean
   initialSelectedIndex?: number
@@ -25,21 +27,11 @@ const KIND_OPTIONS: { title: string; value: ServiceTemplateItem['kind']; icon: s
   { title: 'Other', value: 'other', icon: 'mdi-shape-outline' },
 ]
 
-interface RoleOption {
-  type?: 'subheader'
-  title: string
-  value?: string
-}
+const roleOptions = computed(() => roleOptionsFor(props.roles, props.roleGroups))
 
-const roleOptions = computed<RoleOption[]>(() => {
-  const items: RoleOption[] = []
-  for (const group of props.roleGroups) {
-    if (!group.roles.length) continue
-    items.push({ type: 'subheader', title: group.name })
-    for (const role of group.roles) items.push({ title: role, value: role })
-  }
-  return items
-})
+function roleName(roleId: string | undefined): string | undefined {
+  return roleId ? props.roles.find((role) => role.id === roleId)?.name : undefined
+}
 
 const selectedIndex = ref(props.initialSelectedIndex ?? 0)
 const activeMode = ref<'order' | 'roles' | 'defaults'>('order')
@@ -83,18 +75,21 @@ const groupedRoleOnlyItems = computed(() => {
   const groups: Array<{ category: string; items: ServiceTemplateItem[] }> = []
   const categorizedIds = new Set<string>()
   for (const roleGroup of props.roleGroups) {
+    const roleIdsInGroup = new Set(
+      props.roles.filter((role) => role.groupId === roleGroup.id).map((role) => role.id),
+    )
     const items = roleOnlyItems.value.filter(
-      (item) => !!item.role && roleGroup.roles.includes(item.role),
+      (item) => !!item.roleId && roleIdsInGroup.has(item.roleId),
     )
     if (!items.length) continue
     groups.push({ category: roleGroup.name, items })
     items.forEach((item) => categorizedIds.add(item.id))
   }
   const uncategorized = roleOnlyItems.value.filter(
-    (item) => !!item.role && !categorizedIds.has(item.id),
+    (item) => !!item.roleId && !categorizedIds.has(item.id),
   )
   if (uncategorized.length) groups.push({ category: 'Other Roles', items: uncategorized })
-  const awaitingRole = roleOnlyItems.value.filter((item) => !item.role)
+  const awaitingRole = roleOnlyItems.value.filter((item) => !item.roleId)
   if (awaitingRole.length) groups.push({ category: 'Choose a Role', items: awaitingRole })
   return groups
 })
@@ -587,7 +582,7 @@ function setDefaultTypes(serviceTypes: string[]) {
                 <strong>{{ itemTitle(item) }}</strong>
                 <small>
                   {{ itemOption(item.kind)?.title
-                  }}<template v-if="item.role"> · {{ item.role }}</template>
+                  }}<template v-if="item.roleId"> · {{ roleName(item.roleId) }}</template>
                 </small>
               </span>
               <v-icon icon="mdi-chevron-right" size="16" />
@@ -655,7 +650,7 @@ function setDefaultTypes(serviceTypes: string[]) {
               <div class="field-group">
                 <label>Assigned role <span>Optional</span></label>
                 <v-select
-                  :model-value="selectedOrderItem.role"
+                  :model-value="selectedOrderItem.roleId"
                   :items="roleOptions"
                   placeholder="Who normally handles this item?"
                   variant="outlined"
@@ -663,7 +658,7 @@ function setDefaultTypes(serviceTypes: string[]) {
                   hide-details
                   clearable
                   @update:model-value="
-                    (role: string | undefined) => setItem(selectedOrderItem!.id, { role })
+                    (roleId: string | undefined) => setItem(selectedOrderItem!.id, { roleId })
                   "
                 />
               </div>
@@ -721,7 +716,7 @@ function setDefaultTypes(serviceTypes: string[]) {
               >
                 <span class="role-row-icon"><v-icon icon="mdi-account-outline" size="18" /></span>
                 <span>
-                  <strong>{{ item.role || 'Choose a role' }}</strong>
+                  <strong>{{ roleName(item.roleId) || 'Choose a role' }}</strong>
                   <small
                     >{{ item.count ?? 1 }}
                     {{ (item.count ?? 1) === 1 ? 'person' : 'people' }}</small
@@ -747,22 +742,22 @@ function setDefaultTypes(serviceTypes: string[]) {
               </span>
               <div>
                 <small>Role requirement</small>
-                <strong>{{ selectedRoleItem.role || 'Choose a role' }}</strong>
+                <strong>{{ roleName(selectedRoleItem.roleId) || 'Choose a role' }}</strong>
               </div>
             </header>
             <div class="inspector-fields">
               <div class="field-group">
                 <label>Role</label>
                 <v-select
-                  :model-value="selectedRoleItem.role"
+                  :model-value="selectedRoleItem.roleId"
                   :items="roleOptions"
                   placeholder="Select a role"
                   variant="outlined"
                   density="compact"
                   hide-details
                   @update:model-value="
-                    (role: string | undefined) =>
-                      setItem(selectedRoleItem!.id, { role, label: role ?? '' })
+                    (roleId: string | undefined) =>
+                      setItem(selectedRoleItem!.id, { roleId, label: roleName(roleId) ?? '' })
                   "
                 />
               </div>

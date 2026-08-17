@@ -32,6 +32,8 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useSettingsStore } from '@/stores/settings'
 import { useServiceTypesStore } from '@/stores/serviceTypes'
+import { useRoleGroupsStore } from '@/stores/roleGroups'
+import { useRolesStore } from '@/stores/roles'
 import { useSongCollectionsStore } from '@/stores/songCollections'
 import { usePeopleStore } from '@/stores/people'
 import { useSyncStore } from '@/stores/sync'
@@ -46,6 +48,7 @@ import { useExternalAppHandoff } from '@/composables/useExternalAppHandoff'
 import { useLiveTransport } from '@/composables/useLiveTransport'
 import { evaluateServiceReadiness, type ReadinessIssue } from '@/utils/serviceReadiness'
 import { personOptionsForRole } from '@/utils/personOptions'
+import { roleOptionsFor } from '@/utils/roleOptions'
 import type { SermonPassage, Service, ServiceItem } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
 import type { LibrarySlide, PresentationThemeTarget } from '@/models/library'
@@ -70,6 +73,8 @@ const themesStore = useThemesStore()
 const externalAppsStore = useExternalAppsStore()
 const settingsStore = useSettingsStore()
 const serviceTypesStore = useServiceTypesStore()
+const roleGroupsStore = useRoleGroupsStore()
+const rolesStore = useRolesStore()
 const songCollectionsStore = useSongCollectionsStore()
 const peopleStore = usePeopleStore()
 const syncStore = useSyncStore()
@@ -299,6 +304,8 @@ onMounted(async () => {
   if (!peopleStore.loaded) await peopleStore.load()
   if (!settingsStore.loaded) await settingsStore.load()
   if (!serviceTypesStore.loaded) await serviceTypesStore.load()
+  if (!roleGroupsStore.loaded) await roleGroupsStore.load()
+  if (!rolesStore.loaded) await rolesStore.load()
   if (!songCollectionsStore.loaded) await songCollectionsStore.load()
   const dependencyLoadError =
     songsStore.loadError ||
@@ -309,6 +316,8 @@ onMounted(async () => {
     peopleStore.loadError ||
     settingsStore.loadError ||
     serviceTypesStore.loadError ||
+    roleGroupsStore.loadError ||
+    rolesStore.loadError ||
     songCollectionsStore.loadError
   if (dependencyLoadError) {
     workspaceLoadError.value = dependencyLoadError
@@ -442,6 +451,7 @@ const readiness = computed(() =>
           ]),
         ),
         audienceDisplayAvailable: audienceDisplayAvailable.value,
+        roleNames: new Map(rolesStore.roles.map((role) => [role.id, role.name])),
       })
     : { issues: [], blockers: [], warnings: [], ready: false },
 )
@@ -1295,7 +1305,7 @@ const activeAddTypeTitle = computed(
   () => addTabOptions.value.find((option) => option.value === addTab.value)?.title ?? 'Item',
 )
 
-const addReplaceContext = ref<{ index: number; role?: string; label?: string; note?: string }>()
+const addReplaceContext = ref<{ index: number; roleId?: string; label?: string; note?: string }>()
 
 function openAddDialog(type: AddItemType) {
   if (openDrawer.value === 'order') openDrawer.value = null
@@ -1308,7 +1318,7 @@ function beginReplacePlaceholder(item: ServiceItem, index: number) {
   if (item.type !== 'placeholder') return
   addReplaceContext.value = {
     index,
-    role: item.role,
+    roleId: item.roleId,
     label: item.bulletinLabel ?? item.label,
     note: item.bulletinNote,
   }
@@ -1336,39 +1346,26 @@ function updatePresenterNote(itemId: string, note: string) {
 // catalog Assignments uses, not a Person reference directly: the actual person is whoever that
 // service's Assignments has for this role (see AssignmentsView.vue), so this is just a pointer
 // to which role, kept automatically in sync rather than a second place that could disagree.
-interface ItemRoleOption {
-  type?: 'subheader'
-  title: string
-  value?: string
-}
-const itemRoleOptions = computed<ItemRoleOption[]>(() => {
-  const items: ItemRoleOption[] = []
-  for (const group of settingsStore.librarySettings?.roleGroups ?? []) {
-    if (!group.roles.length) continue
-    items.push({ type: 'subheader', title: group.name })
-    for (const role of group.roles) items.push({ title: role, value: role })
-  }
-  return items
-})
-function updateItemRole(itemId: string, role: string | undefined) {
+const itemRoleOptions = computed(() => roleOptionsFor(rolesStore.roles, roleGroupsStore.roleGroups))
+function updateItemRole(itemId: string, roleId: string | undefined) {
   const item = service.value?.items.find((i) => i.id === itemId)
-  if (item) item.role = role
+  if (item) item.roleId = roleId
 }
 const rolePersonOptions = computed(() =>
-  personOptionsForRole(peopleStore.people, selectedItem.value?.role),
+  personOptionsForRole(peopleStore.people, selectedItem.value?.roleId),
 )
-function assignedPersonId(role: string | undefined): string | undefined {
-  return service.value?.assignments?.find((a) => a.role === role)?.personId
+function assignedPersonId(roleId: string | undefined): string | undefined {
+  return service.value?.assignments?.find((a) => a.roleId === roleId)?.personId
 }
 // Editing directly here (rather than only via the Assignments page) writes to the exact same
 // service.assignments array Assignments reads from — one RoleAssignment per role, created on
 // first use here if this role has never been assigned anything for this service yet.
-function updateRolePerson(role: string, personId: string | undefined) {
+function updateRolePerson(roleId: string, personId: string | undefined) {
   if (!service.value) return
   if (!service.value.assignments) service.value.assignments = []
-  const assignment = service.value.assignments.find((a) => a.role === role)
+  const assignment = service.value.assignments.find((a) => a.roleId === roleId)
   if (assignment) assignment.personId = personId
-  else service.value.assignments.push({ role, personId, tentative: false })
+  else service.value.assignments.push({ roleId, personId, tentative: false })
 }
 </script>
 

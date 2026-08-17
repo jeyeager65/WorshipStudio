@@ -35,7 +35,7 @@ const props = defineProps<{
   // Set only while filling in a Service Template's placeholder — makes insertItem() splice the
   // new item into the placeholder's own slot instead of appending it, since there's no
   // reordering for the top-level item list today.
-  replaceContext?: { index: number; role?: string; label?: string; note?: string }
+  replaceContext?: { index: number; roleId?: string; label?: string; note?: string }
   scriptureById: Map<string, ScripturePassage>
   scriptureTranslations: ScriptureTranslation[]
   resolveMediaItem: (mediaId: string) => Promise<void>
@@ -64,7 +64,7 @@ function insertItem(item: ServiceItem) {
   const svc = props.service
   const ctx = props.replaceContext
   if (ctx) {
-    if (ctx.role && !item.role) item.role = ctx.role
+    if (ctx.roleId && !item.roleId) item.roleId = ctx.roleId
     if (ctx.label && !item.bulletinLabel) item.bulletinLabel = ctx.label
     if (ctx.note && !item.bulletinNote) item.bulletinNote = ctx.note
     svc.items.splice(ctx.index, 1, item)

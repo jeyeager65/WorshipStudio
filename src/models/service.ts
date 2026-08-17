@@ -63,14 +63,14 @@ export type ServiceItem = ServiceItemContent & {
   /** Optional per-service override for generated presentation slides. When absent, the default
    * theme for this item's real content type is used. Ignored by self-styled library/media items. */
   themeId?: string
-  /** Who's doing this part (Elder leading prayer, scripture reader, etc.) — a role name from
-   *  the same catalog Assignments uses (LibrarySettings.roleGroups), not a Person id directly:
-   *  the actual person is whoever that service's Assignments has for this role, so assigning it
-   *  there is what fills this in (and keeps conflict-detection/templates consistent). Optional
-   *  and often absent — a "Silent Preparation" bulletin note, for example, needs no one
-   *  assigned at all. For the sermon item this is how its preacher is resolved too — the same
-   *  role/assignments mechanism as every other item type, no special-cased field. */
-  role?: string
+  /** Who's doing this part (Elder leading prayer, scripture reader, etc.) — a RoleDefinition id
+   *  from the same catalog Assignments uses, not a Person id directly: the actual person is
+   *  whoever that service's Assignments has for this role, so assigning it there is what fills
+   *  this in (and keeps conflict-detection/templates consistent). Optional and often absent — a
+   *  "Silent Preparation" bulletin note, for example, needs no one assigned at all. For the
+   *  sermon item this is how its preacher is resolved too — the same role/assignments mechanism
+   *  as every other item type, no special-cased field. */
+  roleId?: string
   /** Overrides this item's default Order of Worship heading (e.g. Scripture's hardcoded
    *  "Scripture Reading:" becomes "Scriptural Call to Worship:"; a song, which has no default
    *  label at all, can be given one like "Tithes and Offerings:"). */
@@ -93,7 +93,7 @@ export type ServiceItem = ServiceItemContent & {
 }
 
 export interface RoleAssignment {
-  role: string
+  roleId: string
   personId?: string
   tentative: boolean
 }
@@ -112,8 +112,8 @@ export interface ServiceTemplateItem {
   /** Optional printed note carried into the generated service item. For bulletin-note entries,
    *  this is the item body; for content entries, it appears beneath the item in the bulletin. */
   note?: string
-  /** Optional for content kinds, required for role-only. */
-  role?: string
+  /** RoleDefinition id. Optional for content kinds, required for role-only. */
+  roleId?: string
   /** role-only kind only, default 1 (e.g. 2 Greeters). */
   count?: number
 }

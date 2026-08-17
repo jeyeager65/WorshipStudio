@@ -35,6 +35,9 @@ export interface ServiceReadinessContext {
   externalAppVerificationAvailable: boolean
   libraryConflictLabels: Map<string, string>
   audienceDisplayAvailable: boolean
+  /** RoleDefinition id -> display name, so warning text can print a real role name instead of
+   *  its raw id. */
+  roleNames: Map<string, string>
 }
 
 export interface ServiceReadinessResult {
@@ -435,15 +438,16 @@ export function evaluateServiceReadiness(
   }
 
   const assignments = service.assignments ?? []
+  const roleName = (roleId: string) => context.roleNames.get(roleId) ?? roleId
   const warnedRoles = new Set<string>()
   for (const assignment of assignments) {
     if (!assignment.personId) {
-      if (!warnedRoles.has(assignment.role)) {
-        warnedRoles.add(assignment.role)
+      if (!warnedRoles.has(assignment.roleId)) {
+        warnedRoles.add(assignment.roleId)
         add(
           'warning',
           'unassigned-role',
-          `${assignment.role} is unassigned`,
+          `${roleName(assignment.roleId)} is unassigned`,
           'Complete the service roster or confirm that the role is not needed.',
           'assignments',
         )
@@ -456,7 +460,7 @@ export function evaluateServiceReadiness(
       add(
         'blocker',
         'missing-person',
-        `${assignment.role} references a missing person`,
+        `${roleName(assignment.roleId)} references a missing person`,
         'Choose another person for this assignment.',
         'assignments',
       )
@@ -465,7 +469,7 @@ export function evaluateServiceReadiness(
         'warning',
         'unavailable-person',
         `${personDisplayName(person)} is marked unavailable`,
-        `Review the ${assignment.role} assignment for this service date.`,
+        `Review the ${roleName(assignment.roleId)} assignment for this service date.`,
         'assignments',
       )
     }
@@ -476,7 +480,7 @@ export function evaluateServiceReadiness(
       'warning',
       'role-conflict',
       `${person ? personDisplayName(person) : 'A person'} has multiple roles`,
-      conflict.roles.join(', '),
+      conflict.roleIds.map(roleName).join(', '),
       'assignments',
     )
   }

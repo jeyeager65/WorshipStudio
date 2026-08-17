@@ -226,8 +226,9 @@ export interface Person {
   /** A formal title, such as Pastor, Elder, Mr., Mrs., Ms., or Dr. */
   title?: string
   email?: string
-  /** Not a restriction — just makes this person show up first when filling roles for these. */
-  preferredRoles: string[]
+  /** Not a restriction — just makes this person show up first when filling roles for these.
+   *  RoleDefinition ids. */
+  preferredRoleIds: string[]
   unavailableDateRanges: UnavailableDateRange[]
   updatedAt: string
   updatedByDevice: string
@@ -248,10 +249,12 @@ export function isElder(person: Person): boolean {
   return title === 'elder' || title === 'pastor'
 }
 
-/** Sorts people with `role` in their preferredRoles first — a hint for filling pickers faster,
- *  never a restriction on who can be picked (anyone remains selectable, just further down). */
-export function sortByPreferredRole<T extends Person>(people: T[], role: string): T[] {
+/** Sorts people with `roleId` in their preferredRoleIds first — a hint for filling pickers
+ *  faster, never a restriction on who can be picked (anyone remains selectable, just further
+ *  down). */
+export function sortByPreferredRole<T extends Person>(people: T[], roleId: string): T[] {
   return [...people].sort(
-    (a, b) => Number(b.preferredRoles.includes(role)) - Number(a.preferredRoles.includes(role)),
+    (a, b) =>
+      Number(b.preferredRoleIds.includes(roleId)) - Number(a.preferredRoleIds.includes(roleId)),
   )
 }

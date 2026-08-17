@@ -4,7 +4,7 @@ import {
   sampleSongs,
   sampleThemes,
   samplePeople,
-  sampleRoleGroups,
+  sampleRoles,
 } from '@/utils/sampleData'
 import { findRoleConflicts } from '@/utils/rosterConflicts'
 import { parseReference } from '@/utils/scriptureReference'
@@ -72,7 +72,7 @@ describe('sample data', () => {
     const conflicts = findRoleConflicts(soon.assignments ?? [])
     expect(conflicts).toHaveLength(1)
     expect(conflicts[0].personId).toBe('person-sample-marcus-johnson')
-    expect(conflicts[0].roles.sort()).toEqual(['Open', 'Piano'])
+    expect(conflicts[0].roleIds.sort()).toEqual(['role-sample-open', 'role-sample-piano'])
   })
 
   it('no other service has an accidental conflict', () => {
@@ -96,15 +96,17 @@ describe('sample data', () => {
     expect(new Date(future.date).getTime()).toBeGreaterThan(new Date(soon.date).getTime())
   })
 
-  it('themes and role groups are internally consistent with the rosters/preferredRoles used above', () => {
+  it('themes and role groups are internally consistent with the rosters/preferredRoleIds used above', () => {
     expect(sampleThemes.length).toBeGreaterThan(0)
-    const availableRoles = new Set(sampleRoleGroups.flatMap((g) => g.roles))
-    const usedRoles = new Set(services.flatMap((s) => (s.assignments ?? []).map((r) => r.role)))
-    for (const role of usedRoles) {
+    const availableRoleIds = new Set(sampleRoles.map((r) => r.id))
+    const usedRoleIds = new Set(
+      services.flatMap((s) => (s.assignments ?? []).map((r) => r.roleId)),
+    )
+    for (const roleId of usedRoleIds) {
       expect(
-        availableRoles,
-        `roster uses role "${role}" not present in sampleRoleGroups`,
-      ).toContain(role)
+        availableRoleIds,
+        `roster uses role "${roleId}" not present in sampleRoles`,
+      ).toContain(roleId)
     }
   })
 })

@@ -12,7 +12,12 @@ import type {
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
 import type { MediaItem, Theme } from '@/models/library'
-import type { SongCollectionDefinition, ServiceTypeDefinition } from '@/models/settings'
+import type {
+  SongCollectionDefinition,
+  ServiceTypeDefinition,
+  RoleGroupDefinition,
+  RoleDefinition,
+} from '@/models/settings'
 import { MockCollection, MockSingleton } from './collection'
 import { stockBackgrounds, stockThemes } from '@/data/stockContent'
 import { presentationThemeDefaults } from '@/utils/presentationTheme'
@@ -24,6 +29,8 @@ import {
   seedThemes,
   seedSongCollections,
   seedServiceTypes,
+  seedRoleGroups,
+  seedRoles,
   seedPeople,
   seedAnnouncements,
   seedLibrarySettings,
@@ -108,6 +115,8 @@ export function createMockAdapter(): StudioAdapter {
     'service-types',
     seedServiceTypes,
   )
+  const roleGroups = new MockCollection<RoleGroupDefinition>('role-groups', seedRoleGroups)
+  const roles = new MockCollection<RoleDefinition>('roles', seedRoles)
   const people = new MockCollection('people', seedPeople)
   const announcements = new MockCollection('announcements', seedAnnouncements)
 
@@ -408,6 +417,22 @@ export function createMockAdapter(): StudioAdapter {
         return serviceType
       },
       delete: (id) => serviceTypes.delete(id),
+    },
+    roleGroups: {
+      list: () => roleGroups.list(),
+      save: async (roleGroup) => {
+        await roleGroups.save(roleGroup)
+        return roleGroup
+      },
+      delete: (id) => roleGroups.delete(id),
+    },
+    roles: {
+      list: () => roles.list(),
+      save: async (role) => {
+        await roles.save(role)
+        return role
+      },
+      delete: (id) => roles.delete(id),
     },
     people: {
       list: () => people.list(),

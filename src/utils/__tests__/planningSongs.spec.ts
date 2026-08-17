@@ -27,14 +27,14 @@ describe('planning song slots', () => {
       type: 'placeholder',
       label: 'Closing Song',
       suggestedTab: 'songs',
-      role: 'Song Leader',
+      roleId: 'Song Leader',
     }
     expect(fillPlanningSongSlot(slot, song)).toMatchObject({
       id: 'slot-1',
       type: 'song',
       songId: 'song-1',
       bulletinLabel: 'Closing Song',
-      role: 'Song Leader',
+      roleId: 'Song Leader',
       arrangement: { sequence: ['v1'] },
     })
   })
@@ -46,7 +46,7 @@ describe('planning song slots', () => {
       songId: 'song-1',
       arrangement: { sequence: ['v1'] },
       bulletinLabel: "The Lord's Supper",
-      role: 'Song Leader',
+      roleId: 'Song Leader',
     }
     expect(emptyPlanningSongSlot(filled)).toMatchObject({
       id: 'slot-1',
@@ -54,7 +54,7 @@ describe('planning song slots', () => {
       suggestedTab: 'songs',
       label: "The Lord's Supper",
       bulletinLabel: "The Lord's Supper",
-      role: 'Song Leader',
+      roleId: 'Song Leader',
     })
   })
 

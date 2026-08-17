@@ -13,11 +13,11 @@ const LIBRARY_SETTINGS_FILE: &str = "library-settings.json";
 // milestone M7) to let a church configure these, so an empty list would leave the app
 // genuinely unusable (e.g. Create Service's Type dropdown would have nothing to pick).
 // Service types now live in their own file (commands::service_types::migrate_if_needed seeds
-// the same defaults there for a genuinely fresh library); role_groups/service_templates are
-// left empty since there's no reasonable default for church-specific people, roles, or names.
+// the same defaults there for a genuinely fresh library), as do role groups/roles
+// (commands::roles::migrate_if_needed); service_templates is left empty since there's no
+// reasonable default for church-specific names.
 fn default_library_settings() -> LibrarySettings {
     LibrarySettings {
-        role_groups: vec![],
         service_templates: vec![],
         branding: Branding {
             church_name: "".to_string(),
@@ -130,7 +130,14 @@ fn migrate_legacy_bible_api_keys(
 }
 
 pub fn load_library_settings(app: &AppHandle) -> Result<LibrarySettings, String> {
-    let path = library_root(app).join(LIBRARY_SETTINGS_FILE);
+    let root = library_root(app);
+    let path = root.join(LIBRARY_SETTINGS_FILE);
+    // Eager, unlike service_types/song_collections (which only migrate when their own list
+    // command runs) — ServiceTemplateItem.role_id and BulletinSettings.serving_schedule_role_ids
+    // stay nested inside LibrarySettings, so they need to be correct as soon as anything reads
+    // settings at all, not only once someone happens to open Settings > Roles first. See
+    // commands::roles::migrate_if_needed's own doc comment.
+    crate::commands::roles::migrate_if_needed(&root).map_err(|error| error.to_string())?;
     let mut settings = match read_json_file(&path).map_err(|error| error.to_string())? {
         Some(settings) => settings,
         None => default_library_settings(),

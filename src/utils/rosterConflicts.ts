@@ -3,7 +3,7 @@ import type { UnavailableDateRange } from '@/models/library'
 
 export interface RoleConflict {
   personId: string
-  roles: string[]
+  roleIds: string[]
 }
 
 /**
@@ -17,12 +17,12 @@ export function findRoleConflicts(assignments: RoleAssignment[]): RoleConflict[]
   for (const assignment of assignments) {
     if (!assignment.personId) continue
     const roles = rolesByPerson.get(assignment.personId) ?? new Set<string>()
-    roles.add(assignment.role)
+    roles.add(assignment.roleId)
     rolesByPerson.set(assignment.personId, roles)
   }
   return [...rolesByPerson.entries()]
     .filter(([, roles]) => roles.size > 1)
-    .map(([personId, roles]) => ({ personId, roles: [...roles] }))
+    .map(([personId, roles]) => ({ personId, roleIds: [...roles] }))
 }
 
 /** Whether `date` (ISO yyyy-mm-dd) falls within any of a person's unavailable ranges. */

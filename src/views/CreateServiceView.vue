@@ -79,8 +79,8 @@ const templateContentCount = computed(
 const templateAssignmentCount = computed(
   () =>
     selectedTemplate.value?.items.reduce((count, item) => {
-      if (item.kind === 'role-only') return count + (item.role ? (item.count ?? 1) : 0)
-      return count + (item.role ? 1 : 0)
+      if (item.kind === 'role-only') return count + (item.roleId ? (item.count ?? 1) : 0)
+      return count + (item.roleId ? 1 : 0)
     }, 0) ?? 0,
 )
 const formattedDate = computed(() => {
@@ -134,7 +134,7 @@ async function createService(destination: 'plan' | 'service') {
         passageReference: keyPassage.value,
         preacherId: preacherId.value,
       },
-      selectedTemplate.value?.items.find((item) => item.kind === 'sermon')?.role,
+      selectedTemplate.value?.items.find((item) => item.kind === 'sermon')?.roleId,
       settingsStore.librarySettings?.defaultTranslationCode ?? 'KJV',
     )
   }

@@ -57,7 +57,7 @@ describe('ServiceCard', () => {
       props: {
         serviceTypeName: 'Sunday Morning Worship',
         service: sampleService({
-          assignments: [{ role: 'Worship Leader', personId: undefined, tentative: false }],
+          assignments: [{ roleId: 'role-worship-leader', personId: undefined, tentative: false }],
         }),
       },
       global: { plugins: [vuetify, router] },

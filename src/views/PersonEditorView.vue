@@ -3,7 +3,8 @@ import { computed, onMounted, onUnmounted, ref, toRaw } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { usePeopleStore } from '@/stores/people'
-import { useSettingsStore } from '@/stores/settings'
+import { useRoleGroupsStore } from '@/stores/roleGroups'
+import { useRolesStore } from '@/stores/roles'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { getAdapter } from '@/adapters'
@@ -19,7 +20,8 @@ const titleSuggestions = ['Pastor', 'Elder', 'Mr.', 'Mrs.', 'Ms.', 'Dr.']
 const route = useRoute()
 const router = useRouter()
 const peopleStore = usePeopleStore()
-const settingsStore = useSettingsStore()
+const roleGroupsStore = useRoleGroupsStore()
+const rolesStore = useRolesStore()
 const confirmDialog = useConfirmDialogStore()
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 
@@ -54,7 +56,7 @@ function blankPerson(): Person {
     id: `person-${crypto.randomUUID()}`,
     firstName: '',
     lastName: '',
-    preferredRoles: [],
+    preferredRoleIds: [],
     unavailableDateRanges: [],
     updatedAt: '',
     updatedByDevice: '',
@@ -97,12 +99,14 @@ async function loadEditor() {
   editorLoadError.value = ''
   notFound.value = false
   try {
-    const [peopleLoaded, settingsLoaded] = await Promise.all([
+    const [peopleLoaded, roleGroupsLoaded, rolesLoaded] = await Promise.all([
       peopleStore.load(),
-      settingsStore.load(),
+      roleGroupsStore.load(),
+      rolesStore.load(),
     ])
-    if (!peopleLoaded || !settingsLoaded) {
-      editorLoadError.value = peopleStore.loadError || settingsStore.loadError
+    if (!peopleLoaded || !roleGroupsLoaded || !rolesLoaded) {
+      editorLoadError.value =
+        peopleStore.loadError || roleGroupsStore.loadError || rolesStore.loadError
       return
     }
     const isNew = route.params.id === 'new'
@@ -188,15 +192,15 @@ async function revokeDevice(device: RemoteDevice) {
   await loadRemoteDevices()
 }
 
-function toggleRole(role: string) {
+function toggleRole(roleId: string) {
   if (!person.value) return
-  const index = person.value.preferredRoles.indexOf(role)
-  if (index === -1) person.value.preferredRoles.push(role)
-  else person.value.preferredRoles.splice(index, 1)
+  const index = person.value.preferredRoleIds.indexOf(roleId)
+  if (index === -1) person.value.preferredRoleIds.push(roleId)
+  else person.value.preferredRoleIds.splice(index, 1)
 }
 
-function selectedRoleCount(roles: string[]): number {
-  return roles.filter((role) => person.value?.preferredRoles.includes(role)).length
+function selectedRoleCount(roleIds: string[]): number {
+  return roleIds.filter((roleId) => person.value?.preferredRoleIds.includes(roleId)).length
 }
 
 function addUnavailableRange() {
@@ -357,10 +361,10 @@ function formatDateRange(range: UnavailableDateRange): string {
             </p>
           </div>
         </div>
-        <div v-if="settingsStore.librarySettings?.roleGroups.length" class="role-groups">
+        <div v-if="roleGroupsStore.roleGroups.length" class="role-groups">
           <div
-            v-for="(group, groupIndex) in settingsStore.librarySettings.roleGroups"
-            :key="group.name"
+            v-for="(group, groupIndex) in roleGroupsStore.roleGroups"
+            :key="group.id"
             class="role-group"
             :style="{
               '--category-color': `rgb(var(--v-theme-${categoryColors[groupIndex % categoryColors.length]}))`,
@@ -370,23 +374,33 @@ function formatDateRange(range: UnavailableDateRange): string {
               <span><v-icon icon="mdi-shape-outline" size="17" /></span>
               <div>
                 <h3>{{ group.name }}</h3>
-                <p>{{ selectedRoleCount(group.roles) }} selected</p>
+                <p>
+                  {{
+                    selectedRoleCount(
+                      rolesStore.roles.filter((r) => r.groupId === group.id).map((r) => r.id),
+                    )
+                  }}
+                  selected
+                </p>
               </div>
             </div>
-            <div v-if="group.roles.length" class="role-options">
+            <div
+              v-if="rolesStore.roles.some((r) => r.groupId === group.id)"
+              class="role-options"
+            >
               <button
-                v-for="role in group.roles"
-                :key="role"
+                v-for="role in rolesStore.roles.filter((r) => r.groupId === group.id)"
+                :key="role.id"
                 type="button"
                 class="role-option"
-                :class="{ 'role-option--selected': person.preferredRoles.includes(role) }"
-                @click="toggleRole(role)"
+                :class="{ 'role-option--selected': person.preferredRoleIds.includes(role.id) }"
+                @click="toggleRole(role.id)"
               >
                 <v-icon
-                  :icon="person.preferredRoles.includes(role) ? 'mdi-check' : 'mdi-plus'"
+                  :icon="person.preferredRoleIds.includes(role.id) ? 'mdi-check' : 'mdi-plus'"
                   size="17"
                 />
-                {{ role }}
+                {{ role.name }}
               </button>
             </div>
             <p v-else class="no-roles">No roles are configured in this category.</p>

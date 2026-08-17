@@ -77,7 +77,7 @@ describe('buildOrderOfWorship', () => {
 
   it("resolves an item's person via its role's Assignments entry, not a direct id", () => {
     const service = baseService({
-      assignments: [{ role: 'Scripture Reader', personId: 'person-jordan', tentative: false }],
+      assignments: [{ roleId: 'Scripture Reader', personId: 'person-jordan', tentative: false }],
       items: [
         {
           id: 'item-1',
@@ -85,7 +85,7 @@ describe('buildOrderOfWorship', () => {
           reference: 'Matthew 25:1-30',
           translation: 'ESV',
           displayMode: 'full',
-          role: 'Scripture Reader',
+          roleId: 'Scripture Reader',
         },
       ],
     })
@@ -102,7 +102,7 @@ describe('buildOrderOfWorship', () => {
 
   it('uses formal names for every assigned bulletin participant, not only the preacher', () => {
     const service = baseService({
-      assignments: [{ role: 'Scripture Reader', personId: 'person-jordan', tentative: false }],
+      assignments: [{ roleId: 'Scripture Reader', personId: 'person-jordan', tentative: false }],
       items: [
         {
           id: 'item-1',
@@ -110,7 +110,7 @@ describe('buildOrderOfWorship', () => {
           reference: 'Matthew 25:1-30',
           translation: 'ESV',
           displayMode: 'full',
-          role: 'Scripture Reader',
+          roleId: 'Scripture Reader',
         },
       ],
     })
@@ -133,7 +133,7 @@ describe('buildOrderOfWorship', () => {
           reference: 'Matthew 25:1-30',
           translation: 'ESV',
           displayMode: 'full',
-          role: 'Scripture Reader',
+          roleId: 'Scripture Reader',
         },
       ],
     })
@@ -143,8 +143,8 @@ describe('buildOrderOfWorship', () => {
 
   it("uses a referenced slide's own label as the line", () => {
     const service = baseService({
-      assignments: [{ role: 'Announcer', personId: 'person-rob', tentative: false }],
-      items: [{ id: 'item-1', type: 'slide-ref', slideId: 'slide-1', role: 'Announcer' }],
+      assignments: [{ roleId: 'Announcer', personId: 'person-rob', tentative: false }],
+      items: [{ id: 'item-1', type: 'slide-ref', slideId: 'slide-1', roleId: 'Announcer' }],
     })
     const doc = buildOrderOfWorship(
       service,
@@ -278,13 +278,13 @@ describe('buildOrderOfWorship', () => {
 
   it('a sermon line uses the sermon title as its heading and the main passage as its note', () => {
     const service = baseService({
-      assignments: [{ role: 'Preacher', personId: 'person-dan', tentative: false }],
+      assignments: [{ roleId: 'Preacher', personId: 'person-dan', tentative: false }],
       items: [
         {
           id: 'item-1',
           type: 'sermon',
           title: 'From Chained to Commissioned',
-          role: 'Preacher',
+          roleId: 'Preacher',
           passages: [
             { id: 'p1', reference: 'Romans 8:28', translation: 'ESV', displayMode: 'full' },
             { id: 'p2', reference: 'Mark 5:1-20', translation: 'ESV', displayMode: 'full' },
@@ -391,12 +391,12 @@ describe('buildOrderOfWorship', () => {
 
   it('a bulletin-note item renders its label/note/role-resolved person and never a slide-worthy text', () => {
     const service = baseService({
-      assignments: [{ role: 'Prayer', personId: 'person-elder', tentative: false }],
+      assignments: [{ roleId: 'Prayer', personId: 'person-elder', tentative: false }],
       items: [
         {
           id: 'item-1',
           type: 'bulletin-note',
-          role: 'Prayer',
+          roleId: 'Prayer',
           bulletinLabel: 'Prayer of Praise and Confession',
           bulletinNote: '(please kneel if able)',
         },
@@ -431,9 +431,14 @@ describe('buildOrderOfWorship', () => {
 
   it("an unreplaced placeholder shows its label, its role's resolved person, and '(to be filled in)'", () => {
     const service = baseService({
-      assignments: [{ role: 'Scripture Reader', personId: 'person-jordan', tentative: false }],
+      assignments: [{ roleId: 'Scripture Reader', personId: 'person-jordan', tentative: false }],
       items: [
-        { id: 'item-1', type: 'placeholder', label: 'Scripture Reading', role: 'Scripture Reader' },
+        {
+          id: 'item-1',
+          type: 'placeholder',
+          label: 'Scripture Reading',
+          roleId: 'Scripture Reader',
+        },
       ],
     })
     const doc = buildOrderOfWorship(

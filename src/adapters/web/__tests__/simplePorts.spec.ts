@@ -41,7 +41,7 @@ describe('createWebPeoplePort', () => {
       id: 'person-1',
       firstName: 'Dan',
       lastName: 'Smith',
-      preferredRoles: [],
+      preferredRoleIds: [],
       unavailableDateRanges: [],
       updatedAt: '',
       updatedByDevice: '',

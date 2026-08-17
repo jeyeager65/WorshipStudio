@@ -7,7 +7,7 @@ function person(overrides: Partial<Person> = {}): Person {
     id: 'person-1',
     firstName: 'First',
     lastName: 'Last',
-    preferredRoles: [],
+    preferredRoleIds: [],
     unavailableDateRanges: [],
     updatedAt: '',
     updatedByDevice: '',
@@ -20,9 +20,9 @@ describe('personOptionsForRole', () => {
     const people: Person[] = [
       person({ id: 'pete', firstName: 'Pete', lastName: 'Donovan' }),
       person({ id: 'tina', firstName: 'Tina', lastName: 'Marsh' }),
-      person({ id: 'vera', firstName: 'Vera', lastName: 'Turner', preferredRoles: ['Slides'] }),
+      person({ id: 'vera', firstName: 'Vera', lastName: 'Turner', preferredRoleIds: ['Slides'] }),
       person({ id: 'owen', firstName: 'Owen', lastName: 'Castillo' }),
-      person({ id: 'jenna', firstName: 'Jenna', lastName: 'Turner', preferredRoles: ['Slides'] }),
+      person({ id: 'jenna', firstName: 'Jenna', lastName: 'Turner', preferredRoleIds: ['Slides'] }),
       person({ id: 'rosa', firstName: 'Rosa', lastName: 'Alvarado' }),
     ]
     const options = personOptionsForRole(people, 'Slides')
@@ -50,7 +50,7 @@ describe('personOptionsForRole', () => {
 
   it('falls back to plain alphabetical order when no role is given', () => {
     const people: Person[] = [
-      person({ id: 'b', firstName: 'Bob', lastName: 'Bell', preferredRoles: ['Vocals'] }),
+      person({ id: 'b', firstName: 'Bob', lastName: 'Bell', preferredRoleIds: ['Vocals'] }),
       person({ id: 'a', firstName: 'Ann', lastName: 'Adams' }),
     ]
     expect(personOptionsForRole(people, undefined).map((o) => o.title)).toEqual([
@@ -73,8 +73,8 @@ describe('personOptionsForRole', () => {
 
   it('omits section headers when everyone prefers the role', () => {
     const people: Person[] = [
-      person({ id: 'b', firstName: 'Bob', lastName: 'Bell', preferredRoles: ['Vocals'] }),
-      person({ id: 'a', firstName: 'Ann', lastName: 'Adams', preferredRoles: ['Vocals'] }),
+      person({ id: 'b', firstName: 'Bob', lastName: 'Bell', preferredRoleIds: ['Vocals'] }),
+      person({ id: 'a', firstName: 'Ann', lastName: 'Adams', preferredRoleIds: ['Vocals'] }),
     ]
     const options = personOptionsForRole(people, 'Vocals')
     expect(options).toEqual([
@@ -89,9 +89,9 @@ describe('personOptionsForRole', () => {
         id: 'a',
         firstName: 'Ann',
         lastName: 'Adams',
-        preferredRoles: ['Sound Booth Lead'],
+        preferredRoleIds: ['Sound Booth Lead'],
       }),
-      person({ id: 'b', firstName: 'Bob', lastName: 'Bell', preferredRoles: ['Sound Booth'] }),
+      person({ id: 'b', firstName: 'Bob', lastName: 'Bell', preferredRoleIds: ['Sound Booth'] }),
     ]
     const options = personOptionsForRole(people, 'Sound Booth')
     expect(options.map((o) => o.title)).toEqual([

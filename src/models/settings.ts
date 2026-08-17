@@ -1,19 +1,43 @@
 import type { ServiceTemplate } from './service'
 
-/** A named category of roles (e.g. "Praise Team" grouping Drums/Guitar/Piano/Vocals) — purely
- *  organizational; a role itself is still just a plain string referenced by
- *  RoleAssignment.role/ServiceTemplateItem.role. */
-export interface RoleGroup {
+/** Lives in its own `role-groups.json`, a peer of `library-settings.json`, not a field on it —
+ *  see `src-tauri/src/domain/role_groups.rs` and `src-tauri/src/commands/roles.rs`'s one-time
+ *  migration off the old nested-in-settings shape (`RoleGroup { name, roles: string[] }`, where
+ *  a role was just a bare string living inside whichever group's `roles` array contained it). A
+ *  role group no longer owns its member roles directly — see `RoleDefinition.groupId` for the
+ *  many-to-one link, chosen so a role can be reassigned to a different group later without
+ *  losing its identity or any of its historical references. */
+export interface RoleGroupDefinition {
+  id: string
   name: string
-  roles: string[]
+}
+
+/** Lives in its own `roles.json`, a peer of `library-settings.json` and `role-groups.json` — see
+ *  `src-tauri/src/domain/roles.rs` and `src-tauri/src/commands/roles.rs`'s one-time migration.
+ *  Referenced by id from `RoleAssignment.roleId`, `ServiceItem.roleId`,
+ *  `ServiceTemplateItem.roleId`, `Person.preferredRoleIds`, and
+ *  `BulletinSettings.servingScheduleRoleIds` (models/service.ts, models/library.ts), not by
+ *  name. */
+export interface RoleDefinition {
+  id: string
+  name: string
+  /** The `RoleGroupDefinition.id` this role belongs to — many-to-one (a role belongs to
+   *  exactly one group). */
+  groupId: string
 }
 
 /** "Praise Team - Guitar" — every display of a role name shows its category, so it's
  *  identifiable without needing surrounding visual grouping context. Falls back to the bare
  *  role name if it isn't (or is no longer) in any group. */
-export function roleDisplayLabel(role: string, roleGroups: RoleGroup[]): string {
-  const group = roleGroups.find((g) => g.roles.includes(role))
-  return group ? `${group.name} - ${role}` : role
+export function roleDisplayLabel(
+  roleId: string,
+  roles: RoleDefinition[],
+  roleGroups: RoleGroupDefinition[],
+): string {
+  const role = roles.find((r) => r.id === roleId)
+  if (!role) return roleId
+  const group = roleGroups.find((g) => g.id === role.groupId)
+  return group ? `${group.name} - ${role.name}` : role.name
 }
 
 /** Lives in its own `song-collections.json`, a peer of `library-settings.json`, not a field on
@@ -41,7 +65,6 @@ export interface ServiceTypeDefinition {
 
 /** library-settings.json — synced, shared across the church's setup. */
 export interface LibrarySettings {
-  roleGroups: RoleGroup[]
   serviceTemplates: ServiceTemplate[]
   branding: {
     churchName: string
@@ -149,10 +172,9 @@ export interface BulletinSettings {
   page2Enabled: boolean
   showAnnouncements: boolean
   showServingSchedule: boolean
-  /** Which individual role names (drawn from LibrarySettings.roleGroups' own roles, e.g.
-   *  "Nursery", "Sound Booth") become columns in the serving schedule table — opt-in, since not
-   *  every role (e.g. Praise Team parts) belongs in it. */
-  servingScheduleRoles: string[]
+  /** RoleDefinition ids (e.g. "Nursery", "Sound Booth") that become columns in the serving
+   *  schedule table — opt-in, since not every role (e.g. Praise Team parts) belongs in it. */
+  servingScheduleRoleIds: string[]
 }
 
 /** Per-machine settings — Tauri app-data dir, never synced. */

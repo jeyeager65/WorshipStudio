@@ -37,7 +37,7 @@ export const useSettingsStore = defineStore('settings', () => {
           page2Enabled: true,
           showAnnouncements: true,
           showServingSchedule: true,
-          servingScheduleRoles: [],
+          servingScheduleRoleIds: [],
         },
       }
       machineSettings.value = machine

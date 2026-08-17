@@ -7,6 +7,7 @@ import {
   sampleThemes,
   sampleCollections,
   sampleRoleGroups,
+  sampleRoles,
   sampleServiceTypes,
   sampleServiceTemplates,
   buildSampleServices,
@@ -23,6 +24,8 @@ export const seedThemes = sampleThemes
 export const seedServices = buildSampleServices()
 export const seedSongCollections = structuredClone(sampleCollections)
 export const seedServiceTypes = structuredClone(sampleServiceTypes)
+export const seedRoleGroups = structuredClone(sampleRoleGroups)
+export const seedRoles = structuredClone(sampleRoles)
 
 export const seedSlides: SlideLibraryItem[] = []
 // Empty by default, matching the desktop app's real "no reasonable default media" stance — the
@@ -32,7 +35,6 @@ export const seedMedia: MediaItem[] = []
 export const seedAnnouncements: Announcement[] = []
 
 export const seedLibrarySettings: LibrarySettings = {
-  roleGroups: structuredClone(sampleRoleGroups),
   serviceTemplates: structuredClone(sampleServiceTemplates),
   branding: {
     churchName: 'Worship Studio Church',
@@ -67,7 +69,7 @@ export const seedLibrarySettings: LibrarySettings = {
     page2Enabled: true,
     showAnnouncements: true,
     showServingSchedule: true,
-    servingScheduleRoles: [],
+    servingScheduleRoleIds: [],
   },
 }
 

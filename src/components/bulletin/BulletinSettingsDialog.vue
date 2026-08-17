@@ -1,13 +1,23 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
+import { computed, onMounted, reactive, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
+import { useRoleGroupsStore } from '@/stores/roleGroups'
+import { useRolesStore } from '@/stores/roles'
 import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 import type { BulletinSettings } from '@/models/settings'
+import { roleOptionsFor } from '@/utils/roleOptions'
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
 
 const settingsStore = useSettingsStore()
+const roleGroupsStore = useRoleGroupsStore()
+const rolesStore = useRolesStore()
+
+onMounted(() => {
+  roleGroupsStore.load()
+  rolesStore.load()
+})
 
 // Local draft so Cancel discards cleanly — same convention as ServiceDetailsDialog.vue. Populated
 // fresh from the store every time the dialog opens rather than tracking it continuously, since
@@ -22,7 +32,7 @@ const draft = reactive<BulletinSettings>({
   page2Enabled: false,
   showAnnouncements: false,
   showServingSchedule: false,
-  servingScheduleRoles: [],
+  servingScheduleRoleIds: [],
 })
 watch(
   () => props.modelValue,
@@ -33,20 +43,10 @@ watch(
 )
 
 // The bulletin's serving schedule picks individual roles (e.g. "Nursery", "Sound Booth"), not
-// whole categories — flattened and deduped across every role group, category-labeled so two
-// same-named roles in different groups (unlikely, but not prevented elsewhere) stay distinguishable.
-const bulletinRoleOptions = computed(() => {
-  const seen = new Set<string>()
-  const options: { title: string; value: string }[] = []
-  for (const group of settingsStore.librarySettings?.roleGroups ?? []) {
-    for (const role of group.roles) {
-      if (seen.has(role)) continue
-      seen.add(role)
-      options.push({ title: `${group.name} - ${role}`, value: role })
-    }
-  }
-  return options
-})
+// whole categories — grouped by category so roles from different groups stay distinguishable.
+const bulletinRoleOptions = computed(() =>
+  roleOptionsFor(rolesStore.roles, roleGroupsStore.roleGroups),
+)
 
 async function save() {
   if (!settingsStore.librarySettings) return
@@ -143,7 +143,7 @@ async function save() {
             />
             <v-select
               v-if="draft.showServingSchedule"
-              v-model="draft.servingScheduleRoles"
+              v-model="draft.servingScheduleRoleIds"
               :items="bulletinRoleOptions"
               label="Roles to show as columns"
               variant="outlined"

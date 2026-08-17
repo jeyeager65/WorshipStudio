@@ -37,6 +37,8 @@ import type {
   MachineSettings,
   SongCollectionDefinition,
   ServiceTypeDefinition,
+  RoleGroupDefinition,
+  RoleDefinition,
 } from '@/models/settings'
 import type { Announcement } from '@/models/announcement'
 import { friendlyDisplayName } from '@/utils/displayName'
@@ -407,6 +409,16 @@ export function createTauriAdapter(): StudioAdapter {
       save: (serviceType) =>
         invoke<ServiceTypeDefinition>('save_service_type', { serviceType }),
       delete: (id) => invoke('delete_service_type', { id }),
+    },
+    roleGroups: {
+      list: () => invoke<RoleGroupDefinition[]>('list_role_groups'),
+      save: (roleGroup) => invoke<RoleGroupDefinition>('save_role_group', { roleGroup }),
+      delete: (id) => invoke('delete_role_group', { id }),
+    },
+    roles: {
+      list: () => invoke<RoleDefinition[]>('list_roles'),
+      save: (role) => invoke<RoleDefinition>('save_role', { role }),
+      delete: (id) => invoke('delete_role', { id }),
     },
     people: {
       list: () => invoke<Person[]>('list_people'),

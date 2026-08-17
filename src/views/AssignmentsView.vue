@@ -8,6 +8,8 @@ import { useServicesStore } from '@/stores/services'
 import { usePeopleStore } from '@/stores/people'
 import { useSettingsStore } from '@/stores/settings'
 import { useServiceTypesStore } from '@/stores/serviceTypes'
+import { useRoleGroupsStore } from '@/stores/roleGroups'
+import { useRolesStore } from '@/stores/roles'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import PersonEditorDialog from '@/components/people/PersonEditorDialog.vue'
@@ -17,6 +19,7 @@ import EditorNotFoundState from '@/components/EditorNotFoundState.vue'
 import { errorMessage } from '@/composables/useAsyncStoreState'
 import { findRoleConflicts, isDateUnavailable } from '@/utils/rosterConflicts'
 import { personOptionsForRole as personOptionsForRoleShared } from '@/utils/personOptions'
+import { roleOptionsFor } from '@/utils/roleOptions'
 import { defaultServiceTemplate, planAssignmentResetFromTemplate } from '@/utils/serviceTemplate'
 import type { RoleAssignment, Service } from '@/models/service'
 import type { Person } from '@/models/library'
@@ -37,6 +40,8 @@ const servicesStore = useServicesStore()
 const peopleStore = usePeopleStore()
 const settingsStore = useSettingsStore()
 const serviceTypesStore = useServiceTypesStore()
+const roleGroupsStore = useRoleGroupsStore()
+const rolesStore = useRolesStore()
 const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsavedChangesStore())
 const confirmDialog = useConfirmDialogStore()
 const backTo = computed(() =>
@@ -64,6 +69,8 @@ async function loadAssignments() {
       peopleStore.load(),
       settingsStore.load(),
       serviceTypesStore.load(),
+      roleGroupsStore.load(),
+      rolesStore.load(),
     ])
     if (!peopleLoaded || !settingsLoaded) {
       editorLoadError.value = peopleStore.loadError || settingsStore.loadError
@@ -138,7 +145,7 @@ const roster = computed(() => service.value?.assignments ?? [])
 // Only roles actually present on this service's own assignments are shown — a template seeds
 // sensible defaults once at creation (see CreateServiceView), but from then on this service's
 // roster is its own thing, independent of both the template and the global role catalog.
-const usedRoles = computed(() => [...new Set(roster.value.map((a) => a.role))])
+const usedRoles = computed(() => [...new Set(roster.value.map((a) => a.roleId))])
 
 // Roles tied to an actual item currently on this service (e.g. the sermon's Preacher) — shown
 // in their own Order of Service section, in the order those items appear, kept separate from
@@ -150,9 +157,9 @@ const orderOfServiceRoles = computed<string[]>(() => {
   const seen = new Set<string>()
   const roles: string[] = []
   for (const item of service.value?.items ?? []) {
-    if (item.role && !seen.has(item.role)) {
-      seen.add(item.role)
-      roles.push(item.role)
+    if (item.roleId && !seen.has(item.roleId)) {
+      seen.add(item.roleId)
+      roles.push(item.roleId)
     }
   }
   return roles
@@ -163,6 +170,7 @@ const usedStaffingRoles = computed(() =>
 
 interface DisplayGroup {
   name: string
+  /** RoleDefinition ids. */
   roles: string[]
   color: string
 }
@@ -182,21 +190,23 @@ const CATEGORY_COLORS = [
   'secondary',
   'amber',
 ]
-function categoryColor(groupName: string): string {
-  const groups = settingsStore.librarySettings?.roleGroups ?? []
-  const index = groups.findIndex((g) => g.name === groupName)
+function categoryColor(groupId: string): string {
+  const index = roleGroupsStore.roleGroups.findIndex((g) => g.id === groupId)
   return index === -1 ? 'slate' : CATEGORY_COLORS[index % CATEGORY_COLORS.length]
 }
-function buildGroups(roles: string[]): DisplayGroup[] {
+function buildGroups(roleIds: string[]): DisplayGroup[] {
   const groups: DisplayGroup[] = []
   const accountedFor = new Set<string>()
-  for (const group of settingsStore.librarySettings?.roleGroups ?? []) {
-    const groupRoles = group.roles.filter((r) => roles.includes(r))
+  for (const group of roleGroupsStore.roleGroups) {
+    const roleIdsInGroup = rolesStore.roles
+      .filter((role) => role.groupId === group.id)
+      .map((role) => role.id)
+    const groupRoles = roleIdsInGroup.filter((id) => roleIds.includes(id))
     if (!groupRoles.length) continue
-    groups.push({ name: group.name, roles: groupRoles, color: categoryColor(group.name) })
-    groupRoles.forEach((r) => accountedFor.add(r))
+    groups.push({ name: group.name, roles: groupRoles, color: categoryColor(group.id) })
+    groupRoles.forEach((id) => accountedFor.add(id))
   }
-  const leftover = roles.filter((r) => !accountedFor.has(r))
+  const leftover = roleIds.filter((id) => !accountedFor.has(id))
   if (leftover.length) groups.push({ name: 'Other', roles: leftover, color: 'slate' })
   return groups
 }
@@ -212,20 +222,24 @@ const groupedRoles = computed<DisplayGroup[]>(() => buildGroups(usedStaffingRole
 // Preacher as a preferred role, so this deliberately isn't narrowed to staffing roles only.
 const allGroupedRoles = computed<DisplayGroup[]>(() => buildGroups(usedRoles.value))
 
-function roleLabel(role: string): string {
-  return roleDisplayLabel(role, settingsStore.librarySettings?.roleGroups ?? [])
+function roleName(roleId: string): string {
+  return rolesStore.roles.find((role) => role.id === roleId)?.name ?? roleId
+}
+function roleLabel(roleId: string): string {
+  return roleDisplayLabel(roleId, rolesStore.roles, roleGroupsStore.roleGroups)
 }
 
-function assignmentsForRole(role: string): RoleAssignment[] {
-  return roster.value.filter((a) => a.role === role)
+function assignmentsForRole(roleId: string): RoleAssignment[] {
+  return roster.value.filter((a) => a.roleId === roleId)
 }
-function addAssignment(role: string) {
-  service.value?.assignments?.push({ role, tentative: false })
+function addAssignment(roleId: string) {
+  service.value?.assignments?.push({ roleId, tentative: false })
 }
 async function removeAssignment(target: RoleAssignment) {
   if (!service.value?.assignments) return
   const name = personName(target.personId)
-  const label = name ? `${name} (${target.role})` : `this ${target.role} assignment`
+  const targetRoleName = roleName(target.roleId)
+  const label = name ? `${name} (${targetRoleName})` : `this ${targetRoleName} assignment`
   if (!(await confirmDialog.confirm(`Remove ${label}?`, 'Remove'))) return
   if (!service.value?.assignments) return
   service.value.assignments = service.value.assignments.filter((a) => a !== target)
@@ -234,29 +248,16 @@ async function removeAssignment(target: RoleAssignment) {
 // Grouped like the role catalog itself, offering only roles not already in use on this
 // service — picking one adds a single ad hoc row (via the existing "Add another {role}"
 // button from there on), letting an operator go beyond whatever the template seeded.
-interface RoleOption {
-  type?: 'subheader'
-  title: string
-  value?: string
-}
-const addRoleItems = computed<RoleOption[]>(() => {
-  const items: RoleOption[] = []
-  for (const group of settingsStore.librarySettings?.roleGroups ?? []) {
-    // Order of Service roles are managed exclusively in that section above, whether or not
-    // they're currently used — never offered here too.
-    const options = group.roles.filter(
-      (r) => !usedRoles.value.includes(r) && !orderOfServiceRoles.value.includes(r),
-    )
-    if (!options.length) continue
-    items.push({ type: 'subheader', title: group.name })
-    for (const role of options) items.push({ title: role, value: role })
-  }
-  return items
+const addRoleItems = computed(() => {
+  const availableRoles = rolesStore.roles.filter(
+    (role) => !usedRoles.value.includes(role.id) && !orderOfServiceRoles.value.includes(role.id),
+  )
+  return roleOptionsFor(availableRoles, roleGroupsStore.roleGroups)
 })
 const roleToAdd = ref<string | null>(null)
-function onAddRole(role: string | null) {
-  if (!role) return
-  addAssignment(role)
+function onAddRole(roleId: string | null) {
+  if (!roleId) return
+  addAssignment(roleId)
   roleToAdd.value = null
 }
 
@@ -282,15 +283,15 @@ interface ResetRemoval {
 const resetAdditions = computed(() => {
   if (!resetPlan.value) return []
   const counts = new Map<string, number>()
-  for (const a of resetPlan.value.toAdd) counts.set(a.role, (counts.get(a.role) ?? 0) + 1)
+  for (const a of resetPlan.value.toAdd) counts.set(a.roleId, (counts.get(a.roleId) ?? 0) + 1)
   return [...counts.entries()].map(
-    ([role, count]) => `${roleLabel(role)}${count > 1 ? ` ×${count}` : ''}`,
+    ([roleId, count]) => `${roleLabel(roleId)}${count > 1 ? ` ×${count}` : ''}`,
   )
 })
 const resetRemovals = computed<ResetRemoval[]>(() => {
   if (!resetPlan.value) return []
   return resetPlan.value.toRemove.map((a) => ({
-    role: roleLabel(a.role),
+    role: roleLabel(a.roleId),
     personName: personName(a.personId) || undefined,
   }))
 })
@@ -306,8 +307,8 @@ function applyReset() {
   resetDialogOpen.value = false
 }
 
-function personOptionsForRole(role: string) {
-  return personOptionsForRoleShared(peopleStore.people, role)
+function personOptionsForRole(roleId: string) {
+  return personOptionsForRoleShared(peopleStore.people, roleId)
 }
 function personName(id: string | undefined): string {
   const person = peopleStore.people.find((p) => p.id === id)
@@ -332,7 +333,7 @@ function isUnavailable(assignment: RoleAssignment): boolean {
 const conflictLines = computed(() =>
   conflicts.value.map(
     (conflict) =>
-      `${personName(conflict.personId)} is assigned to both ${conflict.roles.map(roleLabel).join(' and ')}`,
+      `${personName(conflict.personId)} is assigned to both ${conflict.roleIds.map(roleLabel).join(' and ')}`,
   ),
 )
 const unavailableLines = computed(() =>
@@ -340,7 +341,7 @@ const unavailableLines = computed(() =>
     .filter((assignment) => isUnavailable(assignment))
     .map(
       (assignment) =>
-        `${personName(assignment.personId)} marked unavailable this date (${roleLabel(assignment.role)})`,
+        `${personName(assignment.personId)} marked unavailable this date (${roleLabel(assignment.roleId)})`,
     ),
 )
 const filledAssignmentCount = computed(
@@ -389,11 +390,17 @@ const emailDraft = computed(() => ({
 }))
 function assignmentEmailBody(): string {
   if (!service.value) return ''
-  const groups = buildGroups(usedRoles.value)
+  // assignmentEmailRosterLines matches group.roles entries against each assignment's role by
+  // exact string equality, with no id-vs-name distinction of its own — resolved to display
+  // names here, consistently on both sides, so the printed email is human-readable.
+  const groups = buildGroups(usedRoles.value).map((group) => ({
+    name: group.name,
+    roles: group.roles.map((roleId) => roleName(roleId)),
+  }))
   const lines = assignmentEmailRosterLines(
     groups,
     roster.value.map((assignment) => ({
-      role: assignment.role,
+      role: roleName(assignment.roleId),
       personName: personName(assignment.personId),
       tentative: assignment.tentative,
     })),
@@ -542,7 +549,7 @@ async function copyEmailDraft() {
             <RoleAssignmentBlock
               v-for="role in group.roles"
               :key="role"
-              :label="role"
+              :label="roleName(role)"
               :assignments="assignmentsForRole(role)"
               :person-options="personOptionsForRole(role)"
               :is-conflicted="isConflicted"
@@ -578,7 +585,7 @@ async function copyEmailDraft() {
             <RoleAssignmentBlock
               v-for="role in group.roles"
               :key="role"
-              :label="role"
+              :label="roleName(role)"
               :assignments="assignmentsForRole(role)"
               :person-options="personOptionsForRole(role)"
               :is-conflicted="isConflicted"
@@ -662,6 +669,7 @@ async function copyEmailDraft() {
     <PersonEditorDialog
       v-model="personDialogOpen"
       :role-groups="allGroupedRoles"
+      :roles="rolesStore.roles"
       @save="savePerson"
     />
 
