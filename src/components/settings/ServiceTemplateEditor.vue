@@ -3,12 +3,12 @@ import { computed, ref, watch } from 'vue'
 import { VueDraggable } from 'vue-draggable-plus'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import type { ServiceTemplate, ServiceTemplateItem } from '@/models/service'
-import type { RoleGroup } from '@/models/settings'
+import type { RoleGroup, ServiceTypeDefinition } from '@/models/settings'
 
 const props = defineProps<{
   modelValue: ServiceTemplate[]
   roleGroups: RoleGroup[]
-  serviceTypes: string[]
+  serviceTypes: ServiceTypeDefinition[]
   standalone?: boolean
   initialSelectedIndex?: number
 }>()
@@ -131,9 +131,13 @@ function roleRequirementCount(template: ServiceTemplate) {
   return template.items.filter((item) => item.kind === 'role-only').length
 }
 
+// Returns ids (matching what v-select below and defaultForServiceTypeIds both need) even in
+// the legacy fallback branch: a template with no explicit list defaults to whichever service
+// type shares its own (still name-based) `serviceType` field, resolved to that type's real id.
 function effectiveDefaultTypes(template: ServiceTemplate): string[] {
-  if (template.defaultForServiceTypes !== undefined) return template.defaultForServiceTypes
-  return props.serviceTypes.includes(template.serviceType) ? [template.serviceType] : []
+  if (template.defaultForServiceTypeIds !== undefined) return template.defaultForServiceTypeIds
+  const matchingType = props.serviceTypes.find((type) => type.name === template.serviceType)
+  return matchingType ? [matchingType.id] : []
 }
 
 function selectTemplate(index: number) {
@@ -164,7 +168,7 @@ function commitTemplateName() {
     serviceType: name,
     // Legacy templates inferred their default from serviceType. Make that relationship explicit
     // before changing the name so renaming never silently changes creation behavior.
-    defaultForServiceTypes: template.defaultForServiceTypes ?? effectiveDefaultTypes(template),
+    defaultForServiceTypeIds: template.defaultForServiceTypeIds ?? effectiveDefaultTypes(template),
   }
   emit('update:modelValue', templates)
   renamingTemplate.value = false
@@ -179,7 +183,7 @@ function addTemplate() {
     return
   emit('update:modelValue', [
     ...props.modelValue,
-    { serviceType: name, defaultForServiceTypes: [], items: [] },
+    { serviceType: name, defaultForServiceTypeIds: [], items: [] },
   ])
   selectedIndex.value = props.modelValue.length
   activeMode.value = 'order'
@@ -208,7 +212,7 @@ function duplicateSelectedTemplate() {
     {
       ...template,
       serviceType: name,
-      defaultForServiceTypes: [],
+      defaultForServiceTypeIds: [],
       items: template.items.map((item) => ({
         ...item,
         id: `template-item-${crypto.randomUUID()}`,
@@ -314,7 +318,7 @@ function setDefaultTypes(serviceTypes: string[]) {
     'update:modelValue',
     props.modelValue.map((template, index) => ({
       ...template,
-      defaultForServiceTypes:
+      defaultForServiceTypeIds:
         index === selectedIndex.value
           ? [...selected]
           : effectiveDefaultTypes(template).filter((type) => !selected.has(type)),
@@ -809,6 +813,8 @@ function setDefaultTypes(serviceTypes: string[]) {
           <v-select
             :model-value="effectiveDefaultTypes(selectedTemplate)"
             :items="serviceTypes"
+            item-title="name"
+            item-value="id"
             label="Service types"
             variant="outlined"
             density="compact"

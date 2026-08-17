@@ -353,15 +353,25 @@ pub struct ServiceTemplateItem {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceTemplate {
+    /// The template's own stable name — deliberately still name-based, not this phase's
+    /// migration. Historically this also implied which service type used it;
+    /// default_for_service_type_ids now makes that association explicit (and id-based) while
+    /// this field keeps doing double duty as the template's own display identity. A future
+    /// phase (see notes on ServiceTemplate normalization) gives templates a real independent
+    /// name/id instead of overloading this field for both.
     pub service_type: String,
     /// Optional planning note explaining when this template should be used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Service types that choose this template by default. None preserves the legacy behavior
-    /// where a template defaults to the service type with the same name; Some(empty) explicitly
-    /// means this template is not a default for any type.
+    /// `ServiceType.id`s that choose this template by default (was a list of service type
+    /// *names* before the one-time migration in `commands::service_types` — see
+    /// `Service::service_type_id`'s own doc comment for why). None preserves the legacy
+    /// behavior where a template defaults to the service type with the same *name* as
+    /// `service_type` below (still name-based — see that field's own doc comment on why it
+    /// isn't part of this migration); Some(empty) explicitly means this template is not a
+    /// default for any type.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default_for_service_types: Option<Vec<String>>,
+    pub default_for_service_type_ids: Option<Vec<String>>,
     #[serde(default)]
     pub items: Vec<ServiceTemplateItem>,
 }
@@ -458,8 +468,11 @@ pub struct Service {
     /// Local service start time in 24-hour HH:mm form. Optional for older service files.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub time: Option<String>,
-    #[serde(rename = "type")]
-    pub service_type: String,
+    /// A `ServiceType.id` — was named `type` and held the service type's plain *name* before
+    /// the one-time migration in `commands::service_types`; existing libraries get rewritten in
+    /// place the first time that migration runs.
+    #[serde(default)]
+    pub service_type_id: String,
     /// Private planning context that does not appear in the order of worship.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub planning_notes: Option<String>,
@@ -669,8 +682,6 @@ pub struct ApiBibleTranslation {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct LibrarySettings {
-    #[serde(default, deserialize_with = "deserialize_service_types")]
-    pub service_types: Vec<ServiceType>,
     #[serde(default)]
     pub role_groups: Vec<RoleGroup>,
     #[serde(default)]
@@ -752,39 +763,18 @@ pub struct SongCollectionDefinition {
     pub abbreviation: Option<String>,
 }
 
+/// Lives in its own `service-types.json`, a peer of `library-settings.json`, not a field on it —
+/// see `domain::service_types` and `commands::service_types`'s one-time migration off the old
+/// nested-in-settings, name-only shape (mirrors `SongCollectionDefinition`'s own migration).
+/// Referenced by id from `Service::service_type_id` and `ServiceTemplate::default_for_service_type_ids`,
+/// not by name.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceType {
+    pub id: String,
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-}
-
-/// An already-configured library's `library-settings.json` has `serviceTypes` as a plain
-/// `Vec<String>` from before this field gained a description; deserializing straight into
-/// `Vec<ServiceType>` would otherwise hard-fail on that file instead of upgrading it in place.
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum StoredServiceType {
-    Name(String),
-    Definition(ServiceType),
-}
-
-fn deserialize_service_types<'de, D>(deserializer: D) -> Result<Vec<ServiceType>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let stored = Vec::<StoredServiceType>::deserialize(deserializer)?;
-    Ok(stored
-        .into_iter()
-        .map(|entry| match entry {
-            StoredServiceType::Name(name) => ServiceType {
-                name,
-                description: None,
-            },
-            StoredServiceType::Definition(definition) => definition,
-        })
-        .collect())
 }
 
 /// See LibrarySettings::bulletin's own doc comment. `#[serde(default)]` per boolean field
@@ -1191,29 +1181,6 @@ mod tests {
         assert_eq!(settings.wayfinding_max_font_size_px, 150);
         assert!(settings.canva_integration.client_id.is_empty());
         assert!(settings.canva_integration.client_secret.is_empty());
-    }
-
-    #[test]
-    fn library_settings_migrates_string_service_types_to_clean_definitions() {
-        let json = r##"{
-            "serviceTypes": ["Sunday Morning Worship", { "name": "Wednesday Bible Study", "description": "Midweek study and prayer" }],
-            "collections": [],
-            "roleGroups": [],
-            "serviceTemplates": [],
-            "branding": { "churchName": "", "primaryColor": "#1F3A5F", "secondaryColor": "#C9A227" },
-            "mediaMaxSyncedFileSizeMb": 50
-        }"##;
-        let settings: LibrarySettings = serde_json::from_str(json).unwrap();
-        assert_eq!(settings.service_types[0].name, "Sunday Morning Worship");
-        assert_eq!(settings.service_types[0].description, None);
-        assert_eq!(settings.service_types[1].name, "Wednesday Bible Study");
-        assert_eq!(
-            settings.service_types[1].description.as_deref(),
-            Some("Midweek study and prayer")
-        );
-
-        let serialized = serde_json::to_value(settings).unwrap();
-        assert!(serialized["serviceTypes"][0].is_object());
     }
 
     #[test]

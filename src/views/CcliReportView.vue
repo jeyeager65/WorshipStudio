@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useServicesStore } from '@/stores/services'
 import { useSongsStore } from '@/stores/songs'
 import { useSettingsStore } from '@/stores/settings'
+import { useServiceTypesStore } from '@/stores/serviceTypes'
 import { computeCcliUsage, quickRangeDates, type QuickRange } from '@/utils/ccliUsage'
 import { reportBranding } from '@/reports/branding'
 import { buildSongUsageDocument, buildSongUsageWorkbook } from '@/reports/builders/ccli'
@@ -16,6 +17,7 @@ import type { ReportFormat } from '@/reports/types'
 const servicesStore = useServicesStore()
 const songsStore = useSongsStore()
 const settingsStore = useSettingsStore()
+const serviceTypesStore = useServiceTypesStore()
 
 const today = new Date()
 const initialRange = quickRangeDates('ytd', today)
@@ -32,6 +34,7 @@ onMounted(async () => {
     servicesStore.loaded ? Promise.resolve() : servicesStore.load(),
     songsStore.loaded ? Promise.resolve() : songsStore.load(),
     settingsStore.load(),
+    serviceTypesStore.loaded ? Promise.resolve() : serviceTypesStore.load(),
   ])
 })
 
@@ -55,10 +58,7 @@ const summary = computed(() =>
 
 const serviceTypeOptions = computed(() => [
   { title: 'All Types', value: 'all' },
-  ...(settingsStore.librarySettings?.serviceTypes.map((type) => ({
-    title: type.name,
-    value: type.name,
-  })) ?? []),
+  ...serviceTypesStore.serviceTypes.map((type) => ({ title: type.name, value: type.id })),
 ])
 
 const reportRangeLabel = computed(() => {

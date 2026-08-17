@@ -4,6 +4,7 @@ import { useServicesStore } from '@/stores/services'
 import { useSongsStore } from '@/stores/songs'
 import { usePeopleStore } from '@/stores/people'
 import { useSettingsStore } from '@/stores/settings'
+import { useServiceTypesStore } from '@/stores/serviceTypes'
 import { buildPlanningReport } from '@/utils/planningReport'
 import { personDisplayName, personFormalName } from '@/models/library'
 import { reportBranding } from '@/reports/branding'
@@ -19,6 +20,7 @@ const servicesStore = useServicesStore()
 const songsStore = useSongsStore()
 const peopleStore = usePeopleStore()
 const settingsStore = useSettingsStore()
+const serviceTypesStore = useServiceTypesStore()
 
 // Defaults to today through 3 months out — planning ahead is forward-looking, unlike CCLI's
 // backward-looking usage report. Local calendar-date components (not toISOString, which
@@ -45,6 +47,7 @@ onMounted(async () => {
     songsStore.load(),
     peopleStore.load(),
     settingsStore.load(),
+    serviceTypesStore.load(),
   ])
 })
 
@@ -53,6 +56,9 @@ const personNames = computed(
 )
 const formalPersonNames = computed(
   () => new Map(peopleStore.people.map((p) => [p.id, personFormalName(p)])),
+)
+const serviceTypeNames = computed(
+  () => new Map(serviceTypesStore.serviceTypes.map((type) => [type.id, type.name])),
 )
 
 const rows = computed(() =>
@@ -67,15 +73,13 @@ const rows = computed(() =>
       serviceType: serviceType.value,
     },
     formalPersonNames.value,
+    serviceTypeNames.value,
   ),
 )
 
 const serviceTypeOptions = computed(() => [
   { title: 'All Types', value: 'all' },
-  ...(settingsStore.librarySettings?.serviceTypes.map((type) => ({
-    title: type.name,
-    value: type.name,
-  })) ?? []),
+  ...serviceTypesStore.serviceTypes.map((type) => ({ title: type.name, value: type.id })),
 ])
 
 const totalSongs = computed(() =>
@@ -102,7 +106,10 @@ const planningReportInput = computed(() => ({
   rows: rows.value,
   fromDate: fromDate.value,
   toDate: toDate.value,
-  serviceType: serviceType.value,
+  serviceType:
+    serviceType.value === 'all'
+      ? 'all'
+      : (serviceTypeNames.value.get(serviceType.value) ?? serviceType.value),
   branding: reportBranding(settingsStore.librarySettings),
 }))
 

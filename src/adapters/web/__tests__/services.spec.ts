@@ -15,7 +15,7 @@ function sampleService(overrides: Partial<Service> = {}): Service {
   return {
     id: 'service-1',
     date: '2026-08-09',
-    type: 'Sunday Morning',
+    serviceTypeId: 'type-sunday-morning',
     items: [],
     updatedAt: '',
     updatedByDevice: '',
@@ -42,7 +42,7 @@ describe('createWebServicesPort', () => {
     const port = createWebServicesPort(root, settings, songs)
     await port.save(sampleService())
 
-    expect((await port.get('service-1'))?.type).toBe('Sunday Morning')
+    expect((await port.get('service-1'))?.serviceTypeId).toBe('type-sunday-morning')
     expect(await port.get('does-not-exist')).toBeUndefined()
   })
 

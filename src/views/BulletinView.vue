@@ -8,6 +8,7 @@ import { useSongsStore } from '@/stores/songs'
 import { useSlidesStore } from '@/stores/slides'
 import { usePeopleStore } from '@/stores/people'
 import { useSettingsStore } from '@/stores/settings'
+import { useServiceTypesStore } from '@/stores/serviceTypes'
 import { useSongCollectionsStore } from '@/stores/songCollections'
 import { useAnnouncementsStore } from '@/stores/announcements'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
@@ -37,6 +38,7 @@ const songsStore = useSongsStore()
 const slidesStore = useSlidesStore()
 const peopleStore = usePeopleStore()
 const settingsStore = useSettingsStore()
+const serviceTypesStore = useServiceTypesStore()
 const songCollectionsStore = useSongCollectionsStore()
 const announcementsStore = useAnnouncementsStore()
 const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsavedChangesStore())
@@ -66,6 +68,7 @@ onMounted(async () => {
     slidesStore.loaded ? Promise.resolve() : slidesStore.load(),
     peopleStore.loaded ? Promise.resolve() : peopleStore.load(),
     settingsStore.loaded ? Promise.resolve() : settingsStore.load(),
+    serviceTypesStore.loaded ? Promise.resolve() : serviceTypesStore.load(),
     songCollectionsStore.loaded ? Promise.resolve() : songCollectionsStore.load(),
     announcementsStore.loaded ? Promise.resolve() : announcementsStore.load(),
   ])
@@ -107,11 +110,16 @@ const serviceDateLabel = computed(() => {
   const time = formatServiceTime(service.value.time)
   return time ? `${date} · ${time}` : date
 })
+const serviceTypeName = computed(
+  () =>
+    serviceTypesStore.serviceTypes.find((type) => type.id === service.value?.serviceTypeId)
+      ?.name ?? '',
+)
 
 // This page has no static router meta.title (see App.vue's pageTitle) since its content is
 // per-service — same pattern as AssignmentsView.vue.
 watch(
-  [() => service.value?.type, serviceDateLabel],
+  [serviceTypeName, serviceDateLabel],
   ([type, dateLabel]) => {
     pageTitleOverride.value = service.value ? `Bulletin — ${type} — ${dateLabel}` : undefined
   },
@@ -233,7 +241,7 @@ async function copyBulletin() {
         <div>
           <div class="page-eyebrow">Service Document</div>
           <h1>Bulletin</h1>
-          <p class="service-context">{{ service.type }} <span>·</span> {{ serviceDateLabel }}</p>
+          <p class="service-context">{{ serviceTypeName }} <span>·</span> {{ serviceDateLabel }}</p>
           <p class="page-description">
             Review this week's order of worship and announcements, then export or copy the finished
             bulletin.

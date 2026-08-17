@@ -16,6 +16,9 @@ const props = defineProps<{
   /** Resolved by the parent (see LandingView) from the sermon item's role/assignments — kept a
    *  dumb presentational prop here rather than this card reaching into the people store itself. */
   preacherName?: string
+  /** Resolved by the parent from service.serviceTypeId via the service types store — same
+   *  "dumb presentational prop" reasoning as preacherName above. */
+  serviceTypeName: string
 }>()
 const emit = defineEmits<{ delete: [] }>()
 
@@ -107,7 +110,7 @@ function openPlan() {
       </div>
       <div class="service-identity">
         <div class="service-title-row">
-          <h3>{{ service.type }}</h3>
+          <h3>{{ serviceTypeName }}</h3>
           <span v-if="badge" class="today-badge">{{ badge }}</span>
         </div>
         <p class="service-full-date">{{ dateLabel }} <span>·</span> {{ timeLabel }}</p>

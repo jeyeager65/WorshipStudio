@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useTheme } from 'vuetify'
 import { getAdapter } from '@/adapters'
 import { useSettingsStore } from '@/stores/settings'
+import { useServiceTypesStore } from '@/stores/serviceTypes'
 import { useSongsStore } from '@/stores/songs'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { needsSingleMonitorFallback } from '@/utils/displaySetup'
@@ -18,6 +19,7 @@ import type {
 
 const router = useRouter()
 const store = useSettingsStore()
+const serviceTypesStore = useServiceTypesStore()
 const songsStore = useSongsStore()
 const unsavedChanges = useUnsavedChangesStore()
 const theme = useTheme()
@@ -62,8 +64,8 @@ const validationMessage = ref('')
 
 onMounted(async () => {
   try {
-    await store.load()
-    firstServiceType.value = store.librarySettings?.serviceTypes[0]?.name ?? ''
+    await Promise.all([store.load(), serviceTypesStore.load()])
+    firstServiceType.value = serviceTypesStore.serviceTypes[0]?.name ?? ''
     await Promise.all([loadDisplays(), loadTranslations()])
   } catch (error) {
     operationError.value = error instanceof Error ? error.message : 'Setup could not be loaded.'
@@ -144,9 +146,7 @@ const setsImporting = ref(false)
 const setsSummary = ref<ImportSetsSummary>()
 const setsUnavailable = ref(false)
 const pickingLibraryFolder = ref(false)
-const defaultServiceTypeForSets = computed(
-  () => store.librarySettings?.serviceTypes[0]?.name ?? 'Sunday Morning Worship',
-)
+const defaultServiceTypeForSets = computed(() => serviceTypesStore.serviceTypes[0]?.id ?? '')
 const importingStockBackgrounds = ref(false)
 const stockBackgroundsSummary = ref<{ mediaAdded: number; themesAdded: number }>()
 
@@ -240,15 +240,24 @@ const darkMode = computed({
 })
 const firstServiceType = ref('')
 
-function applyFirstServiceType() {
-  const settings = store.librarySettings
+// Service Types have their own store/file with no reorder API, so "shown first when creating a
+// service" (CreateServiceView defaults to serviceTypes[0]) is achieved by renaming — swapping
+// names with whichever entry currently holds the chosen name, if any — rather than moving items.
+async function applyFirstServiceType() {
   const chosen = firstServiceType.value.trim()
-  if (!settings || !chosen) return
-  const existing = settings.serviceTypes.find((type) => type.name === chosen)
-  settings.serviceTypes = [
-    existing ?? { name: chosen },
-    ...settings.serviceTypes.filter((type) => type.name !== chosen),
-  ]
+  if (!chosen) return
+  const types = serviceTypesStore.serviceTypes
+  const first = types[0]
+  if (!first) {
+    await serviceTypesStore.save({ id: `type-${crypto.randomUUID()}`, name: chosen })
+    return
+  }
+  if (first.name === chosen) return
+  const existingElsewhere = types.find((type) => type.id !== first.id && type.name === chosen)
+  if (existingElsewhere) {
+    await serviceTypesStore.save({ ...existingElsewhere, name: first.name })
+  }
+  await serviceTypesStore.save({ ...first, name: chosen })
 }
 
 function validateCurrentStep(): boolean {
@@ -264,9 +273,9 @@ function validateCurrentStep(): boolean {
   return true
 }
 
-function goNext() {
+async function goNext() {
   if (!validateCurrentStep()) return
-  if (currentStep.value === 'preferences') applyFirstServiceType()
+  if (currentStep.value === 'preferences') await applyFirstServiceType()
   if (stepIndex.value < steps.length - 1) stepIndex.value++
 }
 
@@ -286,7 +295,7 @@ async function completeSetup(destination = '/') {
   saving.value = true
   operationError.value = ''
   try {
-    applyFirstServiceType()
+    await applyFirstServiceType()
     store.machineSettings.hasCompletedSetup = true
     await store.save()
     // Wizard completion is an explicit save boundary. Clear the shared editor flag only after
@@ -761,7 +770,7 @@ async function skipSetup() {
                 </div>
                 <v-combobox
                   v-model="firstServiceType"
-                  :items="store.librarySettings.serviceTypes.map((type) => type.name)"
+                  :items="serviceTypesStore.serviceTypes.map((type) => type.name)"
                   variant="outlined"
                   density="compact"
                   hide-details

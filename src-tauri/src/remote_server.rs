@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::RwLock;
 
-use crate::domain::{media, people, remote, services, win32};
+use crate::domain::{media, people, remote, service_types, services, win32};
 use crate::models::LiveSlideContent;
 use crate::paths::{
     default_canva_callback_port, is_portable, library_root, load_machine_settings,
@@ -607,14 +607,26 @@ async fn get_todays_services(
         .date_naive()
         .format("%Y-%m-%d")
         .to_string();
-    match services::list_upcoming(&library_root(&handle.app), &today, &today) {
+    let root = library_root(&handle.app);
+    // ServicePicker.vue (src-remote/) shows this as plain visible text — Service::service_type_id
+    // is an id, not display text, so it's resolved to its real name here rather than leaking the
+    // id into the Remote Control UI.
+    let type_names: std::collections::HashMap<String, String> = service_types::list(&root)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|t| (t.id, t.name))
+        .collect();
+    match services::list_upcoming(&root, &today, &today) {
         Ok(list) => Json(
             list.into_iter()
                 .map(|s| TodayServiceSummary {
                     id: s.id,
                     date: s.date,
                     time: s.time,
-                    service_type: s.service_type,
+                    service_type: type_names
+                        .get(&s.service_type_id)
+                        .cloned()
+                        .unwrap_or(s.service_type_id),
                 })
                 .collect::<Vec<_>>(),
         )

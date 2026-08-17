@@ -8,7 +8,12 @@ import type {
   SlideScene,
   TextEffect,
 } from '@/models/library'
-import type { LibrarySettings, MachineSettings, SongCollectionDefinition } from '@/models/settings'
+import type {
+  LibrarySettings,
+  MachineSettings,
+  SongCollectionDefinition,
+  ServiceTypeDefinition,
+} from '@/models/settings'
 import type { Announcement } from '@/models/announcement'
 
 /**
@@ -48,7 +53,7 @@ export interface ServicePort {
    */
   importOpenSongSets(
     year: number,
-    defaultServiceType: string,
+    defaultServiceTypeId: string,
   ): Promise<ImportSetsSummary | undefined>
   /**
    * One-time backfill (see App.vue's boot sequence) for services saved before the sermon item
@@ -221,6 +226,13 @@ export interface ThemePort {
 export interface SongCollectionPort {
   list(): Promise<SongCollectionDefinition[]>
   save(collection: SongCollectionDefinition): Promise<SongCollectionDefinition>
+  delete(id: string): Promise<void>
+}
+
+/** A peer of `SettingsPort`, not part of it — same reasoning as `SongCollectionPort`. */
+export interface ServiceTypePort {
+  list(): Promise<ServiceTypeDefinition[]>
+  save(serviceType: ServiceTypeDefinition): Promise<ServiceTypeDefinition>
   delete(id: string): Promise<void>
 }
 
@@ -672,6 +684,7 @@ export interface StudioAdapter {
   canva?: CanvaPort
   themes: ThemePort
   songCollections: SongCollectionPort
+  serviceTypes: ServiceTypePort
   people: PersonPort
   announcements: AnnouncementPort
   settings: SettingsPort

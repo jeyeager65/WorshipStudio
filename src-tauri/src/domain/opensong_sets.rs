@@ -69,7 +69,7 @@ pub fn import_sets(
     sets_dir: &Path,
     songs: &[Song],
     year: i32,
-    default_service_type: &str,
+    default_service_type_id: &str,
 ) -> std::io::Result<(Vec<Service>, HashMap<String, Usage>, ImportSetsSummary)> {
     let mut services = Vec::new();
     let mut usage_by_song_id: HashMap<String, (u32, Option<String>)> = HashMap::new();
@@ -139,7 +139,7 @@ pub fn import_sets(
             id: format!("service-{}", uuid::Uuid::new_v4()),
             date: date_str,
             time: None,
-            service_type: default_service_type.to_string(),
+            service_type_id: default_service_type_id.to_string(),
             planning_notes: None,
             planning_song_ids: None,
             service_template_name: None,

@@ -157,7 +157,7 @@ describe('mock adapter', () => {
     await adapter.services.save({
       id: 'service-usage-test',
       date: '2026-01-15',
-      type: 'Sunday Morning Worship',
+      serviceTypeId: 'type-sunday-morning-worship',
       items: [
         { id: 'item-1', type: 'song', songId: 'song-usage-test', arrangement: { sequence: [] } },
       ],
@@ -185,7 +185,7 @@ describe('mock adapter', () => {
     await adapter.services.save({
       id: 'service-usage-test-2',
       date: '2026-01-15',
-      type: 'Sunday Morning Worship',
+      serviceTypeId: 'type-sunday-morning-worship',
       items: [
         { id: 'item-1', type: 'song', songId: 'song-usage-test-2', arrangement: { sequence: [] } },
       ],
@@ -217,7 +217,7 @@ describe('mock adapter', () => {
     await adapter.services.save({
       id: 'service-usage-future',
       date: farFuture.toISOString().slice(0, 10),
-      type: 'Sunday Morning Worship',
+      serviceTypeId: 'type-sunday-morning-worship',
       items: [
         { id: 'item-1', type: 'song', songId: 'song-usage-future', arrangement: { sequence: [] } },
       ],
@@ -246,7 +246,7 @@ describe('mock adapter', () => {
     await adapter.services.save({
       id: 'service-usage-twice',
       date: '2026-01-15',
-      type: 'Sunday Morning Worship',
+      serviceTypeId: 'type-sunday-morning-worship',
       items: [
         { id: 'item-1', type: 'song', songId: 'song-usage-twice', arrangement: { sequence: [] } },
         { id: 'item-2', type: 'song', songId: 'song-usage-twice', arrangement: { sequence: [] } },

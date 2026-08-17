@@ -105,6 +105,15 @@ pub fn list_upcoming(root: &Path, from_date: &str, to_date: &str) -> std::io::Re
 pub fn migrate_legacy_sermon_fields(root: &Path, device: &str, now: &str) -> std::io::Result<()> {
     let library_settings: Option<LibrarySettings> =
         read_json_file(&root.join("library-settings.json"))?;
+    // ServiceTemplate::service_type is still name-based (see its own doc comment — not this
+    // migration's concern), but Service::service_type_id is now an id; resolved once here so
+    // the two can still be compared by name below.
+    let service_type_names: std::collections::HashMap<String, String> =
+        crate::domain::service_types::list(root)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|t| (t.id, t.name))
+            .collect();
 
     for service in list(root)? {
         let year = year_of(&service.date).to_string();
@@ -128,6 +137,14 @@ pub fn migrate_legacy_sermon_fields(root: &Path, device: &str, now: &str) -> std
             continue;
         }
 
+        // Falls back to the still-raw legacy `type` key when this service hasn't been through
+        // commands::service_types's own migration yet — this function's caller makes no
+        // guarantee about which of the two independent one-time migrations runs first.
+        let service_type_name = if service.service_type_id.is_empty() {
+            raw.get("type").and_then(|v| v.as_str()).map(str::to_string)
+        } else {
+            service_type_names.get(&service.service_type_id).cloned()
+        };
         let mut service = service;
         if apply_legacy_sermon_fields(
             &mut service,
@@ -135,6 +152,7 @@ pub fn migrate_legacy_sermon_fields(root: &Path, device: &str, now: &str) -> std
             legacy_passage,
             legacy_preacher_id,
             library_settings.as_ref(),
+            service_type_name.as_deref(),
         ) {
             save(root, service, device, now)?;
         }
@@ -151,6 +169,7 @@ fn apply_legacy_sermon_fields(
     legacy_passage: Option<String>,
     legacy_preacher_id: Option<String>,
     library_settings: Option<&LibrarySettings>,
+    service_type_name: Option<&str>,
 ) -> bool {
     let mut changed = false;
 
@@ -248,7 +267,7 @@ fn apply_legacy_sermon_fields(
             .and_then(|s| {
                 s.service_templates
                     .iter()
-                    .find(|t| t.service_type == service.service_type)
+                    .find(|t| Some(t.service_type.as_str()) == service_type_name)
             })
             .and_then(|t| {
                 t.items
@@ -296,7 +315,7 @@ mod tests {
             id: id.to_string(),
             date: date.to_string(),
             time: None,
-            service_type: "Sunday Morning Worship".to_string(),
+            service_type_id: "type-sunday-morning-worship".to_string(),
             planning_notes: None,
             planning_song_ids: None,
             service_template_name: None,

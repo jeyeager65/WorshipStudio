@@ -8,12 +8,14 @@ import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import { errorMessage } from '@/composables/useAsyncStoreState'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import { useSettingsStore } from '@/stores/settings'
+import { useServiceTypesStore } from '@/stores/serviceTypes'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import type { ServiceTemplate } from '@/models/service'
 
 const route = useRoute()
 const router = useRouter()
 const settingsStore = useSettingsStore()
+const serviceTypesStore = useServiceTypesStore()
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const workingTemplates = ref<ServiceTemplate[]>([])
 const selectedIndex = ref(0)
@@ -34,7 +36,11 @@ onMounted(initialize)
 
 async function initialize() {
   documentHistory.stop()
-  if (!(await settingsStore.load())) return
+  const [settingsLoaded] = await Promise.all([
+    settingsStore.load(),
+    serviceTypesStore.loaded ? Promise.resolve(true) : serviceTypesStore.load(),
+  ])
+  if (!settingsLoaded) return
   const storedTemplates = settingsStore.librarySettings?.serviceTemplates ?? []
   workingTemplates.value = structuredClone(toRaw(storedTemplates))
 
@@ -43,7 +49,7 @@ async function initialize() {
     workingTemplates.value.push({
       serviceType: '',
       description: '',
-      defaultForServiceTypes: [],
+      defaultForServiceTypeIds: [],
       items: [],
     })
     isDirty.value = true
@@ -57,12 +63,14 @@ async function initialize() {
     selectedIndex.value = index
     originalTemplateName.value = name
     const template = workingTemplates.value[index]!
-    if (template.defaultForServiceTypes === undefined) {
-      template.defaultForServiceTypes = settingsStore.librarySettings?.serviceTypes.some(
+    if (template.defaultForServiceTypeIds === undefined) {
+      // Legacy fallback: a template with no explicit list defaults to whichever service type
+      // shares its own (still name-based) `serviceType` field — resolved to that type's real id
+      // here, since defaultForServiceTypeIds holds ids, not names.
+      const matchingType = serviceTypesStore.serviceTypes.find(
         (type) => type.name === template.serviceType,
       )
-        ? [template.serviceType]
-        : []
+      template.defaultForServiceTypeIds = matchingType ? [matchingType.id] : []
     }
     isDirty.value = false
   }
@@ -191,7 +199,7 @@ async function saveTemplate() {
       v-else-if="settingsStore.librarySettings && selectedTemplate"
       v-model="workingTemplates"
       :role-groups="settingsStore.librarySettings.roleGroups"
-      :service-types="settingsStore.librarySettings.serviceTypes.map((type) => type.name)"
+      :service-types="serviceTypesStore.serviceTypes"
       :initial-selected-index="selectedIndex"
       standalone
     />

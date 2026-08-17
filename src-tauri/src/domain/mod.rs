@@ -7,6 +7,7 @@ pub mod opensong_sets;
 pub mod people;
 pub mod remote;
 pub mod scripture;
+pub mod service_types;
 pub mod services;
 pub mod slides;
 pub mod song_collections;

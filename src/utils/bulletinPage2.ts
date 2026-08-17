@@ -81,7 +81,7 @@ function announcementDateLabel(
  *  in between. Undefined (not an error) when that occurrence hasn't been created yet. */
 export function findNextWeekService(services: Service[], current: Service): Service | undefined {
   const nextDate = addDays(current.date, 7)
-  return services.find((s) => s.type === current.type && s.date === nextDate)
+  return services.find((s) => s.serviceTypeId === current.serviceTypeId && s.date === nextDate)
 }
 
 // Service dates have no timezone semantics — toISOString() would first convert to UTC and can

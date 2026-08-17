@@ -47,6 +47,7 @@ export function buildPlanningReport(
   roleGroups: RoleGroup[],
   filter: PlanningReportFilter,
   formalPersonNames: Map<string, string> = personNames,
+  serviceTypeNames: Map<string, string> = new Map(),
 ): PlanningReportRow[] {
   const songsById = new Map(songs.map((song) => [song.id, song]))
 
@@ -57,7 +58,7 @@ export function buildPlanningReport(
         service.date <= filter.toDate &&
         (!filter.serviceType ||
           filter.serviceType === 'all' ||
-          service.type === filter.serviceType),
+          service.serviceTypeId === filter.serviceType),
     )
     .sort((a, b) => a.date.localeCompare(b.date))
 
@@ -97,7 +98,7 @@ export function buildPlanningReport(
       serviceId: service.id,
       date: service.date,
       dateLine,
-      type: service.type,
+      type: serviceTypeNames.get(service.serviceTypeId) ?? 'Unknown',
       preacher: formalPersonNames.get(sermonPreacherId(service, sermonItem) ?? ''),
       sermonTitle: sermonItem?.title,
       songTitles,

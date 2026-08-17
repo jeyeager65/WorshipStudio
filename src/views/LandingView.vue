@@ -4,6 +4,7 @@ import { useServicesStore } from '@/stores/services'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { usePeopleStore } from '@/stores/people'
 import { useSongsStore } from '@/stores/songs'
+import { useServiceTypesStore } from '@/stores/serviceTypes'
 import ServiceCard from '@/components/ServiceCard.vue'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import type { Service } from '@/models/service'
@@ -16,11 +17,16 @@ const store = useServicesStore()
 const confirmDialog = useConfirmDialogStore()
 const peopleStore = usePeopleStore()
 const songsStore = useSongsStore()
+const serviceTypesStore = useServiceTypesStore()
+
+function serviceTypeName(id: string): string {
+  return serviceTypesStore.serviceTypes.find((t) => t.id === id)?.name ?? id
+}
 
 async function deleteService(service: Service) {
   if (
     !(await confirmDialog.confirm(
-      `Delete the "${service.type} — ${service.date}" service?`,
+      `Delete the "${serviceTypeName(service.serviceTypeId)} — ${service.date}" service?`,
       'Delete',
     ))
   )
@@ -33,6 +39,7 @@ async function deleteService(service: Service) {
 onMounted(() => {
   if (!store.loaded) store.load()
   if (!peopleStore.loaded) peopleStore.load()
+  if (!serviceTypesStore.loaded) serviceTypesStore.load()
 })
 
 function preacherName(service: Service): string | undefined {
@@ -126,9 +133,12 @@ const recentServices = computed(() => pastServices.value.slice(0, 10))
 const browseScopeServices = computed(() =>
   browseScope.value === 'recent' ? recentServices.value : allBrowseServices.value,
 )
-const serviceTypeOptions = computed(() =>
-  [...new Set(visibleServices.value.map((service) => service.type))].sort(),
-)
+const serviceTypeOptions = computed(() => {
+  const ids = [...new Set(visibleServices.value.map((service) => service.serviceTypeId))]
+  return ids
+    .map((id) => ({ id, name: serviceTypeName(id) }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+})
 const preacherOptions = computed(() =>
   [
     ...new Set(
@@ -159,7 +169,7 @@ const browseResults = computed(() => {
   // throws mid-computed (.trim() on null), which is what silently broke the clear button.
   const query = (browseQuery.value ?? '').trim().toLowerCase()
   return browseScopeServices.value.filter((service) => {
-    if (browseType.value && service.type !== browseType.value) return false
+    if (browseType.value && service.serviceTypeId !== browseType.value) return false
     if (browsePreacher.value && preacherName(service) !== browsePreacher.value) return false
     if (browseBibleBook.value && !serviceBibleBooks(service).includes(browseBibleBook.value))
       return false
@@ -167,7 +177,7 @@ const browseResults = computed(() => {
     const sermonItem = findSermonItem(service)
     const passage = sermonItem ? sermonMainReference(sermonItem) : undefined
     return [
-      service.type,
+      serviceTypeName(service.serviceTypeId),
       formatServiceTime(service.time),
       sermonItem?.title,
       preacherName(service),
@@ -284,6 +294,7 @@ const browseResults = computed(() => {
                 :key="service.id"
                 :service="service"
                 :preacher-name="preacherName(service)"
+                :service-type-name="serviceTypeName(service.serviceTypeId)"
                 badge="TODAY"
                 @delete="deleteService(service)"
               />
@@ -304,6 +315,7 @@ const browseResults = computed(() => {
                 :key="service.id"
                 :service="service"
                 :preacher-name="preacherName(service)"
+                :service-type-name="serviceTypeName(service.serviceTypeId)"
                 @delete="deleteService(service)"
               />
             </div>
@@ -355,6 +367,7 @@ const browseResults = computed(() => {
                   :key="service.id"
                   :service="service"
                   :preacher-name="preacherName(service)"
+                :service-type-name="serviceTypeName(service.serviceTypeId)"
                   @delete="deleteService(service)"
                 />
               </div>
@@ -426,16 +439,17 @@ const browseResults = computed(() => {
                   </button>
                   <button
                     v-for="type in serviceTypeOptions"
-                    :key="type"
+                    :key="type.id"
                     type="button"
                     class="visible-filter-option"
-                    :class="{ 'visible-filter-option--active': browseType === type }"
-                    :aria-pressed="browseType === type"
-                    @click="browseType = type"
+                    :class="{ 'visible-filter-option--active': browseType === type.id }"
+                    :aria-pressed="browseType === type.id"
+                    @click="browseType = type.id"
                   >
-                    <span>{{ type }}</span>
+                    <span>{{ type.name }}</span>
                     <strong>{{
-                      browseScopeServices.filter((service) => service.type === type).length
+                      browseScopeServices.filter((service) => service.serviceTypeId === type.id)
+                        .length
                     }}</strong>
                   </button>
                 </div>
@@ -528,6 +542,7 @@ const browseResults = computed(() => {
                 :key="service.id"
                 :service="service"
                 :preacher-name="preacherName(service)"
+                :service-type-name="serviceTypeName(service.serviceTypeId)"
                 @delete="deleteService(service)"
               />
             </div>

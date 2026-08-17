@@ -389,7 +389,7 @@ async function saveSettings() {
           description="The choices offered when creating a new service (e.g. Sunday Morning, Wednesday Bible Study)."
           icon="mdi-calendar-multiple"
         >
-          <ServiceTypesSection v-model="librarySettings.serviceTypes" />
+          <ServiceTypesSection />
         </SettingsPanel>
       </template>
     </div>

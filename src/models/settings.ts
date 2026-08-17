@@ -27,7 +27,12 @@ export interface SongCollectionDefinition {
   abbreviation?: string
 }
 
+/** Lives in its own `service-types.json`, a peer of `library-settings.json`, not a field on it —
+ *  see `src-tauri/src/domain/service_types.rs` and its one-time migration off the old
+ *  nested-in-settings, name-only shape. Referenced by id from `Service.serviceTypeId`
+ *  (models/service.ts) and `ServiceTemplate.defaultForServiceTypeIds`, not by name. */
 export interface ServiceTypeDefinition {
+  id: string
   name: string
   /** Optional explanation of what this service type is for (e.g. distinguishing a communion
    *  service from an ordinary one) — shown alongside the name in Settings, nowhere else yet. */
@@ -36,7 +41,6 @@ export interface ServiceTypeDefinition {
 
 /** library-settings.json — synced, shared across the church's setup. */
 export interface LibrarySettings {
-  serviceTypes: ServiceTypeDefinition[]
   roleGroups: RoleGroup[]
   serviceTemplates: ServiceTemplate[]
   branding: {

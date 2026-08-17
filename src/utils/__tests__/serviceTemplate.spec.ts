@@ -10,7 +10,7 @@ describe('defaultServiceTemplate', () => {
   it('prefers an explicit service-type association over the legacy same-name default', () => {
     const templates: ServiceTemplate[] = [
       { serviceType: 'Sunday Worship', items: [] },
-      { serviceType: 'Communion', defaultForServiceTypes: ['Sunday Worship'], items: [] },
+      { serviceType: 'Communion', defaultForServiceTypeIds: ['Sunday Worship'], items: [] },
     ]
     expect(defaultServiceTemplate(templates, 'Sunday Worship')?.serviceType).toBe('Communion')
   })
@@ -22,7 +22,7 @@ describe('defaultServiceTemplate', () => {
 
   it('honors an explicit empty association instead of restoring the legacy default', () => {
     const templates: ServiceTemplate[] = [
-      { serviceType: 'Sunday Worship', defaultForServiceTypes: [], items: [] },
+      { serviceType: 'Sunday Worship', defaultForServiceTypeIds: [], items: [] },
     ]
     expect(defaultServiceTemplate(templates, 'Sunday Worship')).toBeUndefined()
   })

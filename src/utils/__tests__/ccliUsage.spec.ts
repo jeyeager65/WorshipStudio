@@ -22,7 +22,7 @@ function service(id: string, date: string, type: string, songIds: string[]): Ser
   return {
     id,
     date,
-    type,
+    serviceTypeId: type,
     items: songIds.map((songId, i) => ({
       id: `item-${i}`,
       type: 'song' as const,
@@ -89,7 +89,7 @@ describe('computeCcliUsage', () => {
       {
         id: 'svc-1',
         date: '2026-01-05',
-        type: 'Sunday Morning Worship',
+        serviceTypeId: 'Sunday Morning Worship',
         items: [
           {
             id: 'item-1',

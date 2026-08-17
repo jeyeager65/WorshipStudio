@@ -352,11 +352,16 @@ export const sampleRoleGroups: RoleGroup[] = [
   },
 ]
 
-/** Every service type sampleServices uses — merged into LibrarySettings.serviceTypes. */
+/** Every service type sampleServices uses — merged into its own service-types.json, not
+ *  LibrarySettings. */
 export const sampleServiceTypes: ServiceTypeDefinition[] = [
-  { name: 'Sunday Worship' },
-  { name: 'Sunday Communion', description: 'Includes the Lord\'s Supper' },
-  { name: 'Other' },
+  { id: 'type-sample-sunday-worship', name: 'Sunday Worship' },
+  {
+    id: 'type-sample-sunday-communion',
+    name: 'Sunday Communion',
+    description: "Includes the Lord's Supper",
+  },
+  { id: 'type-sample-other', name: 'Other' },
 ]
 
 /** One example per templated service type — merged into LibrarySettings.serviceTemplates. Each
@@ -368,7 +373,7 @@ export const sampleServiceTemplates: ServiceTemplate[] = [
   {
     serviceType: 'Sunday Worship',
     description: 'The complete Sunday morning worship order, music through sermon to close.',
-    defaultForServiceTypes: ['Sunday Worship'],
+    defaultForServiceTypeIds: ['type-sample-sunday-worship'],
     items: [
       {
         id: 'tpl-welcome',
@@ -430,7 +435,7 @@ export const sampleServiceTemplates: ServiceTemplate[] = [
   {
     serviceType: 'Sunday Communion',
     description: "Communion Sunday's order, including the Lord's Supper before the close.",
-    defaultForServiceTypes: ['Sunday Communion'],
+    defaultForServiceTypeIds: ['type-sample-sunday-communion'],
     items: [
       {
         id: 'tpl-communion-welcome',
@@ -571,7 +576,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       id: 'service-sample-past-sunday',
       date: toIso(past),
       time: '10:30',
-      type: 'Sunday Worship',
+      serviceTypeId: 'type-sample-sunday-worship',
       items: [
         {
           id: 'item-2',
@@ -635,7 +640,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       id: 'service-sample-upcoming-sunday',
       date: toIso(soon),
       time: '10:30',
-      type: 'Sunday Worship',
+      serviceTypeId: 'type-sample-sunday-worship',
       items: [
         {
           id: 'item-2',
@@ -698,7 +703,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       id: 'service-sample-wednesday-study',
       date: toIso(wednesday),
       time: '19:00',
-      type: 'Other',
+      serviceTypeId: 'type-sample-other',
       items: [
         {
           id: 'item-1',
@@ -743,7 +748,7 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       id: 'service-sample-future-sunday',
       date: toIso(future),
       time: '10:30',
-      type: 'Sunday Worship',
+      serviceTypeId: 'type-sample-sunday-worship',
       items: [
         {
           id: 'item-1',

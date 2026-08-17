@@ -41,7 +41,9 @@ export function computeCcliUsage(
     (service) =>
       service.date >= filter.fromDate &&
       service.date <= filter.toDate &&
-      (!filter.serviceType || filter.serviceType === 'all' || service.type === filter.serviceType),
+      (!filter.serviceType ||
+        filter.serviceType === 'all' ||
+        service.serviceTypeId === filter.serviceType),
   )
 
   for (const service of inRange) {

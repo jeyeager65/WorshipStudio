@@ -19,7 +19,7 @@ function sampleService(overrides: Partial<Service> = {}): Service {
   return {
     id: 'service-1',
     date: '2026-07-19',
-    type: 'Sunday Morning Worship',
+    serviceTypeId: 'type-sunday-morning-worship',
     serviceTemplateName: 'Sunday Worship',
     items: [
       { id: 'item-1', type: 'song', songId: 'song-1', arrangement: { sequence: [] } },
@@ -41,7 +41,7 @@ function sampleService(overrides: Partial<Service> = {}): Service {
 describe('ServiceCard', () => {
   it('shows the service type, date, subtitle, and song count', () => {
     const wrapper = mount(ServiceCard, {
-      props: { service: sampleService() },
+      props: { serviceTypeName: 'Sunday Morning Worship', service: sampleService() },
       global: { plugins: [vuetify, router] },
     })
     const text = wrapper.text()
@@ -55,6 +55,7 @@ describe('ServiceCard', () => {
   it('shows "incomplete" when a role has no one assigned', () => {
     const wrapper = mount(ServiceCard, {
       props: {
+        serviceTypeName: 'Sunday Morning Worship',
         service: sampleService({
           assignments: [{ role: 'Worship Leader', personId: undefined, tentative: false }],
         }),
@@ -66,7 +67,7 @@ describe('ServiceCard', () => {
 
   it('shows a plural song count and "not yet started" when empty', () => {
     const wrapper = mount(ServiceCard, {
-      props: { service: sampleService({ items: [] }) },
+      props: { serviceTypeName: 'Sunday Morning Worship', service: sampleService({ items: [] }) },
       global: { plugins: [vuetify, router] },
     })
     expect(wrapper.text()).toContain('0 songs')
@@ -75,14 +76,14 @@ describe('ServiceCard', () => {
 
   it('shows the applied template and hides progress ratios when no template is applied', () => {
     const withTemplate = mount(ServiceCard, {
-      props: { service: sampleService() },
+      props: { serviceTypeName: 'Sunday Morning Worship', service: sampleService() },
       global: { plugins: [vuetify, router] },
     })
     expect(withTemplate.text()).toContain('Sunday Worship')
     expect(withTemplate.text()).toContain('1 of 1 songs')
 
     const withoutTemplate = mount(ServiceCard, {
-      props: { service: sampleService({ serviceTemplateName: undefined }) },
+      props: { serviceTypeName: 'Sunday Morning Worship', service: sampleService({ serviceTemplateName: undefined }) },
       global: { plugins: [vuetify, router] },
     })
     expect(withoutTemplate.text()).toContain('No template applied')
@@ -91,7 +92,7 @@ describe('ServiceCard', () => {
 
   it('renders the badge when provided', () => {
     const wrapper = mount(ServiceCard, {
-      props: { service: sampleService(), badge: 'TODAY' },
+      props: { serviceTypeName: 'Sunday Morning Worship', service: sampleService(), badge: 'TODAY' },
       global: { plugins: [vuetify, router] },
     })
     expect(wrapper.text()).toContain('TODAY')
@@ -100,19 +101,19 @@ describe('ServiceCard', () => {
   it('gives today, future, and past services their own distinct background class', () => {
     const todayIso = localCalendarDate()
     const future = mount(ServiceCard, {
-      props: { service: sampleService({ date: '2099-01-01' }) },
+      props: { serviceTypeName: 'Sunday Morning Worship', service: sampleService({ date: '2099-01-01' }) },
       global: { plugins: [vuetify, router] },
     })
     expect(future.classes()).toContain('service-card--future')
 
     const past = mount(ServiceCard, {
-      props: { service: sampleService({ date: '2000-01-01' }) },
+      props: { serviceTypeName: 'Sunday Morning Worship', service: sampleService({ date: '2000-01-01' }) },
       global: { plugins: [vuetify, router] },
     })
     expect(past.classes()).toContain('service-card--past')
 
     const today = mount(ServiceCard, {
-      props: { service: sampleService({ date: todayIso }) },
+      props: { serviceTypeName: 'Sunday Morning Worship', service: sampleService({ date: todayIso }) },
       global: { plugins: [vuetify, router] },
     })
     expect(today.classes()).toContain('service-card--today')

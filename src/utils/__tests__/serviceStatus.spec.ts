@@ -6,7 +6,7 @@ function service(overrides: Partial<Service> = {}): Service {
   return {
     id: 'service-1',
     date: '2026-08-02',
-    type: 'Sunday Worship',
+    serviceTypeId: 'type-sunday-worship',
     items: [],
     assignments: [],
     updatedAt: '',

@@ -24,7 +24,10 @@ pub fn compute(root: &Path) -> std::io::Result<Vec<ManifestEntry>> {
         entries.push(ManifestEntry {
             id: service.id,
             kind: "service".to_string(),
-            label: format!("{} — {}", service.date, service.service_type),
+            // service_type_id, not a display name -- fine here, nothing reads this label
+            // (manifest::compute()'s only real consumer only reads updated_at, see its own
+            // module doc comment).
+            label: format!("{} — {}", service.date, service.service_type_id),
             updated_at: service.updated_at,
         });
     }

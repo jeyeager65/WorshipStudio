@@ -24,10 +24,10 @@ export function defaultServiceTemplate(
   serviceType: string,
 ): ServiceTemplate | undefined {
   return (
-    templates?.find((template) => template.defaultForServiceTypes?.includes(serviceType)) ??
+    templates?.find((template) => template.defaultForServiceTypeIds?.includes(serviceType)) ??
     templates?.find(
       (template) =>
-        template.defaultForServiceTypes === undefined && template.serviceType === serviceType,
+        template.defaultForServiceTypeIds === undefined && template.serviceType === serviceType,
     )
   )
 }

@@ -12,7 +12,7 @@ import type {
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
 import type { MediaItem, Theme } from '@/models/library'
-import type { SongCollectionDefinition } from '@/models/settings'
+import type { SongCollectionDefinition, ServiceTypeDefinition } from '@/models/settings'
 import { MockCollection, MockSingleton } from './collection'
 import { stockBackgrounds, stockThemes } from '@/data/stockContent'
 import { presentationThemeDefaults } from '@/utils/presentationTheme'
@@ -23,6 +23,7 @@ import {
   seedMedia,
   seedThemes,
   seedSongCollections,
+  seedServiceTypes,
   seedPeople,
   seedAnnouncements,
   seedLibrarySettings,
@@ -102,6 +103,10 @@ export function createMockAdapter(): StudioAdapter {
   const songCollections = new MockCollection<SongCollectionDefinition>(
     'song-collections',
     seedSongCollections,
+  )
+  const serviceTypes = new MockCollection<ServiceTypeDefinition>(
+    'service-types',
+    seedServiceTypes,
   )
   const people = new MockCollection('people', seedPeople)
   const announcements = new MockCollection('announcements', seedAnnouncements)
@@ -395,6 +400,14 @@ export function createMockAdapter(): StudioAdapter {
         return collection
       },
       delete: (id) => songCollections.delete(id),
+    },
+    serviceTypes: {
+      list: () => serviceTypes.list(),
+      save: async (serviceType) => {
+        await serviceTypes.save(serviceType)
+        return serviceType
+      },
+      delete: (id) => serviceTypes.delete(id),
     },
     people: {
       list: () => people.list(),

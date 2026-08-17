@@ -18,7 +18,6 @@ describe('createWebSettingsPort', () => {
   it('returns first-run defaults when library-settings.json does not exist yet', async () => {
     const port = createWebSettingsPort(createFakeRoot())
     const settings = await port.getLibrarySettings()
-    expect(settings.serviceTypes).toEqual([])
     expect(settings.defaultTranslationCode).toBe('KJV')
     expect(settings.bulletin.page1Title).toBe('Order of Worship')
   })

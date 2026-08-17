@@ -240,7 +240,7 @@ mod tests {
             id: id.to_string(),
             date: date.to_string(),
             time: None,
-            service_type: "Sunday Morning Worship".to_string(),
+            service_type_id: "type-sunday-morning-worship".to_string(),
             planning_notes: None,
             planning_song_ids: None,
             service_template_name: None,

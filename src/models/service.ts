@@ -123,15 +123,20 @@ export interface ServiceTemplateItem {
  *  applyServiceTemplate, called from CreateServiceView); never re-applied to already-created
  *  services afterward. Order matters: items seed Service.items in this same order. */
 export interface ServiceTemplate {
-  /** The template's existing stable name. Historically this also implied which service type
-   *  used it; defaultForServiceTypes now makes that association explicit while preserving the
-   *  old field and stored libraries. */
+  /** The template's own stable name — deliberately still name-based, not id-based (see
+   *  models/settings.ts's ServiceTypeDefinition doc comment for the concepts that already
+   *  got real ids). Historically this also implied which service type used it;
+   *  defaultForServiceTypeIds now makes that association explicit (and id-based) while this
+   *  field keeps doing double duty as the template's own display identity. A future phase
+   *  gives templates a real independent name/id instead of overloading this field for both. */
   serviceType: string
   /** Optional planning note explaining when this template should be used. */
   description?: string
-  /** Service types that select this template by default. Undefined means a legacy template,
-   *  which still defaults to the matching serviceType; an empty array explicitly means none. */
-  defaultForServiceTypes?: string[]
+  /** ServiceTypeDefinition ids that select this template by default (was a list of service
+   *  type *names* before the one-time migration in src-tauri/src/commands/service_types.rs).
+   *  Undefined means a legacy template, which still defaults to the service type with the same
+   *  *name* as `serviceType` above (still name-based); an empty array explicitly means none. */
+  defaultForServiceTypeIds?: string[]
   items: ServiceTemplateItem[]
 }
 
@@ -141,7 +146,11 @@ export interface Service {
   /** Local service start time in 24-hour HH:mm form. Optional for services created before
    *  start times were introduced. */
   time?: string
-  type: string
+  /** A ServiceTypeDefinition id (models/settings.ts) — was named `type` and held the service
+   *  type's plain *name* before the one-time migration in
+   *  src-tauri/src/commands/service_types.rs; existing libraries get rewritten in place the
+   *  first time that migration runs. */
+  serviceTypeId: string
   /** Private, service-level planning context that does not appear in the order of worship. */
   planningNotes?: string
   /** Songs being considered or ordered during planning; separate from the actual service items. */

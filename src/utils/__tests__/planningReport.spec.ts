@@ -17,7 +17,9 @@ function song(id: string, title: string): Song {
   }
 }
 
-function service(overrides: Partial<Service> & Pick<Service, 'id' | 'date' | 'type'>): Service {
+function service(
+  overrides: Partial<Service> & Pick<Service, 'id' | 'date' | 'serviceTypeId'>,
+): Service {
   return {
     items: [],
     updatedAt: '',
@@ -40,7 +42,7 @@ describe('buildPlanningReport', () => {
       service({
         id: 'svc-2',
         date: '2026-02-01',
-        type: 'Sunday Morning Worship',
+        serviceTypeId: 'type-sunday-morning-worship',
         items: [
           { id: 'i1', type: 'song', songId: 'song-2', arrangement: { sequence: [] } },
           {
@@ -62,7 +64,7 @@ describe('buildPlanningReport', () => {
       service({
         id: 'svc-1',
         date: '2026-01-05',
-        type: 'Sunday Morning Worship',
+        serviceTypeId: 'type-sunday-morning-worship',
         items: [{ id: 'i1', type: 'song', songId: 'song-1', arrangement: { sequence: [] } }],
         assignments: [{ role: 'Guitar', personId: 'person-2', tentative: true }],
       }),
@@ -103,7 +105,9 @@ describe('buildPlanningReport', () => {
   })
 
   it('excludes services outside the date range (inclusive boundaries)', () => {
-    const services = [service({ id: 'svc-1', date: '2026-01-01', type: 'Sunday Morning Worship' })]
+    const services = [
+      service({ id: 'svc-1', date: '2026-01-01', serviceTypeId: 'type-sunday-morning-worship' }),
+    ]
     expect(
       buildPlanningReport(services, songs, personNames, roleGroups, {
         fromDate: '2026-01-01',
@@ -120,19 +124,21 @@ describe('buildPlanningReport', () => {
 
   it('filters by service type when given', () => {
     const services = [
-      service({ id: 'svc-1', date: '2026-01-05', type: 'Sunday Morning Worship' }),
-      service({ id: 'svc-2', date: '2026-01-06', type: 'Wednesday Bible Study' }),
+      service({ id: 'svc-1', date: '2026-01-05', serviceTypeId: 'type-sunday-morning-worship' }),
+      service({ id: 'svc-2', date: '2026-01-06', serviceTypeId: 'type-wednesday-bible-study' }),
     ]
     const rows = buildPlanningReport(services, songs, personNames, roleGroups, {
       fromDate: '2026-01-01',
       toDate: '2026-12-31',
-      serviceType: 'Wednesday Bible Study',
+      serviceType: 'type-wednesday-bible-study',
     })
     expect(rows.map((r) => r.serviceId)).toEqual(['svc-2'])
   })
 
   it('omits an unassigned or empty roster/song list rather than erroring', () => {
-    const services = [service({ id: 'svc-1', date: '2026-01-05', type: 'Sunday Morning Worship' })]
+    const services = [
+      service({ id: 'svc-1', date: '2026-01-05', serviceTypeId: 'type-sunday-morning-worship' }),
+    ]
     const rows = buildPlanningReport(services, songs, personNames, roleGroups, {
       fromDate: '2026-01-01',
       toDate: '2026-12-31',

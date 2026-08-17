@@ -36,6 +36,7 @@ import { listApiBibleCatalog, resolveApiBible, resolveEsv } from './scripture'
 import { createWebServicesPort } from './services'
 import { createWebSettingsPort } from './settings'
 import { createWebSlidesPort } from './slides'
+import { createWebServiceTypesPort } from './serviceTypes'
 import { createWebSongCollectionsPort } from './songCollections'
 import { createWebSongsPort } from './songs'
 import { createWebThemesPort } from './themes'
@@ -46,6 +47,7 @@ export function createWebAdapter(root: FileSystemDirectoryHandle): StudioAdapter
   const songs = createWebSongsPort(root, settings)
   const themes = createWebThemesPort(root, settings)
   const songCollections = createWebSongCollectionsPort(root)
+  const serviceTypes = createWebServiceTypesPort(root)
   const services = createWebServicesPort(root, settings, songs)
   const slides = createWebSlidesPort(root, settings)
   const media = createWebMediaPort(root, settings, themes, createPickedLocalMediaRoot())
@@ -60,6 +62,7 @@ export function createWebAdapter(root: FileSystemDirectoryHandle): StudioAdapter
     media,
     themes,
     songCollections,
+    serviceTypes,
     people,
     announcements,
     settings,

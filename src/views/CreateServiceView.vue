@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useServicesStore } from '@/stores/services'
 import { useSettingsStore } from '@/stores/settings'
 import { usePeopleStore } from '@/stores/people'
+import { useServiceTypesStore } from '@/stores/serviceTypes'
 import type { Service } from '@/models/service'
 import { personFormalName, sortByPreferredRole } from '@/models/library'
 import { applyServiceTemplate, defaultServiceTemplate } from '@/utils/serviceTemplate'
@@ -16,10 +17,11 @@ const router = useRouter()
 const store = useServicesStore()
 const settingsStore = useSettingsStore()
 const peopleStore = usePeopleStore()
+const serviceTypesStore = useServiceTypesStore()
 
 const date = ref(localCalendarDate())
 const time = ref('')
-const type = ref('')
+const serviceTypeId = ref('')
 const sermonTitle = ref('')
 const keyPassage = ref('')
 const preacherId = ref<string>()
@@ -31,14 +33,18 @@ function selectDefaultTemplate(serviceType: string) {
       ?.serviceType ?? null
 }
 
-watch(type, selectDefaultTemplate)
+watch(serviceTypeId, selectDefaultTemplate)
 
 onMounted(async () => {
-  await Promise.all([settingsStore.load(), peopleStore.load()])
-  const serviceTypes = settingsStore.librarySettings?.serviceTypes ?? []
-  if (serviceTypes.length > 0) type.value = serviceTypes[0]!.name
+  await Promise.all([settingsStore.load(), peopleStore.load(), serviceTypesStore.load()])
+  const serviceTypes = serviceTypesStore.serviceTypes
+  if (serviceTypes.length > 0) serviceTypeId.value = serviceTypes[0]!.id
   else selectDefaultTemplate('')
 })
+
+const selectedTypeName = computed(
+  () => serviceTypesStore.serviceTypes.find((t) => t.id === serviceTypeId.value)?.name,
+)
 
 const preacherOptions = computed(() =>
   sortByPreferredRole(peopleStore.people, 'Preacher').map((p) => ({
@@ -51,7 +57,7 @@ const templateOptions = computed(() =>
   (settingsStore.librarySettings?.serviceTemplates ?? []).map((template) => {
     const defaultTemplate = defaultServiceTemplate(
       settingsStore.librarySettings?.serviceTemplates,
-      type.value,
+      serviceTypeId.value,
     )
     return {
       title:
@@ -90,7 +96,7 @@ const formattedTime = computed(() => formatServiceTime(time.value) ?? 'Time Not 
 const selectedPreacherName = computed(
   () => preacherOptions.value.find((option) => option.value === preacherId.value)?.title,
 )
-const canCreate = computed(() => !!date.value && !!type.value)
+const canCreate = computed(() => !!date.value && !!serviceTypeId.value)
 
 // Seeds this service's items/assignments once from the template selected on this screen (see
 // Settings > Service Templates) — after creation the two are independent; editing the template
@@ -110,7 +116,7 @@ async function createService(destination: 'plan' | 'service') {
     id: `service-${crypto.randomUUID()}`,
     date: date.value,
     time: time.value || undefined,
-    type: type.value,
+    serviceTypeId: serviceTypeId.value,
     serviceTemplateName: selectedTemplate.value?.serviceType,
     items,
     assignments,
@@ -178,10 +184,10 @@ async function createService(destination: 'plan' | 'service') {
             />
             <five-minute-time-picker v-model="time" label="Start Time" hide-details />
             <v-select
-              v-model="type"
-              :items="settingsStore.librarySettings?.serviceTypes ?? []"
+              v-model="serviceTypeId"
+              :items="serviceTypesStore.serviceTypes"
               item-title="name"
-              item-value="name"
+              item-value="id"
               label="Service Type"
               variant="outlined"
               hide-details
@@ -201,7 +207,7 @@ async function createService(destination: 'plan' | 'service') {
             />
           </div>
           <v-alert
-            v-if="settingsStore.loaded && !settingsStore.librarySettings?.serviceTypes.length"
+            v-if="serviceTypesStore.loaded && !serviceTypesStore.serviceTypes.length"
             type="warning"
             variant="tonal"
             class="mt-4"
@@ -259,7 +265,7 @@ async function createService(destination: 'plan' | 'service') {
           <span><v-icon icon="mdi-church-outline" size="23" /></span>
           <div>
             <div class="summary-kicker">New Service</div>
-            <h2>{{ type || 'Select a Service Type' }}</h2>
+            <h2>{{ selectedTypeName || 'Select a Service Type' }}</h2>
           </div>
         </div>
         <div class="summary-date">

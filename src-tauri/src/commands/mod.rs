@@ -9,6 +9,7 @@ pub mod opensong;
 pub mod people;
 pub mod remote;
 pub mod scripture;
+pub mod service_types;
 pub mod services;
 pub mod settings;
 pub mod slides;

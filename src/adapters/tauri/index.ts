@@ -32,7 +32,12 @@ import type {
 import type { Song } from '@/models/song'
 import type { Service } from '@/models/service'
 import type { SlideLibraryItem, MediaItem, Theme, Person } from '@/models/library'
-import type { LibrarySettings, MachineSettings, SongCollectionDefinition } from '@/models/settings'
+import type {
+  LibrarySettings,
+  MachineSettings,
+  SongCollectionDefinition,
+  ServiceTypeDefinition,
+} from '@/models/settings'
 import type { Announcement } from '@/models/announcement'
 import { friendlyDisplayName } from '@/utils/displayName'
 import { generateQrCodeDataUrl } from '@/utils/qrCode'
@@ -312,13 +317,13 @@ export function createTauriAdapter(): StudioAdapter {
       delete: (id) => invoke('delete_service', { id }),
       listUpcoming: (fromDate, toDate) =>
         invoke<Service[]>('list_upcoming_services', { fromDate, toDate }),
-      importOpenSongSets: async (year, defaultServiceType) => {
+      importOpenSongSets: async (year, defaultServiceTypeId) => {
         const folder = await open({ directory: true, title: 'Select OpenSong Sets Folder' })
         if (!folder || Array.isArray(folder)) return undefined
         return invoke<ImportSetsSummary>('import_opensong_sets', {
           setsFolder: folder,
           year,
-          defaultServiceType,
+          defaultServiceTypeId,
         })
       },
       migrateLegacySermonFields: () => invoke('migrate_legacy_sermon_fields'),
@@ -396,6 +401,12 @@ export function createTauriAdapter(): StudioAdapter {
       save: (collection) =>
         invoke<SongCollectionDefinition>('save_song_collection', { collection }),
       delete: (id) => invoke('delete_song_collection', { id }),
+    },
+    serviceTypes: {
+      list: () => invoke<ServiceTypeDefinition[]>('list_service_types'),
+      save: (serviceType) =>
+        invoke<ServiceTypeDefinition>('save_service_type', { serviceType }),
+      delete: (id) => invoke('delete_service_type', { id }),
     },
     people: {
       list: () => invoke<Person[]>('list_people'),

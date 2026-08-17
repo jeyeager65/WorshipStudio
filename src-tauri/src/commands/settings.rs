@@ -3,7 +3,7 @@ use tauri::AppHandle;
 use crate::domain::{read_json_file, write_json_file};
 use crate::models::{
     Branding, BulletinSettings, CanvaIntegration, DropboxIntegration, LibrarySettings,
-    MachineSettings, OneDriveIntegration, ServiceType,
+    MachineSettings, OneDriveIntegration,
 };
 use crate::paths::{self, library_root, load_machine_settings};
 
@@ -12,25 +12,11 @@ const LIBRARY_SETTINGS_FILE: &str = "library-settings.json";
 // Real, non-fake starting values for a fresh install — there's no Settings UI yet (that's
 // milestone M7) to let a church configure these, so an empty list would leave the app
 // genuinely unusable (e.g. Create Service's Type dropdown would have nothing to pick).
-// service_types mirrors the common categories shown in design/sketches/create-service.html;
-// collections/role_groups/service_templates are left empty since there's no reasonable
-// default for church-specific people, roles, or names.
+// Service types now live in their own file (commands::service_types::migrate_if_needed seeds
+// the same defaults there for a genuinely fresh library); role_groups/service_templates are
+// left empty since there's no reasonable default for church-specific people, roles, or names.
 fn default_library_settings() -> LibrarySettings {
     LibrarySettings {
-        service_types: vec![
-            ServiceType {
-                name: "Sunday Morning Worship".to_string(),
-                description: None,
-            },
-            ServiceType {
-                name: "Wednesday Bible Study".to_string(),
-                description: None,
-            },
-            ServiceType {
-                name: "Other".to_string(),
-                description: None,
-            },
-        ],
         role_groups: vec![],
         service_templates: vec![],
         branding: Branding {

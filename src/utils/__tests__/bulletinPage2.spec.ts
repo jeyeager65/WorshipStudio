@@ -8,7 +8,7 @@ function service(overrides: Partial<Service> = {}): Service {
   return {
     id: 'svc-1',
     date: '2026-06-07',
-    type: 'Sunday Morning Worship',
+    serviceTypeId: 'Sunday Morning Worship',
     items: [],
     updatedAt: '',
     updatedByDevice: '',
@@ -33,24 +33,24 @@ const bulletinDefaults: BulletinSettings = {
 }
 
 describe('findNextWeekService', () => {
-  const current = service({ id: 'this-week', date: '2026-06-07', type: 'Sunday Morning Worship' })
+  const current = service({ id: 'this-week', date: '2026-06-07', serviceTypeId: 'Sunday Morning Worship' })
 
   it('finds the same-type service dated exactly 7 days later', () => {
     const nextWeek = service({
       id: 'next-week',
       date: '2026-06-14',
-      type: 'Sunday Morning Worship',
+      serviceTypeId: 'Sunday Morning Worship',
     })
     expect(findNextWeekService([current, nextWeek], current)?.id).toBe('next-week')
   })
 
   it('ignores a different service type on the same +7 date', () => {
-    const eveningService = service({ id: 'evening', date: '2026-06-14', type: 'Evening Service' })
+    const eveningService = service({ id: 'evening', date: '2026-06-14', serviceTypeId: 'Evening Service' })
     expect(findNextWeekService([current, eveningService], current)).toBeUndefined()
   })
 
   it('ignores the same type on a different date (not just "whatever comes next")', () => {
-    const midweek = service({ id: 'midweek', date: '2026-06-10', type: 'Sunday Morning Worship' })
+    const midweek = service({ id: 'midweek', date: '2026-06-10', serviceTypeId: 'Sunday Morning Worship' })
     expect(findNextWeekService([current, midweek], current)).toBeUndefined()
   })
 
@@ -58,11 +58,11 @@ describe('findNextWeekService', () => {
     // Regression check for a real bug: computing +7 days via toISOString() can land on the
     // wrong calendar day in timezones ahead of UTC (see calendarDate.ts). date-math to
     // localCalendarDate instead, so this must land on Jan 4, 2027, not Jan 3 or Jan 5.
-    const yearEnd = service({ id: 'year-end', date: '2026-12-28', type: 'Sunday Morning Worship' })
+    const yearEnd = service({ id: 'year-end', date: '2026-12-28', serviceTypeId: 'Sunday Morning Worship' })
     const nextYear = service({
       id: 'next-year',
       date: '2027-01-04',
-      type: 'Sunday Morning Worship',
+      serviceTypeId: 'Sunday Morning Worship',
     })
     expect(findNextWeekService([yearEnd, nextYear], yearEnd)?.id).toBe('next-year')
   })

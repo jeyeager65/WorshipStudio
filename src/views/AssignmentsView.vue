@@ -7,6 +7,7 @@ import { getAdapter } from '@/adapters'
 import { useServicesStore } from '@/stores/services'
 import { usePeopleStore } from '@/stores/people'
 import { useSettingsStore } from '@/stores/settings'
+import { useServiceTypesStore } from '@/stores/serviceTypes'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import PersonEditorDialog from '@/components/people/PersonEditorDialog.vue'
@@ -35,6 +36,7 @@ const route = useRoute()
 const servicesStore = useServicesStore()
 const peopleStore = usePeopleStore()
 const settingsStore = useSettingsStore()
+const serviceTypesStore = useServiceTypesStore()
 const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsavedChangesStore())
 const confirmDialog = useConfirmDialogStore()
 const backTo = computed(() =>
@@ -61,6 +63,7 @@ async function loadAssignments() {
       getAdapter().services.get(route.params.id as string),
       peopleStore.load(),
       settingsStore.load(),
+      serviceTypesStore.load(),
     ])
     if (!peopleLoaded || !settingsLoaded) {
       editorLoadError.value = peopleStore.loadError || settingsStore.loadError
@@ -103,11 +106,16 @@ const serviceDateLabel = computed(() => {
   const time = formatServiceTime(service.value.time)
   return time ? `${date} · ${time}` : date
 })
+const serviceTypeName = computed(
+  () =>
+    serviceTypesStore.serviceTypes.find((type) => type.id === service.value?.serviceTypeId)
+      ?.name ?? '',
+)
 // This page has no static router meta.title (see App.vue's pageTitle) since its content is
 // per-service — kept in sync here instead of only set once at mount, so renaming things
 // upstream (were that ever possible from this page) wouldn't leave a stale app-bar title.
 watch(
-  [() => service.value?.type, serviceDateLabel],
+  [serviceTypeName, serviceDateLabel],
   ([type, dateLabel]) => {
     pageTitleOverride.value = service.value ? `Assignments — ${type} — ${dateLabel}` : undefined
   },
@@ -260,7 +268,7 @@ const resetDialogOpen = ref(false)
 const resetTemplate = computed(() =>
   defaultServiceTemplate(
     settingsStore.librarySettings?.serviceTemplates,
-    service.value?.type ?? '',
+    service.value?.serviceTypeId ?? '',
   ),
 )
 const resetPlan = computed(() => {
@@ -394,7 +402,7 @@ function assignmentEmailBody(): string {
   return [
     'Hello,',
     '',
-    `Here are the assignments for ${service.value.type} on ${serviceDateLabel.value}.`,
+    `Here are the assignments for ${serviceTypeName.value} on ${serviceDateLabel.value}.`,
     '',
     ...lines,
     '',
@@ -407,7 +415,7 @@ function assignmentEmailBody(): string {
 function openEmailDialog() {
   if (!service.value) return
   const churchName = settingsStore.librarySettings?.branding.churchName.trim()
-  emailSubject.value = `${churchName ? `${churchName} — ` : ''}Assignments for ${service.value.type} — ${serviceDateLabel.value}`
+  emailSubject.value = `${churchName ? `${churchName} — ` : ''}Assignments for ${serviceTypeName.value} — ${serviceDateLabel.value}`
   emailMessage.value = assignmentEmailBody()
   emailActionStatus.value = ''
   emailActionError.value = ''
@@ -475,7 +483,7 @@ async function copyEmailDraft() {
         <div>
           <div class="page-eyebrow">Service team</div>
           <h1>Assignments</h1>
-          <p class="service-context">{{ service.type }} <span>·</span> {{ serviceDateLabel }}</p>
+          <p class="service-context">{{ serviceTypeName }} <span>·</span> {{ serviceDateLabel }}</p>
           <p class="page-description">
             Assign people to each role and resolve availability issues before the service.
           </p>
@@ -663,7 +671,7 @@ async function copyEmailDraft() {
         <v-card-text>
           <template v-if="!resetTemplate">
             <p class="text-medium-emphasis">
-              No service template found for "{{ service.type }}". Add one in Settings → Service
+              No service template found for "{{ serviceTypeName }}". Add one in Settings → Service
               Templates first.
             </p>
           </template>

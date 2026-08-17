@@ -46,7 +46,7 @@ function baseService(overrides: Partial<Service> = {}): Service {
   return {
     id: 'svc-1',
     date: '2026-07-26',
-    type: 'Sunday Morning Worship',
+    serviceTypeId: 'type-sunday-morning-worship',
     items: [],
     updatedAt: '',
     updatedByDevice: '',

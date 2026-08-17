@@ -1,50 +1,48 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
-import type { ServiceTypeDefinition } from '@/models/settings'
+import { useServiceTypesStore } from '@/stores/serviceTypes'
 
-const props = defineProps<{ modelValue: ServiceTypeDefinition[] }>()
-const emit = defineEmits<{ 'update:modelValue': [ServiceTypeDefinition[]] }>()
+const store = useServiceTypesStore()
 const confirmDialog = useConfirmDialogStore()
 const newTypeName = ref('')
 
+onMounted(() => store.load())
+
 function addType() {
   const name = newTypeName.value.trim()
-  if (!name || props.modelValue.some((type) => type.name.toLowerCase() === name.toLowerCase()))
+  if (
+    !name ||
+    store.serviceTypes.some((type) => type.name.toLowerCase() === name.toLowerCase())
+  )
     return
-  emit('update:modelValue', [...props.modelValue, { name }])
+  store.save({ id: `type-${crypto.randomUUID()}`, name })
   newTypeName.value = ''
 }
 
-function updateDescription(index: number, description: string) {
-  emit(
-    'update:modelValue',
-    props.modelValue.map((type, typeIndex) =>
-      typeIndex === index ? { ...type, description: description || undefined } : type,
-    ),
-  )
+function updateDescription(typeId: string, description: string) {
+  const type = store.serviceTypes.find((t) => t.id === typeId)
+  if (!type) return
+  store.save({ ...type, description: description || undefined })
 }
 
-function trimDescription(index: number) {
-  const description = props.modelValue[index]?.description?.trim() ?? ''
-  updateDescription(index, description)
+function trimDescription(typeId: string) {
+  const type = store.serviceTypes.find((t) => t.id === typeId)
+  updateDescription(typeId, type?.description?.trim() ?? '')
 }
 
-async function removeType(index: number) {
-  const type = props.modelValue[index]
+async function removeType(typeId: string) {
+  const type = store.serviceTypes.find((t) => t.id === typeId)
   if (!type) return
   if (!(await confirmDialog.confirm(`Remove "${type.name}"?`, 'Remove'))) return
-  emit(
-    'update:modelValue',
-    props.modelValue.filter((_, typeIndex) => typeIndex !== index),
-  )
+  store.remove(typeId)
 }
 </script>
 
 <template>
   <div class="service-type-settings">
-    <div v-if="modelValue.length" class="service-type-list">
-      <div v-for="(type, index) in modelValue" :key="type.name" class="service-type-row">
+    <div v-if="store.serviceTypes.length" class="service-type-list">
+      <div v-for="type in store.serviceTypes" :key="type.id" class="service-type-row">
         <div class="service-type-identity">
           <v-icon icon="mdi-calendar-multiple" size="20" />
           <strong>{{ type.name }}</strong>
@@ -56,15 +54,15 @@ async function removeType(index: number) {
           variant="outlined"
           density="compact"
           hide-details
-          @update:model-value="(value: string) => updateDescription(index, value)"
-          @blur="trimDescription(index)"
+          @update:model-value="(value: string) => updateDescription(type.id, value)"
+          @blur="trimDescription(type.id)"
         />
         <v-btn
           icon="mdi-trash-can-outline"
           variant="text"
           color="error"
           aria-label="Remove service type"
-          @click="removeType(index)"
+          @click="removeType(type.id)"
         />
       </div>
     </div>

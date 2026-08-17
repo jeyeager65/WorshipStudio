@@ -6,6 +6,7 @@ import { VueDraggable } from 'vue-draggable-plus'
 import { useServicesStore } from '@/stores/services'
 import { usePeopleStore } from '@/stores/people'
 import { useSettingsStore } from '@/stores/settings'
+import { useServiceTypesStore } from '@/stores/serviceTypes'
 import { useSongsStore } from '@/stores/songs'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useHistoryStore } from '@/stores/history'
@@ -42,6 +43,7 @@ const backLabel = computed(() => (backTo.value.startsWith('/service/') ? 'Servic
 const servicesStore = useServicesStore()
 const peopleStore = usePeopleStore()
 const settingsStore = useSettingsStore()
+const serviceTypesStore = useServiceTypesStore()
 const songsStore = useSongsStore()
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const historyStore = useHistoryStore()
@@ -81,6 +83,9 @@ const templateOptions = computed(() =>
     title: template.serviceType,
     value: template.serviceType,
   })),
+)
+const serviceTypeName = computed(
+  () => serviceTypesStore.serviceTypes.find((t) => t.id === serviceType.value)?.name ?? '',
 )
 const assignmentSummary = computed(() => {
   const assignments = service.value?.assignments ?? []
@@ -224,7 +229,7 @@ watch(
     preacherId.value = next ? sermonPreacherId(next, sermon) : undefined
     serviceDate.value = next?.date ?? ''
     serviceTime.value = next?.time ?? ''
-    serviceType.value = next?.type ?? ''
+    serviceType.value = next?.serviceTypeId ?? ''
   },
   { immediate: true },
 )
@@ -233,7 +238,7 @@ watch([serviceDate, serviceTime, serviceType], () => {
   if (!service.value) return
   service.value.date = serviceDate.value
   service.value.time = serviceTime.value || undefined
-  service.value.type = serviceType.value
+  service.value.serviceTypeId = serviceType.value
 })
 
 watch([sermonTitle, passage, preacherId], () => {
@@ -243,7 +248,7 @@ watch([sermonTitle, passage, preacherId], () => {
   applySermonEdit(
     current,
     { title: sermonTitle.value, passageReference: passage.value, preacherId: preacherId.value },
-    defaultSermonRole(settingsStore.librarySettings?.serviceTemplates, current.type),
+    defaultSermonRole(settingsStore.librarySettings?.serviceTemplates, current.serviceTypeId),
     settingsStore.librarySettings?.defaultTranslationCode ?? 'KJV',
   )
 })
@@ -362,6 +367,7 @@ onMounted(async () => {
       servicesStore.loaded ? Promise.resolve() : servicesStore.load(),
       peopleStore.loaded ? Promise.resolve() : peopleStore.load(),
       settingsStore.loaded ? Promise.resolve() : settingsStore.load(),
+      serviceTypesStore.loaded ? Promise.resolve() : serviceTypesStore.load(),
       songsStore.loaded ? Promise.resolve() : songsStore.load(),
     ])
     try {
@@ -392,12 +398,12 @@ async function savePlan() {
   try {
     current.date = serviceDate.value
     current.time = serviceTime.value || undefined
-    current.type = serviceType.value
+    current.serviceTypeId = serviceType.value
     if (sermonTitle.value || passage.value || preacherId.value || findSermonItem(current)) {
       applySermonEdit(
         current,
         { title: sermonTitle.value, passageReference: passage.value, preacherId: preacherId.value },
-        defaultSermonRole(settingsStore.librarySettings?.serviceTemplates, current.type),
+        defaultSermonRole(settingsStore.librarySettings?.serviceTemplates, current.serviceTypeId),
         settingsStore.librarySettings?.defaultTranslationCode ?? 'KJV',
       )
     }
@@ -459,7 +465,7 @@ async function applyTemplate() {
   try {
     current.date = serviceDate.value
     current.time = serviceTime.value || undefined
-    current.type = serviceType.value
+    current.serviceTypeId = serviceType.value
     const seeded = applyServiceTemplate(template)
     const plannedSongs = current.items.filter((item) => item.type === 'song')
     const plannedSermon = findSermonItem(current)
@@ -584,7 +590,7 @@ async function applyTemplate() {
           <div class="plan-heading">
             <div>
               <span>Service Plan</span>
-              <h1>{{ serviceType }}</h1>
+              <h1>{{ serviceTypeName }}</h1>
               <p>
                 {{
                   new Date(`${serviceDate}T00:00:00`).toLocaleDateString(undefined, {
@@ -635,9 +641,9 @@ async function applyTemplate() {
             ><v-col cols="12" md="4"
               ><v-select
                 v-model="serviceType"
-                :items="settingsStore.librarySettings?.serviceTypes ?? []"
+                :items="serviceTypesStore.serviceTypes"
                 item-title="name"
-                item-value="name"
+                item-value="id"
                 label="Service Type"
                 variant="outlined" /></v-col
           ></v-row>

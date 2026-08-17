@@ -16,7 +16,7 @@ pub fn import_opensong_sets(
     app: AppHandle,
     sets_folder: String,
     year: i32,
-    default_service_type: String,
+    default_service_type_id: String,
 ) -> Result<ImportSetsSummary, String> {
     let root = library_root(&app);
     let device = this_device_name(&app);
@@ -27,7 +27,7 @@ pub fn import_opensong_sets(
         std::path::Path::new(&sets_folder),
         &existing_songs,
         year,
-        &default_service_type,
+        &default_service_type_id,
     )
     .map_err(|e| e.to_string())?;
 

@@ -31,6 +31,7 @@ import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useSettingsStore } from '@/stores/settings'
+import { useServiceTypesStore } from '@/stores/serviceTypes'
 import { useSongCollectionsStore } from '@/stores/songCollections'
 import { usePeopleStore } from '@/stores/people'
 import { useSyncStore } from '@/stores/sync'
@@ -68,6 +69,7 @@ const mediaStore = useMediaStore()
 const themesStore = useThemesStore()
 const externalAppsStore = useExternalAppsStore()
 const settingsStore = useSettingsStore()
+const serviceTypesStore = useServiceTypesStore()
 const songCollectionsStore = useSongCollectionsStore()
 const peopleStore = usePeopleStore()
 const syncStore = useSyncStore()
@@ -130,6 +132,10 @@ onMounted(() => window.addEventListener('keydown', onWorkspaceDrawerKeydown))
 onUnmounted(() => window.removeEventListener('keydown', onWorkspaceDrawerKeydown))
 
 const service = ref<Service>()
+const serviceTypeName = computed(
+  () =>
+    serviceTypesStore.serviceTypes.find((t) => t.id === service.value?.serviceTypeId)?.name ?? '',
+)
 const workspaceLoading = ref(true)
 const workspaceLoadError = ref('')
 const notFound = ref(false)
@@ -292,6 +298,7 @@ onMounted(async () => {
   if (!externalAppsStore.loaded) await externalAppsStore.load()
   if (!peopleStore.loaded) await peopleStore.load()
   if (!settingsStore.loaded) await settingsStore.load()
+  if (!serviceTypesStore.loaded) await serviceTypesStore.load()
   if (!songCollectionsStore.loaded) await songCollectionsStore.load()
   const dependencyLoadError =
     songsStore.loadError ||
@@ -301,6 +308,7 @@ onMounted(async () => {
     externalAppsStore.loadError ||
     peopleStore.loadError ||
     settingsStore.loadError ||
+    serviceTypesStore.loadError ||
     songCollectionsStore.loadError
   if (dependencyLoadError) {
     workspaceLoadError.value = dependencyLoadError
@@ -1409,7 +1417,7 @@ function updateRolePerson(role: string, personId: string | undefined) {
         <span class="workspace-service-icon"><v-icon icon="mdi-church-outline" size="22" /></span>
         <div class="workspace-service-heading">
           <div class="workspace-title-line">
-            <span class="workspace-service-title">{{ service.type }}</span>
+            <span class="workspace-service-title">{{ serviceTypeName }}</span>
             <span v-if="isPresenting" class="presenting-badge"><i />Live</span>
           </div>
           <div class="workspace-service-metadata">

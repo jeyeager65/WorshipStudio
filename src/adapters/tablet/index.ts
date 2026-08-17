@@ -35,6 +35,7 @@ import { listApiBibleCatalog, resolveApiBible, resolveEsv } from '@/adapters/web
 import { createWebServicesPort } from '@/adapters/web/services'
 import { createWebSettingsPort } from '@/adapters/web/settings'
 import { createWebSlidesPort } from '@/adapters/web/slides'
+import { createWebServiceTypesPort } from '@/adapters/web/serviceTypes'
 import { createWebSongCollectionsPort } from '@/adapters/web/songCollections'
 import { createWebSongsPort } from '@/adapters/web/songs'
 import { createWebThemesPort } from '@/adapters/web/themes'
@@ -89,6 +90,7 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
   const songs = createWebSongsPort(trackedRoot, settings)
   const themes = createWebThemesPort(trackedRoot, settings)
   const songCollections = createWebSongCollectionsPort(trackedRoot)
+  const serviceTypes = createWebServiceTypesPort(trackedRoot)
   const services = createWebServicesPort(trackedRoot, settings, songs)
   const slides = createWebSlidesPort(trackedRoot, settings)
   const media = createWebMediaPort(trackedRoot, settings, themes, createTabletLocalMediaRoot(rawRoot))
@@ -110,6 +112,7 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
     media,
     themes,
     songCollections,
+    serviceTypes,
     people,
     announcements,
     settings,

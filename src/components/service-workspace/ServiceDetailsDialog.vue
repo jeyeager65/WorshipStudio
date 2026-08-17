@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
+import { useServiceTypesStore } from '@/stores/serviceTypes'
 import { usePeopleStore } from '@/stores/people'
 import {
   applySermonEdit,
@@ -17,7 +18,10 @@ const props = defineProps<{ modelValue: boolean; service: Service }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
 
 const settingsStore = useSettingsStore()
+const serviceTypesStore = useServiceTypesStore()
 const peopleStore = usePeopleStore()
+
+if (!serviceTypesStore.loaded) serviceTypesStore.load()
 
 const editDate = ref('')
 const editTime = ref('')
@@ -34,7 +38,7 @@ watch(
     if (!open) return
     editDate.value = props.service.date
     editTime.value = props.service.time ?? ''
-    editType.value = props.service.type
+    editType.value = props.service.serviceTypeId
     const sermonItem = findSermonItem(props.service)
     editSermonTitle.value = sermonItem?.title ?? ''
     editKeyPassage.value = sermonItem ? sermonMainReference(sermonItem) : ''
@@ -57,7 +61,7 @@ function save() {
   const svc = props.service
   svc.date = editDate.value
   svc.time = editTime.value || undefined
-  svc.type = editType.value
+  svc.serviceTypeId = editType.value
   // Only touch the sermon item if there's something to touch — editing just Date/Type on a
   // service with no sermon at all shouldn't spuriously create a blank one.
   if (
@@ -66,6 +70,11 @@ function save() {
     editPreacherId.value ||
     findSermonItem(svc)
   ) {
+    // defaultSermonRole still matches ServiceTemplate.serviceType by name (see that field's own
+    // doc comment) -- resolved once here rather than changing that established, still name-based
+    // matching convention.
+    const serviceTypeName =
+      serviceTypesStore.serviceTypes.find((t) => t.id === svc.serviceTypeId)?.name ?? ''
     applySermonEdit(
       svc,
       {
@@ -73,7 +82,7 @@ function save() {
         passageReference: editKeyPassage.value,
         preacherId: editPreacherId.value,
       },
-      defaultSermonRole(settingsStore.librarySettings?.serviceTemplates, svc.type),
+      defaultSermonRole(settingsStore.librarySettings?.serviceTemplates, serviceTypeName),
       settingsStore.librarySettings?.defaultTranslationCode ?? 'KJV',
     )
   }
@@ -100,9 +109,9 @@ function save() {
         </v-row>
         <v-select
           v-model="editType"
-          :items="settingsStore.librarySettings?.serviceTypes ?? []"
+          :items="serviceTypesStore.serviceTypes"
           item-title="name"
-          item-value="name"
+          item-value="id"
           label="Type"
           variant="outlined"
         />

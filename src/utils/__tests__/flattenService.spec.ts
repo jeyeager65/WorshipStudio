@@ -29,7 +29,7 @@ function makeService(overrides: Partial<Service> = {}): Service {
   return {
     id: 'service-1',
     date: '2026-07-19',
-    type: 'Sunday Morning Worship',
+    serviceTypeId: 'type-sunday-morning-worship',
     items: [],
     updatedAt: '',
     updatedByDevice: '',

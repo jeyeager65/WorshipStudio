@@ -2,19 +2,40 @@
 import { computed, onMounted, ref, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
+import { useServiceTypesStore } from '@/stores/serviceTypes'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import type { ServiceTemplate } from '@/models/service'
 
 const router = useRouter()
 const settingsStore = useSettingsStore()
+const serviceTypesStore = useServiceTypesStore()
 const confirmDialog = useConfirmDialogStore()
 const searchQuery = ref('')
 const saving = ref(false)
 
-onMounted(() => settingsStore.load())
+onMounted(() => {
+  settingsStore.load()
+  serviceTypesStore.load()
+})
 
 const templates = computed(() => settingsStore.librarySettings?.serviceTemplates ?? [])
+
+// Ids, not names — see effectiveDefaultTypeNames below for the display-text version.
+function effectiveDefaultTypes(template: ServiceTemplate): string[] {
+  if (template.defaultForServiceTypeIds !== undefined) return template.defaultForServiceTypeIds
+  const matchingType = serviceTypesStore.serviceTypes.find(
+    (type) => type.name === template.serviceType,
+  )
+  return matchingType ? [matchingType.id] : []
+}
+
+function effectiveDefaultTypeNames(template: ServiceTemplate): string[] {
+  return effectiveDefaultTypes(template).map(
+    (id) => serviceTypesStore.serviceTypes.find((type) => type.id === id)?.name ?? id,
+  )
+}
+
 const filteredTemplates = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   return [...templates.value]
@@ -24,18 +45,9 @@ const filteredTemplates = computed(() => {
         !query ||
         template.serviceType.toLowerCase().includes(query) ||
         template.description?.toLowerCase().includes(query) ||
-        effectiveDefaultTypes(template).some((type) => type.toLowerCase().includes(query)),
+        effectiveDefaultTypeNames(template).some((name) => name.toLowerCase().includes(query)),
     )
 })
-
-function effectiveDefaultTypes(template: ServiceTemplate): string[] {
-  if (template.defaultForServiceTypes !== undefined) return template.defaultForServiceTypes
-  return settingsStore.librarySettings?.serviceTypes.some(
-    (type) => type.name === template.serviceType,
-  )
-    ? [template.serviceType]
-    : []
-}
 
 function serviceItemCount(template: ServiceTemplate): number {
   return template.items.filter((item) => item.kind !== 'role-only').length
@@ -82,7 +94,7 @@ async function duplicateTemplate(template: ServiceTemplate) {
     description: template.description
       ? `Copy of ${template.serviceType}. ${template.description}`
       : `Copy of ${template.serviceType}.`,
-    defaultForServiceTypes: [],
+    defaultForServiceTypeIds: [],
     items: template.items.map((item) => ({
       ...structuredClone(toRaw(item)),
       id: `template-item-${crypto.randomUUID()}`,
@@ -236,7 +248,9 @@ async function deleteTemplate(template: ServiceTemplate) {
           <footer>
             <div class="default-types">
               <template v-if="effectiveDefaultTypes(template).length">
-                <span v-for="type in effectiveDefaultTypes(template)" :key="type">{{ type }}</span>
+                <span v-for="(name, index) in effectiveDefaultTypeNames(template)" :key="index">{{
+                  name
+                }}</span>
               </template>
               <small v-else>Not a default</small>
             </div>
