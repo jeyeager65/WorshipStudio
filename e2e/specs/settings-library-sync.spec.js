@@ -68,10 +68,12 @@ describe('Settings — Library & Sync data tools', () => {
     await expect(serviceCard).toBeExisting()
   })
 
-  it('edits the local media path, saves, and it persists after navigating away and back', async () => {
+  it('edits the local data folder, saves it via its own button, and it persists after navigating away and back', async () => {
     // Browse… opens a real native OS folder dialog, which webdriver can't drive — typing
     // directly into the field (same approach settings-general.spec.js uses for computer name)
-    // still exercises the part that matters: the field renders, binds, and persists.
+    // still exercises the part that matters: the field renders, binds, and persists. This panel
+    // has its own Save button (not the page-level one) — see LibrarySyncSection.vue's own
+    // comment on why the Local root can't be saved as part of the shared settings document.
     const skipLink = await $('button*=Skip setup')
     if (await skipLink.isExisting()) await skipLink.click()
 
@@ -83,18 +85,20 @@ describe('Settings — Library & Sync data tools', () => {
     await syncSection.waitForExist({ timeout: 10000 })
     await syncSection.click()
 
-    const pathLabel = await $('label*=Local media path')
+    const pathLabel = await $('label*=Local data path')
     await pathLabel.waitForExist({ timeout: 10000 })
     const labelId = await pathLabel.getAttribute('id')
     const pathField = await $(`input[aria-labelledby="${labelId}"]`)
     await pathField.click()
     await browser.keys(['Control', 'a', 'Control'])
     await browser.keys('Backspace')
-    await pathField.addValue('C:\\E2E\\LocalMedia')
+    await pathField.addValue('C:\\E2E\\LocalData')
 
-    const saveBtn = await $('button*=Save')
+    const saveBtn = await $('button*=Save Local Data Folder')
     await saveBtn.waitForClickable({ timeout: 10000 })
     await saveBtn.click()
+    const savedText = await $('div*=Saved. Files already at the previous location')
+    await savedText.waitForExist({ timeout: 10000 })
 
     const servicesNav = await $('a[href="#/"]')
     await servicesNav.waitForClickable({ timeout: 10000 })
@@ -105,11 +109,27 @@ describe('Settings — Library & Sync data tools', () => {
     await reopenedSyncSection.waitForExist({ timeout: 10000 })
     await reopenedSyncSection.click()
 
-    const reopenedLabel = await $('label*=Local media path')
+    const reopenedLabel = await $('label*=Local data path')
     await reopenedLabel.waitForExist({ timeout: 10000 })
     const reopenedLabelId = await reopenedLabel.getAttribute('id')
     const reopenedField = await $(`input[aria-labelledby="${reopenedLabelId}"]`)
-    await expect(reopenedField).toHaveValue('C:\\E2E\\LocalMedia')
+    await expect(reopenedField).toHaveValue('C:\\E2E\\LocalData')
+
+    // Must revert before this test ends — unlike the library path (which the suite's other
+    // specs deliberately avoid touching, see this file's first test's own comment), the Local
+    // root is what every later spec's machine-settings.json/Canva auth/paired devices actually
+    // resolve through. Left pointed at C:\E2E\LocalData, every spec that runs after this one
+    // would silently start reading/writing a different, unseeded folder instead of the shared
+    // E2E app-data directory reset once at suite start.
+    await reopenedField.click()
+    await browser.keys(['Control', 'a', 'Control'])
+    await browser.keys('Backspace')
+    const revertSaveBtn = await $('button*=Save Local Data Folder')
+    await revertSaveBtn.waitForClickable({ timeout: 10000 })
+    await revertSaveBtn.click()
+    const revertedSavedText = await $('div*=Saved. Files already at the previous location')
+    await revertedSavedText.waitForExist({ timeout: 10000 })
+    await expect(reopenedField).toHaveValue('')
   })
 
   it('clears media, one-time migration snapshots, and settings-list backups when clearing existing data', async () => {

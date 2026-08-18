@@ -216,8 +216,6 @@ export interface MachineSettings {
   libraryPath: string
   /** Whether the First-Time Setup Wizard has been completed or explicitly skipped. */
   hasCompletedSetup: boolean
-  /** Local-only media folder (never synced) — for files too large to sync to every machine. */
-  localMediaPath: string
   /**
    * Persisted Display Setup role per monitor, keyed by the OS-reported monitor name (see
    * adapters/tauri's `displays` port, which does real monitor enumeration itself rather than
@@ -279,4 +277,16 @@ export interface MachineSettings {
    * already connected doesn't have to ask again after a reload.
    */
   tabletCloudClientId?: string
+}
+
+/** Tauri-only. What Settings' Local data folder panel shows/edits — see SettingsPort's own doc
+ *  comment on getDataLocation for why this is a separate, non-synced concern from
+ *  MachineSettings rather than a field on it. */
+export interface DataLocation {
+  /** The configured override, blank if using the default location. */
+  localRootPath: string
+  /** Where Local actually resolves to right now, override or default — for display only. */
+  resolvedPath: string
+  /** Portable installs always use a fixed folder beside the executable; the picker is hidden there. */
+  isPortable: boolean
 }

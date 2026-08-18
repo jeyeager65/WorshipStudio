@@ -13,7 +13,9 @@ describe('Remote Control confidence-monitor mirror', () => {
     // the WebdriverIO browser session at all, so there's no multi-window risk here (unlike
     // driving the presentation window). The app just needs to already be running, which it is
     // for the duration of this spec file.
-    const remoteDevicesPath = path.join(appDataDir, 'remote-devices.json')
+    // remote-devices.json lives under Local, not flat in app-data — see
+    // src-tauri/src/paths.rs's local_root.
+    const remoteDevicesPath = path.join(appDataDir, 'Local', 'remote-devices.json')
     const token = 'e2e-mirror-token'
     // A device is only authorized if its personId resolves to a real person in the library
     // (see remote_server.rs's authorized_device_by_token) — devices without one are

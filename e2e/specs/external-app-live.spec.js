@@ -12,7 +12,9 @@ describe('External App Hand-off (live launch/restore)', () => {
     // This spec exists to verify the *live* wiring around it (auto-launch on advance, the
     // operator-only error banner with Try Again/Skip, and that Stop Presenting/restore-self
     // afterward doesn't hang the session) — not to require any particular launch outcome.
-    const externalAppsPath = path.join(appDataDir, 'external-apps.json')
+    // external-apps.json lives under Local, not flat in app-data — see
+    // src-tauri/src/paths.rs's local_root.
+    const externalAppsPath = path.join(appDataDir, 'Local', 'external-apps.json')
     fs.writeFileSync(
       externalAppsPath,
       JSON.stringify(

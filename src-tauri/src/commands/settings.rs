@@ -6,7 +6,7 @@ use crate::domain::{delete_file_if_exists, read_json_file, write_json_file};
 use crate::models::{
     Branding, BulletinSettings, FontSizesPx, LibraryCredentials, LibrarySettings, MachineSettings,
 };
-use crate::paths::{self, library_root, load_machine_settings};
+use crate::paths::{self, library_root, load_machine_settings, DataLocation};
 
 const LIBRARY_SETTINGS_FILE: &str = "library-settings.json";
 const CREDENTIALS_FILE: &str = "credentials.json";
@@ -424,6 +424,32 @@ pub fn save_machine_settings(app: AppHandle, mut settings: MachineSettings) -> R
     paths::save_machine_settings(&app, &settings).map_err(|e| e.to_string())
 }
 
+/// What Settings' Local data folder panel shows/edits — the raw configured override (blank if
+/// using the default), the actual resolved path (so the UI can show where Local really is even
+/// when the override field is blank), and whether this install is portable (Local isn't
+/// configurable there, see `paths::local_root`'s own doc comment).
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataLocationInfo {
+    pub local_root_path: String,
+    pub resolved_path: String,
+    pub is_portable: bool,
+}
+
+#[tauri::command]
+pub fn get_data_location(app: AppHandle) -> Result<DataLocationInfo, String> {
+    Ok(DataLocationInfo {
+        local_root_path: paths::load_data_location(&app).local_root_path,
+        resolved_path: paths::local_root(&app).to_string_lossy().to_string(),
+        is_portable: paths::is_portable(&app),
+    })
+}
+
+#[tauri::command]
+pub fn save_data_location(app: AppHandle, local_root_path: String) -> Result<(), String> {
+    paths::save_data_location(&app, &DataLocation { local_root_path }).map_err(|e| e.to_string())
+}
+
 /// Deletes the "library-settings.pre-*-id-migration.json" snapshots that
 /// `commands::{roles,service_types,song_collections,service_templates}::migrate_if_needed` each
 /// write once, right before their own one-time id migration, as a manual recovery escape hatch —
@@ -483,7 +509,6 @@ mod tests {
             dark_mode: true,
             library_path: String::new(),
             has_completed_setup: true,
-            local_media_path: String::new(),
             display_roles: Default::default(),
             esv_api_key: None,
             api_bible_key: None,
@@ -506,7 +531,6 @@ mod tests {
             dark_mode: true,
             library_path: String::new(),
             has_completed_setup: true,
-            local_media_path: String::new(),
             display_roles: Default::default(),
             esv_api_key: Some("legacy-esv-key".to_string()),
             api_bible_key: Some("legacy-api-bible-key".to_string()),

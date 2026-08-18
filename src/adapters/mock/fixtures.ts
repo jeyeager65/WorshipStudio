@@ -82,7 +82,6 @@ export const seedMachineSettings: MachineSettings = {
   // The demo build's sample data (above) stands in for the wizard's library import, so
   // there's no reason to make an evaluator click through it before seeing the app.
   hasCompletedSetup: true,
-  localMediaPath: '',
   displayRoles: { 'display-1': 'operator', 'display-2': 'audience' },
   remoteControlPort: undefined,
   remoteControlHostname: undefined,

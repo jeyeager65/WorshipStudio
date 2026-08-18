@@ -166,7 +166,6 @@ function defaultMachineSettings(): MachineSettings {
     darkMode: true,
     libraryPath: '',
     hasCompletedSetup: false,
-    localMediaPath: '',
     displayRoles: {},
   }
 }

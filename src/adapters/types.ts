@@ -12,6 +12,7 @@ import type {
   LibrarySettings,
   LibraryCredentials,
   MachineSettings,
+  DataLocation,
   SongCollectionDefinition,
   ServiceTypeDefinition,
   RoleGroupDefinition,
@@ -284,11 +285,21 @@ export interface SettingsPort {
   /** Opens a native folder picker for the synced library root (e.g. a Dropbox folder). Returns
    *  undefined if cancelled — no equivalent in the browser demo, which always returns undefined. */
   pickLibraryFolder(): Promise<string | undefined>
-  /** Opens a native folder picker for MachineSettings.localMediaPath, the never-synced folder
-   *  where 'local'-location media's actual bytes live on this machine. Tauri-only — the web/
-   *  tablet builds grant a separate FileSystemDirectoryHandle for this instead (see
-   *  adapters/web/pickedLocalMediaRoot.ts), so localMediaPath itself is meaningless there. */
-  pickLocalMediaFolder?(): Promise<string | undefined>
+  /** The Local root — machine-settings.json, paired devices, Canva tokens, and local-only
+   *  media's actual bytes all live under it (see src-tauri/src/paths.rs's local_root). Tauri-only
+   *  and deliberately not part of MachineSettings/getMachineSettings: machine-settings.json lives
+   *  inside the folder this points to, so the pointer can't live inside machine-settings.json
+   *  itself without becoming circular — it's stored in its own small fixed-location file instead
+   *  (data-location.json, always directly in app-data). The web/tablet builds have an entirely
+   *  separate, browser-native mechanism for local-only media (see
+   *  adapters/web/pickedLocalMediaRoot.ts) with no equivalent "where do settings live" question
+   *  at all, so none of these three methods apply there. */
+  getDataLocation?(): Promise<DataLocation>
+  /** Empty localRootPath resets to the default location. No-op (not an error) if this install is
+   *  portable, where Local is always fixed beside the executable. */
+  saveDataLocation?(localRootPath: string): Promise<void>
+  /** Opens a native folder picker for the Local root above. */
+  pickDataLocationFolder?(): Promise<string | undefined>
   /** Deletes the "library-settings.pre-*-id-migration.json" snapshot files each settings-list
    *  id migration writes once as a manual recovery escape hatch (see
    *  src-tauri/src/commands/settings.rs's clear_migration_snapshots). Offered only from Clear

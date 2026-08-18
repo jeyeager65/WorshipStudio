@@ -586,7 +586,7 @@ pub struct MediaItem {
     pub kind: String,
     #[serde(default)]
     pub tags: Vec<String>,
-    /// "synced" | "local" — see MachineSettings::local_media_path.
+    /// "synced" | "local" — see paths::local_media_root for where "local" items' bytes live.
     pub location: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duplicate_of_id: Option<String>,
@@ -1040,12 +1040,6 @@ pub struct MachineSettings {
     /// silently assuming it was already done.
     #[serde(default)]
     pub has_completed_setup: bool,
-    /// Local-only media folder (per-machine, never synced) — for video loops etc. too large
-    /// to be worth Dropbox-syncing to every machine (see design/feature-spec.md's Media
-    /// Library section). Empty for machine-settings.json files written before this field
-    /// existed; domain::media::local_media_root falls back to a default location for those.
-    #[serde(default)]
-    pub local_media_path: String,
     /// Persisted Display Setup role per monitor (keyed by the OS-reported monitor name, since
     /// that's the one thing stable across launches — see adapters/tauri's `displays` port,
     /// which does its own real monitor enumeration rather than a Rust command). Values are

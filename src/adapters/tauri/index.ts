@@ -36,6 +36,7 @@ import type {
   LibrarySettings,
   LibraryCredentials,
   MachineSettings,
+  DataLocation,
   SongCollectionDefinition,
   ServiceTypeDefinition,
   RoleGroupDefinition,
@@ -449,8 +450,10 @@ export function createTauriAdapter(): StudioAdapter {
         const folder = await open({ directory: true, title: 'Select Library Sync Folder' })
         return typeof folder === 'string' ? folder : undefined
       },
-      pickLocalMediaFolder: async () => {
-        const folder = await open({ directory: true, title: 'Select Local Media Folder' })
+      getDataLocation: () => invoke<DataLocation>('get_data_location'),
+      saveDataLocation: (localRootPath) => invoke('save_data_location', { localRootPath }),
+      pickDataLocationFolder: async () => {
+        const folder = await open({ directory: true, title: 'Select Local Data Folder' })
         return typeof folder === 'string' ? folder : undefined
       },
       clearMigrationSnapshots: () => invoke('clear_migration_snapshots'),

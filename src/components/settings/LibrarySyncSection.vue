@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { getAdapter } from '@/adapters'
+import type { DataLocation } from '@/models/settings'
 import { useSettingsStore } from '@/stores/settings'
 import { useSyncStore } from '@/stores/sync'
 import { useSongsStore } from '@/stores/songs'
@@ -501,14 +502,41 @@ async function pickLibraryFolder() {
   }
 }
 
-const pickingLocalMediaFolder = ref(false)
-async function pickLocalMediaFolder() {
-  pickingLocalMediaFolder.value = true
+// Unlike the library path field above, this doesn't bind into machineSettings/the page's own
+// Save button — the Local root can't be recorded inside machine-settings.json itself (that file
+// lives inside the folder this points to, see SettingsPort.getDataLocation's own doc comment), so
+// it has its own separate load/save round trip and its own Save action here.
+const dataLocation = ref<DataLocation>()
+const localRootPathDraft = ref('')
+onMounted(async () => {
+  if (adapterKind !== 'tauri') return
+  dataLocation.value = await getAdapter().settings.getDataLocation?.()
+  localRootPathDraft.value = dataLocation.value?.localRootPath ?? ''
+})
+
+const pickingDataLocationFolder = ref(false)
+async function pickDataLocationFolder() {
+  pickingDataLocationFolder.value = true
   try {
-    const folder = await getAdapter().settings.pickLocalMediaFolder?.()
-    if (folder && machineSettings.value) machineSettings.value.localMediaPath = folder
+    const folder = await getAdapter().settings.pickDataLocationFolder?.()
+    if (folder) localRootPathDraft.value = folder
   } finally {
-    pickingLocalMediaFolder.value = false
+    pickingDataLocationFolder.value = false
+  }
+}
+
+const savingDataLocation = ref(false)
+const dataLocationSaved = ref(false)
+async function saveDataLocationPath() {
+  savingDataLocation.value = true
+  dataLocationSaved.value = false
+  try {
+    await getAdapter().settings.saveDataLocation?.(localRootPathDraft.value)
+    dataLocation.value = await getAdapter().settings.getDataLocation?.()
+    localRootPathDraft.value = dataLocation.value?.localRootPath ?? ''
+    dataLocationSaved.value = true
+  } finally {
+    savingDataLocation.value = false
   }
 }
 </script>
@@ -575,19 +603,19 @@ async function pickLocalMediaFolder() {
     </SettingsPanel>
 
     <SettingsPanel
-      v-if="adapterKind === 'tauri'"
-      title="Local-only media folder"
-      description="Where media marked &quot;Local Only&quot; (too large to sync to every computer) is stored on this machine. Left blank, it defaults to Worship Studio's own app-data folder."
+      v-if="adapterKind === 'tauri' && dataLocation && !dataLocation.isPortable"
+      title="Local data folder"
+      description="Where this computer's settings, paired devices, Canva sign-in, and Local-only media are stored. Never synced. Left blank, it defaults to Worship Studio's own app-data folder."
       icon="mdi-folder-outline"
     >
       <div class="path-setting">
         <v-text-field
-          v-model="machineSettings!.localMediaPath"
-          label="Local media path"
-          placeholder="C:\\WorshipStudio\\LocalMedia"
+          v-model="localRootPathDraft"
+          label="Local data path"
+          placeholder="D:\\WorshipStudio\\Local"
           variant="outlined"
           density="compact"
-          hint="Absolute path on this computer. Never synced."
+          :hint="`Absolute path on this computer. Never synced. Currently: ${dataLocation.resolvedPath}`"
           persistent-hint
           class="library-path-field"
         />
@@ -595,12 +623,23 @@ async function pickLocalMediaFolder() {
           <v-btn
             variant="outlined"
             prepend-icon="mdi-folder-open-outline"
-            :loading="pickingLocalMediaFolder"
-            @click="pickLocalMediaFolder"
+            :loading="pickingDataLocationFolder"
+            @click="pickDataLocationFolder"
           >
             Browse…
           </v-btn>
+          <v-btn
+            variant="tonal"
+            color="primary"
+            :loading="savingDataLocation"
+            @click="saveDataLocationPath"
+          >
+            Save Local Data Folder
+          </v-btn>
         </div>
+      </div>
+      <div v-if="dataLocationSaved" class="text-caption text-medium-emphasis mt-2">
+        Saved. Files already at the previous location aren't moved automatically.
       </div>
     </SettingsPanel>
 

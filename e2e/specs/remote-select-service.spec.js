@@ -39,7 +39,9 @@ describe('Remote Control — select a today service, live slide picker, 409 whil
       ),
     )
 
-    const remoteDevicesPath = path.join(appDataDir, 'remote-devices.json')
+    // remote-devices.json lives under Local, not flat in app-data — see
+    // src-tauri/src/paths.rs's local_root.
+    const remoteDevicesPath = path.join(appDataDir, 'Local', 'remote-devices.json')
     const fullControlToken = 'e2e-select-service-full-control'
     const viewOnlyToken = 'e2e-select-service-view-only'
     fs.writeFileSync(

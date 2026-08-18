@@ -149,6 +149,8 @@ pub fn run() {
             commands::settings::save_library_credentials,
             commands::settings::get_machine_settings,
             commands::settings::save_machine_settings,
+            commands::settings::get_data_location,
+            commands::settings::save_data_location,
             commands::settings::clear_migration_snapshots,
             commands::settings::clear_settings_list_backups,
             commands::canva::get_canva_status,

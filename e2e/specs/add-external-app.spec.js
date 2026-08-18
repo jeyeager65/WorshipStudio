@@ -7,7 +7,9 @@ describe('Add-to-Service External App tab', () => {
     // Self-contained fixtures (one pointed at a real, always-present Windows binary; one
     // pointed at nothing), same approach as other specs — written directly to disk rather
     // than driving the full Settings profile editor here.
-    const externalAppsPath = path.join(appDataDir, 'external-apps.json')
+    // external-apps.json lives under Local, not flat in app-data — see
+    // src-tauri/src/paths.rs's local_root.
+    const externalAppsPath = path.join(appDataDir, 'Local', 'external-apps.json')
     fs.writeFileSync(
       externalAppsPath,
       JSON.stringify(

@@ -110,19 +110,20 @@ export function killProcessOnPort(port) {
 
 // Wipes the isolated E2E app-data directory and pre-seeds hasCompletedSetup: true (skips the
 // first-run wizard redirect race — see wdio.conf.js's original onPrepare comment for why that
-// matters) so every run starts from the exact same clean slate.
+// matters) so every run starts from the exact same clean slate. machine-settings.json lives
+// under a `Local` subfolder, not flat in app-data — see src-tauri/src/paths.rs's local_root.
 export function resetAppDataDir() {
   fs.rmSync(appDataDir, { recursive: true, force: true })
-  fs.mkdirSync(appDataDir, { recursive: true })
+  const localDir = path.join(appDataDir, 'Local')
+  fs.mkdirSync(localDir, { recursive: true })
   fs.writeFileSync(
-    path.join(appDataDir, 'machine-settings.json'),
+    path.join(localDir, 'machine-settings.json'),
     JSON.stringify(
       {
         thisComputerName: 'E2E Test Machine',
         darkMode: true,
         libraryPath: path.join(appDataDir, 'Library'),
         hasCompletedSetup: true,
-        localMediaPath: path.join(appDataDir, 'LocalMedia'),
         displayRoles: {},
       },
       null,
