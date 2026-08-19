@@ -152,5 +152,4 @@ mod tests {
         assert_eq!(upcoming.len(), 1);
         assert_eq!(upcoming[0].id, "svc-2");
     }
-
 }
