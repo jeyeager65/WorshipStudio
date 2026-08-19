@@ -109,6 +109,7 @@ describe('pull', () => {
     vi.mocked(provider.listChanges).mockResolvedValueOnce({
       entries: [{ tag: 'file', path: 'songs/song-1.json.backup', rev: 'rev-1', sizeBytes: 10 }],
       cursor: 'c',
+      isFromScratchListing: true,
     })
 
     await makeSync(root).pull()
@@ -121,6 +122,7 @@ describe('pull', () => {
     vi.mocked(provider.listChanges).mockResolvedValueOnce({
       entries: [{ tag: 'file', path: 'songs/song-1.json', rev: 'rev-1', sizeBytes: 10 }],
       cursor: 'cursor-1',
+      isFromScratchListing: true,
     })
     vi.mocked(provider.download).mockResolvedValueOnce({
       bytes: jsonBytes({ id: 'song-1', title: 'A' }),
@@ -140,7 +142,11 @@ describe('pull', () => {
 
   it('passes the saved cursor into listChanges on a later sync', async () => {
     await syncStore.setCursor('cursor-0')
-    vi.mocked(provider.listChanges).mockResolvedValueOnce({ entries: [], cursor: 'cursor-1' })
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({
+      entries: [],
+      cursor: 'cursor-1',
+      isFromScratchListing: false,
+    })
 
     await makeSync(createFakeRoot()).pull()
 
@@ -151,6 +157,7 @@ describe('pull', () => {
     vi.mocked(provider.listChanges).mockResolvedValueOnce({
       entries: [{ tag: 'file', path: 'media/big.mp4', rev: 'rev-big', sizeBytes: 200 }],
       cursor: 'c',
+      isFromScratchListing: true,
     })
 
     await makeSync(createFakeRoot(), 100).pull()
@@ -168,6 +175,7 @@ describe('pull', () => {
     vi.mocked(provider.listChanges).mockResolvedValueOnce({
       entries: [{ tag: 'file', path: 'songs/a.json', rev: 'rev-1', sizeBytes: 10 }],
       cursor: 'c',
+      isFromScratchListing: true,
     })
 
     await makeSync(createFakeRoot()).pull()
@@ -181,6 +189,7 @@ describe('pull', () => {
     vi.mocked(provider.listChanges).mockResolvedValueOnce({
       entries: [{ tag: 'file', path: 'songs/a.json', rev: 'remote-rev', sizeBytes: 10 }],
       cursor: 'c',
+      isFromScratchListing: true,
     })
 
     await makeSync(root).pull()
@@ -195,6 +204,7 @@ describe('pull', () => {
     vi.mocked(provider.listChanges).mockResolvedValueOnce({
       entries: [{ tag: 'file', path: 'songs/a.json', rev: 'rev-1', sizeBytes: 10 }],
       cursor: 'c1',
+      isFromScratchListing: true,
     })
     vi.mocked(provider.download).mockResolvedValueOnce({
       bytes: jsonBytes({ id: 'a' }),
@@ -206,6 +216,7 @@ describe('pull', () => {
     vi.mocked(provider.listChanges).mockResolvedValueOnce({
       entries: [{ tag: 'deleted', path: 'songs/a.json' }],
       cursor: 'c2',
+      isFromScratchListing: false,
     })
     await sync.pull()
 
@@ -219,6 +230,7 @@ describe('pull', () => {
     vi.mocked(provider.listChanges).mockResolvedValueOnce({
       entries: [{ tag: 'deleted', path: 'songs/a.json' }],
       cursor: 'c',
+      isFromScratchListing: true,
     })
 
     await makeSync(root).pull()
@@ -234,6 +246,7 @@ describe('pull', () => {
     vi.mocked(provider.listChanges).mockResolvedValueOnce({
       entries: [{ tag: 'file', path: 'media/photo.jpg', rev: 'rev-1', sizeBytes: 3 }],
       cursor: 'c',
+      isFromScratchListing: true,
     })
     vi.mocked(provider.download).mockResolvedValueOnce({
       bytes: new TextEncoder().encode('abc').buffer,
@@ -269,6 +282,7 @@ describe('pull', () => {
         { tag: 'file', path: 'songs/b.json', rev: 'rev-b', sizeBytes: 10 },
       ],
       cursor: 'cursor-1',
+      isFromScratchListing: true,
     })
     vi.mocked(provider.download).mockResolvedValue({
       bytes: jsonBytes({ id: 'x' }),
@@ -295,6 +309,7 @@ describe('pull', () => {
         { tag: 'file', path: 'songs/c.json', rev: 'rev-c', sizeBytes: 10 },
       ],
       cursor: 'cursor-1',
+      isFromScratchListing: true,
     })
     vi.mocked(provider.download).mockResolvedValue({
       bytes: jsonBytes({ id: 'x' }),
@@ -324,6 +339,7 @@ describe('pull', () => {
         { tag: 'file', path: 'songs/b.json', rev: 'rev-b', sizeBytes: 10 },
       ],
       cursor: 'cursor-1',
+      isFromScratchListing: true,
     })
     vi.mocked(provider.download).mockImplementation(async (_token, path) => {
       if (path === 'songs/b.json') {
@@ -389,7 +405,11 @@ describe('runSync', () => {
     expect((await sync.getSyncStatus()).needsReconnect).toBe(true)
 
     vi.mocked(provider.getValidAccessToken).mockResolvedValue('token-1')
-    vi.mocked(provider.listChanges).mockResolvedValueOnce({ entries: [], cursor: 'c' })
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({
+      entries: [],
+      cursor: 'c',
+      isFromScratchListing: true,
+    })
     await sync.runSync()
 
     expect((await sync.getSyncStatus()).needsReconnect).toBe(false)
@@ -551,6 +571,7 @@ describe('resetAndResync', () => {
     vi.mocked(provider.listChanges).mockResolvedValueOnce({
       entries: [{ tag: 'file', path: 'songs/a.json', rev: 'rev-new', sizeBytes: 10 }],
       cursor: 'cursor-new',
+      isFromScratchListing: true,
     })
     vi.mocked(provider.download).mockResolvedValueOnce({
       bytes: jsonBytes({ id: 'a', title: 'Fresh from the cloud' }),
@@ -574,7 +595,11 @@ describe('resetAndResync', () => {
     // settings page, in the real bug) wrote a dirty change during the reset.
     await writeJsonFile(root, 'library-settings.json', { serviceTypes: [] })
     await syncStore.setDirty('library-settings.json', { deleted: false, attempts: 0, nextRetryAt: 0 })
-    vi.mocked(provider.listChanges).mockResolvedValueOnce({ entries: [], cursor: 'cursor-new' })
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({
+      entries: [],
+      cursor: 'cursor-new',
+      isFromScratchListing: true,
+    })
 
     await makeSync(root).resetAndResync()
 
@@ -589,7 +614,11 @@ describe('resetAndResync', () => {
       remoteRev: 'r',
       remoteSizeBytes: 1,
     })
-    vi.mocked(provider.listChanges).mockResolvedValueOnce({ entries: [], cursor: 'cursor-new' })
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({
+      entries: [],
+      cursor: 'cursor-new',
+      isFromScratchListing: true,
+    })
 
     await makeSync(root).resetAndResync()
 
@@ -607,7 +636,11 @@ describe('resetAndResync', () => {
     await syncStore.setRev('services/2026/deleted-service.json', { rev: 'rev-old', sizeBytes: 10 })
     // The listing simply omits the deleted file — no 'deleted' entry, matching how a real
     // from-scratch provider listing behaves (see providers/dropbox.ts's listChanges).
-    vi.mocked(provider.listChanges).mockResolvedValueOnce({ entries: [], cursor: 'cursor-new' })
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({
+      entries: [],
+      cursor: 'cursor-new',
+      isFromScratchListing: true,
+    })
 
     await makeSync(root).resetAndResync()
 
@@ -630,7 +663,11 @@ describe('resetAndResync', () => {
       attempts: 0,
       nextRetryAt: 0,
     })
-    vi.mocked(provider.listChanges).mockResolvedValueOnce({ entries: [], cursor: 'cursor-new' })
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({
+      entries: [],
+      cursor: 'cursor-new',
+      isFromScratchListing: true,
+    })
 
     await makeSync(root).pull()
 
@@ -641,7 +678,11 @@ describe('resetAndResync', () => {
     const root = createFakeRoot()
     await writeJsonFile(root, 'library-settings.json.backup', { branding: {} })
     await writeJsonFile(root, 'songs/a (conflicted copy 20260101-0000).json', { id: 'a' })
-    vi.mocked(provider.listChanges).mockResolvedValueOnce({ entries: [], cursor: 'cursor-new' })
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({
+      entries: [],
+      cursor: 'cursor-new',
+      isFromScratchListing: true,
+    })
 
     await makeSync(root).resetAndResync()
 
@@ -661,6 +702,7 @@ describe('resetAndResync', () => {
     vi.mocked(provider.listChanges).mockResolvedValueOnce({
       entries: [{ tag: 'file', path: 'songs/other.json', rev: 'rev-new', sizeBytes: 10 }],
       cursor: 'cursor-new',
+      isFromScratchListing: false,
     })
     vi.mocked(provider.download).mockResolvedValueOnce({
       bytes: jsonBytes({ id: 'other' }),
@@ -671,6 +713,34 @@ describe('resetAndResync', () => {
     await makeSync(root).pull()
 
     expect(await readJsonFile(root, 'songs/still-here.json')).not.toBeNull()
+  })
+
+  // Regression coverage for the gap this device's own cursor being silently invalidated left
+  // open: a provider's cursor-reset recovery (Dropbox's 409 'reset', Graph's 410
+  // resyncRequired — see providers/dropbox.ts and providers/onedrive.ts) produces a genuine
+  // from-scratch listing even though the *caller* passed in a real, previously-saved cursor.
+  // Before isFromScratchListing was reported by the provider itself, cloudSync.ts inferred it
+  // purely from whether its own cursor argument was undefined — which this case isn't — so
+  // reconciliation silently never ran, and a file deleted from the cloud during whatever caused
+  // the reset stayed cached on this device forever (nothing ever generates a further 'deleted'
+  // delta entry for something the provider already considers gone).
+  it('reconciles orphans on a from-scratch listing even when this device already had a saved cursor — a stale/reset cursor case', async () => {
+    const root = createFakeRoot()
+    await writeJsonFile(root, 'songs/deleted-elsewhere.json', { id: 'deleted-elsewhere' })
+    await syncStore.setRev('songs/deleted-elsewhere.json', { rev: 'rev-old', sizeBytes: 10 })
+    await syncStore.setCursor('cursor-old')
+    // The provider recovered from an invalidated cursor by doing a full re-listing — reported via
+    // isFromScratchListing: true, even though cursor-old (a defined value) was passed in.
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({
+      entries: [],
+      cursor: 'cursor-new',
+      isFromScratchListing: true,
+    })
+
+    await makeSync(root).pull()
+
+    expect(await readJsonFile(root, 'songs/deleted-elsewhere.json')).toBeNull()
+    expect(await syncStore.getRev('songs/deleted-elsewhere.json')).toBeUndefined()
   })
 })
 
@@ -737,6 +807,7 @@ describe('provider independence', () => {
     vi.mocked(secondProvider.listChanges).mockResolvedValueOnce({
       entries: [{ tag: 'file', path: 'songs/song-1.json', rev: 'etag-1', sizeBytes: 10 }],
       cursor: 'delta-cursor-1',
+      isFromScratchListing: true,
     })
     vi.mocked(secondProvider.download).mockResolvedValueOnce({
       bytes: jsonBytes({ id: 'song-1', title: 'A' }),

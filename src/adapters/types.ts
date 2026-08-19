@@ -59,13 +59,6 @@ export interface ServicePort {
     year: number,
     defaultServiceTypeId: string,
   ): Promise<ImportSetsSummary | undefined>
-  /**
-   * One-time backfill (see App.vue's boot sequence) for services saved before the sermon item
-   * became the sole source of truth for a service's sermon title/passage/preacher. A cheap
-   * no-op on every call after the first real one. Pure filesystem transform in Tauri; the mock
-   * adapter's fixtures already model the current shape directly, so this is a no-op there.
-   */
-  migrateLegacySermonFields(): Promise<void>
 }
 
 export interface SlideLibraryPort {
@@ -300,21 +293,13 @@ export interface SettingsPort {
   saveDataLocation?(localRootPath: string): Promise<void>
   /** Opens a native folder picker for the Local root above. */
   pickDataLocationFolder?(): Promise<string | undefined>
-  /** Deletes the "library-settings.pre-*-id-migration.json" snapshot files each settings-list
-   *  id migration writes once as a manual recovery escape hatch (see
-   *  src-tauri/src/commands/settings.rs's clear_migration_snapshots). Offered only from Clear
-   *  Existing Data, alongside every other piece of real library content it already deletes.
-   *  Tauri-only — the web/tablet builds never run these migrations, so the files never exist
-   *  there in the first place (see adapters/web/roles.ts's own doc comment). */
-  clearMigrationSnapshots?(): Promise<void>
   /** Deletes the `.backup` sibling each of the five normalized settings-list files
    *  (service-types.json, song-collections.json, role-groups.json, roles.json,
    *  service-templates.json) keeps — ordinary deletes only ever shrink these lists, never
    *  remove the file itself, so the backup keeps holding real, church-specific content
    *  indefinitely otherwise. Every adapter's own write path maintains this backup (Rust's
-   *  write_json_file, the web build's own writeJsonFile in fsaStorage.ts), so unlike
-   *  clearMigrationSnapshots/pickLocalMediaFolder above this isn't Tauri-only — every adapter
-   *  kind implements it. Offered only from Clear Existing Data. */
+   *  write_json_file, the web build's own writeJsonFile in fsaStorage.ts) — every adapter kind
+   *  implements it. Offered only from Clear Existing Data. */
   clearSettingsListBackups(): Promise<void>
 }
 

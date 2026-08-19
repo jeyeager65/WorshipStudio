@@ -2,11 +2,6 @@
  * A peer of settings.ts, not part of it — service templates live in their own
  * service-templates.json (a single small array-shaped file), mirroring roles.ts and
  * src-tauri/src/domain/service_templates.rs.
- *
- * Deliberately does not replicate the Rust side's one-time migration off the old
- * nested-in-settings shape — same precedent as roles.ts: Rust is the authoritative migration
- * layer. A web-build library still carrying the old shape simply starts with an empty templates
- * list here.
  */
 
 import type { ServiceTemplatePort } from '@/adapters/types'

@@ -87,19 +87,25 @@ describe('listChanges', () => {
     expect(result).toEqual({
       entries: [{ tag: 'file', path: 'songs/song-1.json', rev: 'rev-1', contentHash: undefined, sizeBytes: 10 }],
       cursor: 'cursor-1',
+      isFromScratchListing: true,
     })
   })
 
-  it('uses listFolderContinue with the given cursor', async () => {
+  it('uses listFolderContinue with the given cursor, reporting it as an incremental (not from-scratch) listing', async () => {
     listFolderContinue.mockResolvedValueOnce({ entries: [], cursor: 'cursor-1', hasMore: false })
 
-    await makeProvider().listChanges('token-1', 'cursor-0')
+    const result = await makeProvider().listChanges('token-1', 'cursor-0')
 
     expect(listFolderContinue).toHaveBeenCalledWith('token-1', 'cursor-0')
     expect(listFolder).not.toHaveBeenCalled()
+    expect(result.isFromScratchListing).toBe(false)
   })
 
-  it('recovers from a stale cursor by re-listing from scratch', async () => {
+  // isFromScratchListing must be true here even though a real cursor was passed in — this is
+  // exactly the case cloudSync.ts's orphan reconciliation depends on being told about (a listing
+  // that can't represent deletions since the last real cursor, despite not being the caller's
+  // very first pull) — see providers/types.ts's own doc comment on that field.
+  it('recovers from a stale cursor by re-listing from scratch, reporting it as a from-scratch listing', async () => {
     listFolderContinue.mockRejectedValueOnce(
       new DropboxApiError('reset', 409, { error: { '.tag': 'reset' } }),
     )
@@ -109,6 +115,7 @@ describe('listChanges', () => {
 
     expect(listFolder).toHaveBeenCalledWith('token-1', '/Library', { recursive: true })
     expect(result.cursor).toBe('fresh-cursor')
+    expect(result.isFromScratchListing).toBe(true)
   })
 
   it('paginates through every page before returning, using the final cursor', async () => {

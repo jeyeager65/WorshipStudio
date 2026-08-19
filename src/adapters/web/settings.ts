@@ -60,98 +60,6 @@ function defaultLibrarySettings(): LibrarySettings {
   }
 }
 
-/** One-time reshape of library-settings.json's font-size and bulletin fields from flat to
- *  nested — mirrors src-tauri/src/commands/settings.rs's migrate_library_settings_shape exactly
- *  (same target shape, same reasoning). Unlike the credentials/roles migrations, this one IS
- *  replicated here rather than deferred to Rust as authoritative — it's a pure key reshape with
- *  no ids or cross-machine convergence involved (unlike e.g. adapters/web/roles.ts's deliberately
- *  *not* replicating the id migration there), so there's no reason a web-only library should ever
- *  lose a church's customized font sizes/bulletin wording to this. Operates on a loosely-typed
- *  raw object, not LibrarySettings itself — readJsonFile's `as T` cast means an old flat file
- *  would otherwise silently type-check as the new shape while `fontSizesPx`/`bulletin.page1` are
- *  actually undefined at runtime. */
-function migrateLibrarySettingsShape(raw: Record<string, unknown>): {
-  settings: Record<string, unknown>
-  changed: boolean
-} {
-  let changed = false
-  const settings = { ...raw }
-
-  if (!('fontSizesPx' in settings)) {
-    const takeNumber = (key: string, fallback: number): number => {
-      const value = settings[key]
-      return typeof value === 'number' ? value : fallback
-    }
-    settings.fontSizesPx = {
-      scripture: {
-        min: takeNumber('scriptureMinFontSizePx', 72),
-        max: takeNumber('scriptureMaxFontSizePx', 120),
-      },
-      song: {
-        min: takeNumber('songMinFontSizePx', 16),
-        max: takeNumber('songMaxFontSizePx', 120),
-      },
-      slide: {
-        header: takeNumber('slideHeaderFontSizePx', 48),
-        footer: takeNumber('slideFooterFontSizePx', 48),
-      },
-      wayfinding: {
-        min: takeNumber('wayfindingMinFontSizePx', 56),
-        max: takeNumber('wayfindingMaxFontSizePx', 150),
-      },
-    }
-    for (const key of [
-      'scriptureMinFontSizePx',
-      'scriptureMaxFontSizePx',
-      'songMinFontSizePx',
-      'songMaxFontSizePx',
-      'slideHeaderFontSizePx',
-      'slideFooterFontSizePx',
-      'wayfindingMinFontSizePx',
-      'wayfindingMaxFontSizePx',
-    ]) {
-      delete settings[key]
-    }
-    changed = true
-  }
-
-  const bulletin = settings.bulletin
-  if (bulletin && typeof bulletin === 'object' && !('page1' in bulletin)) {
-    const b = bulletin as Record<string, unknown>
-    const takeString = (key: string, fallback: string): string => {
-      const value = b[key]
-      return typeof value === 'string' ? value : fallback
-    }
-    const takeBool = (key: string): boolean => {
-      const value = b[key]
-      return typeof value === 'boolean' ? value : true
-    }
-    const roleIds = Array.isArray(b.servingScheduleRoleIds) ? b.servingScheduleRoleIds : []
-    settings.bulletin = {
-      page1: {
-        title: takeString('page1Title', 'Order of Worship'),
-        footer: {
-          title: takeString('page1FooterTitle', 'Heart Preparation'),
-          enabled: takeBool('page1FooterEnabled'),
-        },
-      },
-      page2: {
-        enabled: takeBool('page2Enabled'),
-        title: takeString('page2Title', 'Announcements'),
-        footer: {
-          title: takeString('page2FooterTitle', 'Thought to Ponder'),
-          enabled: takeBool('page2FooterEnabled'),
-        },
-        announcements: { enabled: takeBool('showAnnouncements') },
-        servingSchedule: { enabled: takeBool('showServingSchedule'), roleIds },
-      },
-    }
-    changed = true
-  }
-
-  return { settings, changed }
-}
-
 function defaultLibraryCredentials(): LibraryCredentials {
   return {
     canvaIntegration: { clientId: '', clientSecret: '' },
@@ -182,77 +90,29 @@ function readMachineSettings(): MachineSettings {
   }
 }
 
-/** Moves pre-0.9 machine-local Bible API keys into the synced church credentials, mirroring
- *  src-tauri/src/commands/settings.rs's migrate_legacy_bible_api_keys exactly — existing shared
- *  values win, and ESV/api.bible migrate independently (unlike Canva's paired id+secret) since a
- *  church may only have configured one of the two. */
-function migrateLegacyBibleApiKeys(
-  credentials: LibraryCredentials,
-  machine: MachineSettings,
-): { credentials: LibraryCredentials; changed: boolean } {
-  let changed = false
-  const migrated = { ...credentials }
-  if (!migrated.esvApiKey?.trim() && machine.esvApiKey?.trim()) {
-    migrated.esvApiKey = machine.esvApiKey.trim()
-    changed = true
-  }
-  if (!migrated.apiBibleKey?.trim() && machine.apiBibleKey?.trim()) {
-    migrated.apiBibleKey = machine.apiBibleKey.trim()
-    changed = true
-  }
-  return { credentials: migrated, changed }
-}
-
 export function createWebSettingsPort(root: FileSystemDirectoryHandle): SettingsPort {
   return {
     getLibrarySettings: async () => {
       const raw = await readJsonFile<Record<string, unknown>>(root, LIBRARY_SETTINGS_PATH)
       if (!raw) return defaultLibrarySettings()
-      const { settings, changed } = migrateLibrarySettingsShape(raw)
-      if (changed) {
-        await writeJsonFile(root, LIBRARY_SETTINGS_PATH, settings)
-      }
-      return settings as unknown as LibrarySettings
+      return raw as unknown as LibrarySettings
     },
     saveLibrarySettings: async (settings) => {
       await writeJsonFile(root, LIBRARY_SETTINGS_PATH, settings)
     },
-    // Deliberately does not replicate the Rust side's one-time migration of these fields out of
-    // the old nested-in-library-settings.json shape — same precedent as adapters/web/roles.ts:
-    // Rust is the authoritative migration layer for that. A web-build library still carrying
-    // credentials nested inside library-settings.json simply starts with empty credentials here;
-    // opening the library once in the desktop app runs the real migration for every adapter.
+    // Deliberately does not replicate the Rust side's (now-removed) one-time migration of these
+    // fields out of the old nested-in-library-settings.json shape — same precedent as
+    // adapters/web/roles.ts. A web-build library still carrying credentials nested inside
+    // library-settings.json simply starts with empty credentials here.
     getLibraryCredentials: async () => {
-      let credentials =
-        (await readJsonFile<LibraryCredentials>(root, CREDENTIALS_PATH)) ?? defaultLibraryCredentials()
-      const machine = readMachineSettings()
-      // Reconcile once per load rather than only when the two happen to disagree — matches the
-      // Rust backend's load_library_credentials, which always clears the legacy machine-local
-      // fields once they've been considered, whether or not the church's own value won.
-      if (machine.esvApiKey || machine.apiBibleKey) {
-        const migrated = migrateLegacyBibleApiKeys(credentials, machine)
-        credentials = migrated.credentials
-        if (migrated.changed) {
-          await writeJsonFile(root, CREDENTIALS_PATH, credentials)
-        }
-        localStorage.setItem(
-          MACHINE_SETTINGS_KEY,
-          JSON.stringify({ ...machine, esvApiKey: undefined, apiBibleKey: undefined }),
-        )
-      }
-      return credentials
+      return (await readJsonFile<LibraryCredentials>(root, CREDENTIALS_PATH)) ?? defaultLibraryCredentials()
     },
     saveLibraryCredentials: async (credentials) => {
       await writeJsonFile(root, CREDENTIALS_PATH, credentials)
     },
     getMachineSettings: async () => readMachineSettings(),
     saveMachineSettings: async (settings) => {
-      // Never restore stale pre-migration keys sent by an already-open frontend — same reasoning
-      // as src-tauri/src/commands/settings.rs's save_machine_settings.
-      localStorage.setItem(
-        MACHINE_SETTINGS_KEY,
-        JSON.stringify({ ...settings, esvApiKey: undefined, apiBibleKey: undefined }),
-      )
+      localStorage.setItem(MACHINE_SETTINGS_KEY, JSON.stringify(settings))
     },
     // The Tauri build returns a path string here and relies on SettingsView.vue's existing
     // "the library folder changed — reload now?" prompt (comparing it against the last-saved

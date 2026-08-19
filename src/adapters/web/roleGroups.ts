@@ -2,11 +2,6 @@
  * A peer of settings.ts, not part of it — role groups live in their own role-groups.json (a
  * single small array-shaped file), mirroring serviceTypes.ts and
  * src-tauri/src/domain/role_groups.rs.
- *
- * Deliberately does not replicate the Rust side's one-time migration off the old
- * nested-in-settings shape — same precedent as serviceTypes.ts: Rust is the authoritative
- * migration layer. A web-build library still carrying the old shape simply starts with an empty
- * role groups list here.
  */
 
 import type { RoleGroupPort } from '@/adapters/types'

@@ -330,7 +330,6 @@ export function createTauriAdapter(): StudioAdapter {
           defaultServiceTypeId,
         })
       },
-      migrateLegacySermonFields: () => invoke('migrate_legacy_sermon_fields'),
     },
     slides: {
       list: () => invoke<SlideLibraryItem[]>('list_slides'),
@@ -456,7 +455,6 @@ export function createTauriAdapter(): StudioAdapter {
         const folder = await open({ directory: true, title: 'Select Local Data Folder' })
         return typeof folder === 'string' ? folder : undefined
       },
-      clearMigrationSnapshots: () => invoke('clear_migration_snapshots'),
       clearSettingsListBackups: () => invoke('clear_settings_list_backups'),
     },
     scripture: {

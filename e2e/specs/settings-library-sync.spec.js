@@ -132,20 +132,11 @@ describe('Settings — Library & Sync data tools', () => {
     await expect(reopenedField).toHaveValue('')
   })
 
-  it('clears media, one-time migration snapshots, and settings-list backups when clearing existing data', async () => {
-    // A stand-in for a real "library-settings.pre-*-id-migration.json" recovery snapshot — the
-    // real ones are only ever written once, the first time each id migration runs, so the
-    // shared E2E library (already fully migrated well before this spec runs) won't have one on
-    // its own; writing it directly is the only way to exercise clear_migration_snapshots here.
+  it('clears media and settings-list backups when clearing existing data', async () => {
     const libraryDir = path.join(appDataDir, 'Library')
     fs.mkdirSync(libraryDir, { recursive: true })
-    const snapshotPath = path.join(
-      libraryDir,
-      'library-settings.pre-role-id-migration.json',
-    )
-    fs.writeFileSync(snapshotPath, '{}')
 
-    // Same stand-in reasoning as the snapshot above — write_json_file only ever refreshes a
+    // A stand-in for a real .backup sibling — write_json_file only ever refreshes a
     // .backup sibling on a write that already has a previous version to preserve, and the
     // migration that seeded service-types.json ran long before this spec, so its own real
     // .backup may or may not still be from that first write. Writing this one directly makes
@@ -206,7 +197,6 @@ describe('Settings — Library & Sync data tools', () => {
         expect(fs.readdirSync(dir)).toHaveLength(0)
       }
     }
-    expect(fs.existsSync(snapshotPath)).toBe(false)
     expect(fs.existsSync(serviceTypesBackupPath)).toBe(false)
     // library-settings.json.backup is deliberately excluded — that file itself is never touched
     // by Clear Existing Data, so its backup shouldn't be swept away either.

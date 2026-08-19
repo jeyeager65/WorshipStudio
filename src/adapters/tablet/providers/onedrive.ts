@@ -230,12 +230,16 @@ export function createOneDriveProvider(config: OneDriveProviderConfig): CloudSyn
     async listChanges(token, cursor) {
       try {
         try {
-          return await fetchAllDeltaPages(token, cursor ?? initialDeltaUrl())
+          const page = await fetchAllDeltaPages(token, cursor ?? initialDeltaUrl())
+          return { ...page, isFromScratchListing: !cursor }
         } catch (error) {
           if (!cursor || !isResyncRequiredError(error)) throw error
           // The delta token is stale beyond recovery — local content is untouched either way,
-          // only the delta baseline resets, so this just costs one full re-listing.
-          return await fetchAllDeltaPages(token, initialDeltaUrl())
+          // only the delta baseline resets, so this just costs one full re-listing. Reported as
+          // from-scratch too (see this interface's own doc comment) so cloudSync.ts's orphan
+          // reconciliation still runs even though the *caller's* cursor argument wasn't undefined.
+          const page = await fetchAllDeltaPages(token, initialDeltaUrl())
+          return { ...page, isFromScratchListing: true }
         }
       } catch (error) {
         toProviderError(error)

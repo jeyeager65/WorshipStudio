@@ -120,20 +120,22 @@ export function createDropboxProvider(config: DropboxProviderConfig): CloudSyncP
             () => listFolder(token, libraryFolderPath, { recursive: true }),
             token,
           )
-          return { entries: toProviderEntries(page.entries), cursor: page.cursor }
+          return { entries: toProviderEntries(page.entries), cursor: page.cursor, isFromScratchListing: true }
         }
         try {
           const page = await fetchAllPages(() => listFolderContinue(token, cursor), token)
-          return { entries: toProviderEntries(page.entries), cursor: page.cursor }
+          return { entries: toProviderEntries(page.entries), cursor: page.cursor, isFromScratchListing: false }
         } catch (error) {
           if (!isCursorResetError(error)) throw error
           // The cursor is stale beyond recovery — local content is untouched either way, only
-          // the delta baseline resets, so this just costs one full re-listing.
+          // the delta baseline resets, so this just costs one full re-listing. Reported as
+          // from-scratch too (see this interface's own doc comment) so cloudSync.ts's orphan
+          // reconciliation still runs even though the *caller's* cursor argument wasn't undefined.
           const page = await fetchAllPages(
             () => listFolder(token, libraryFolderPath, { recursive: true }),
             token,
           )
-          return { entries: toProviderEntries(page.entries), cursor: page.cursor }
+          return { entries: toProviderEntries(page.entries), cursor: page.cursor, isFromScratchListing: true }
         }
       } catch (error) {
         toProviderError(error)

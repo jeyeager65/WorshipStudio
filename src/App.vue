@@ -378,16 +378,12 @@ onMounted(async () => {
   // and the app-bar badge below just stays hidden until it resolves.
   void syncStore.load()
 
-  await reportSplashProgress({ step: 2, message: 'Checking your library…' }, () =>
-    getAdapter().services.migrateLegacySermonFields(),
-  )
-
-  await reportSplashProgress({ step: 3, message: 'Loading services…' }, () => servicesStore.load())
+  await reportSplashProgress({ step: 2, message: 'Loading services…' }, () => servicesStore.load())
 
   if (hasDesktopBackend) {
     const elapsed = Date.now() - startedAt
     if (elapsed < MIN_SPLASH_MS) await sleep(MIN_SPLASH_MS - elapsed)
-    await emit('splash:status', { step: 4, message: 'Ready' } satisfies SplashProgress)
+    await emit('splash:status', { step: 3, message: 'Ready' } satisfies SplashProgress)
     await sleep(READY_DISPLAY_MS)
   }
 

@@ -27,8 +27,7 @@ export function sermonPreacherId(
 }
 
 /** Whatever role a church's ServiceTemplate assigns to this service type's sermon row, if any —
- *  the same role-resolution priority used by the Rust migration for pre-existing services
- *  (existing item/placeholder role wins first; this is only the fallback). */
+ *  existing item/placeholder role wins first; this is only the fallback. */
 export function defaultSermonRole(
   serviceTemplates: ServiceTemplate[] | undefined,
   serviceType: string,

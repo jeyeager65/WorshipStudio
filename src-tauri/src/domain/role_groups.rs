@@ -6,8 +6,7 @@ use super::{read_json_file, write_json_file};
 
 /// A peer of `library-settings.json`, not nested inside it — one small file holding the whole
 /// list, not one-file-per-item like songs/services/etc. (low-cardinality taxonomy data, not
-/// worth the per-item conflict-reduction machinery). See `commands::roles` for the one-time
-/// migration off the old nested-in-settings shape.
+/// worth the per-item conflict-reduction machinery).
 fn role_groups_path(root: &Path) -> PathBuf {
     root.join("role-groups.json")
 }
@@ -31,13 +30,6 @@ pub fn delete(root: &Path, id: &str) -> std::io::Result<()> {
     let mut items = list(root)?;
     items.retain(|item| item.id != id);
     write_json_file(&role_groups_path(root), &items)
-}
-
-/// Writes the whole list directly — used by the one-time migration (`commands::roles`) to
-/// commit the freshly-assigned-id definitions in one shot, rather than one `save()` call per
-/// item.
-pub fn replace_all(root: &Path, items: &Vec<RoleGroupDefinition>) -> std::io::Result<()> {
-    write_json_file(&role_groups_path(root), items)
 }
 
 /// The `.backup` sibling `write_json_file` keeps beside this file — never touched by ordinary

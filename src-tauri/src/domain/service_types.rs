@@ -7,7 +7,7 @@ use super::{read_json_file, write_json_file};
 /// A peer of `library-settings.json`, not nested inside it — one small file holding the whole
 /// list, not one-file-per-item like songs/services/etc. (low-cardinality taxonomy data, not
 /// worth the per-item conflict-reduction machinery). See `commands::service_types` for the
-/// one-time migration off the old nested-in-settings shape.
+/// sensible defaults seeded here for a genuinely fresh library.
 fn service_types_path(root: &Path) -> PathBuf {
     root.join("service-types.json")
 }
@@ -33,9 +33,8 @@ pub fn delete(root: &Path, id: &str) -> std::io::Result<()> {
     write_json_file(&service_types_path(root), &items)
 }
 
-/// Writes the whole list directly — used by the one-time migration (`commands::service_types`)
-/// to commit the freshly-assigned-id definitions in one shot, rather than one `save()` call
-/// per item.
+/// Writes the whole list directly — used by `commands::service_types` to seed the default list
+/// for a genuinely fresh library in one shot, rather than one `save()` call per item.
 pub fn replace_all(root: &Path, items: &Vec<ServiceType>) -> std::io::Result<()> {
     write_json_file(&service_types_path(root), items)
 }

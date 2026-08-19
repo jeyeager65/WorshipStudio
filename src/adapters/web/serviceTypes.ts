@@ -3,10 +3,9 @@
  * service-types.json (a single small array-shaped file), mirroring songCollections.ts and
  * src-tauri/src/domain/service_types.rs.
  *
- * Deliberately does not replicate the Rust side's one-time migration off the old
- * nested-in-settings, name-only shape (or the default-seeding for a genuinely fresh library) —
- * same precedent as songCollections.ts: Rust is the authoritative migration layer. A web-build
- * library still carrying the old shape simply starts with an empty service types list here.
+ * Unlike the Tauri build, this does not seed the 3 default service types for a genuinely fresh
+ * library (see src-tauri/src/commands/service_types.rs's seed_defaults_if_needed) — a web-build
+ * library simply starts with an empty service types list here.
  */
 
 import type { ServiceTypePort } from '@/adapters/types'

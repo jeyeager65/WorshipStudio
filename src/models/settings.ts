@@ -1,19 +1,16 @@
 /** Lives in its own `role-groups.json`, a peer of `library-settings.json`, not a field on it —
- *  see `src-tauri/src/domain/role_groups.rs` and `src-tauri/src/commands/roles.rs`'s one-time
- *  migration off the old nested-in-settings shape (`RoleGroup { name, roles: string[] }`, where
- *  a role was just a bare string living inside whichever group's `roles` array contained it). A
- *  role group no longer owns its member roles directly — see `RoleDefinition.groupId` for the
- *  many-to-one link, chosen so a role can be reassigned to a different group later without
- *  losing its identity or any of its historical references. */
+ *  see `src-tauri/src/domain/role_groups.rs`. A role group doesn't own its member roles
+ *  directly — see `RoleDefinition.groupId` for the many-to-one link, chosen so a role can be
+ *  reassigned to a different group later without losing its identity or any of its historical
+ *  references. */
 export interface RoleGroupDefinition {
   id: string
   name: string
 }
 
 /** Lives in its own `roles.json`, a peer of `library-settings.json` and `role-groups.json` — see
- *  `src-tauri/src/domain/roles.rs` and `src-tauri/src/commands/roles.rs`'s one-time migration.
- *  Referenced by id from `RoleAssignment.roleId`, `ServiceItem.roleId`,
- *  `ServiceTemplateItem.roleId`, `Person.preferredRoleIds`, and
+ *  `src-tauri/src/domain/roles.rs`. Referenced by id from `RoleAssignment.roleId`,
+ *  `ServiceItem.roleId`, `ServiceTemplateItem.roleId`, `Person.preferredRoleIds`, and
  *  `BulletinSettings.page2.servingSchedule.roleIds` (models/service.ts, models/library.ts), not
  *  by name. */
 export interface RoleDefinition {
@@ -39,9 +36,8 @@ export function roleDisplayLabel(
 }
 
 /** Lives in its own `song-collections.json`, a peer of `library-settings.json`, not a field on
- *  it — see `src-tauri/src/domain/song_collections.rs` and its one-time migration off the old
- *  nested-in-settings, name-only shape. Referenced by id from `Song.collections[].collectionId`
- *  (models/song.ts), not by name. */
+ *  it — see `src-tauri/src/domain/song_collections.rs`. Referenced by id from
+ *  `Song.collections[].collectionId` (models/song.ts), not by name. */
 export interface SongCollectionDefinition {
   id: string
   name: string
@@ -50,8 +46,7 @@ export interface SongCollectionDefinition {
 }
 
 /** Lives in its own `service-types.json`, a peer of `library-settings.json`, not a field on it —
- *  see `src-tauri/src/domain/service_types.rs` and its one-time migration off the old
- *  nested-in-settings, name-only shape. Referenced by id from `Service.serviceTypeId`
+ *  see `src-tauri/src/domain/service_types.rs`. Referenced by id from `Service.serviceTypeId`
  *  (models/service.ts) and `ServiceTemplate.defaultForServiceTypeIds`, not by name. */
 export interface ServiceTypeDefinition {
   id: string
@@ -61,10 +56,9 @@ export interface ServiceTypeDefinition {
   description?: string
 }
 
-/** Lives in its own `credentials.json`, a peer of `library-settings.json` — see
- *  `src-tauri/src/commands/settings.rs`'s `migrate_credentials_into_own_file` for the one-time
- *  migration off the old nested-in-settings shape. Kept separate from the taxonomy/branding/
- *  tuning fields that stay in `LibrarySettings` for two reasons: it shrinks the conflict surface
+/** Lives in its own `credentials.json`, a peer of `library-settings.json`. Kept separate from
+ *  the taxonomy/branding/tuning fields that stay in `LibrarySettings` for two reasons: it
+ *  shrinks the conflict surface
  *  for the much-more-frequently-edited fields there, and it matches a security boundary the app
  *  already draws elsewhere — the Canva OAuth access/refresh tokens produced *from* these
  *  credentials already live in their own machine-local canva-auth.json, specifically because
@@ -105,9 +99,7 @@ export interface LibraryCredentials {
     clientId: string
   }
   /** ESV API key (api.esv.org) — church-wide, synced, entered once in Settings > Bible
-   *  Translations. Moved here from MachineSettings (pre-0.9) since the key belongs to the
-   *  church's own api.esv.org account, not to any one device — see MachineSettings.esvApiKey
-   *  for the migration of an already-configured older device's key. */
+   *  Translations. Belongs to the church's own api.esv.org account, not to any one device. */
   esvApiKey?: string
   /** api.bible key (scripture.api.bible) — church-wide, synced, same reasoning as esvApiKey. */
   apiBibleKey?: string
@@ -153,9 +145,7 @@ export interface FontSizeRange {
 /** Was 8 flat fields directly on `LibrarySettings` (`scriptureMinFontSizePx`,
  *  `scriptureMaxFontSizePx`, `songMinFontSizePx`, ..., `wayfindingMaxFontSizePx`) — grouped here
  *  purely for readability, not a synced-file split like `LibraryCredentials`: this is still part
- *  of `LibrarySettings` itself, just nested. See
- *  `src-tauri/src/commands/settings.rs`'s `migrate_library_settings_shape` for the one-time
- *  reshape of the old flat keys. */
+ *  of `LibrarySettings` itself, just nested. */
 export interface FontSizesPx {
   /** Scripture slides auto-fit as large as possible within this range (never below the
    *  minimum) — a passage that still doesn't fit at the minimum splits across slides at verse
@@ -223,13 +213,6 @@ export interface MachineSettings {
    * importing that type keeps this model layer independent of the adapters layer.
    */
   displayRoles: Record<string, string>
-  /** Legacy ESV/api.bible keys, kept only so an already-configured device can migrate to the
-   *  real, synced fields (LibraryCredentials.esvApiKey/apiBibleKey) the first time its
-   *  credentials load after upgrading — see adapters/web/settings.ts's getLibraryCredentials().
-   *  New saves always clear these; nothing should read them for actual scripture resolution
-   *  anymore. */
-  esvApiKey?: string
-  apiBibleKey?: string
   /** Explicit Remote Control LAN port. Undefined selects and remembers one automatically. */
   remoteControlPort?: number
   /** Explicit mDNS hostname label. Undefined uses a computer-based installed name or the portable default. */

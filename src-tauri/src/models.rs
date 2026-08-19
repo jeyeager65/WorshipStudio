@@ -29,8 +29,7 @@ pub struct Arrangement {
 #[serde(rename_all = "camelCase")]
 pub struct SongCollectionEntry {
     /// A `SongCollectionDefinition.id` — despite the field name, this held the collection's
-    /// plain *name* before the one-time migration in `commands::song_collections`; existing
-    /// libraries get rewritten in place the first time that migration runs.
+    /// plain *name* in old, pre-id library data.
     pub collection_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub number: Option<String>,
@@ -202,7 +201,7 @@ pub struct ServiceItem {
     /// Optional and often absent — a "Silent Preparation" bulletin note, for example, needs no
     /// one assigned at all. For the sermon item this is how its preacher is resolved too — the
     /// same role/assignments mechanism as every other item type. Was named `role` and held the
-    /// role's plain *name* before the one-time migration in `commands::roles`.
+    /// role's plain *name* in old, pre-id library data.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role_id: Option<String>,
     /// Overrides this item's default Order of Worship heading (e.g. Scripture's hardcoded
@@ -237,8 +236,8 @@ pub struct AutoAdvance {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RoleAssignment {
-    /// A `RoleDefinition.id` — was named `role` and held the role's plain *name* before the
-    /// one-time migration in `commands::roles`.
+    /// A `RoleDefinition.id` — was named `role` and held the role's plain *name* in old,
+    /// pre-id library data.
     pub role_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub person_id: Option<String>,
@@ -266,8 +265,7 @@ pub struct Person {
     pub email: Option<String>,
     /// Not a restriction — just makes this person show up first when filling roles for
     /// these (see design/sketches/volunteer-editor.html). `RoleDefinition.id`s — was named
-    /// `preferredRoles` and held role plain *names* before the one-time migration in
-    /// `commands::roles`.
+    /// `preferredRoles` and held role plain *names* in old, pre-id library data.
     #[serde(default)]
     pub preferred_role_ids: Vec<String>,
     #[serde(default)]
@@ -304,12 +302,9 @@ pub struct Announcement {
 }
 
 /// Lives in its own `role-groups.json`, a peer of `library-settings.json`, not a field on it —
-/// see `domain::role_groups` and `commands::roles`'s one-time migration off the old
-/// nested-in-settings shape (`RoleGroup { name, roles: Vec<String> }`, where a role was just a
-/// bare string living inside whichever group's `roles` array contained it). A role group no
-/// longer owns its member roles directly — see `RoleDefinition::group_id` below for the
-/// many-to-one link, chosen so a role can be reassigned to a different group later without
-/// losing its identity or any of its historical references.
+/// see `domain::role_groups`. A role group doesn't own its member roles directly — see
+/// `RoleDefinition::group_id` below for the many-to-one link, chosen so a role can be reassigned
+/// to a different group later without losing its identity or any of its historical references.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RoleGroupDefinition {
@@ -318,9 +313,9 @@ pub struct RoleGroupDefinition {
 }
 
 /// Lives in its own `roles.json`, a peer of `library-settings.json` and `role-groups.json` — see
-/// `domain::roles` and `commands::roles`'s one-time migration. Referenced by id from
-/// `RoleAssignment::role_id`, `ServiceItem::role_id`, `ServiceTemplateItem::role_id`,
-/// `Person::preferred_role_ids`, and `BulletinPage2::serving_schedule::role_ids` — not by name.
+/// `domain::roles`. Referenced by id from `RoleAssignment::role_id`, `ServiceItem::role_id`,
+/// `ServiceTemplateItem::role_id`, `Person::preferred_role_ids`, and
+/// `BulletinPage2::serving_schedule::role_ids` — not by name.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RoleDefinition {
@@ -361,8 +356,7 @@ pub struct ServiceTemplateItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
     /// Optional for content kinds, required for RoleOnly. A `RoleDefinition.id` — was named
-    /// `role` and held the role's plain *name* before the one-time migration in
-    /// `commands::roles`.
+    /// `role` and held the role's plain *name* in old, pre-id library data.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role_id: Option<String>,
     /// RoleOnly kind only, default 1 (e.g. 2 Greeters).
@@ -371,8 +365,7 @@ pub struct ServiceTemplateItem {
 }
 
 /// Lives in its own `service-templates.json`, a peer of `library-settings.json` — see
-/// `domain::service_templates` and `commands::service_templates`'s one-time migration off the
-/// old nested-in-settings shape. An ordered shell for a service type — songs, scripture, sermon,
+/// `domain::service_templates`. An ordered shell for a service type — songs, scripture, sermon,
 /// bulletin notes, role-only assignments — filled in once per church and applied at service
 /// creation (see applyServiceTemplate on the frontend); never re-applied to already-created
 /// services afterward. Order matters: items seed `Service::items` in this same order.
@@ -383,15 +376,14 @@ pub struct ServiceTemplate {
     /// The template's own name — a real, independent identity field. Was named `serviceType`
     /// and did double duty as both this template's display name *and* (before
     /// `default_for_service_type_ids` existed) an implicit link to the service type sharing
-    /// that same name; the one-time migration in `commands::service_templates` splits that
-    /// apart, leaving this purely a display name.
+    /// that same name, in old, pre-id library data.
     pub name: String,
     /// Optional planning note explaining when this template should be used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// `ServiceType.id`s that choose this template by default (was a list of service type
-    /// *names* before the one-time migration in `commands::service_types` — see
-    /// `Service::service_type_id`'s own doc comment for why).
+    /// *names* in old, pre-id library data — see `Service::service_type_id`'s own doc comment
+    /// for why).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_for_service_type_ids: Option<Vec<String>>,
     #[serde(default)]
@@ -490,9 +482,8 @@ pub struct Service {
     /// Local service start time in 24-hour HH:mm form. Optional for older service files.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub time: Option<String>,
-    /// A `ServiceType.id` — was named `type` and held the service type's plain *name* before
-    /// the one-time migration in `commands::service_types`; existing libraries get rewritten in
-    /// place the first time that migration runs.
+    /// A `ServiceType.id` — was named `type` and held the service type's plain *name* in old,
+    /// pre-id library data.
     #[serde(default)]
     pub service_type_id: String,
     /// Private planning context that does not appear in the order of worship.
@@ -503,7 +494,7 @@ pub struct Service {
     pub planning_song_ids: Option<Vec<String>>,
     /// The template most recently applied to this service, for planning context. A
     /// `ServiceTemplate.id` — was named `serviceTemplateName` and held the template's plain
-    /// *name* before the one-time migration in `commands::service_templates`.
+    /// *name* in old, pre-id library data.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub service_template_id: Option<String>,
     #[serde(default)]
@@ -703,19 +694,15 @@ pub struct ApiBibleTranslation {
     pub bible_id: String,
 }
 
-/// Lives in its own `credentials.json`, a peer of `library-settings.json` — see
-/// `commands::settings::migrate_credentials_into_own_file` for the one-time migration off the
-/// old nested-in-settings shape. Kept separate from the taxonomy/branding/tuning fields that stay
-/// in `LibrarySettings` for two reasons: it shrinks the conflict surface for the
-/// much-more-frequently-edited fields there, and it matches a security boundary the app already
-/// draws elsewhere — the Canva OAuth access/refresh tokens produced *from* these credentials
-/// already live in their own machine-local `canva-auth.json`, specifically because they're
-/// sensitive; these being church-shared credentials sitting next to bulletin footer text was the
-/// one place that reasoning hadn't been carried through yet. Eager, unlike service_types/
-/// song_collections/service_templates (which only migrate when their own command runs) —
-/// commands::canva and commands::scripture both read these values directly and early (Canva
-/// connection status, scripture resolution), not only once someone happens to open Settings
-/// first — see commands::roles's own doc comment for the same reasoning applied there.
+/// Lives in its own `credentials.json`, a peer of `library-settings.json`. Kept separate from
+/// the taxonomy/branding/tuning fields that stay in `LibrarySettings` for two reasons: it
+/// shrinks the conflict surface for the much-more-frequently-edited fields there, and it matches
+/// a security boundary the app already draws elsewhere — the Canva OAuth access/refresh tokens
+/// produced *from* these credentials already live in their own machine-local `canva-auth.json`,
+/// specifically because they're sensitive; these being church-shared credentials sitting next to
+/// bulletin footer text was the one place that reasoning hadn't been carried through yet.
+/// `commands::canva` and `commands::scripture` both read these values directly and early (Canva
+/// connection status, scripture resolution).
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryCredentials {
@@ -727,10 +714,8 @@ pub struct LibraryCredentials {
     pub one_drive_integration: OneDriveIntegration,
     /// ESV API key (api.esv.org) — church-wide, synced, entered once in Settings > Bible
     /// Translations. `None`/missing means ESV isn't configured for this church; falls back to
-    /// the ESV_API_KEY env var for local-dev convenience (see commands::scripture). Moved here
-    /// from MachineSettings (pre-0.9) since the key belongs to the church's own api.esv.org
-    /// account, not to any one computer — see MachineSettings::esv_api_key for the migration of
-    /// an already-configured older install's key.
+    /// the ESV_API_KEY env var for local-dev convenience (see commands::scripture). Belongs to
+    /// the church's own api.esv.org account, not to any one computer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub esv_api_key: Option<String>,
     /// api.bible key (scripture.api.bible) — church-wide, synced, same reasoning as
@@ -750,9 +735,7 @@ pub struct LibrarySettings {
     pub media_max_synced_file_size_mb: u32,
     /// Every auto-fit/fixed slide typography range in one place — purely a readability grouping
     /// (see `FontSizesPx`'s own doc comment), no behavior or semantics change from when these
-    /// were 8 flat fields directly on `LibrarySettings`. See
-    /// `commands::settings::migrate_library_settings_shape` for the one-time reshape of an
-    /// existing library-settings.json still using the old flat keys.
+    /// were 8 flat fields directly on `LibrarySettings`.
     #[serde(default)]
     pub font_sizes_px: FontSizesPx,
     /// Bulletin/Order of Worship export customization — every label here is this church's own
@@ -785,8 +768,7 @@ pub struct SlideFontSizes {
 /// Was 8 flat fields directly on `LibrarySettings` (`scriptureMinFontSizePx`,
 /// `scriptureMaxFontSizePx`, `songMinFontSizePx`, ..., `wayfindingMaxFontSizePx`) — grouped here
 /// purely for readability, not a synced-file split like `LibraryCredentials`: this is still part
-/// of `LibrarySettings` itself, just nested. See `commands::settings::migrate_library_settings_shape`
-/// for the one-time reshape of the old flat keys.
+/// of `LibrarySettings` itself, just nested.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct FontSizesPx {
@@ -829,8 +811,7 @@ impl Default for FontSizesPx {
 }
 
 /// Lives in its own `song-collections.json`, a peer of `library-settings.json`, not a field
-/// on `LibrarySettings` — see `domain::song_collections` and `commands::song_collections`'s
-/// one-time migration off the old nested-in-settings, name-only shape. Referenced by id from
+/// on `LibrarySettings` — see `domain::song_collections`. Referenced by id from
 /// `SongCollectionEntry::collection_id` (models::Song), not by name.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -842,10 +823,8 @@ pub struct SongCollectionDefinition {
 }
 
 /// Lives in its own `service-types.json`, a peer of `library-settings.json`, not a field on it —
-/// see `domain::service_types` and `commands::service_types`'s one-time migration off the old
-/// nested-in-settings, name-only shape (mirrors `SongCollectionDefinition`'s own migration).
-/// Referenced by id from `Service::service_type_id` and `ServiceTemplate::default_for_service_type_ids`,
-/// not by name.
+/// see `domain::service_types`. Referenced by id from `Service::service_type_id` and
+/// `ServiceTemplate::default_for_service_type_ids`, not by name.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceType {
@@ -907,8 +886,8 @@ pub struct BulletinAnnouncements {
 pub struct BulletinServingSchedule {
     pub enabled: bool,
     /// `RoleDefinition.id`s (e.g. "Nursery", "Sound Booth") that become columns in the serving
-    /// schedule table — was named `servingScheduleRoles` and held role plain *names* before the
-    /// one-time migration in `commands::roles`.
+    /// schedule table — was named `servingScheduleRoles` and held role plain *names* in old,
+    /// pre-id library data.
     #[serde(default)]
     pub role_ids: Vec<String>,
 }
@@ -1047,21 +1026,6 @@ pub struct MachineSettings {
     /// "not-used" in the UI.
     #[serde(default)]
     pub display_roles: std::collections::HashMap<String, String>,
-    /// Legacy ESV/api.bible keys, retained only so Settings can migrate installations that
-    /// configured a key back when it was (mistakenly) treated as per-machine rather than
-    /// church-wide — see LibraryCredentials::esv_api_key/api_bible_key for the real, synced
-    /// fields, and commands::settings::migrate_legacy_bible_api_keys for the one-time move.
-    /// New saves always clear these.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub esv_api_key: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub api_bible_key: Option<String>,
-    /// Legacy Canva Connect credentials retained only so Settings can migrate installations
-    /// created before the integration became church-wide. New saves always clear these.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub canva_client_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub canva_client_secret: Option<String>,
     /// Explicit Remote Control LAN port. Missing means automatic selection.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub remote_control_port: Option<u16>,

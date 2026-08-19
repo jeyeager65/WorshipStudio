@@ -140,13 +140,5 @@ export function createWebServicesPort(
     // No folder picker equivalent in a browser — same documented "no browser equivalent, always
     // undefined" contract the mock adapter already uses for this method.
     importOpenSongSets: async (): Promise<ImportSetsSummary | undefined> => undefined,
-    // Temporary pre-1.0 backfill for services saved by an old desktop-app version before the
-    // sermon ServiceItem became the sole source of truth (services.rs's own doc comment calls
-    // this out as removable once schemas are finalized — see completion-audit.md's "Remove
-    // development-era compatibility before 1.0"). Left as a genuine no-op for the web build:
-    // any library with pre-migration data was necessarily created by the desktop app, which
-    // already runs this migration on every launch, so the same library opened there covers it.
-    // Porting the migration logic itself is out of scope for this walking-skeleton pass.
-    migrateLegacySermonFields: async () => {},
   }
 }

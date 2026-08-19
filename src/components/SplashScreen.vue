@@ -8,7 +8,7 @@ defineProps<{
   step: number
 }>()
 
-const steps = ['Preferences', 'Library', 'Services']
+const steps = ['Preferences', 'Services']
 
 // Same fallback Settings > About already uses — getVersion() is Tauri-only and rejects in the
 // browser demo build, where __APP_VERSION__ (vite.config.ts) is the real fallback instead.
@@ -42,7 +42,7 @@ void getVersion()
         </template>
       </div>
       <div class="status-row" role="status" aria-live="polite">
-        <span v-if="step < 4" class="status-pulse" />
+        <span v-if="step < 3" class="status-pulse" />
         <v-icon v-else icon="mdi-check-circle" size="16" class="ready-icon" />
         <span class="status-text">{{ statusText }}</span>
       </div>

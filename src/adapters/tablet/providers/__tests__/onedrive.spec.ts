@@ -74,20 +74,22 @@ describe('listChanges', () => {
         { tag: 'file', path: 'songs/song-1.json', rev: 'etag-1', contentHash: 'hash-1', sizeBytes: 10 },
       ],
       cursor: 'https://graph.microsoft.com/v1.0/delta?token=final',
+      isFromScratchListing: true,
     })
   })
 
-  it('GETs the given cursor URL directly on a later sync', async () => {
+  it('GETs the given cursor URL directly on a later sync, reporting it as an incremental (not from-scratch) listing', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ value: [], '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/delta?token=next' }),
     )
 
-    await makeProvider().listChanges('token-1', 'https://graph.microsoft.com/v1.0/delta?token=prev')
+    const result = await makeProvider().listChanges('token-1', 'https://graph.microsoft.com/v1.0/delta?token=prev')
 
     expect(fetchMock).toHaveBeenCalledWith(
       'https://graph.microsoft.com/v1.0/delta?token=prev',
       expect.anything(),
     )
+    expect(result.isFromScratchListing).toBe(false)
   })
 
   it('follows nextLink pagination until a deltaLink terminates it', async () => {
@@ -112,7 +114,11 @@ describe('listChanges', () => {
     expect(result.cursor).toBe('https://graph.microsoft.com/v1.0/delta?token=final')
   })
 
-  it('recovers from a resync-required (410) by restarting a fresh full delta', async () => {
+  // isFromScratchListing must be true here even though a real cursor was passed in — this is
+  // exactly the case cloudSync.ts's orphan reconciliation depends on being told about (a listing
+  // that can't represent deletions since the last real cursor, despite not being the caller's
+  // very first pull) — see providers/types.ts's own doc comment on that field.
+  it('recovers from a resync-required (410) by restarting a fresh full delta, reporting it as a from-scratch listing', async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ error: { code: 'resyncRequired' } }, { status: 410 }))
       .mockResolvedValueOnce(
@@ -127,6 +133,7 @@ describe('listChanges', () => {
       expect.anything(),
     )
     expect(result.cursor).toBe('https://graph.microsoft.com/v1.0/delta?token=fresh')
+    expect(result.isFromScratchListing).toBe(true)
   })
 
   it('drops folder entries and items outside the configured library folder', async () => {

@@ -375,8 +375,8 @@ async function deleteAllLibraryContent() {
 /** Real content worth protecting — deleteAllLibraryContent() also clears service types, but
  *  those aren't counted here: a genuinely fresh library always has the 3 default service types
  *  auto-seeded (same defaults a brand-new install has always started with — see
- *  commands::service_types::migrate_if_needed), so counting them would make every fresh library
- *  look "non-empty" and defeat the lighter plain-confirm prompt below. Media is counted even
+ *  commands::service_types::seed_defaults_if_needed), so counting them would make every fresh
+ *  library look "non-empty" and defeat the lighter plain-confirm prompt below. Media is counted even
  *  though Load Sample Data never touches it (only Clear Existing Data does, see
  *  clearExistingData()) — sharing this check across both just means Load Sample Data's
  *  confirmation errs stricter than strictly necessary when only media exists, never looser.
@@ -389,10 +389,8 @@ async function hasExistingLibraryContent(): Promise<boolean> {
     themesStore.load(),
     songCollectionsStore.load(),
     // Unlike service types, roles/role groups/service templates have no auto-seeded defaults
-    // on a genuinely fresh library (see commands::roles::migrate_if_needed and
-    // commands::service_templates, which starts empty since there's no reasonable default for
-    // church-specific template names) — safe to count here without the same "always looks
-    // non-empty" problem.
+    // on a genuinely fresh library (there's no reasonable default for church-specific role/
+    // template names) — safe to count here without the same "always looks non-empty" problem.
     roleGroupsStore.load(),
     rolesStore.load(),
     serviceTemplatesStore.load(),
@@ -473,12 +471,10 @@ async function loadSampleData() {
 // deletable records like songs/services/people/themes. Unlike loadSampleData(), this also
 // clears media — Clear Existing Data means "start over", and leftover media (including its
 // backing image/video files) would otherwise silently survive a wipe that claims to delete
-// everything. Also deletes the "library-settings.pre-*-id-migration.json" recovery snapshots
-// (see clearMigrationSnapshots's own doc comment) — those exist to help recover pre-migration
-// settings, which is moot once everything else in the library has just been deleted too. And
-// the settings-list files' own .backup siblings (see clearSettingsListBackups's own doc
-// comment) — each remove() above only ever shrinks those files, never deletes them, so their
-// backup would otherwise keep holding the pre-clear content indefinitely.
+// everything. Also deletes the settings-list files' own .backup siblings (see
+// clearSettingsListBackups's own doc comment) — each remove() above only ever shrinks those
+// files, never deletes them, so their backup would otherwise keep holding the pre-clear content
+// indefinitely.
 async function clearExistingData() {
   if (
     !(await confirmDestructiveAction(
@@ -494,7 +490,6 @@ async function clearExistingData() {
     await deleteAllLibraryContent()
     await mediaStore.load()
     for (const item of mediaStore.items) await mediaStore.remove(item.id)
-    await getAdapter().settings.clearMigrationSnapshots?.()
     await getAdapter().settings.clearSettingsListBackups()
     dataCleared.value = true
     emit('bulk-data-change')

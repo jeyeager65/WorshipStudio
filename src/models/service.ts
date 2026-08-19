@@ -119,9 +119,8 @@ export interface ServiceTemplateItem {
 }
 
 /** Lives in its own `service-templates.json`, a peer of `library-settings.json` — see
- *  `src-tauri/src/domain/service_templates.rs` and `src-tauri/src/commands/service_templates.rs`'s
- *  one-time migration off the old nested-in-settings shape. An ordered shell for a service type —
- *  songs, scripture, sermon, bulletin notes, role-only assignments — filled in once per church and
+ *  `src-tauri/src/domain/service_templates.rs`. An ordered shell for a service type — songs,
+ *  scripture, sermon, bulletin notes, role-only assignments — filled in once per church and
  *  applied at service creation (see applyServiceTemplate, called from CreateServiceView); never
  *  re-applied to already-created services afterward. Order matters: items seed Service.items in
  *  this same order. */
@@ -145,9 +144,7 @@ export interface Service {
    *  start times were introduced. */
   time?: string
   /** A ServiceTypeDefinition id (models/settings.ts) — was named `type` and held the service
-   *  type's plain *name* before the one-time migration in
-   *  src-tauri/src/commands/service_types.rs; existing libraries get rewritten in place the
-   *  first time that migration runs. */
+   *  type's plain *name* in old, pre-id library data. */
   serviceTypeId: string
   /** Private, service-level planning context that does not appear in the order of worship. */
   planningNotes?: string
@@ -155,7 +152,7 @@ export interface Service {
   planningSongIds?: string[]
   /** The template most recently applied to this service, for planning context. A
    *  ServiceTemplate id — was named `serviceTemplateName` and held the template's plain *name*
-   *  before the one-time migration in src-tauri/src/commands/service_templates.rs. */
+   *  in old, pre-id library data. */
   serviceTemplateId?: string
   items: ServiceItem[]
   /** Operator-only notes, keyed by service item id. */

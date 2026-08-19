@@ -3,14 +3,6 @@
  * song-collections.json (a single small array-shaped file), not one-JSON-file-per-item like
  * createFsaCollection's SimpleRecord shape (collection.ts), and not nested inside
  * library-settings.json either. Mirrors src-tauri/src/domain/song_collections.rs.
- *
- * Unlike the Tauri build, this deliberately does not replicate the Rust side's one-time
- * migration off the old nested-in-settings, name-only shape — matching this project's existing
- * precedent (the web adapter never mirrored the earlier ServiceType/SongCollectionDefinition
- * flexible-deserializer migrations either; Rust is the authoritative migration layer, real web
- * users are newer libraries less likely to carry pre-id data, and a genuinely dual-implemented
- * migration is real duplication risk for something correctness-critical). A web-build library
- * still carrying the old shape simply starts with an empty collections list here.
  */
 
 import type { SongCollectionPort } from '@/adapters/types'

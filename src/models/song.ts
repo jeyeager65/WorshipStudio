@@ -11,9 +11,7 @@ export interface Arrangement {
 
 export interface SongCollectionEntry {
   /** A `SongCollectionDefinition.id` (models/settings.ts) — despite the field name, this held
-   *  the collection's plain *name* before the one-time migration in
-   *  src-tauri/src/commands/song_collections.rs; existing libraries get rewritten in place the
-   *  first time that migration runs. */
+   *  the collection's plain *name* in old, pre-id library data. */
   collectionId: string
   /** Hymnal/collection number — scoped to this collection, not global to the song. */
   number?: string

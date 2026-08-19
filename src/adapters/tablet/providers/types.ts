@@ -12,6 +12,14 @@
  * entry's `path` is already relative to the configured library folder, in real (not lowercased)
  * case, with folders and the library-folder-root entry itself already filtered out — cloudSync.ts
  * only ever sees files that actually need applying.
+ *
+ * `isFromScratchListing` is why a provider can't fully hide its cursor-reset recovery: a listing
+ * produced that way has the same "can only report what currently exists, not what's been deleted
+ * since" limitation as a genuinely first-ever pull (no cursor at all), and cloudSync.ts's orphan
+ * reconciliation needs to run in both cases — see cloudSync.ts's reconcileOrphans doc comment.
+ * Deliberately reported by the provider itself rather than inferred by the caller from whether the
+ * cursor it *passed in* was undefined: a stale/invalidated cursor still starts as a defined value,
+ * so that inference alone would miss exactly the case reconciliation exists for.
  */
 
 export interface ProviderFileEntry {
@@ -69,7 +77,7 @@ export interface CloudSyncProvider {
   listChanges(
     token: string,
     cursor: string | undefined,
-  ): Promise<{ entries: ProviderEntry[]; cursor: string }>
+  ): Promise<{ entries: ProviderEntry[]; cursor: string; isFromScratchListing: boolean }>
   download(
     token: string,
     path: string,

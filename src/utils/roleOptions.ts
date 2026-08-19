@@ -9,8 +9,8 @@ export interface RoleOption {
 }
 
 /** Flattens roles into a subheadered options list, one subheader per group (groupless roles —
- *  shouldn't normally happen post-migration, but defensively handled — are listed last under no
- *  header). Shared by every role picker in the app (Assignments, the service workspace's item
+ *  shouldn't normally happen, but defensively handled — are listed last under no header).
+ *  Shared by every role picker in the app (Assignments, the service workspace's item
  *  role field, Service Template editing, the bulletin's serving-schedule role picker) instead of
  *  each reimplementing this same "group roles by their group, in group order" loop. */
 export function roleOptionsFor(

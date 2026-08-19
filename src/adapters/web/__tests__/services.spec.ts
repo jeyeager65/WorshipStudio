@@ -165,12 +165,4 @@ describe('createWebServicesPort', () => {
     const port = createWebServicesPort(root, settings, songs)
     expect(await port.importOpenSongSets(2026, 'Sunday Morning')).toBeUndefined()
   })
-
-  it('migrateLegacySermonFields resolves without throwing', async () => {
-    const root = createFakeRoot()
-    const settings = createWebSettingsPort(root)
-    const songs = createWebSongsPort(root, settings)
-    const port = createWebServicesPort(root, settings, songs)
-    await expect(port.migrateLegacySermonFields()).resolves.toBeUndefined()
-  })
 })

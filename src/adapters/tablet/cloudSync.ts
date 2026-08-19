@@ -187,20 +187,24 @@ export function createCloudSync(config: CloudSyncConfig) {
   // separate metadata read, so 6 concurrent files was already up to 12 simultaneous requests).
   const PULL_CONCURRENCY = 3
 
-  /** Only ever called right after a from-scratch pull (cursor was undefined) has fully landed —
-   *  never on an incremental pull, and never before every entry in freshEntries is confirmed
-   *  written to disk. An incremental delta page reports genuine deletions as their own entries,
-   *  but a from-scratch listing (Dropbox's list_folder, Graph's initial /delta) can only report
-   *  what currently exists — there is no way for it to also say what's been deleted since this
-   *  device last had a real cursor. Left unreconciled, a file this device (or another) deleted
-   *  from the cloud before a "start over" reset would survive locally forever: resetAndResync()
-   *  clears bookkeeping but never the actual OPFS content, and every subsequent from-scratch pull
-   *  would keep re-confirming "not in this listing" without ever removing it. Diffing the fresh
-   *  listing against what's still cached locally, after the listing has already been fully
-   *  applied, closes that gap without reintroducing the delete-first race resetAndResync's own
-   *  doc comment describes (a real device once had library-settings.json briefly missing from
-   *  disk mid-reset, long enough for a concurrent reader to treat the library as empty and save
-   *  defaults over it) — nothing here is ever removed until the fresh content has already landed. */
+  /** Only ever called right after a from-scratch listing (page.isFromScratchListing — see
+   *  providers/types.ts's own doc comment) has fully landed — never on an incremental pull, and
+   *  never before every entry in freshEntries is confirmed written to disk. An incremental delta
+   *  page reports genuine deletions as their own entries, but a from-scratch listing (Dropbox's
+   *  list_folder, Graph's initial /delta, or either provider's own cursor-reset recovery) can only
+   *  report what currently exists — there is no way for it to also say what's been deleted since
+   *  this device last had a real cursor. Left unreconciled, a file this device (or another)
+   *  deleted from the cloud before a "start over" reset (or before this device's cursor was
+   *  invalidated and silently reset by the provider) would survive locally forever:
+   *  resetAndResync() clears bookkeeping but never the actual OPFS content, and every subsequent
+   *  from-scratch listing would keep re-confirming "not in this listing" without ever removing it
+   *  — and once past that point there's no further "deleted" delta entry coming for something
+   *  already gone, either. Diffing the fresh listing against what's still cached locally, after
+   *  the listing has already been fully applied, closes that gap without reintroducing the
+   *  delete-first race resetAndResync's own doc comment describes (a real device once had
+   *  library-settings.json briefly missing from disk mid-reset, long enough for a concurrent
+   *  reader to treat the library as empty and save defaults over it) — nothing here is ever
+   *  removed until the fresh content has already landed. */
   async function reconcileOrphans(freshEntries: ProviderEntry[]): Promise<void> {
     const freshPaths = new Set(
       freshEntries
@@ -224,13 +228,6 @@ export function createCloudSync(config: CloudSyncConfig) {
   async function pull(): Promise<void> {
     const token = await requireToken()
     const cursor = await syncStore.getCursor()
-    // A from-scratch listing (no cursor) reports every file that currently exists remotely, with
-    // no way to also say what's been deleted since this device last had a real cursor — see
-    // reconcileOrphans' own doc comment. Captured before the call below, which itself reads
-    // cursor only to decide full-listing vs. incremental (see providers/dropbox.ts,
-    // providers/onedrive.ts) — page.cursor afterward is always the *new* cursor, never useful for
-    // telling the two cases apart.
-    const isFromScratchListing = cursor === undefined
     const page = await provider.listChanges(token, cursor)
 
     const total = page.entries.length
@@ -274,7 +271,7 @@ export function createCloudSync(config: CloudSyncConfig) {
       // disk (never on a rate-limited partial pass, which would otherwise delete files that are
       // simply queued for the next attempt, not actually gone) — see reconcileOrphans' own doc
       // comment.
-      if (isFromScratchListing) await reconcileOrphans(page.entries)
+      if (page.isFromScratchListing) await reconcileOrphans(page.entries)
       await syncStore.setCursor(page.cursor)
       await syncStore.setLastSyncedAt(new Date().toISOString())
     }
