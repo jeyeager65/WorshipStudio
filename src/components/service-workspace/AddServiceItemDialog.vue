@@ -78,12 +78,16 @@ function insertItem(item: ServiceItem) {
 
 const filteredSongsForAdd = computed(() => {
   const q = addQuery.value.trim().toLowerCase()
-  return songsStore.songs.filter(
-    (song) =>
-      !song.archived &&
-      (!q ||
-        [song.title, song.artist, song.author].some((field) => field?.toLowerCase().includes(q))),
-  )
+  return songsStore.songs
+    .filter(
+      (song) =>
+        !song.archived &&
+        (!q ||
+          [song.title, song.artist, song.author].some((field) =>
+            field?.toLowerCase().includes(q),
+          )),
+    )
+    .sort((a, b) => a.title.localeCompare(b.title))
 })
 const addingSong = ref(false)
 async function addSongToService(song: Song) {
