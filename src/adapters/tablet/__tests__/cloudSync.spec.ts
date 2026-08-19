@@ -596,6 +596,82 @@ describe('resetAndResync', () => {
     expect(await syncStore.getDirty('songs/orphaned.json')).toBeUndefined()
     expect(await syncStore.getConflict('songs/orphaned.json')).toBeUndefined()
   })
+
+  // Regression coverage for a real device: a service deleted on another device (or this one,
+  // before a reset) stayed cached here through repeated "Clear & Re-sync This Device" presses,
+  // because a from-scratch listing only reports what currently exists — it can't also report a
+  // deletion that already happened, and resetAndResync never used to reconcile against that gap.
+  it('removes a locally-cached file no longer present in a from-scratch listing', async () => {
+    const root = createFakeRoot()
+    await writeJsonFile(root, 'services/2026/deleted-service.json', { id: 'deleted-service' })
+    await syncStore.setRev('services/2026/deleted-service.json', { rev: 'rev-old', sizeBytes: 10 })
+    // The listing simply omits the deleted file — no 'deleted' entry, matching how a real
+    // from-scratch provider listing behaves (see providers/dropbox.ts's listChanges).
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({ entries: [], cursor: 'cursor-new' })
+
+    await makeSync(root).resetAndResync()
+
+    expect(await readJsonFile(root, 'services/2026/deleted-service.json')).toBeNull()
+    expect(await syncStore.getRev('services/2026/deleted-service.json')).toBeUndefined()
+  })
+
+  // Via plain pull(), not resetAndResync() — that clears dirty bookkeeping itself before
+  // reconciliation ever runs (a deliberate, separate tradeoff: "Clear & Re-sync" already
+  // discards unpushed edits by design, see this function's own doc comment). A from-scratch
+  // listing can also happen without going through resetAndResync at all — a brand-new device's
+  // very first pull, before any cursor has ever been set — and that path must not treat a
+  // locally-created, not-yet-pushed file as an orphan just because the cloud doesn't know about
+  // it yet either.
+  it('keeps a locally-cached file still pending push even if a from-scratch listing omits it', async () => {
+    const root = createFakeRoot()
+    await writeJsonFile(root, 'songs/not-yet-pushed.json', { id: 'not-yet-pushed' })
+    await syncStore.setDirty('songs/not-yet-pushed.json', {
+      deleted: false,
+      attempts: 0,
+      nextRetryAt: 0,
+    })
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({ entries: [], cursor: 'cursor-new' })
+
+    await makeSync(root).pull()
+
+    expect(await readJsonFile(root, 'songs/not-yet-pushed.json')).not.toBeNull()
+  })
+
+  it('never removes a .backup file or a materialized conflict artifact — neither is ever synced, so absence from the listing means nothing', async () => {
+    const root = createFakeRoot()
+    await writeJsonFile(root, 'library-settings.json.backup', { branding: {} })
+    await writeJsonFile(root, 'songs/a (conflicted copy 20260101-0000).json', { id: 'a' })
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({ entries: [], cursor: 'cursor-new' })
+
+    await makeSync(root).resetAndResync()
+
+    expect(await readJsonFile(root, 'library-settings.json.backup')).not.toBeNull()
+    expect(
+      await readJsonFile(root, 'songs/a (conflicted copy 20260101-0000).json'),
+    ).not.toBeNull()
+  })
+
+  it('does not reconcile orphans on an ordinary incremental pull, only a from-scratch one', async () => {
+    const root = createFakeRoot()
+    await writeJsonFile(root, 'songs/still-here.json', { id: 'still-here' })
+    await syncStore.setRev('songs/still-here.json', { rev: 'rev-1', sizeBytes: 10 })
+    await syncStore.setCursor('cursor-old')
+    // An incremental listing reporting an unrelated change — still-here.json simply isn't
+    // mentioned, exactly as it wouldn't be for any file that hasn't changed.
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({
+      entries: [{ tag: 'file', path: 'songs/other.json', rev: 'rev-new', sizeBytes: 10 }],
+      cursor: 'cursor-new',
+    })
+    vi.mocked(provider.download).mockResolvedValueOnce({
+      bytes: jsonBytes({ id: 'other' }),
+      rev: 'rev-new',
+      sizeBytes: 10,
+    })
+
+    await makeSync(root).pull()
+
+    expect(await readJsonFile(root, 'songs/still-here.json')).not.toBeNull()
+  })
 })
 
 describe('resolveConflict', () => {

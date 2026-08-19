@@ -21,10 +21,18 @@ import {
   ProviderReauthRequiredError,
   type CloudSyncProvider,
   type ProviderEntry,
+  type ProviderFileEntry,
   type ProviderWriteMode,
 } from './providers/types'
 import { syncStore, type ConflictEntry, type DirtyEntry } from './syncStore'
-import { readBytes, removeFile, writeBytes, writeJsonFile } from '@/adapters/web/fsaStorage'
+import {
+  listAllFiles,
+  readBytes,
+  removeFile,
+  writeBytes,
+  writeJsonFile,
+} from '@/adapters/web/fsaStorage'
+import { CONFLICT_PATTERN } from '@/adapters/web/sync'
 import type { SyncProgress } from '@/adapters/types'
 
 /** Mirrors web/sync.ts's CONFLICT_PATTERN scope exactly — only paths under these top-level
@@ -179,9 +187,50 @@ export function createCloudSync(config: CloudSyncConfig) {
   // separate metadata read, so 6 concurrent files was already up to 12 simultaneous requests).
   const PULL_CONCURRENCY = 3
 
+  /** Only ever called right after a from-scratch pull (cursor was undefined) has fully landed —
+   *  never on an incremental pull, and never before every entry in freshEntries is confirmed
+   *  written to disk. An incremental delta page reports genuine deletions as their own entries,
+   *  but a from-scratch listing (Dropbox's list_folder, Graph's initial /delta) can only report
+   *  what currently exists — there is no way for it to also say what's been deleted since this
+   *  device last had a real cursor. Left unreconciled, a file this device (or another) deleted
+   *  from the cloud before a "start over" reset would survive locally forever: resetAndResync()
+   *  clears bookkeeping but never the actual OPFS content, and every subsequent from-scratch pull
+   *  would keep re-confirming "not in this listing" without ever removing it. Diffing the fresh
+   *  listing against what's still cached locally, after the listing has already been fully
+   *  applied, closes that gap without reintroducing the delete-first race resetAndResync's own
+   *  doc comment describes (a real device once had library-settings.json briefly missing from
+   *  disk mid-reset, long enough for a concurrent reader to treat the library as empty and save
+   *  defaults over it) — nothing here is ever removed until the fresh content has already landed. */
+  async function reconcileOrphans(freshEntries: ProviderEntry[]): Promise<void> {
+    const freshPaths = new Set(
+      freshEntries
+        .filter((entry): entry is ProviderFileEntry => entry.tag === 'file')
+        .map((entry) => entry.path),
+    )
+    const localPaths = await listAllFiles(config.root)
+    for (const path of localPaths) {
+      // Never synced in the first place — see applyEntry's own comment on .backup, and
+      // CONFLICT_PATTERN's on materialized conflict artifacts — so their absence from a fresh
+      // listing means nothing.
+      if (path.endsWith('.backup')) continue
+      if (CONFLICT_PATTERN.test(path.split('/').pop() ?? '')) continue
+      if (freshPaths.has(path)) continue
+      if (await syncStore.getDirty(path)) continue // not yet pushed — keep it
+      await removeFile(config.root, path)
+      await syncStore.clearRev(path)
+    }
+  }
+
   async function pull(): Promise<void> {
     const token = await requireToken()
     const cursor = await syncStore.getCursor()
+    // A from-scratch listing (no cursor) reports every file that currently exists remotely, with
+    // no way to also say what's been deleted since this device last had a real cursor — see
+    // reconcileOrphans' own doc comment. Captured before the call below, which itself reads
+    // cursor only to decide full-listing vs. incremental (see providers/dropbox.ts,
+    // providers/onedrive.ts) — page.cursor afterward is always the *new* cursor, never useful for
+    // telling the two cases apart.
+    const isFromScratchListing = cursor === undefined
     const page = await provider.listChanges(token, cursor)
 
     const total = page.entries.length
@@ -221,6 +270,11 @@ export function createCloudSync(config: CloudSyncConfig) {
     // cursor, but every entry already applied this time round is now rev-matched and skipped
     // without re-downloading, so only whatever didn't finish actually gets retried.
     if (rateLimitedAt === undefined) {
+      // Reconciliation only runs once every entry from this exact listing has already landed on
+      // disk (never on a rate-limited partial pass, which would otherwise delete files that are
+      // simply queued for the next attempt, not actually gone) — see reconcileOrphans' own doc
+      // comment.
+      if (isFromScratchListing) await reconcileOrphans(page.entries)
       await syncStore.setCursor(page.cursor)
       await syncStore.setLastSyncedAt(new Date().toISOString())
     }
@@ -413,14 +467,17 @@ export function createCloudSync(config: CloudSyncConfig) {
    *  outside CONFLICT_SCANNED_TOP_DIRS, so a push "conflict" there is last-write-wins by design).
    *  Clearing the cursor/revs alone already forces pull() to treat every remote entry as changed
    *  and overwrite it via the same atomic temp-file-then-move write fsaStorage.ts's fallback path
-   *  uses — a concurrent reader sees the old content or the new content, never a missing file. The
-   *  one thing this no longer does that the old version did: a file this device deleted from the
-   *  cloud *before* this reset, and never resynced, won't get locally cleaned up (a full listing
-   *  has no way to report a deletion that already happened) — an accepted, far smaller gap than
-   *  the corruption risk it replaces. Any not-yet-pushed local edit on this device is still
-   *  discarded (its dirty flag is cleared along with everything else, and nothing is pushed) —
-   *  callers must make that tradeoff explicit to the operator before calling this (see
-   *  LibrarySyncSection.vue's confirmation dialog). */
+   *  uses — a concurrent reader sees the old content or the new content, never a missing file.
+   *  A file this device (or another) deleted from the cloud *before* this reset — which a full
+   *  listing has no way to report directly, unlike an incremental delta — is still cleaned up:
+   *  pull()'s reconcileOrphans() runs afterward, once every entry above is already confirmed on
+   *  disk, and removes exactly the locally-cached files absent from that same fresh listing.
+   *  Running it only *after* the fresh content lands (never before, and never by deleting
+   *  everything first) is what keeps this safe against the exact race that corrupted a real
+   *  device once already — see reconcileOrphans' own doc comment. Any not-yet-pushed local edit
+   *  on this device is still discarded (its dirty flag is cleared along with everything else, and
+   *  nothing is pushed) — callers must make that tradeoff explicit to the operator before calling
+   *  this (see LibrarySyncSection.vue's confirmation dialog). */
   async function resetAndResync(): Promise<void> {
     if (syncing) return
     syncing = true

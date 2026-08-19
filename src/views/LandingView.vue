@@ -21,7 +21,14 @@ const songsStore = useSongsStore()
 const serviceTypesStore = useServiceTypesStore()
 const serviceTemplatesStore = useServiceTemplatesStore()
 
-function serviceTypeName(id: string): string {
+// Accepts undefined (beyond what Service.serviceTypeId's own `string` type promises) because
+// real on-disk data isn't runtime-validated against that type — a malformed or orphaned local
+// record (e.g. a stale cache entry surviving a sync reset, see cloudSync.ts's resetAndResync
+// reconciliation fix) could still have a missing serviceTypeId. Must never return undefined
+// itself: serviceTypeOptions below sorts by this via .localeCompare(), which throws on
+// undefined — this is what actually crashed the Browse tab.
+function serviceTypeName(id: string | undefined): string {
+  if (!id) return 'Unknown Type'
   return serviceTypesStore.serviceTypes.find((t) => t.id === id)?.name ?? id
 }
 
@@ -142,7 +149,13 @@ const browseScopeServices = computed(() =>
   browseScope.value === 'recent' ? recentServices.value : allBrowseServices.value,
 )
 const serviceTypeOptions = computed(() => {
-  const ids = [...new Set(visibleServices.value.map((service) => service.serviceTypeId))]
+  // Filters out a missing/falsy serviceTypeId (a malformed record shouldn't happen per Service's
+  // own `string` type, but real on-disk/synced data isn't runtime-validated against it — see
+  // serviceTypeName's own doc comment) rather than offering a filter button for it: "All Types"
+  // already includes it, and browseType itself is typed string | null, not string | undefined.
+  const ids = [
+    ...new Set(visibleServices.value.map((service) => service.serviceTypeId).filter(Boolean)),
+  ]
   return ids
     .map((id) => ({ id, name: serviceTypeName(id) }))
     .sort((a, b) => a.name.localeCompare(b.name))

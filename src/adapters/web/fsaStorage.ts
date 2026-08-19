@@ -254,3 +254,24 @@ export function joinPath(...parts: string[]): string {
     .filter((part) => part.length > 0)
     .join('/')
 }
+
+/** Recursively lists every file's root-relative path under the whole tree — unlike listEntries
+ *  (one directory, non-recursive), this walks every subdirectory. Used by cloudSync.ts's
+ *  resetAndResync() reconciliation to find locally-cached files no longer present in a fresh
+ *  full listing from the provider; expensive enough (a full tree walk) that it's deliberately
+ *  not used anywhere routine. */
+export async function listAllFiles(
+  root: FileSystemDirectoryHandle,
+  relativeDir = '',
+): Promise<string[]> {
+  const out: string[] = []
+  for (const entry of await listEntries(root, relativeDir)) {
+    const path = joinPath(relativeDir, entry.name)
+    if (entry.kind === 'directory') {
+      out.push(...(await listAllFiles(root, path)))
+    } else {
+      out.push(path)
+    }
+  }
+  return out
+}

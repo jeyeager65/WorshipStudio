@@ -28,8 +28,10 @@ import {
 } from './fsaStorage'
 
 /** Matches Dropbox's "conflicted copy" filename convention — mirrors the Rust CONFLICT_PATTERN
- *  regex exactly (case-insensitive, tolerant of the wording varying by client version). */
-const CONFLICT_PATTERN = /^(?<stem>.+) \([^)]*conflicted copy[^)]*\)(?<ext>\.[^./]+)?$/i
+ *  regex exactly (case-insensitive, tolerant of the wording varying by client version). Exported
+ *  for cloudSync.ts's resetAndResync() reconciliation, which must never treat a materialized
+ *  conflict artifact (local-only, never pushed) as an orphan to delete. */
+export const CONFLICT_PATTERN = /^(?<stem>.+) \([^)]*conflicted copy[^)]*\)(?<ext>\.[^./]+)?$/i
 
 function labelFor(kind: string, value: Record<string, unknown>): string {
   const str = (key: string): string | undefined =>
