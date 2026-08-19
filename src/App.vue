@@ -869,9 +869,13 @@ onUnmounted(() => {
 }
 /* Same width isNarrowWindow already treats as "tight" (forces the nav to an overlay) — the
    brand text is purely decorative once space is already this constrained, but the icon alone
-   still identifies the app. */
+   still identifies the app. The page title (the current route's name, e.g. "Services") and its
+   divider go with it — space is too tight here to keep either, and a lone divider with nothing
+   after it would look like a stray rendering glitch. */
 @media (max-width: 960px) {
-  .app-brand-text {
+  .app-brand-text,
+  .app-brand-divider,
+  .page-title {
     display: none;
   }
 }
