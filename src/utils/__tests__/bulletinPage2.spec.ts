@@ -29,7 +29,7 @@ const bulletinDefaults: BulletinSettings = {
     title: 'Hope Happenings',
     footer: { title: 'Thought to Ponder', enabled: true },
     announcements: { enabled: true },
-    servingSchedule: { enabled: true, roleIds: ['Nursery', 'Greeters'] },
+    servingSchedule: { enabled: true, roleIds: ['role-nursery', 'role-greeters'] },
   },
 }
 
@@ -78,6 +78,13 @@ describe('buildBulletinPage2', () => {
     ['p-rob', 'Rob Pappas'],
     ['p-anne', 'Anne Pappas'],
     ['p-suzie', 'Suzie Nestico'],
+  ])
+  // Deliberately distinct from the ids themselves (role-nursery -> "Nursery") — a regression
+  // check for a real bug: BulletinView.vue used to call buildBulletinPage2 without this map at
+  // all, so every row silently printed the raw RoleDefinition id instead of its name.
+  const roleNames = new Map([
+    ['role-nursery', 'Nursery'],
+    ['role-greeters', 'Greeters'],
   ])
 
   it('uses the configured page2 title', () => {
@@ -245,18 +252,18 @@ describe('buildBulletinPage2', () => {
     const thisWeek = service({
       date: '2026-06-07',
       assignments: [
-        { roleId: 'Nursery', personId: 'p-suzie', tentative: false },
-        { roleId: 'Greeters', personId: 'p-rob', tentative: false },
-        { roleId: 'Greeters', personId: 'p-anne', tentative: false },
-        { roleId: 'Guitar', personId: 'p-rob', tentative: false }, // not a configured column
+        { roleId: 'role-nursery', personId: 'p-suzie', tentative: false },
+        { roleId: 'role-greeters', personId: 'p-rob', tentative: false },
+        { roleId: 'role-greeters', personId: 'p-anne', tentative: false },
+        { roleId: 'role-guitar', personId: 'p-rob', tentative: false }, // not a configured column
       ],
     })
     const nextWeek = service({
       id: 'svc-2',
       date: '2026-06-14',
-      assignments: [{ roleId: 'Nursery', personId: 'p-rob', tentative: false }],
+      assignments: [{ roleId: 'role-nursery', personId: 'p-rob', tentative: false }],
     })
-    const doc = buildBulletinPage2(thisWeek, nextWeek, [], bulletinDefaults, personNames)
+    const doc = buildBulletinPage2(thisWeek, nextWeek, [], bulletinDefaults, personNames, roleNames)
     expect(doc.servingSchedule).toEqual({
       headers: ['Role', 'This Week', 'Next Week'],
       rows: [
@@ -268,12 +275,28 @@ describe('buildBulletinPage2', () => {
 
   it('shows "TBD" (not an error, not blank) when a role has no one assigned yet', () => {
     const thisWeek = service({
-      assignments: [{ roleId: 'Nursery', personId: 'p-suzie', tentative: false }],
+      assignments: [{ roleId: 'role-nursery', personId: 'p-suzie', tentative: false }],
     })
-    const doc = buildBulletinPage2(thisWeek, undefined, [], bulletinDefaults, personNames)
+    const doc = buildBulletinPage2(thisWeek, undefined, [], bulletinDefaults, personNames, roleNames)
     expect(doc.servingSchedule?.rows).toEqual([
       { role: 'Nursery', thisWeek: ['Suzie Nestico'], nextWeek: ['TBD'] },
       { role: 'Greeters', thisWeek: ['TBD'], nextWeek: ['TBD'] },
+    ])
+  })
+
+  it('falls back to the raw id when a configured role has no matching RoleDefinition', () => {
+    const thisWeek = service({ assignments: [] })
+    const doc = buildBulletinPage2(
+      thisWeek,
+      undefined,
+      [],
+      bulletinDefaults,
+      personNames,
+      new Map(), // no role definitions at all — every id is unresolvable
+    )
+    expect(doc.servingSchedule?.rows.map((row) => row.role)).toEqual([
+      'role-nursery',
+      'role-greeters',
     ])
   })
 
