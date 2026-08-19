@@ -3,6 +3,8 @@
 The Bulletin view turns a [service](/services)'s order of worship into a printed handout, built
 directly from the items already in the service — no separate document to maintain.
 
+![Bulletin view for a service](/screenshots/bulletin.webp)
+
 ## Styles and export
 
 Choose between a **Classic** or **Modern** layout. From there you can:

@@ -1,9 +1,10 @@
 # Library Health
 
-Your library lives as files in a shared folder synced by Dropbox (or similar), which means two
-kinds of problems can occasionally turn up: a file that got damaged, or the same record edited on
-two computers at once. Library Health is where you review and resolve both — nothing here is
-ever silently discarded.
+Your library lives as files in a shared folder synced by Dropbox (or similar) — see [Sync](/sync)
+for how that's set up per device type. Being shared this way means two kinds of problems can
+occasionally turn up: a file that got damaged, or the same record edited on two computers at
+once. Library Health is where you review and resolve both — nothing here is ever silently
+discarded.
 
 ## Checking for issues
 
@@ -16,6 +17,8 @@ issues to review, it links straight here.
 When the same record was edited on two computers, you'll see a diff of what changed on each side,
 labeled with the other device's name. Choose **Keep Mine** or **Keep Theirs** — whichever version
 you don't keep is preserved automatically as a backup, not deleted.
+
+![Library Health page showing a resolvable conflict](/screenshots/library-health.webp)
 
 ## Recovering a damaged file
 

@@ -6,3 +6,7 @@ logs/
 # Generated narration/capture/final video — manually-reviewed artifacts, not committed
 # (see notes/help-system-plan.md's video-pipeline proof of concept).
 video/out/
+
+# Staged PNGs docs-screenshots/capture.js writes before ../scripts/convert-doc-screenshots.mjs
+# converts them to the real, committed WebP files in docs/public/screenshots/.
+docs-screenshots/.captured/

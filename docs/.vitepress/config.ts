@@ -70,6 +70,7 @@ export default defineConfig({
         text: 'Reports & Settings',
         items: [
           { text: 'Reports', link: '/reports' },
+          { text: 'Sync', link: '/sync' },
           { text: 'Library Health', link: '/library-health' },
           { text: 'Settings', link: '/settings' },
         ],

@@ -9,11 +9,15 @@ For planning, church records, and CCLI reporting: filter by date range and servi
 quick-range shortcuts like This Quarter or Year to Date), see total and unique-song counts, and
 export to **Excel** or **PDF**.
 
+![Song Usage report](/screenshots/reports-song-usage.webp)
+
 ## Multi-Week Plan
 
 A read-only overview for sharing with your team: pick a date range and service type, and see each
 service's sermon, songs, and role-group assignments at a glance, with totals. Export to **Word**
 (to keep editing), **PDF**, or **Excel**.
+
+![Multi-Week Plan report](/screenshots/reports-multi-week-plan.webp)
 
 Both reports use your church name, colors, and logo (see [Settings → Branding](/settings)) in the
 exported document header.

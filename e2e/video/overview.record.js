@@ -13,6 +13,7 @@ import {
   SLOW_CLICK_HOLD_MS,
   SLOW_CLICK_POST_MS,
 } from './timing.mjs'
+import { seedSampleData } from '../helpers/seedSampleData.js'
 
 // Proof-of-concept overview video — drives the real e2e-sandboxed app (never the operator's
 // real library) while ffmpeg records the window, then mux.mjs overlays the narration
@@ -143,51 +144,8 @@ async function pauseForBeat(id) {
 
 describe('Overview video (recording, not a test)', () => {
   it('seeds sample data, then drives the app while ffmpeg records', async () => {
-    // --- Seed real-looking content first, silently, before capture starts — same sequence
-    // e2e/specs/settings-library-sync.spec.js already exercises. ---
-    const skipLink = await $('button*=Skip setup')
-    if (await skipLink.isExisting()) await skipLink.click()
-
-    const settingsNav = await $('a[href="#/settings"]')
-    await settingsNav.waitForExist({ timeout: 15000 })
-    await settingsNav.click()
-
-    const syncSection = await $('.v-list-item*=Library & Sync')
-    await syncSection.waitForExist({ timeout: 10000 })
-    await syncSection.click()
-
-    const loadSampleBtn = await $('button*=Load Sample Data')
-    await loadSampleBtn.waitForClickable({ timeout: 10000 })
-    await loadSampleBtn.click()
-
-    const confirmBtn = await $('button*=Delete Everything & Load Sample Data')
-    await confirmBtn.waitForClickable({ timeout: 10000 })
-    await confirmBtn.click()
-
-    const sampleSuccess = await $('div*=Sample songs, services, people, and themes added')
-    await sampleSuccess.waitForExist({ timeout: 45000 })
-
-    const addStockBtn = await $('button*=Add Stock Backgrounds')
-    await addStockBtn.waitForClickable({ timeout: 10000 })
-    await addStockBtn.click()
-
-    const stockSuccess = await $('div*=already-present ones were skipped')
-    await stockSuccess.waitForExist({ timeout: 20000 })
-
-    const servicesNav = await $('a[href="#/"]')
-    await servicesNav.waitForClickable({ timeout: 10000 })
-    await servicesNav.click()
-
-    // Loading sample data leaves the settings document dirty (see
-    // settings-library-sync.spec.js's identical comment) — handle the unsaved-changes guard
-    // if it shows up.
-    const saveAndLeaveBtn = await $('button*=Save & Leave')
-    if (await saveAndLeaveBtn.waitForExist({ timeout: 3000 }).catch(() => false)) {
-      await saveAndLeaveBtn.click()
-    }
-
-    const serviceCard = await $('.service-card')
-    await serviceCard.waitForExist({ timeout: 10000 })
+    // --- Seed real-looking content first, silently, before capture starts. ---
+    const { servicesNav, serviceCard } = await seedSampleData()
 
     // --- Start recording ---
     // gdigrab's window-title capture (`-i title=...`) BitBlts that specific HWND directly,

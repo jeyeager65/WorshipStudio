@@ -4,6 +4,8 @@ The Media Library holds every image and video you use across the app — as back
 [Presentation Themes](/themes), as items directly in a [service](/services), or as image
 elements in [Slides](/slides). Search by title, filename, description, or tag, and filter by type.
 
+![Media Library, showing imported images and videos](/screenshots/media.webp)
+
 ## Importing files
 
 **Browse for images and videos…** stages one or more files at once, with an editable title,
@@ -16,6 +18,13 @@ Worship Studio nudges you about a couple of things during import, but never bloc
   something already in the library.
 - **Large files** (over the configured size threshold — 50MB by default) are flagged to stay
   **local** to this machine rather than syncing.
+
+## Editing an item
+
+Click any item (or its **⋮** menu → **Edit Media**) to update its title, description, tags, or
+Location after import.
+
+![Media Details dialog for an imported image](/screenshots/media-details.webp)
 
 ## Synced vs. local
 

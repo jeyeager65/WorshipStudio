@@ -5,6 +5,8 @@ on-screen announcement slides in the [Slide Library](/slides), since a printed a
 usually says more than a slide has room for. Your [Bulletin](/bulletin)'s optional Page 2 pulls
 its Announcements section straight from this library.
 
+![Announcements library](/screenshots/announcements.webp)
+
 ## Two kinds of entries
 
 - **Event** — has a date (and optionally an end date/time), and shows up under "Upcoming" as it

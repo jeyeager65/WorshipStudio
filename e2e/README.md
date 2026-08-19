@@ -28,6 +28,15 @@ npm run build:app
 npm test
 ```
 
+## Regenerating docs screenshots
+
+```sh
+npm run build:app        # only needed after app code changes
+npm run capture:screenshots
+```
+
+Drives the real app through each documented screen and saves stills into `../docs/public/screenshots/`, referenced by the VitePress pages (`../docs/*.md`) — see `docs-screenshots/capture.js`'s own doc comment for how to add a new one. Deliberately a separate, manually-run command rather than part of `npm test` or CI: a screenshot needs a look before it lands (a UI change can shift layout in ways worth reviewing), and only needs regenerating when the screen it covers actually changed, not on every push. Review the diffed PNGs with `git diff` (or just open them) before committing.
+
 `build:app` is intentionally a separate, manual step rather than an automatic pre-test hook —
 this suite gets re-run often while iterating on a single test, and a full rebuild every time
 is unnecessary overhead when the app itself hasn't changed since the last build.

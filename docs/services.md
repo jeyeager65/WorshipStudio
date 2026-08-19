@@ -11,12 +11,16 @@ filter your whole history by type, preacher, or Bible book). **Create Service** 
 date, time, and service type, optionally start from a [Service Template](/service-templates),
 and jot down an initial sermon title, passage, or preacher.
 
+![Services landing page's Schedule tab, showing today's service and what's coming up in the next two weeks](/screenshots/services-schedule.webp)
+
 ## Planning a service
 
 The **Service Plan** view is a lighter planning surface for the week or two before a service:
 sermon details and outline, a scripture placeholder to fill in later, a song list you can build
 from the [Song Library](/songs), and a summary of who's assigned to what. **Apply Template** can
 seed (or reset) the plan's structure from a Service Template at any point.
+
+![Service Plan view](/screenshots/service-plan.webp)
 
 ## Running a service
 
@@ -29,6 +33,8 @@ media file, an unassigned role — with a click-through to fix it.
 When it's time to present, **Start Presenting** sends output to your audience display, and a
 transport bar steps through every slide in the service with Next/Previous, Blank Screen, and
 Background Only controls.
+
+![Service Workspace, with a song's lyrics selected on the left and the live Presentation preview panel on the right](/screenshots/service-workspace.webp)
 
 ::: tip Related
 See [Assignments](/assignments) for who's serving, and [Bulletin](/bulletin) for the printed

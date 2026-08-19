@@ -4,12 +4,16 @@ The People directory tracks everyone who might serve in a service — for use in
 [Assignments](/assignments), [Service Templates](/service-templates), and role pickers throughout
 the app.
 
+![People directory](/screenshots/people.webp)
+
 ## What's tracked
 
 First name, last name, and an optional preferred name (so "Daniel" can go by "Dan" everywhere it
 matters), a title (Pastor, Elder, and so on), email, **preferred roles** (a bias for role pickers,
 not a restriction — anyone can still be assigned to anything), and **unavailable date ranges** for
 when someone's away.
+
+![Person editor](/screenshots/person-editor.webp)
 
 ## Finding people
 

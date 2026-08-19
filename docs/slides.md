@@ -3,7 +3,11 @@
 The Slide Library holds reusable **presentations** — each one an ordered set of slides you can
 drop into any [service](/services). Search by label, tag, or the text on the slides themselves.
 
+![Slide Library, showing the presentation list](/screenshots/slides.webp)
+
 ## Building a slide
+
+![Slide editor's freeform canvas](/screenshots/slide-editor.webp)
 
 The slide editor is a freeform canvas: drag, resize, and rotate elements freely, with snapping
 guides and a safe-area toggle to keep content clear of screen edges. You can add:

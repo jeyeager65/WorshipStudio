@@ -4,6 +4,8 @@ The Song Library is where you build your church's song catalog once and reuse it
 Search by title, author, artist, tag, or collection, and filter the library sidebar by Collection
 or Tag.
 
+![Song Library, with the collection/tag filter sidebar on the left and the searchable song list on the right](/screenshots/songs.webp)
+
 ## Song details
 
 Each song has a title, author, artist (used for the credit line, falling back to author if
@@ -16,6 +18,8 @@ Lyrics are built from reusable, named **blocks** — verse, chorus, bridge, and 
 its own text. A separate **Default Arrangement** panel decides the actual play order by adding
 blocks from that list and dragging them into place; this arrangement is what gets copied into a
 service when you add the song.
+
+![Song editor, showing a song's lyric blocks](/screenshots/song-editor.webp)
 
 ## Using songs in a service
 

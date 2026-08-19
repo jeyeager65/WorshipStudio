@@ -6,6 +6,7 @@
   "scripts": {
     "build:app": "cross-env-shell VITE_E2E_TEST_MODE=true WORSHIP_STUDIO_E2E_BUILD=true \"cd .. && npm run tauri build -- --debug --no-bundle -c src-tauri/tauri.e2e.conf.json\"",
     "test": "wdio run wdio.conf.js",
+    "capture:screenshots": "wdio run wdio.screenshots.conf.js && node ../scripts/convert-doc-screenshots.mjs",
     "record:overview": "node video/generate-narration.mjs && wdio run wdio.record.conf.js && node video/mux.mjs",
     "postinstall": "patch-package"
   },

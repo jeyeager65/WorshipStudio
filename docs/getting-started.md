@@ -3,6 +3,8 @@
 The first time you launch Worship Studio, a setup wizard walks you through everything needed
 before you plan your first service. You can skip any step and finish it later from Settings.
 
+![Setup wizard's welcome step](/screenshots/getting-started.webp)
+
 ## What the wizard covers
 
 - **Church Identity** — your church/ministry name and brand colors, used on bulletins, reports,

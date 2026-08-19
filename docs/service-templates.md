@@ -4,6 +4,8 @@ A service template is a reusable starting point for a [service](/services): an o
 (songs, scripture, sermon, and so on, as placeholders) plus the staffing roles you typically need,
 so you're not rebuilding the same structure every week.
 
+![Service Templates library](/screenshots/service-templates.webp)
+
 ## Building a template
 
 The editor has three parts:
@@ -14,6 +16,8 @@ The editor has three parts:
   [Roles](/roles)).
 - **Defaults** — which service type(s) should automatically use this template when you create a
   new service.
+
+![Service Template editor](/screenshots/service-template-editor.webp)
 
 ## Using a template
 

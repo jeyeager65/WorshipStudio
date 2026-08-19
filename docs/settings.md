@@ -2,14 +2,16 @@
 
 Settings is organized into a few groups:
 
+![Settings page, showing the This Computer section](/screenshots/settings.webp)
+
 ## Application
 
 - **This Computer** — this workstation's name (used to label who made a change when resolving a
   [Library Health](/library-health) conflict), and a shortcut to re-run the
   [Getting Started](/getting-started) wizard.
-- **Library & Sync** — where your shared library folder lives, a sync health check, and data
-  tools (loading sample data or clearing everything — both destructive, used mainly for trying
-  the app out).
+- **Library & Sync** — where your shared library folder lives (see [Sync](/sync) for setup
+  per device type), a sync health check, and data tools (loading sample data or clearing
+  everything — both destructive, used mainly for trying the app out).
 - **About** — app version, links to the project's source and issue tracker, and diagnostics
   (open the logs folder, or export a diagnostic bundle to share when reporting a problem).
 

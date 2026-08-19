@@ -4,6 +4,8 @@ A **theme** pairs a background with text styling, so your songs, scripture, serm
 text slides look consistent without styling each one by hand. This is different from a slide's
 own freeform design in the [Slide Library](/slides) — themes style *generated* content.
 
+![Presentation Themes library](/screenshots/themes.webp)
+
 ## What a theme controls
 
 - **Background** — a solid color, an image or video from the [Media Library](/media), or one of
@@ -13,6 +15,8 @@ own freeform design in the [Slide Library](/slides) — themes style *generated*
 
 A live preview shows a sample lyric in the actual theme styling as you work, with a full-screen
 preview available too.
+
+![Theme editor, showing background and text controls with a live preview](/screenshots/theme-editor.webp)
 
 ## Applying themes
 

@@ -3,6 +3,8 @@
 Assignments track who's serving in a given [service](/services) — from the person preaching to
 the volunteers running sound, and everyone in between.
 
+![Assignments page for a service, showing Order of Service and Service Team roles](/screenshots/assignments.webp)
+
 ## Two kinds of roles
 
 - **Order of Service** roles are tied directly to an item in the service — for example, the
