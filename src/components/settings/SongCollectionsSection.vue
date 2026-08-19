@@ -1,41 +1,56 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { ref } from 'vue'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useSongCollectionsStore } from '@/stores/songCollections'
 
+// Loaded by SettingsView.vue itself, not here — abbreviation edits below are part of its shared
+// settingsDocument now (see that file's own comment), so it owns this store's load lifecycle
+// too rather than this component racing it with a second, redundant load() call.
 const store = useSongCollectionsStore()
 const confirmDialog = useConfirmDialogStore()
 const newCollectionName = ref('')
 
-onMounted(() => store.load())
+// addCollection/removeCollection persist immediately (like LibrarySyncSection.vue's Data Tools
+// actions), but store.collections is now part of SettingsView.vue's tracked settingsDocument too
+// (for abbreviation edits) — without this, the array changing out from under that deep-watch
+// would wrongly flag the page as having unsaved changes for something already fully persisted.
+// Same event name/handler (rebaselineHistory) as LibrarySyncSection.vue's identical problem.
+const emit = defineEmits<{ 'bulk-data-change': [] }>()
 
-function addCollection() {
+async function addCollection() {
   const name = newCollectionName.value.trim()
   if (
     !name ||
     store.collections.some((collection) => collection.name.toLowerCase() === name.toLowerCase())
   )
     return
-  store.save({ id: `collection-${crypto.randomUUID()}`, name })
+  await store.save({ id: `collection-${crypto.randomUUID()}`, name })
   newCollectionName.value = ''
+  emit('bulk-data-change')
 }
 
+// Unlike addCollection/removeCollection (immediate, deliberate actions), abbreviation edits are
+// deferred to SettingsView.vue's own Save button for consistency with every other field there —
+// this just mutates the shared reactive item; that page's saveSettings() persists whatever
+// actually changed once Save is clicked.
 function updateAbbreviation(collectionId: string, abbreviation: string) {
   const collection = store.collections.find((c) => c.id === collectionId)
   if (!collection) return
-  store.save({ ...collection, abbreviation: abbreviation || undefined })
+  collection.abbreviation = abbreviation || undefined
 }
 
 function trimAbbreviation(collectionId: string) {
   const collection = store.collections.find((c) => c.id === collectionId)
-  updateAbbreviation(collectionId, collection?.abbreviation?.trim() ?? '')
+  if (!collection) return
+  collection.abbreviation = collection.abbreviation?.trim() || undefined
 }
 
 async function removeCollection(collectionId: string) {
   const collection = store.collections.find((c) => c.id === collectionId)
   if (!collection) return
   if (!(await confirmDialog.confirm(`Remove "${collection.name}"?`, 'Remove'))) return
-  store.remove(collectionId)
+  await store.remove(collectionId)
+  emit('bulk-data-change')
 }
 </script>
 

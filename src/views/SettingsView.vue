@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, toRaw } from 'vue'
 import { storeToRefs } from 'pinia'
 import { getAdapter } from '@/adapters'
 import { useSettingsStore } from '@/stores/settings'
+import { useServiceTypesStore } from '@/stores/serviceTypes'
+import { useSongCollectionsStore } from '@/stores/songCollections'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
+import type { ServiceTypeDefinition, SongCollectionDefinition } from '@/models/settings'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import SettingsPageHeader from '@/components/settings/SettingsPageHeader.vue'
@@ -25,8 +28,18 @@ import ServiceTypesSection from '@/components/settings/ServiceTypesSection.vue'
 
 const store = useSettingsStore()
 const { librarySettings, machineSettings, libraryCredentials } = storeToRefs(store)
+const serviceTypesStore = useServiceTypesStore()
+const songCollectionsStore = useSongCollectionsStore()
+const { serviceTypes } = storeToRefs(serviceTypesStore)
+const { collections } = storeToRefs(songCollectionsStore)
 const { isDirty, saving, saveHandler } = storeToRefs(useUnsavedChangesStore())
 const confirmDialog = useConfirmDialogStore()
+// Service Types' descriptions and Song Collections' abbreviations are edited inline
+// (ServiceTypesSection.vue/SongCollectionsSection.vue) but, unlike Add/Remove on those same
+// lists, go through this page's own Save button for consistency with every other field here —
+// folding their arrays into the same tracked document gets that, plus undo/redo, for free from
+// useDocumentHistory's existing deep-diffing rather than a second, parallel dirty-tracking
+// mechanism per list.
 const settingsDocument = computed({
   get: () =>
     librarySettings.value && machineSettings.value && libraryCredentials.value
@@ -34,6 +47,8 @@ const settingsDocument = computed({
           library: librarySettings.value,
           machine: machineSettings.value,
           credentials: libraryCredentials.value,
+          serviceTypes: serviceTypes.value,
+          collections: collections.value,
         }
       : undefined,
   set: (value) => {
@@ -41,9 +56,17 @@ const settingsDocument = computed({
     librarySettings.value = value.library
     machineSettings.value = value.machine
     libraryCredentials.value = value.credentials
+    serviceTypes.value = value.serviceTypes
+    collections.value = value.collections
   },
 })
 const documentHistory = useDocumentHistory(settingsDocument, 'settings')
+// What's actually persisted on disk as of the last load/save — Add/Remove on these two lists
+// still save immediately (see the two section components), so saveSettings() below only needs
+// to persist description/abbreviation edits, and only for entries that actually changed rather
+// than unconditionally rewriting both list files on every unrelated Settings save.
+let savedServiceTypes: ServiceTypeDefinition[] = []
+let savedCollections: SongCollectionDefinition[] = []
 // The folder shown in the draft settings can change before Save. Keep the last persisted path
 // separately so saving unrelated settings does not produce a reload prompt, while a real
 // library switch does—even after the reactive settings object has already been edited.
@@ -172,11 +195,13 @@ function selectSettingsSection(section: Section) {
 // the setup wizard) after this one is long gone, wrongly flagging isDirty. Stopping it
 // explicitly in onUnmounted is what actually scopes it to this view's lifetime.
 onMounted(async () => {
-  await store.load()
+  await Promise.all([store.load(), serviceTypesStore.load(), songCollectionsStore.load()])
   savedLibraryPath.value = machineSettings.value?.libraryPath ?? ''
   savedRemoteControlPort.value = machineSettings.value?.remoteControlPort
   savedRemoteControlHostname.value = machineSettings.value?.remoteControlHostname
   savedCanvaCallbackPort.value = machineSettings.value?.canvaCallbackPort
+  savedServiceTypes = structuredClone(toRaw(serviceTypes.value))
+  savedCollections = structuredClone(toRaw(collections.value))
   isDirty.value = false
   // Start history after loading so persisted machine and church settings form the baseline.
   rebaselineHistory()
@@ -195,6 +220,8 @@ onMounted(async () => {
 // that already deleted/replaced real library content elsewhere — not a state this editor's
 // undo stack could ever correctly restore.
 function rebaselineHistory() {
+  savedServiceTypes = structuredClone(toRaw(serviceTypes.value))
+  savedCollections = structuredClone(toRaw(collections.value))
   documentHistory.start((dirty) => (isDirty.value = dirty))
 }
 onUnmounted(() => {
@@ -218,12 +245,31 @@ async function saveSettings() {
   saving.value = true
   try {
     await store.save()
+    // Add/Remove on these two lists already save immediately (see ServiceTypesSection.vue/
+    // SongCollectionsSection.vue) — only description/abbreviation edits are deferred to this
+    // button, so only persist entries that actually differ from what's on disk.
+    const currentServiceTypes = [...serviceTypes.value]
+    for (const type of currentServiceTypes) {
+      const baseline = savedServiceTypes.find((saved) => saved.id === type.id)
+      if (!baseline || JSON.stringify(baseline) !== JSON.stringify(type)) {
+        await serviceTypesStore.save(type)
+      }
+    }
+    const currentCollections = [...collections.value]
+    for (const collection of currentCollections) {
+      const baseline = savedCollections.find((saved) => saved.id === collection.id)
+      if (!baseline || JSON.stringify(baseline) !== JSON.stringify(collection)) {
+        await songCollectionsStore.save(collection)
+      }
+    }
     await canvaSectionRef.value?.loadCanvaStatus()
     await bibleTranslationsSectionRef.value?.refreshAvailability()
     savedLibraryPath.value = machineSettings.value?.libraryPath ?? savedLibraryPath.value
     savedRemoteControlPort.value = machineSettings.value?.remoteControlPort
     savedRemoteControlHostname.value = machineSettings.value?.remoteControlHostname
     savedCanvaCallbackPort.value = machineSettings.value?.canvaCallbackPort
+    savedServiceTypes = structuredClone(toRaw(serviceTypes.value))
+    savedCollections = structuredClone(toRaw(collections.value))
     isDirty.value = false
     if (
       (libraryPathChanged || remoteConnectionChanged || canvaCallbackChanged) &&
@@ -373,7 +419,7 @@ async function saveSettings() {
           description="Songbooks and catalogs a song can belong to, each with its own number."
           icon="mdi-bookshelf"
         >
-          <SongCollectionsSection />
+          <SongCollectionsSection @bulk-data-change="rebaselineHistory" />
         </SettingsPanel>
       </template>
 
@@ -394,7 +440,7 @@ async function saveSettings() {
           description="The choices offered when creating a new service (e.g. Sunday Morning, Wednesday Bible Study)."
           icon="mdi-calendar-multiple"
         >
-          <ServiceTypesSection />
+          <ServiceTypesSection @bulk-data-change="rebaselineHistory" />
         </SettingsPanel>
       </template>
     </div>

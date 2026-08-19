@@ -1,41 +1,56 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { ref } from 'vue'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { useServiceTypesStore } from '@/stores/serviceTypes'
 
+// Loaded by SettingsView.vue itself, not here — description edits below are part of its shared
+// settingsDocument now (see that file's own comment), so it owns this store's load lifecycle
+// too rather than this component racing it with a second, redundant load() call.
 const store = useServiceTypesStore()
 const confirmDialog = useConfirmDialogStore()
 const newTypeName = ref('')
 
-onMounted(() => store.load())
+// addType/removeType persist immediately (like LibrarySyncSection.vue's Data Tools actions),
+// but store.serviceTypes is now part of SettingsView.vue's tracked settingsDocument too (for
+// description edits) — without this, the array changing out from under that deep-watch would
+// wrongly flag the page as having unsaved changes for something already fully persisted. Same
+// event name/handler (rebaselineHistory) as LibrarySyncSection.vue's identical problem.
+const emit = defineEmits<{ 'bulk-data-change': [] }>()
 
-function addType() {
+async function addType() {
   const name = newTypeName.value.trim()
   if (
     !name ||
     store.serviceTypes.some((type) => type.name.toLowerCase() === name.toLowerCase())
   )
     return
-  store.save({ id: `type-${crypto.randomUUID()}`, name })
+  await store.save({ id: `type-${crypto.randomUUID()}`, name })
   newTypeName.value = ''
+  emit('bulk-data-change')
 }
 
+// Unlike addType/removeType (immediate, deliberate actions), description edits are deferred to
+// SettingsView.vue's own Save button for consistency with every other field there — this just
+// mutates the shared reactive item; that page's saveSettings() persists whatever actually
+// changed once Save is clicked.
 function updateDescription(typeId: string, description: string) {
   const type = store.serviceTypes.find((t) => t.id === typeId)
   if (!type) return
-  store.save({ ...type, description: description || undefined })
+  type.description = description || undefined
 }
 
 function trimDescription(typeId: string) {
   const type = store.serviceTypes.find((t) => t.id === typeId)
-  updateDescription(typeId, type?.description?.trim() ?? '')
+  if (!type) return
+  type.description = type.description?.trim() || undefined
 }
 
 async function removeType(typeId: string) {
   const type = store.serviceTypes.find((t) => t.id === typeId)
   if (!type) return
   if (!(await confirmDialog.confirm(`Remove "${type.name}"?`, 'Remove'))) return
-  store.remove(typeId)
+  await store.remove(typeId)
+  emit('bulk-data-change')
 }
 </script>
 
