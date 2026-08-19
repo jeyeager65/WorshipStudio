@@ -15,6 +15,8 @@ import { useServiceTypesStore } from '@/stores/serviceTypes'
 import { useRoleGroupsStore } from '@/stores/roleGroups'
 import { useRolesStore } from '@/stores/roles'
 import { useServiceTemplatesStore } from '@/stores/serviceTemplates'
+import { useSlidesStore } from '@/stores/slides'
+import { useAnnouncementsStore } from '@/stores/announcements'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { clearStoredLibraryHandle } from '@/adapters/web/handlePersistence'
 import { disconnect as disconnectDropbox, isConnected as isDropboxConnected } from '@/adapters/tablet/providers/dropboxAuth'
@@ -49,6 +51,8 @@ const serviceTypesStore = useServiceTypesStore()
 const roleGroupsStore = useRoleGroupsStore()
 const rolesStore = useRolesStore()
 const serviceTemplatesStore = useServiceTemplatesStore()
+const slidesStore = useSlidesStore()
+const announcementsStore = useAnnouncementsStore()
 const confirmDialog = useConfirmDialogStore()
 
 // Every Data Tools action below persists immediately on its own (direct store/adapter calls,
@@ -165,10 +169,36 @@ const syncActionError = ref('')
 // syncStore.runSync() (not the adapter directly) so this button shares the exact same `syncing`
 // flag useTabletSync.ts's automatic triggers set — App.vue's app-bar indicator reflects either
 // one, and status.lastSyncedAt/pendingPushCount always refresh afterward, success or failure.
+// A sync could have pulled changes to any of these from another device — without this, they'd
+// stay stale in memory until a full app reload, since a store that's already loaded once never
+// re-fetches on its own (LandingView.vue's onMounted, for example, only calls load() the first
+// time: `if (!store.loaded)`). Confirmed on a real device: services deleted elsewhere kept
+// showing in Browse after a successful Clear & Re-sync, until the whole app was reloaded.
+// Deliberately excludes librarySettings/machineSettings/credentials and the service-types/
+// song-collections lists — all three are also this exact page's own editable settingsDocument
+// (SettingsView.vue), and reloading them out from under an in-progress unsaved edit here would
+// silently clobber it (the same hazard the live-refresh discussion in
+// notes/setup-wizard-decisions-plan.md flagged for exactly this reason).
+async function reloadContentAfterSync() {
+  await Promise.all([
+    songsStore.load(),
+    servicesStore.load(),
+    peopleStore.load(),
+    themesStore.load(),
+    mediaStore.load(),
+    slidesStore.load(),
+    announcementsStore.load(),
+    roleGroupsStore.load(),
+    rolesStore.load(),
+    serviceTemplatesStore.load(),
+  ])
+}
+
 async function syncNow() {
   syncActionError.value = ''
   try {
     await syncStore.runSync()
+    await reloadContentAfterSync()
   } catch (error) {
     syncActionError.value = error instanceof Error ? error.message : 'Sync failed.'
   }
@@ -189,6 +219,7 @@ async function clearAndResync() {
   syncActionError.value = ''
   try {
     await syncStore.resetAndResync()
+    await reloadContentAfterSync()
   } catch (error) {
     syncActionError.value = error instanceof Error ? error.message : 'Reset failed.'
   }
