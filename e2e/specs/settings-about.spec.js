@@ -30,4 +30,35 @@ describe('Settings — About', () => {
     await statusAlert.waitForExist({ timeout: 10000 })
     await expect(statusAlert).toBeExisting()
   })
+
+  it('checks for updates and settles into a real outcome', async () => {
+    // A genuine network call to GitHub (stores/tauriUpdate.ts), so the actual outcome (up to
+    // date / an update available / a network error) isn't something to assert on — this just
+    // confirms the button and store wiring work end to end, not what today's real answer is.
+    const skipLink = await $('button*=Skip setup')
+    if (await skipLink.isExisting()) await skipLink.click()
+
+    const settingsNav = await $('a[href="#/settings"]')
+    await settingsNav.waitForExist({ timeout: 15000 })
+    await settingsNav.click()
+
+    const aboutSection = await $('.v-list-item*=About')
+    await aboutSection.waitForExist({ timeout: 10000 })
+    await aboutSection.click()
+
+    const checkBtn = await $('button*=Check for Updates')
+    await checkBtn.waitForClickable({ timeout: 10000 })
+    await checkBtn.click()
+
+    const upToDate = await $("p*=You're up to date")
+    const updateAvailable = await $('button*=Install Now')
+    const checkFailed = await $('.v-alert')
+    await browser.waitUntil(
+      async () =>
+        (await upToDate.isExisting()) ||
+        (await updateAvailable.isExisting()) ||
+        (await checkFailed.isExisting()),
+      { timeout: 15000, timeoutMsg: 'Check for Updates never settled into any visible outcome' },
+    )
+  })
 })

@@ -75,6 +75,13 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the update bundle/manifest (latest.json) tauri.conf.json's createUpdaterArtifacts
+          # produces — a separate keypair from the Windows code-signing certificate above; see
+          # notes/release-process.md's updater section for how it was generated. Unset for macOS
+          # (not in this release matrix) is harmless — signing only runs where createUpdaterArtifacts
+          # actually builds anything.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Worship Studio ${{ github.ref_name }}'

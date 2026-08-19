@@ -40,6 +40,8 @@ sha2 = "0.10"
 tauri-plugin-opener = "2"
 mdns-sd = "0.20.2"
 rust-embed = "8"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 # External App Hand-off (design/feature-spec.md section 12) is explicitly Windows-only —
 # foreground-window switching, positioning, and keystroke injection have no macOS/Linux

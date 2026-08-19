@@ -20,13 +20,15 @@ import { useHistoryStore } from '@/stores/history'
 import { useRemoteServiceSelection } from '@/composables/useRemoteServiceSelection'
 import { useTabletSync } from '@/composables/useTabletSync'
 import { usePwaUpdate } from '@/composables/usePwaUpdate'
+import { useTauriUpdate } from '@/composables/useTauriUpdate'
 import { formatSyncProgressLabel } from '@/utils/syncProgress'
 import appIcon from '@/assets/app-icon.png'
 
 useTabletSync()
 const pwaUpdate = usePwaUpdate()
+const tauriUpdate = useTauriUpdate()
 
-const { blockedMessage } = storeToRefs(useLiveSessionStore())
+const { blockedMessage, isPresenting } = storeToRefs(useLiveSessionStore())
 const { isDirty, saving, saveHandler, pageTitleOverride, navCollapseRequested } = storeToRefs(
   useUnsavedChangesStore(),
 )
@@ -785,6 +787,26 @@ onUnmounted(() => {
       A new version of Worship Studio is available.
       <template #actions>
         <v-btn variant="text" @click="pwaUpdate.applyUpdate">Update Now</v-btn>
+      </template>
+    </v-snackbar>
+
+    <!-- Same "never surprise mid-service" rule as the PWA snackbar above, and stricter about it:
+         a Tauri update needs a full app restart, not just a page reload, so this stays hidden
+         entirely while presenting even if an update was already found before presenting started
+         — not just skipping the background check (useTauriUpdate.ts), but never tempting a tap
+         here either. -->
+    <v-snackbar
+      v-if="hasDesktopBackend"
+      :model-value="tauriUpdate.updateAvailable && !isPresenting"
+      color="info"
+      timeout="-1"
+      location="bottom"
+    >
+      A new version of Worship Studio is available.
+      <template #actions>
+        <v-btn variant="text" :loading="tauriUpdate.applying" @click="tauriUpdate.applyUpdate">
+          Update Now
+        </v-btn>
       </template>
     </v-snackbar>
 

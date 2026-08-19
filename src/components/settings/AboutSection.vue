@@ -4,10 +4,17 @@ import { useTheme } from 'vuetify'
 import { getVersion } from '@tauri-apps/api/app'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { getAdapter } from '@/adapters'
+import { useTauriUpdateStore } from '@/stores/tauriUpdate'
 import { diagnosticBundleFilename, formatDiagnosticSummary } from '@/utils/diagnostics'
 import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 import logoDark from '@/assets/logo-dark.png'
 import logoLight from '@/assets/logo-light.png'
+
+// Reads/drives the same store useTauriUpdate.ts's background check already populates (App.vue)
+// — a manual check here shares state with the banner rather than running independently. No
+// separate "don't check while presenting" guard needed: Settings is unreachable while presenting
+// at all (see stores/liveSession.ts's own doc comment on the router guard).
+const tauriUpdateStore = getAdapter().kind === 'tauri' ? useTauriUpdateStore() : undefined
 
 const theme = useTheme()
 const aboutLogo = computed(() => (theme.global.current.value.dark ? logoDark : logoLight))
@@ -134,6 +141,52 @@ async function exportDiagnosticBundle() {
         </button>
       </div>
     </div>
+
+    <SettingsPanel
+      v-if="tauriUpdateStore"
+      title="Updates"
+      description="Check whether a newer version of Worship Studio is available."
+      icon="mdi-update"
+    >
+      <div class="d-flex align-center ga-3 flex-wrap">
+        <v-btn
+          variant="outlined"
+          prepend-icon="mdi-refresh"
+          :loading="tauriUpdateStore.checking"
+          @click="tauriUpdateStore.checkForUpdate"
+        >
+          Check for Updates
+        </v-btn>
+        <v-btn
+          v-if="tauriUpdateStore.updateAvailable"
+          color="primary"
+          variant="flat"
+          prepend-icon="mdi-download-outline"
+          :loading="tauriUpdateStore.applying"
+          @click="tauriUpdateStore.applyUpdate"
+        >
+          Install Now
+        </v-btn>
+      </div>
+      <p v-if="tauriUpdateStore.updateAvailable" class="text-body-2 text-medium-emphasis mt-3">
+        A new version is available. Installing restarts Worship Studio.
+      </p>
+      <p
+        v-else-if="tauriUpdateStore.hasChecked && !tauriUpdateStore.checking && !tauriUpdateStore.checkError"
+        class="text-body-2 text-medium-emphasis mt-3"
+      >
+        You're up to date.
+      </p>
+      <v-alert
+        v-if="tauriUpdateStore.checkError"
+        type="error"
+        variant="tonal"
+        density="compact"
+        class="mt-3"
+      >
+        {{ tauriUpdateStore.checkError }}
+      </v-alert>
+    </SettingsPanel>
 
     <SettingsPanel
       title="Support & diagnostics"

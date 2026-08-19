@@ -66,6 +66,42 @@ Re-generating the certificate later (only if the key is lost or compromised) mea
 already-trusted church machine needs to re-run `install-trust-windows.ps1` with the new
 `.cer`, and all three secrets need updating.
 
+## Auto-updater
+
+A separate signing scheme from the Windows certificate above — that one proves who published
+the installer (stops SmartScreen flagging it), this one proves an *update* actually came from
+this project before the app installs it over itself. Set up once (August 2026):
+
+1. **Generated the keypair** with `pnpm tauri signer generate -w <path>/tauri-updater.key`,
+   non-interactively (`--ci -p <password>`) so it doesn't need a terminal prompt. Produces a
+   private key file (password-protected) and prints the public key.
+2. **The public key lives in `tauri.conf.json`**, `plugins.updater.pubkey` — not a secret,
+   committed in the repo, since it's only ever used to *verify* a signature, not create one.
+3. **Two more repository secrets**, same place as the three Windows ones:
+   - `TAURI_SIGNING_PRIVATE_KEY` — the private key file's contents.
+   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — its password.
+4. **The private key file + password are backed up outside this repo** (Bitwarden) — losing
+   both means every already-installed copy can still run, but no future release can ever be
+   signed as an update for it again; every machine would need a fresh manual install instead.
+
+`tauri.conf.json`'s `bundle.createUpdaterArtifacts: true` is what makes a release build also
+produce a signed update bundle and a `latest.json` manifest; `tauri-apps/tauri-action@v0`
+(`release.yml`) picks up the two secrets above automatically and uploads both alongside the
+installer. The app checks `plugins.updater.endpoints` —
+`https://github.com/jeyeager65/WorshipStudio/releases/latest/download/latest.json` — which is a
+GitHub URL pattern that only ever resolves to the newest **published, non-draft** release.
+
+**This means publishing now matters, not just reviewing.** A draft release (the default —
+see "Cutting a release" below) is invisible to the updater; hitting Publish is what makes a
+build available to already-installed machines, not just downloadable from the Releases page.
+
+The in-app side (`src/stores/tauriUpdate.ts`, `src/composables/useTauriUpdate.ts`) checks on
+launch and every 30 minutes while the window is visible, and only ever prompts — a banner
+(`App.vue`) or the "Check for Updates" button (Settings → About) — never applies anything
+without an explicit tap, since installing requires a full app restart. Checks (and the banner
+itself) are suppressed entirely while presenting (`useLiveSessionStore().isPresenting`), so an
+update can't so much as tempt a tap mid-service.
+
 ## Cutting a release
 
 1. Bump the version in `package.json` and `src-tauri/Cargo.toml` (keep both in sync).
@@ -84,7 +120,8 @@ already-trusted church machine needs to re-run `install-trust-windows.ps1` with 
    Mac-based prep work) — the Tauri config, signing rationale, and install instructions below
    are left in place in case that's revisited. The Windows build lands as a **draft** GitHub
    Release — review it and hit Publish when ready; the Pages site goes live immediately with no
-   review step.
+   review step. Publishing is also what makes it visible to the auto-updater (see that section
+   above) — leave it draft for a build you don't want already-installed machines picking up yet.
 
 ## First install on a given machine
 
