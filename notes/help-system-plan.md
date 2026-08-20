@@ -11,8 +11,10 @@ for why the simpler approach didn't work and had to be replaced, and why *window
 still happens in the frontend (like every other secondary window in this app) while only
 *navigating an already-open window* goes through Rust. The same site is also now the project's
 public GitHub Pages landing page (dark-mode logo, link to the web demo nested at `/app/`) — see
-`notes/release-process.md`'s "GitHub Pages site structure". A proof-of-concept overview video
-pipeline also exists in `e2e/video/`. Still not done: real per-topic content and the full
+`notes/release-process.md`'s "GitHub Pages site structure". Every topic page now has real content
+and real screenshots (captured via the `e2e/docs-screenshots/capture.js` pipeline), including a
+Sync page added after this doc's original topic list below. A proof-of-concept overview video
+pipeline also exists in `e2e/video/` (one video, `overview.mp4`). Still not done: the full
 multi-topic tutorial video series — see "Open items".
 
 ## Goal
@@ -148,17 +150,16 @@ user-facing realization of that original idea, rather than a brand-new direction
 
 ## Open items for the help-docs system
 
-- Topic list (15, grouped by workflow in the sidebar rather than mirroring the app's own
-  left-nav layout): Getting Started (solo) · Running a Service: Services, Assignments,
-  Bulletin, Announcements · Your Library: Songs, Slides, Media, Presentation Themes, Service
-  Templates · People & Teams: People, Roles · Reports & Settings: Reports, Library Health,
-  Settings. Assignments and Bulletin were split out from a single "Services" topic
-  specifically so F1 from those two screens doesn't land on the same page as the main
-  order-of-worship workspace.
-- Write the actual help content, page by page, together — every topic page is still just a
-  `# Title` / "Content coming soon." stub.
-- Nail down the screenshot-capture workflow specifics: which states need capturing, and how
-  captures get refreshed/versioned as the UI evolves.
+- Topic list (16 now — 15 originally, grouped by workflow in the sidebar rather than mirroring
+  the app's own left-nav layout, plus Sync added later): Getting Started (solo) · Running a
+  Service: Services, Assignments, Bulletin, Announcements · Your Library: Songs, Slides, Media,
+  Presentation Themes, Service Templates · People & Teams: People, Roles · Reports & Settings:
+  Reports, Library Health, Settings, Sync. Assignments and Bulletin were split out from a single
+  "Services" topic specifically so F1 from those two screens doesn't land on the same page as the
+  main order-of-worship workspace.
+- ~~Write the actual help content~~ — done: every topic page has real content and screenshots
+  (`e2e/docs-screenshots/capture.js` drives the app through ~17 documented screens and captures
+  each one, converted to WebP via `scripts/convert-doc-screenshots.mjs`).
 - The Help button/F1 shortcut are still hidden entirely in the mock/browser build
   (`hasDesktopBackend` check in `App.vue`, `HelpPort.open` absent from
   `src/adapters/mock/index.ts`) — unrelated to the Pages deploy now existing, since that hides

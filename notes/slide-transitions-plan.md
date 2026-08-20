@@ -1,7 +1,9 @@
 # Slide Transitions — Design Notes
 
-Status: as of 2026-08-12, early design — nothing built yet. This is a working document, not a
-final spec.
+Status: implemented, matching the "Revised approach" below exactly — `SlideContentRenderer.vue`'s
+`displayedContent`/`fading`/`FADE_MS` (125ms each way) plus the background-url cache warm-up on
+service open. Kept as the design rationale for why it works this way, not a live implementation
+reference — see the component itself for current behavior.
 
 ## Why this exists
 
@@ -116,13 +118,7 @@ per-slide one.
 
 ## Next steps
 
-Implement the opacity-dip approach on `.slide-root` in `SlideContentRenderer.vue` (rather than a
-`<Transition>` wrapper in the two parent views, which was the wrong layer once the goal is
-"animate without remounting"), add the background-url cache warm-up on service open, and manually
-confirm on both the Tauri desktop build and a browser/tablet build that: the fade reads smoothly
-at 250–300ms, a shared background video/looping audio survives a same-url slide change without
-restarting, and there's no visible pop-in on a first-time background url even right after opening
-a service.
+Done — see the Status line at the top.
 
 ## Relationship to other plans
 

@@ -440,18 +440,23 @@ Before broader public distribution:
 - Confirm api.bible attribution and translation-selection restrictions.
 - Retain licenses for all bundled fonts and dependencies in distributed artifacts or an About/Credits location as required.
 - Document that locally imported Bible translations are supplied and licensed by the user.
-- Decide whether the current self-signed Windows certificate process is acceptable for the intended audience.
-- Decide when macOS signing and notarization become necessary.
+- ~~Decide whether the current self-signed Windows certificate process is acceptable~~ — decided:
+  a paid CA certificate isn't realistic for a free, open-source app distributed to a handful of
+  church-owned machines; self-signed with a one-time per-machine trust step is the accepted
+  approach (see release-process.md).
+- ~~Decide when macOS signing and notarization become necessary~~ — moot: macOS was dropped from
+  the release matrix entirely (decided August 9, 2026 — see release-process.md).
 
 ## Documentation drift
 
-The README and architecture plan contain historical statements that no longer match the implementation, including claims that several adapter areas are still mock-only.
+Status: reviewed August 19, 2026. `README.md` and `notes/architecture-plan.md` no longer claim
+adapter areas are mock-only — `README.md` now names all four `StudioAdapter` kinds (`tauri`,
+`web`, `tablet`, `mock`), and `architecture-plan.md`'s stale macOS references and "open decisions"
+are corrected/resolved. `notes/release-process.md` was already current (it documents the
+self-signed cert and the macOS-dropped decision directly).
 
-Update:
+Still worth a pass if they've drifted further:
 
-- `README.md`
-- `notes/architecture-plan.md`
-- `notes/release-process.md`
 - Feature-support and platform-support matrix
 - Installed versus portable behavior
 - Remote-control discovery and port behavior

@@ -1,8 +1,10 @@
 # Worship Studio — Architecture & Implementation Plan
 
-Status: draft for review. Source of truth for features remains `design/feature-spec.md`;
-this document is the technical plan for building it. Nothing has been implemented yet —
-this is a from-scratch build, not a reconciliation with prior code.
+Status: the original pre-build technical plan, kept as-written for the stack rationale, the
+adapter-boundary decision, and the milestone history — not a live snapshot of the current data
+model or repo layout (both have grown well past what's sketched below; see the actual `src/`,
+`src-tauri/`, and `src/adapters/types.ts` for current truth). Source of truth for features was
+`design/feature-spec.md`.
 
 ## 1. Stack & tooling decisions
 
@@ -18,7 +20,7 @@ this is a from-scratch build, not a reconciliation with prior code.
 | Bible/data files | `serde_json` (Rust) / native JSON (JS) | Per spec section 7 — no SQLite, avoids concurrent-write corruption over Dropbox sync |
 | Component tests | Vitest + Vue Test Utils | Spec-mandated |
 | E2E | WebdriverIO + `tauri-driver` | Spec-mandated; scripts double as demo-video/docs-site source (fast mode + demo-mode with pauses) |
-| CI/CD | GitHub Actions + `tauri-apps/tauri-action` | Windows full build, macOS prep-only build, static demo → GitHub Pages |
+| CI/CD | GitHub Actions + `tauri-apps/tauri-action` | Windows full build, static demo → GitHub Pages (macOS was in this plan's original scope; dropped later — see release-process.md) |
 
 ## 2. The adapter boundary (the load-bearing architectural decision)
 
@@ -59,8 +61,7 @@ interface StudioAdapter {
 - **Feature-detection, not stubbing-with-lies**: Windows-only ports (`externalApps`,
   the live-role parts of `displays`) are typed as optional (`externalApps?: ExternalAppPort`)
   so components check for presence and hide the UI, rather than the mock adapter pretending
-  to support something it can't. This is the same pattern the spec already uses for the
-  Mac build vs. Windows build.
+  to support something it can't.
 - **Resolution logic** (`adapters/index.ts`): `window.__TAURI__ !== undefined` → real adapter;
   otherwise mock. No separate build target/entry point needed — same bundle can run either
   way, which keeps "build the demo" a matter of `vite build` without Tauri's asset injection,
@@ -161,7 +162,7 @@ worship-studio/
     migrate-opensong/       # OpenSong XML → Worship Studio JSON converter (CLI, Node or Rust)
   .github/workflows/
     ci.yml                  # lint, typecheck, unit tests, e2e (fast mode)
-    release.yml             # tauri-action build for Windows + macOS, signed artifacts
+    release.yml             # tauri-action build for Windows, signed artifacts
     demo.yml                 # static build → GitHub Pages on release
   notes/                    # this plan and other internal engineering docs
   docs/                     # VitePress help site (in-app + GitHub Pages), see help-system-plan.md
@@ -193,8 +194,8 @@ demoable (mock adapter) before its native plumbing exists.
    Preachers, Bible Translations, General (device name, dark mode).
 9. **M8 — Undo/auto-save**: the toast mechanism, wired into every destructive/edit action
    from M2 onward (retrofit as needed) — this is cross-cutting, not a discrete screen.
-10. **M9 — Release pipeline**: Windows/macOS builds via `tauri-action`, self-signed cert
-    install docs, static demo → GitHub Pages on release.
+10. **M9 — Release pipeline**: Windows build via `tauri-action`, self-signed cert install docs,
+    static demo → GitHub Pages on release.
 
 v1.1 items (remote control, sheet music, video/audio, external-app hand-off, CCLI
 reporting, theme editor/branding, order-of-worship export) and deferred items (QR slide,
@@ -207,13 +208,12 @@ block or get blocked by the milestone order above. Worth doing early as a real-d
 test of the schema (249 songs, years of sets, embedded background images to re-home into
 the media library) rather than leaving it until the end.
 
-## 6. Open decisions for you to confirm
+## 6. Decisions this plan originally left open (now resolved)
 
-- **Node/pnpm version pin** — Vuetify 4 requires Node ≥24.11.1, so the engines field and CI
-  runner version need to match that floor. Low-stakes, will just pick current-stable unless
-  you want otherwise.
-- **Where translated Bible reference data (book/chapter/verse counts) comes from** — needed
-  even for reference-only mode and not yet sourced in the spec; likely a small bundled JSON,
-  public-domain data (e.g. derived from a KJV verse index) is easy to find.
-- **Self-signed cert generation** — who holds the signing key / how it gets installed on
-  church machines — a process question more than a code one, worth deciding before M9.
+- **Node/pnpm version pin** — settled: `package.json`'s `engines`/`packageManager` fields pin
+  Node ≥24.11.1 / pnpm 11.17.0, matching CI.
+- **Bible reference data** — settled: a bundled KJV dataset plus ESV/api.bible for other
+  translations (`src-tauri/src/domain/scripture.rs`).
+- **Self-signed cert generation** — settled: see
+  [release-process.md](release-process.md)'s one-time setup section for who holds the key and
+  how a church machine trusts it.
