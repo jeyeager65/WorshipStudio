@@ -1690,6 +1690,35 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
   background: rgba(var(--v-theme-surface), 0.9);
   box-shadow: 0 5px 18px rgba(0, 0, 0, 0.08);
 }
+/* .editor-heading's back button and .editor-summary's chips/drawer-toggle icons are all
+   flex:none (fixed to their own content) — only the h1 in between can shrink, so a genuinely
+   narrow (phone) width runs out of room to give and the two sides overlap instead of just
+   crowding the title. Wrapping onto two rows below gives each side the full width instead. */
+@media (max-width: 480px) {
+  .editor-header {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .editor-heading,
+  .editor-summary {
+    flex-basis: 100%;
+  }
+  .editor-summary {
+    justify-content: flex-end;
+  }
+  /* The header row wrapping to two lines above needs more than the usual fixed 78px — grown
+     here, along with every other place 78px is hardcoded as "the header's height" (the compact
+     drawers/backdrop below, which are always active at this width since isEditorCompact's own
+     ~1280px threshold is far wider than this one). */
+  .editor {
+    grid-template-rows: 120px minmax(0, 1fr);
+  }
+  .editor--compact .filmstrip,
+  .editor--compact .properties,
+  .drawer-backdrop {
+    top: 120px;
+  }
+}
 .editor-heading {
   display: flex;
   min-width: 0;
