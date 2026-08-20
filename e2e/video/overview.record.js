@@ -145,7 +145,7 @@ async function pauseForBeat(id) {
 describe('Overview video (recording, not a test)', () => {
   it('seeds sample data, then drives the app while ffmpeg records', async () => {
     // --- Seed real-looking content first, silently, before capture starts. ---
-    const { servicesNav, serviceCard } = await seedSampleData()
+    const { servicesNav } = await seedSampleData()
 
     // --- Start recording ---
     // gdigrab's window-title capture (`-i title=...`) BitBlts that specific HWND directly,
