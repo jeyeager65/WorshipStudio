@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { getAdapter } from '@/adapters'
 import { useAsyncStoreState } from '@/composables/useAsyncStoreState'
 import type { ConflictedItem, RecoveryIssue, SyncProgress, SyncStatus } from '@/adapters/types'
+import { beginCloudOAuthRedirect, type CloudProviderId } from '@/utils/cloudOAuthRedirect'
 
 // How often to re-poll getProgress() while a sync is running — cloudSync.ts has no push channel
 // of its own (SyncPort is a plain Promise-based adapter interface, not an event emitter), so this
@@ -101,6 +102,29 @@ export const useSyncStore = defineStore('sync', () => {
     })
   }
 
+  // Shared by both surfaces that offer a one-tap reconnect (App.vue's app-wide banner and
+  // LibrarySyncSection.vue's inline prompt) so there's one loading/error state regardless of
+  // which one the operator happened to tap, not two independently-tracked copies of the same
+  // in-flight redirect. See LibrarySyncSection.vue's original doc comment (now here) for why this
+  // reuses the device's already-stored client ID/library path rather than asking the operator to
+  // re-enter anything, and why it's a full top-level redirect rather than a background call.
+  const reconnectingCloud = ref(false)
+  const reconnectError = ref('')
+  async function reconnectCloud(
+    provider: CloudProviderId,
+    clientId: string,
+    libraryFolderPath: string,
+  ) {
+    reconnectingCloud.value = true
+    reconnectError.value = ''
+    try {
+      await beginCloudOAuthRedirect(provider, clientId, libraryFolderPath)
+    } catch (error) {
+      reconnectError.value = error instanceof Error ? error.message : "Couldn't start reconnecting."
+      reconnectingCloud.value = false
+    }
+  }
+
   return {
     status,
     conflicts,
@@ -114,5 +138,8 @@ export const useSyncStore = defineStore('sync', () => {
     quarantine,
     runSync,
     resetAndResync,
+    reconnectingCloud,
+    reconnectError,
+    reconnectCloud,
   }
 })

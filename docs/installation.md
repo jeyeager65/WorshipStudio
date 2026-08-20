@@ -20,9 +20,14 @@ readiness check, and everything else in the [Getting Started](/getting-started) 
    certificate rather than one from a paid certificate authority — a paid certificate isn't
    realistic for a free, open-source project distributed to a handful of church-owned machines.
    Windows doesn't trust a self-signed certificate by default, so without this step the installer
-   shows an "unrecognized publisher" warning (you can still click through it — this step just
-   makes that warning go away for good). This is genuinely one-time per machine — every future
-   release signed with the same certificate installs cleanly after this, with no need to repeat it.
+   shows an "unrecognized publisher" warning. This step fixes that permanently — every future
+   release signed with the same certificate shows **Worship Studio** as the verified publisher
+   from then on, with no need to repeat this step.
+
+   This does *not* stop a separate, unrelated warning from Microsoft Defender SmartScreen (see
+   step 3) — that one checks a file's reputation with Microsoft's own cloud service, which a
+   self-signed certificate can never build up the way a paid one can, so it's expected on every
+   new release regardless of this step.
    - Download [`worship-studio-codesign.cer`](https://github.com/jeyeager65/WorshipStudio/raw/main/scripts/release/worship-studio-codesign.cer).
    - Double-click the downloaded file to open it, then click **Install Certificate...**
    - Choose **Local Machine** (not Current User) and click **Next** — this needs administrator
@@ -43,8 +48,13 @@ readiness check, and everything else in the [Getting Started](/getting-started) 
    ```
    Does exactly the same thing as the steps above, just scriptable.
    :::
-3. Run the installer you downloaded in step 1. A standard Windows installer elevation (UAC)
-   prompt showing "Worship Studio" as the publisher is normal.
+3. Run the installer you downloaded in step 1. Expect two normal prompts:
+   - **Microsoft Defender SmartScreen** ("Windows protected your PC") — this happens on
+     *every* new release, even after step 2, because SmartScreen's reputation check is about
+     the specific file, not whether you trust its signer. Click **More info**, then
+     **Run anyway**.
+   - A standard Windows installer elevation (UAC) prompt showing **Worship Studio** as the
+     publisher — confirms step 2 worked.
 4. Launch Worship Studio — the [setup wizard](/getting-started) walks you through the rest.
 
 **Staying up to date:** once installed, the app checks for updates automatically on launch and

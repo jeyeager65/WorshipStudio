@@ -49,7 +49,11 @@ async function migrateUsageDatesIfNeeded(
 
   for (const song of await collection.list()) {
     const rebuilt = (entriesBySong.get(song.id) ?? []).slice().sort(sortByServiceId)
-    const current = song.usageDates.slice().sort(sortByServiceId)
+    // A library saved before usageDates existed has it genuinely absent from the JSON, not just
+    // empty -- Rust's #[serde(default)] silently fills that in on read (models.rs's usage_dates
+    // field), but a plain JSON.parse here does not, so this is exactly the case this migration
+    // exists to backfill and must tolerate rather than assume away.
+    const current = (song.usageDates ?? []).slice().sort(sortByServiceId)
     if (JSON.stringify(current) === JSON.stringify(rebuilt)) continue
     await collection.save({ ...song, usageDates: rebuilt })
   }

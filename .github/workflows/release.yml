@@ -91,10 +91,12 @@ jobs:
           # the project moves off direct-to-main commits post-1.0. releaseBody prepends to it.
           generateReleaseNotes: true
           releaseBody: |
-            Windows builds are signed with a self-signed certificate, so Windows will show an
-            "unrecognized publisher" warning on first install. See the Installation guide
+            Windows builds are signed with a self-signed certificate. Expect a Microsoft Defender
+            SmartScreen prompt on every release (click "More info" then "Run anyway" -- this is
+            normal and unrelated to trusting the certificate) plus an "unrecognized publisher"
+            warning the first time on a given machine. See the Installation guide
             (https://jeyeager65.github.io/WorshipStudio/installation.html) for the one-time
-            trust step, needed once per machine.
+            certificate-trust step.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.platform == 'windows-latest' && '--config windows-signing.json' || '' }}

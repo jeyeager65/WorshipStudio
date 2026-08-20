@@ -24,7 +24,6 @@ import { disconnect as disconnectOneDrive, isConnected as isOneDriveConnected } 
 import { generateQrCodeDataUrl } from '@/utils/qrCode'
 import { buildConnectCode } from '@/utils/connectCode'
 import { formatSyncProgressLabel } from '@/utils/syncProgress'
-import { beginCloudOAuthRedirect } from '@/utils/cloudOAuthRedirect'
 import {
   buildSampleServices,
   sampleSongs,
@@ -107,28 +106,21 @@ async function switchConnectionMethod() {
 // A one-tap recovery for ProviderReauthRequiredError (syncStore.status.needsReconnect) that
 // doesn't require Disconnect first — reuses this device's already-stored client ID/library path
 // (machineSettings, the same values "Add Another Device" QR-codes for a second device) rather
-// than making the operator re-enter anything. This is a full top-level redirect to the
-// provider's own sign-in page, same mechanism as BootGate.vue's first-connect flow
-// (beginCloudOAuthRedirect, cloudOAuthRedirect.ts) — and on a real device, confirmed this alone
-// is often enough to clear a false "needs reconnect" (the underlying browser session was still
-// signed in the whole time; only OneDrive's own silent hidden-iframe reauth attempt had failed,
-// not the connection itself — see cloudSync.ts's own doc comment on needsReconnect).
-const reconnectingCloud = ref(false)
+// than making the operator re-enter anything. On a real device, confirmed this alone is often
+// enough to clear a false "needs reconnect" (the underlying browser session was still signed in
+// the whole time; only OneDrive's own silent hidden-iframe reauth attempt had failed, not the
+// connection itself — see cloudSync.ts's own doc comment on needsReconnect). The actual redirect
+// logic now lives in useSyncStore (reconnectCloud/reconnectingCloud/reconnectError), shared with
+// App.vue's app-wide banner so both surfaces track one in-flight attempt, not two.
 async function reconnectCloud() {
   const clientId = machineSettings.value?.tabletCloudClientId
   if (!clientId) return
-  reconnectingCloud.value = true
-  cloudActionError.value = ''
-  try {
-    await beginCloudOAuthRedirect(
-      cloudProvider.value,
-      clientId,
-      machineSettings.value?.tabletCloudLibraryFolderPath ?? '',
-    )
-  } catch (error) {
-    cloudActionError.value = error instanceof Error ? error.message : "Couldn't start reconnecting."
-    reconnectingCloud.value = false
-  }
+  await syncStore.reconnectCloud(
+    cloudProvider.value,
+    clientId,
+    machineSettings.value?.tabletCloudLibraryFolderPath ?? '',
+  )
+  if (syncStore.reconnectError) cloudActionError.value = syncStore.reconnectError
 }
 
 async function disconnectCloud() {
@@ -843,7 +835,7 @@ async function saveDataLocationPath() {
               variant="tonal"
               color="warning"
               size="small"
-              :loading="reconnectingCloud"
+              :loading="syncStore.reconnectingCloud"
               prepend-icon="mdi-refresh"
               @click="reconnectCloud"
             >

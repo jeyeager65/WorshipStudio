@@ -53,6 +53,30 @@ const syncTooltipText = computed(() => {
   return 'Not synced yet'
 })
 
+// App-wide banner for syncStore.status.needsReconnect, below — the app-bar icon above is easy to
+// miss (a small, passive tooltip-only affordance), and this device's reconnect can only ever be
+// silent-or-not on app open/focus (useTabletSync.ts), not something the operator gets an active
+// prompt for otherwise. A persistent bottom snackbar matches the update banners' own pattern
+// (never auto-dismisses, hidden while presenting) so this is genuinely hard to miss without being
+// disruptive — reusing the same one-tap reconnectCloud() as LibrarySyncSection.vue (now shared
+// via useSyncStore) rather than a second copy of the redirect logic.
+const reconnectBannerText = computed(() => {
+  const count = syncStore.status?.pendingPushCount
+  const provider = settingsStore.machineSettings?.tabletCloudProvider === 'onedrive' ? 'OneDrive' : 'Dropbox'
+  const changesNote = count ? ` ${count} change${count === 1 ? '' : 's'} waiting to sync.` : ''
+  return `This device needs to reconnect to ${provider}.${changesNote}`
+})
+function reconnectCloudFromBanner() {
+  const machineSettings = settingsStore.machineSettings
+  const clientId = machineSettings?.tabletCloudClientId
+  if (!clientId) return
+  void syncStore.reconnectCloud(
+    machineSettings?.tabletCloudProvider ?? 'dropbox',
+    clientId,
+    machineSettings?.tabletCloudLibraryFolderPath ?? '',
+  )
+}
+
 // The presentation window (see src/adapters/tauri/index.ts's `live` port) loads this same
 // app bundle in a second native window labeled "presentation" — never reached through
 // routing, since it isn't the main window at all. Everything else below (app-bar, nav,
@@ -802,6 +826,25 @@ onUnmounted(() => {
       <template #actions>
         <v-btn variant="text" :loading="tauriUpdate.applying" @click="tauriUpdate.applyUpdate">
           Update Now
+        </v-btn>
+      </template>
+    </v-snackbar>
+
+    <v-snackbar
+      v-if="isTabletBuild"
+      :model-value="!!syncStore.status?.needsReconnect && !isPresenting"
+      color="warning"
+      timeout="-1"
+      location="bottom"
+    >
+      {{ reconnectBannerText }}
+      <template #actions>
+        <v-btn
+          variant="text"
+          :loading="syncStore.reconnectingCloud"
+          @click="reconnectCloudFromBanner"
+        >
+          Reconnect
         </v-btn>
       </template>
     </v-snackbar>

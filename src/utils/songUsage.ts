@@ -103,18 +103,22 @@ export function applyServiceUsageChange(
   serviceId: string,
   desiredDate: string | undefined,
 ): Song | undefined {
-  const existingIndex = song.usageDates.findIndex((entry) => entry.serviceId === serviceId)
-  const existing = existingIndex === -1 ? undefined : song.usageDates[existingIndex]
+  // Same defaulting Rust's #[serde(default)] gives usage_dates on read (models.rs) -- a song
+  // saved before this field existed has it genuinely absent from the JSON on the web/tablet
+  // ports, which parse plain JSON with no such defaulting.
+  const existingUsageDates = song.usageDates ?? []
+  const existingIndex = existingUsageDates.findIndex((entry) => entry.serviceId === serviceId)
+  const existing = existingIndex === -1 ? undefined : existingUsageDates[existingIndex]
 
   if (desiredDate === undefined) {
     if (!existing) return undefined
-    const usageDates = song.usageDates.slice()
+    const usageDates = existingUsageDates.slice()
     usageDates.splice(existingIndex, 1)
     return { ...song, usageDates }
   }
 
   if (existing && existing.date === desiredDate) return undefined
-  const usageDates = song.usageDates.slice()
+  const usageDates = existingUsageDates.slice()
   const entry: SongUsageEntry = { serviceId, date: desiredDate }
   if (existingIndex === -1) usageDates.push(entry)
   else usageDates[existingIndex] = entry

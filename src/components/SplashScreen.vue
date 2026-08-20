@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { getVersion } from '@tauri-apps/api/app'
+import { mdiCheck, mdiCheckCircle } from '@mdi/js'
 import logoDark from '@/assets/logo-dark.png'
 
 defineProps<{
@@ -30,7 +31,20 @@ void getVersion()
             :class="{ 'step--active': step === index + 1, 'step--complete': step > index + 1 }"
           >
             <span class="step-dot">
-              <v-icon v-if="step > index + 1" icon="mdi-check" size="10" />
+              <!-- Inline path data rather than v-icon: this screen paints before the MDI
+                   webfont has necessarily loaded, and an icon font with nothing loaded yet
+                   renders its missing-glyph box (visible as a stray rectangle) instead of
+                   nothing -- an SVG path has no such loading state. -->
+              <svg
+                v-if="step > index + 1"
+                viewBox="0 0 24 24"
+                width="10"
+                height="10"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path :d="mdiCheck" />
+              </svg>
             </span>
             <span>{{ label }}</span>
           </div>
@@ -43,7 +57,17 @@ void getVersion()
       </div>
       <div class="status-row" role="status" aria-live="polite">
         <span v-if="step < 3" class="status-pulse" />
-        <v-icon v-else icon="mdi-check-circle" size="16" class="ready-icon" />
+        <svg
+          v-else
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          fill="currentColor"
+          class="ready-icon"
+          aria-hidden="true"
+        >
+          <path :d="mdiCheckCircle" />
+        </svg>
         <span class="status-text">{{ statusText }}</span>
       </div>
     </div>

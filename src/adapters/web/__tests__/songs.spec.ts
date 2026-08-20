@@ -99,9 +99,11 @@ describe('createWebSongsPort', () => {
   })
 
   // Mirrors src-tauri/src/domain/songs.rs's migrate_usage_dates_if_needed tests — a library
-  // saved before Song.usageDates existed (a raw song file on disk with no usageDates key, same
-  // as this fixture's empty array default) must have it backfilled from real service history
-  // the first time list() runs, not silently reset to "never used".
+  // saved before Song.usageDates existed must have it backfilled from real service history the
+  // first time list() runs, not silently reset to "never used". Note: this fixture's `[]` is
+  // NOT the same as a real pre-migration file, which has the key genuinely absent from the
+  // JSON — Rust's #[serde(default)] treats those two the same on read, but a plain JSON.parse
+  // here does not; see the dedicated test below for the actually-missing-key case.
   describe('usageDates migration', () => {
     function songFixture(id: string): Song {
       return {
@@ -149,6 +151,33 @@ describe('createWebSongsPort', () => {
       await port.save(cleared)
       const listedAgain = await port.list()
       expect(listedAgain[0]?.usageDates).toEqual([])
+    })
+
+    it('backfills a song file with usageDates genuinely absent from the JSON, not just empty', async () => {
+      const root = createFakeRoot()
+      const settings = createWebSettingsPort(root)
+      const port = createWebSongsPort(root, settings)
+      // A real library saved before this field existed has no usageDates key at all on disk —
+      // written directly here (bypassing port.save(), which always stamps a full Song) to
+      // reproduce that exact shape rather than an empty-array stand-in for it.
+      await writeJsonFile(root, 'songs/song-1.json', {
+        id: 'song-1',
+        title: 'Amazing Grace',
+        collections: [],
+        tags: [],
+        blocks: [],
+        defaultArrangement: { sequence: [] },
+        updatedAt: '',
+        updatedByDevice: '',
+      })
+      await writeJsonFile(
+        root,
+        'services/2026/service-1.json',
+        serviceFixture('service-1', '2026-03-01', 'song-1'),
+      )
+
+      const listed = await port.list()
+      expect(listed[0]?.usageDates).toEqual([{ serviceId: 'service-1', date: '2026-03-01' }])
     })
 
     it('is a no-op on a genuinely fresh library, and still writes the marker', async () => {
