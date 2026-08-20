@@ -26,10 +26,10 @@ const serviceTypesStore = useServiceTypesStore()
 const roleGroupsStore = useRoleGroupsStore()
 const rolesStore = useRolesStore()
 
-// Defaults to today through 3 months out — planning ahead is forward-looking, unlike CCLI's
-// backward-looking usage report. Local calendar-date components (not toISOString, which
+// Defaults to today through 3 months out — planning ahead is forward-looking, unlike the
+// backward-looking Song Usage report. Local calendar-date components (not toISOString, which
 // converts to UTC and can land on a different day near midnight) — same reasoning as
-// ccliUsage.ts's formatLocalDate.
+// songUsageReport.ts's formatLocalDate.
 const toIso = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 const today = new Date()
@@ -277,13 +277,14 @@ async function exportPlanning(format: ReportFormat) {
               <v-icon icon="mdi-book-open-page-variant-outline" size="17" />
               <span v-if="row.sermonTitle"
                 ><strong>{{ row.sermonTitle }}</strong
+                ><template v-if="row.mainPassage"> · {{ row.mainPassage }}</template
                 ><template v-if="row.preacher"> · {{ row.preacher }}</template></span
               >
               <span v-else class="missing-value">Sermon details not yet decided</span>
             </div>
             <div class="plan-columns">
               <section>
-                <h4><v-icon icon="mdi-account-group-outline" size="16" /> Team &amp; Building</h4>
+                <h4><v-icon icon="mdi-account-group-outline" size="16" /> Assignments</h4>
                 <div v-if="row.rosterGroups.length" class="roster-groups">
                   <div
                     v-for="(group, groupIndex) in row.rosterGroups"

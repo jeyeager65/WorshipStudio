@@ -278,16 +278,19 @@ function renderColumns(block: ReportColumns, primary: string): Content {
   }
 }
 
+// A single-row, single-column table rather than a plain stack — pdfmake has no standalone
+// "draw a line under this content" primitive outside a table's own border layout, so the table
+// is purely a vehicle for that bottom rule; it isn't laying out multiple cells the way the
+// former two-column (left accent bar + content) version did.
 function renderSection(block: ReportSection, primary: string): Content {
   const accent = block.accent ?? primary
   return {
     unbreakable: block.keepTogether,
     margin: [0, 8, 0, 6],
     table: {
-      widths: [4, '*'],
+      widths: ['*'],
       body: [
         [
-          { text: '', fillColor: accent, rowSpan: 2 },
           {
             stack: [
               { text: block.heading, bold: true, fontSize: 11, color: accent },
@@ -296,12 +299,16 @@ function renderSection(block: ReportSection, primary: string): Content {
                 : []),
               ...block.blocks.map((child) => renderBlock(child, primary)),
             ],
-            margin: [9, 7, 7, 7],
+            margin: [0, 0, 0, 8],
           },
         ],
-        [{ text: '' }, { text: '' }],
       ],
     },
-    layout: 'noBorders',
+    layout: {
+      hLineWidth: (i: number, node: { table: { body: unknown[] } }) =>
+        i === node.table.body.length ? 1 : 0,
+      vLineWidth: () => 0,
+      hLineColor: () => accent,
+    },
   } as unknown as Content
 }

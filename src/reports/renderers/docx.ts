@@ -382,7 +382,6 @@ function renderSection(block: ReportSection, primary: string): DocxBlock[] {
     new Paragraph({
       keepNext: true,
       spacing: { before: 240, after: 30 },
-      border: { bottom: { style: BorderStyle.SINGLE, size: 5, color: accent } },
       children: [new TextRun({ text: block.heading, bold: true, color: accent, size: 23 })],
     }),
     ...(block.subheading
@@ -395,6 +394,15 @@ function renderSection(block: ReportSection, primary: string): DocxBlock[] {
         ]
       : []),
     ...block.blocks.flatMap((child) => renderBlock(child, primary)),
+    // A rule between services, not a bar beside them (see pdf.ts's own renderSection for the
+    // matching PDF-side change) — an empty paragraph carrying only a bottom border, rather than
+    // attaching the border to the last real content paragraph above, since that content's own
+    // type/shape varies per section and isn't guaranteed to be a Paragraph at all.
+    new Paragraph({
+      spacing: { before: 60, after: 0 },
+      border: { bottom: { style: BorderStyle.SINGLE, size: 5, color: accent } },
+      children: [],
+    }),
   ]
 }
 

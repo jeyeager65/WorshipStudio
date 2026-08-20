@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildSongUsageDocument, buildSongUsageWorkbook } from '@/reports/builders/ccli'
+import { buildSongUsageDocument, buildSongUsageWorkbook } from '@/reports/builders/songUsage'
 import { buildPlanningDocument, buildPlanningWorkbook } from '@/reports/builders/planning'
 import { buildBulletinDocument } from '@/reports/builders/bulletin'
 import { renderDocx } from '@/reports/renderers/docx'
@@ -23,8 +23,21 @@ const songUsageInput = {
     uniqueSongs: 2,
     servicesIncluded: 2,
     rows: [
-      { songId: 's1', title: 'Amazing Grace', ccli: '22025', author: 'John Newton', timesUsed: 3 },
-      { songId: 's2', title: 'Doxology', author: 'Thomas Ken', timesUsed: 1 },
+      {
+        songId: 's1',
+        title: 'Amazing Grace',
+        ccli: '22025',
+        author: 'John Newton',
+        timesUsed: 3,
+        dates: ['2026-01-04', '2026-03-01', '2026-05-17'],
+      },
+      {
+        songId: 's2',
+        title: 'Doxology',
+        author: 'Thomas Ken',
+        timesUsed: 1,
+        dates: ['2026-02-08'],
+      },
     ],
   },
 }
@@ -42,6 +55,7 @@ const planningInput = {
       type: 'Morning Worship',
       preacher: 'Pastor Dan',
       sermonTitle: 'Hope in Christ',
+      mainPassage: 'Romans 8:28-39',
       songTitles: ['Amazing Grace', 'Doxology'],
       rosterGroups: [
         {
@@ -68,12 +82,89 @@ describe('report builders', () => {
     expect(workbook.sheets[0].columns.map((column) => column.header)).toContain('CCLI Number')
   })
 
+  it('formats Dates Used as MM/DD, omitting the year, when the whole report range is one calendar year', () => {
+    // songUsageInput's own range (2026-01-01 to 2026-07-31) is entirely within 2026.
+    const document = buildSongUsageDocument(songUsageInput)
+    const usageTable = document.blocks[2]
+    if (usageTable.kind !== 'table') throw new Error('expected a table block')
+    const datesCell = usageTable.rows[0]?.[4]
+    expect(datesCell?.runs[0]?.text).toBe('01/04, 03/01, 05/17')
+
+    const workbook = buildSongUsageWorkbook(songUsageInput)
+    expect(workbook.sheets[0].rows[0]?.dates).toBe('01/04\n03/01\n05/17')
+  })
+
+  it('formats Dates Used as MM/DD/YYYY when the report range spans more than one calendar year', () => {
+    const multiYearInput = { ...songUsageInput, fromDate: '2025-11-01', toDate: '2026-07-31' }
+    const document = buildSongUsageDocument(multiYearInput)
+    const usageTable = document.blocks[2]
+    if (usageTable.kind !== 'table') throw new Error('expected a table block')
+    const datesCell = usageTable.rows[0]?.[4]
+    expect(datesCell?.runs[0]?.text).toBe('01/04/2026, 03/01/2026, 05/17/2026')
+
+    const workbook = buildSongUsageWorkbook(multiYearInput)
+    expect(workbook.sheets[0].rows[0]?.dates).toBe('01/04/2026\n03/01/2026\n05/17/2026')
+  })
+
+  it('omits the CCLI # column entirely when nothing in the result set has a CCLI number', () => {
+    const noCcliInput = {
+      ...songUsageInput,
+      summary: {
+        ...songUsageInput.summary,
+        rows: songUsageInput.summary.rows.map((row) => ({ ...row, ccli: undefined })),
+      },
+    }
+    const document = buildSongUsageDocument(noCcliInput)
+    const usageTable = document.blocks[2]
+    if (usageTable.kind !== 'table') throw new Error('expected a table block')
+    expect(usageTable.headers).not.toContain('CCLI #')
+    expect(usageTable.headers).toEqual(['Song', 'Author', 'Uses', 'Dates Used'])
+
+    const workbook = buildSongUsageWorkbook(noCcliInput)
+    const headers = workbook.sheets[0].columns.map((column) => column.header)
+    expect(headers).not.toContain('CCLI Number')
+    // Every row's own keys must drop 'ccli' too, not just the column list — otherwise a stray
+    // exported value would sit under a header that no longer exists.
+    expect(workbook.sheets[0].rows[0]).not.toHaveProperty('ccli')
+  })
+
   it('creates document and workbook forms of the multi-week plan', () => {
     const document = buildPlanningDocument(planningInput)
     const workbook = buildPlanningWorkbook(planningInput)
 
     expect(document.blocks[0]).toMatchObject({ kind: 'section', heading: 'Morning Worship' })
     expect(workbook.sheets.map((sheet) => sheet.name)).toEqual(['Services', 'Songs', 'Assignments'])
+  })
+
+  it('includes the sermon’s main passage on the sermon line, same title · passage · preacher order as ServiceCard.vue', () => {
+    const document = buildPlanningDocument(planningInput)
+    const section = document.blocks[0]
+    if (section.kind !== 'section') throw new Error('expected a section block')
+    const sermonParagraph = section.blocks[0]
+    if (sermonParagraph.kind !== 'paragraph') throw new Error('expected a paragraph block')
+    const text = sermonParagraph.runs.map((run) => run.text).join('')
+    expect(text).toBe('Hope in Christ · Romans 8:28-39 · Pastor Dan')
+
+    const workbook = buildPlanningWorkbook(planningInput)
+    const servicesSheet = workbook.sheets.find((sheet) => sheet.name === 'Services')!
+    expect(servicesSheet.columns.map((column) => column.header)).toContain('Passage')
+    expect(servicesSheet.rows[0]).toMatchObject({ passage: 'Romans 8:28-39' })
+  })
+
+  it('drops the roster column’s generic heading, keeping only each group’s own real category name', () => {
+    const document = buildPlanningDocument(planningInput)
+    const section = document.blocks[0]
+    if (section.kind !== 'section') throw new Error('expected a section block')
+    const rosterColumn = section.blocks[1]
+    if (rosterColumn.kind !== 'columns') throw new Error('expected a columns block')
+    const rosterBlocks = rosterColumn.columns[0]!.blocks
+    // No leading generic "Team & Building" paragraph heading — the first block is already the
+    // first real roster group's own list, headed by its own category name.
+    expect(rosterBlocks.every((block) => block.kind !== 'paragraph')).toBe(true)
+    expect(rosterBlocks.map((block) => (block.kind === 'list' ? block.heading : undefined))).toEqual([
+      'Praise Team',
+      'Building',
+    ])
   })
 })
 
@@ -147,6 +238,17 @@ describe('report renderers', () => {
     const bytes = await renderPdf(buildSongUsageDocument(songUsageInput))
     expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe('%PDF-')
     expect(bytes.length).toBeGreaterThan(1000)
+  })
+
+  // The multi-week plan is the one document report actually using ReportSection blocks (a
+  // divider line between services, not a colored bar beside them — see pdf.ts/docx.ts's own
+  // renderSection) — neither renderer has any other coverage exercising that block kind at all.
+  it('renders a genuine PDF and DOCX for the multi-week plan (ReportSection blocks)', async () => {
+    const document = buildPlanningDocument(planningInput)
+    const pdfBytes = await renderPdf(document)
+    expect(new TextDecoder().decode(pdfBytes.slice(0, 5))).toBe('%PDF-')
+    const docxBytes = await renderDocx(document)
+    expect(String.fromCharCode(...docxBytes.slice(0, 2))).toBe('PK')
   })
 
   it('creates a readable XLSX workbook with typed usage data', async () => {

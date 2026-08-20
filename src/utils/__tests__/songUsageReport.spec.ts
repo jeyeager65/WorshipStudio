@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeCcliUsage, quickRangeDates } from '@/utils/ccliUsage'
+import { computeSongUsage, quickRangeDates } from '@/utils/songUsageReport'
 import type { Service } from '@/models/service'
 import type { Song } from '@/models/song'
 
@@ -11,7 +11,7 @@ function song(id: string, title: string, overrides: Partial<Song> = {}): Song {
     tags: [],
     blocks: [],
     defaultArrangement: { sequence: [] },
-    usage: { usesPastYear: 0 },
+    usageDates: [],
     updatedAt: '',
     updatedByDevice: '',
     ...overrides,
@@ -34,7 +34,7 @@ function service(id: string, date: string, type: string, songIds: string[]): Ser
   }
 }
 
-describe('computeCcliUsage', () => {
+describe('computeSongUsage', () => {
   const songs = [
     song('song-1', 'Great Are You Lord', { ccli: '7036939', author: 'Leonard, MacIntyre, Jordan' }),
     song('song-2', "Our Lord's Prayer", { author: 'Traditional' }),
@@ -46,7 +46,7 @@ describe('computeCcliUsage', () => {
       service('svc-2', '2026-01-12', 'Sunday Morning Worship', ['song-1', 'song-2']),
       service('svc-3', '2025-12-25', 'Sunday Morning Worship', ['song-1']), // out of range
     ]
-    const summary = computeCcliUsage(services, songs, {
+    const summary = computeSongUsage(services, songs, {
       fromDate: '2026-01-01',
       toDate: '2026-12-31',
     })
@@ -60,13 +60,28 @@ describe('computeCcliUsage', () => {
     })
   })
 
+  it('collects the actual dates a song was used, ascending', () => {
+    const services = [
+      service('svc-1', '2026-03-01', 'Sunday Morning Worship', ['song-1']),
+      service('svc-2', '2026-01-12', 'Sunday Morning Worship', ['song-1']),
+    ]
+    const summary = computeSongUsage(services, songs, {
+      fromDate: '2026-01-01',
+      toDate: '2026-12-31',
+    })
+    expect(summary.rows[0]).toMatchObject({
+      songId: 'song-1',
+      dates: ['2026-01-12', '2026-03-01'],
+    })
+  })
+
   it('excludes services outside the date range (inclusive boundaries)', () => {
     const services = [service('svc-1', '2026-01-01', 'Sunday Morning Worship', ['song-1'])]
     expect(
-      computeCcliUsage(services, songs, { fromDate: '2026-01-01', toDate: '2026-01-01' }).totalUses,
+      computeSongUsage(services, songs, { fromDate: '2026-01-01', toDate: '2026-01-01' }).totalUses,
     ).toBe(1)
     expect(
-      computeCcliUsage(services, songs, { fromDate: '2026-01-02', toDate: '2026-01-31' }).totalUses,
+      computeSongUsage(services, songs, { fromDate: '2026-01-02', toDate: '2026-01-31' }).totalUses,
     ).toBe(0)
   })
 
@@ -75,7 +90,7 @@ describe('computeCcliUsage', () => {
       service('svc-1', '2026-01-05', 'Sunday Morning Worship', ['song-1']),
       service('svc-2', '2026-01-06', 'Wednesday Bible Study', ['song-2']),
     ]
-    const summary = computeCcliUsage(services, songs, {
+    const summary = computeSongUsage(services, songs, {
       fromDate: '2026-01-01',
       toDate: '2026-12-31',
       serviceType: 'Sunday Morning Worship',
@@ -103,7 +118,7 @@ describe('computeCcliUsage', () => {
         updatedByDevice: '',
       },
     ]
-    const summary = computeCcliUsage(services, songs, {
+    const summary = computeSongUsage(services, songs, {
       fromDate: '2026-01-01',
       toDate: '2026-12-31',
     })

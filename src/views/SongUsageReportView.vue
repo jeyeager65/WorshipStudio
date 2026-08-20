@@ -4,9 +4,9 @@ import { useServicesStore } from '@/stores/services'
 import { useSongsStore } from '@/stores/songs'
 import { useSettingsStore } from '@/stores/settings'
 import { useServiceTypesStore } from '@/stores/serviceTypes'
-import { computeCcliUsage, quickRangeDates, type QuickRange } from '@/utils/ccliUsage'
+import { computeSongUsage, quickRangeDates, type QuickRange } from '@/utils/songUsageReport'
 import { reportBranding } from '@/reports/branding'
-import { buildSongUsageDocument, buildSongUsageWorkbook } from '@/reports/builders/ccli'
+import { buildSongUsageDocument, buildSongUsageWorkbook } from '@/reports/builders/songUsage'
 import {
   exportCompletionMessage,
   exportDocumentReport,
@@ -49,12 +49,16 @@ function applyQuickRange(range: QuickRange | undefined) {
 }
 
 const summary = computed(() =>
-  computeCcliUsage(servicesStore.services, songsStore.songs, {
+  computeSongUsage(servicesStore.services, songsStore.songs, {
     fromDate: fromDate.value,
     toDate: toDate.value,
     serviceType: serviceType.value,
   }),
 )
+
+// Same reasoning as the exported PDF/DOCX/XLSX builders (reports/builders/songUsage.ts) — a
+// whole column of em-dashes is just noise for a church that doesn't track CCLI numbers yet.
+const showCcli = computed(() => summary.value.rows.some((row) => row.ccli))
 
 const serviceTypeOptions = computed(() => [
   { title: 'All Types', value: 'all' },
@@ -100,7 +104,7 @@ async function exportSongUsage(format: 'pdf' | 'xlsx') {
 </script>
 
 <template>
-  <main class="report-page ccli-report">
+  <main class="report-page song-usage-report">
     <header class="report-hero">
       <div>
         <router-link to="/reports" class="report-back no-print"
@@ -143,11 +147,11 @@ async function exportSongUsage(format: 'pdf' | 'xlsx') {
       </v-menu>
     </header>
 
-    <section class="filter-panel no-print" aria-labelledby="ccli-filter-title">
+    <section class="filter-panel no-print" aria-labelledby="song-usage-filter-title">
       <div class="panel-heading">
         <span class="panel-icon"><v-icon icon="mdi-filter-variant" size="20" /></span>
         <div>
-          <h2 id="ccli-filter-title">Report range</h2>
+          <h2 id="song-usage-filter-title">Report range</h2>
           <p>Results update immediately as filters change.</p>
         </div>
       </div>
@@ -222,7 +226,7 @@ async function exportSongUsage(format: 'pdf' | 'xlsx') {
         <thead>
           <tr>
             <th>Song</th>
-            <th>CCLI #</th>
+            <th v-if="showCcli">CCLI #</th>
             <th>Author</th>
             <th class="count-column">Uses</th>
           </tr>
@@ -230,7 +234,7 @@ async function exportSongUsage(format: 'pdf' | 'xlsx') {
         <tbody>
           <tr v-for="row in summary.rows" :key="row.songId">
             <td class="song-title">{{ row.title }}</td>
-            <td class="ccli-number">{{ row.ccli ?? '—' }}</td>
+            <td v-if="showCcli" class="song-usage-number">{{ row.ccli ?? '—' }}</td>
             <td class="author-cell">{{ row.author ?? '—' }}</td>
             <td class="count-column">
               <span class="usage-count">{{ row.timesUsed }}</span>
@@ -471,7 +475,7 @@ async function exportSongUsage(format: 'pdf' | 'xlsx') {
 .song-title {
   font-weight: 680;
 }
-.ccli-number {
+.song-usage-number {
   color: rgba(var(--v-theme-on-surface), 0.55);
   font-family: ui-monospace, monospace;
 }

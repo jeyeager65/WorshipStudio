@@ -28,6 +28,7 @@ export function buildPlanningDocument(input: PlanningReportInput): DocumentRepor
           runs: row.sermonTitle
             ? [
                 { text: row.sermonTitle, bold: true },
+                ...(row.mainPassage ? [{ text: ` · ${row.mainPassage}` }] : []),
                 ...(row.preacher ? [{ text: ` · ${row.preacher}` }] : []),
               ]
             : [{ text: 'Sermon details not yet decided', italics: true }],
@@ -68,14 +69,16 @@ export function buildPlanningWorkbook(input: PlanningReportInput): WorkbookRepor
           { key: 'date', header: 'Date', width: 14, numberFormat: 'mmm d, yyyy' },
           { key: 'type', header: 'Service Type', width: 24 },
           { key: 'sermon', header: 'Sermon', width: 32 },
+          { key: 'passage', header: 'Passage', width: 20 },
           { key: 'preacher', header: 'Preacher', width: 24 },
           { key: 'songs', header: 'Planned Songs', width: 46 },
-          { key: 'assignments', header: 'Team & Building', width: 48 },
+          { key: 'assignments', header: 'Assignments', width: 48 },
         ],
         rows: input.rows.map((row) => ({
           date: new Date(`${row.date}T00:00:00`),
           type: row.type,
           sermon: row.sermonTitle ?? '',
+          passage: row.mainPassage ?? '',
           preacher: row.preacher ?? '',
           songs: row.songTitles.join('\n'),
           assignments: formatRosterGroups(row.rosterGroups),
@@ -129,19 +132,16 @@ export function buildPlanningWorkbook(input: PlanningReportInput): WorkbookRepor
   }
 }
 
+// No longer prints its own generic "Team & Building" heading above the group list — each
+// group's own reportList heading below is that group's real role category name (e.g. "Praise
+// Team", "Building"), so a hardcoded label on top of it was pure redundancy, not a real section
+// title (a church's actual categories aren't literally always named "Team & Building" — that was
+// just this codebase's own sample data coincidentally matching it).
 function assignmentBlocks(groups: PlanningRosterGroup[]): ReportBlock[] {
-  if (groups.length === 0) return [reportList('Team & Building', [], 'No assignments yet')]
-  return [
-    {
-      kind: 'paragraph',
-      runs: [{ text: 'Team & Building', bold: true }],
-      style: 'heading',
-      spacingAfter: 4,
-    },
-    ...groups.map((group): ReportBlock =>
-      reportList(group.category ?? '', group.assignments.map(assignmentLabel), ''),
-    ),
-  ]
+  if (groups.length === 0) return [reportList('Assignments', [], 'No assignments yet')]
+  return groups.map((group): ReportBlock =>
+    reportList(group.category ?? '', group.assignments.map(assignmentLabel), ''),
+  )
 }
 
 function formatRosterGroups(groups: PlanningRosterGroup[]): string {

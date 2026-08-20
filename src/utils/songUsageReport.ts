@@ -7,16 +7,20 @@ export interface SongUsageRow {
   ccli?: string
   author?: string
   timesUsed: number
+  /** Every date (within the report's range) a service used this song, ascending. Distinct from
+   *  `Song.usageDates` — that array isn't scoped to any particular range, while this is scoped
+   *  to whatever range this report was run against. */
+  dates: string[]
 }
 
-export interface CcliUsageSummary {
+export interface SongUsageSummary {
   totalUses: number
   uniqueSongs: number
   servicesIncluded: number
   rows: SongUsageRow[]
 }
 
-export interface CcliUsageFilter {
+export interface SongUsageFilter {
   fromDate: string
   toDate: string
   /** Omitted or 'all' means every service type. */
@@ -25,16 +29,18 @@ export interface CcliUsageFilter {
 
 /**
  * Tallies song usage across services in a date range — computed fresh from actual service
- * history rather than each song's own `usage.usesPastYear` (a rolling "past year" figure,
- * not scoped to an arbitrary reporting range) — for CCLI license reporting.
+ * history rather than each song's own `usageDates` (which isn't scoped to any particular
+ * reporting range) — for the Song Usage report (CCLI license reporting, church records, and
+ * general planning).
  */
-export function computeCcliUsage(
+export function computeSongUsage(
   services: Service[],
   songs: Song[],
-  filter: CcliUsageFilter,
-): CcliUsageSummary {
+  filter: SongUsageFilter,
+): SongUsageSummary {
   const songsById = new Map(songs.map((song) => [song.id, song]))
   const usesBySongId = new Map<string, number>()
+  const datesBySongId = new Map<string, string[]>()
   let servicesIncluded = 0
 
   const inRange = services.filter(
@@ -51,6 +57,9 @@ export function computeCcliUsage(
     for (const item of service.items) {
       if (item.type !== 'song') continue
       usesBySongId.set(item.songId, (usesBySongId.get(item.songId) ?? 0) + 1)
+      const dates = datesBySongId.get(item.songId) ?? []
+      dates.push(service.date)
+      datesBySongId.set(item.songId, dates)
       matchedInThisService = true
     }
     if (matchedInThisService) servicesIncluded += 1
@@ -65,6 +74,7 @@ export function computeCcliUsage(
         ccli: song?.ccli,
         author: song?.author,
         timesUsed,
+        dates: (datesBySongId.get(songId) ?? []).slice().sort(),
       }
     })
     .sort((a, b) => b.timesUsed - a.timesUsed || a.title.localeCompare(b.title))

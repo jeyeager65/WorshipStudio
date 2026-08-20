@@ -1,7 +1,7 @@
 import type { Service } from '@/models/service'
 import type { Song } from '@/models/song'
 import type { RoleGroupDefinition, RoleDefinition } from '@/models/settings'
-import { findSermonItem, sermonPreacherId } from '@/utils/sermonInfo'
+import { findSermonItem, sermonMainReference, sermonPreacherId } from '@/utils/sermonInfo'
 import { formatServiceTime } from '@/utils/serviceTime'
 
 export interface PlanningReportRow {
@@ -11,6 +11,9 @@ export interface PlanningReportRow {
   type: string
   preacher?: string
   sermonTitle?: string
+  /** The sermon's main passage reference (e.g. "Romans 8:28-39"), same resolution as
+   *  ServiceCard.vue's own subtitle — see utils/sermonInfo.ts's sermonMainReference. */
+  mainPassage?: string
   songTitles: string[]
   rosterGroups: PlanningRosterGroup[]
 }
@@ -39,7 +42,7 @@ export interface PlanningReportFilter {
  * Feature-spec.md's Multi-Week Planning Report (Assignments section): a read-only view
  * of praise team assignments and planned songs across a date range, matching the real-world
  * workflow of pre-planning a couple months of song/praise-team assignments at once — same
- * reporting pattern as CCLI usage (date range in, rows out), not a new editable grid.
+ * reporting pattern as the Song Usage report (date range in, rows out), not a new editable grid.
  */
 export function buildPlanningReport(
   services: Service[],
@@ -104,6 +107,7 @@ export function buildPlanningReport(
       type: serviceTypeNames.get(service.serviceTypeId) ?? 'Unknown',
       preacher: formalPersonNames.get(sermonPreacherId(service, sermonItem) ?? ''),
       sermonTitle: sermonItem?.title,
+      mainPassage: sermonItem ? sermonMainReference(sermonItem) || undefined : undefined,
       songTitles,
       rosterGroups,
     }

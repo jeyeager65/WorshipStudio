@@ -11,7 +11,7 @@ function song(id: string, title: string): Song {
     tags: [],
     blocks: [],
     defaultArrangement: { sequence: [] },
-    usage: { usesPastYear: 0 },
+    usageDates: [],
     updatedAt: '',
     updatedByDevice: '',
   }
@@ -106,6 +106,62 @@ describe('buildPlanningReport', () => {
         },
       ],
     })
+  })
+
+  it('includes the sermon main passage when one is set, same resolution as ServiceCard.vue', () => {
+    const services: Service[] = [
+      service({
+        id: 'svc-1',
+        date: '2026-02-01',
+        serviceTypeId: 'type-sunday-morning-worship',
+        items: [
+          {
+            id: 'i1',
+            type: 'sermon',
+            title: 'Grace Abounds',
+            roleId: 'Preacher',
+            passages: [{ id: 'p1', reference: 'Romans 8:28-39', translation: 'ESV', displayMode: 'full' }],
+            mainPassageId: 'p1',
+            outline: [],
+          },
+        ],
+        assignments: [{ roleId: 'Preacher', personId: 'person-3', tentative: false }],
+      }),
+    ]
+
+    const rows = buildPlanningReport(services, songs, personNames, roles, roleGroups, {
+      fromDate: '2026-01-01',
+      toDate: '2026-12-31',
+    })
+
+    expect(rows[0]).toMatchObject({ sermonTitle: 'Grace Abounds', mainPassage: 'Romans 8:28-39' })
+  })
+
+  it('leaves mainPassage undefined when the sermon has no passages at all', () => {
+    const services: Service[] = [
+      service({
+        id: 'svc-1',
+        date: '2026-02-01',
+        serviceTypeId: 'type-sunday-morning-worship',
+        items: [
+          {
+            id: 'i1',
+            type: 'sermon',
+            title: 'Grace Abounds',
+            passages: [],
+            mainPassageId: '',
+            outline: [],
+          },
+        ],
+      }),
+    ]
+
+    const rows = buildPlanningReport(services, songs, personNames, roles, roleGroups, {
+      fromDate: '2026-01-01',
+      toDate: '2026-12-31',
+    })
+
+    expect(rows[0]?.mainPassage).toBeUndefined()
   })
 
   it('excludes services outside the date range (inclusive boundaries)', () => {

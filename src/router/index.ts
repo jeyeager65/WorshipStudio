@@ -172,7 +172,7 @@ const router = createRouter({
     {
       path: '/reports/song-usage',
       name: 'song-usage-report',
-      component: () => import('@/views/CcliReportView.vue'),
+      component: () => import('@/views/SongUsageReportView.vue'),
       meta: { helpTopic: 'reports' },
     },
     { path: '/reports/ccli', redirect: '/reports/song-usage' },
