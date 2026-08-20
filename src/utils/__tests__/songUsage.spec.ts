@@ -54,6 +54,12 @@ describe('getLastUsedDate', () => {
   it('returns undefined for no entries', () => {
     expect(getLastUsedDate([], '2026-07-28')).toBeUndefined()
   })
+
+  // A real production crash (not hypothetical): a song saved before usageDates existed has it
+  // genuinely absent, not just empty, on the web/tablet ports — this must not throw.
+  it('does not throw when dates is undefined, same as an empty array', () => {
+    expect(getLastUsedDate(undefined, '2026-07-28')).toBeUndefined()
+  })
 })
 
 describe('getUsesInPastYear', () => {
@@ -70,6 +76,10 @@ describe('getUsesInPastYear', () => {
     const dates: SongUsageEntry[] = [{ serviceId: 'svc-1', date: '2099-01-01' }]
     expect(getUsesInPastYear(dates, '2026-07-28')).toBe(0)
   })
+
+  it('does not throw when dates is undefined, same as an empty array', () => {
+    expect(getUsesInPastYear(undefined, '2026-07-28')).toBe(0)
+  })
 })
 
 describe('isArchiveCandidate', () => {
@@ -85,6 +95,10 @@ describe('isArchiveCandidate', () => {
   it('is true once the most recent use is more than 548 days in the past', () => {
     const dates: SongUsageEntry[] = [{ serviceId: 'svc-1', date: '2024-01-01' }]
     expect(isArchiveCandidate(dates, '2026-07-28')).toBe(true)
+  })
+
+  it('does not throw when dates is undefined, same as an empty array', () => {
+    expect(isArchiveCandidate(undefined, '2026-07-28')).toBe(false)
   })
 })
 

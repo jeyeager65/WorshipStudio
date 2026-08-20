@@ -341,7 +341,7 @@ async function moveAside(issue: RecoveryIssue) {
           <div>
             <h2>Versions to review</h2>
             <p>
-              Dropbox preserved both edits. Compare the changed fields and choose the version the
+              Both edits were preserved. Compare the changed fields and choose the version the
               shared library should keep.
             </p>
           </div>

@@ -29,10 +29,19 @@ export function todayLocal(): string {
 
 /** The most recent date this song was used, excluding any service dated after `today` — a
  *  service planned for the future is a plan, not a use, so it must not show up as "last used"
- *  until its date actually arrives. */
-export function getLastUsedDate(dates: SongUsageEntry[], today: string): string | undefined {
+ *  until its date actually arrives. Accepts `dates` as possibly undefined — not just a defensive
+ *  nicety: a song saved before this field existed (or reintroduced by a "keep theirs" conflict
+ *  resolution pulling in a not-yet-migrated copy, `web/sync.ts`'s resolveConflict) can genuinely
+ *  reach display code with it missing, on the web/tablet ports specifically (a plain JSON.parse,
+ *  unlike Rust's #[serde(default)] on the desktop app) — this is the single point every reader
+ *  goes through, so it's the one place that needs to tolerate that instead of every call site
+ *  remembering to. */
+export function getLastUsedDate(
+  dates: SongUsageEntry[] | undefined,
+  today: string,
+): string | undefined {
   let lastUsedDate: string | undefined
-  for (const entry of dates) {
+  for (const entry of dates ?? []) {
     if (entry.date > today) continue
     if (!lastUsedDate || entry.date > lastUsedDate) lastUsedDate = entry.date
   }
@@ -43,12 +52,12 @@ export function getLastUsedDate(dates: SongUsageEntry[], today: string): string 
  *  `today`, excluding future-dated entries — same reasoning as getLastUsedDate. Each service
  *  contributes at most one usageDates entry per song (see applyServiceUsageChange), so this is
  *  already a "used N distinct weeks" count, not inflated by a song appearing twice in one
- *  service. */
-export function getUsesInPastYear(dates: SongUsageEntry[], today: string): number {
+ *  service. Tolerates `dates` being undefined for the same reason getLastUsedDate does. */
+export function getUsesInPastYear(dates: SongUsageEntry[] | undefined, today: string): number {
   const oneYearAgo = toDate(today)
   oneYearAgo.setDate(oneYearAgo.getDate() - 365)
   const oneYearAgoStr = oneYearAgo.toISOString().slice(0, 10)
-  return dates.filter((entry) => entry.date <= today && entry.date >= oneYearAgoStr).length
+  return (dates ?? []).filter((entry) => entry.date <= today && entry.date >= oneYearAgoStr).length
 }
 
 // A nudge, not a rule — surfaced only in the active Song Library view, since a song that's
@@ -63,7 +72,10 @@ const ARCHIVE_CANDIDATE_DAYS = 548
 /** Whether a song hasn't been used in long enough to suggest archiving it — see
  *  ARCHIVE_CANDIDATE_DAYS's own comment for why this is a much longer window than
  *  getUsesInPastYear's rolling year. */
-export function isArchiveCandidate(dates: SongUsageEntry[], today: string): boolean {
+export function isArchiveCandidate(
+  dates: SongUsageEntry[] | undefined,
+  today: string,
+): boolean {
   const lastUsedDate = getLastUsedDate(dates, today)
   if (!lastUsedDate) return false
   const daysSinceLastUse = (toDate(today).getTime() - toDate(lastUsedDate).getTime()) / 86_400_000

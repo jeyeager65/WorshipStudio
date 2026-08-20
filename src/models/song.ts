@@ -46,8 +46,13 @@ export interface Song {
   /** Every service that currently references this song — the live source for "last used"/"uses
    *  in the past year" (derived by filtering this against the current date at display time via
    *  utils/songUsage.ts, so those figures can never go stale) and for the Song Usage report. Kept
-   *  incrementally in sync on service save/delete rather than recomputed by a full rescan. */
-  usageDates: SongUsageEntry[]
+   *  incrementally in sync on service save/delete rather than recomputed by a full rescan.
+   *  Genuinely optional, not just defensively typed that way: a song saved before this field
+   *  existed has it truly absent from the JSON on the web/tablet ports (a plain JSON.parse, unlike
+   *  Rust's `#[serde(default)]` on `usage_dates`, src-tauri/src/models.rs) — every reader must
+   *  treat this as possibly undefined, not assume the one-time migration (adapters/web/songs.ts)
+   *  has always already run by the time it sees a given song. */
+  usageDates?: SongUsageEntry[]
   /** Hidden from the library list and the Add-to-Service song picker, but otherwise untouched —
    *  a past service that already references this song still resolves and renders it normally,
    *  and the Song Usage report is unaffected. Reversible (see Unarchive), unlike deleting. */
