@@ -15,7 +15,7 @@ export function createTextElement(text = 'Double-click to edit'): SlideTextEleme
     opacity: 1,
     text,
     style: {
-      fontFamily: 'Inter',
+      fontFamily: 'Inter Variable',
       fontSize: 72,
       fontWeight: 600,
       italic: false,
@@ -44,7 +44,7 @@ export function createCountdownElement(): SlideCountdownElement {
     rotation: 0,
     opacity: 1,
     style: {
-      fontFamily: 'Inter',
+      fontFamily: 'Inter Variable',
       fontSize: 120,
       fontWeight: 700,
       color: '#ffffff',

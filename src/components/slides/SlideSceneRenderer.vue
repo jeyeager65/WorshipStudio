@@ -2,6 +2,7 @@
 import { computed, nextTick, onUnmounted, reactive, ref, watch } from 'vue'
 import { getAdapter } from '@/adapters'
 import { formatCountdown, formatDaysUntil } from '@/utils/countdown'
+import { cssFontFamily, resolvePresentationFontFamily } from '@/utils/presentationFonts'
 import type {
   SlideCountdownElement,
   SlideElement,
@@ -32,10 +33,29 @@ const emit = defineEmits<{
 }>()
 const mediaUrls = reactive(new Map<string, string>())
 const textNodes = new Map<string, HTMLElement>()
+// The last text this component itself wrote to (or read from) each element's contenteditable
+// node — lets setTextNode tell "the model changed because we're typing" (the DOM already says
+// this, skip the write) apart from "the model changed for some other reason" (a real write is
+// needed). Skipping the redundant write matters because contenteditable + a reactive `{{ }}`
+// binding is a known caret-reset trap: replacing textContent on every keystroke — even with the
+// same string — recreates the text node and snaps the caret back to position 0, making typing
+// look like it's happening in reverse.
+const lastDomText = new Map<string, string>()
 
-function setTextNode(id: string, node: unknown) {
-  if (node instanceof HTMLElement) textNodes.set(id, node)
-  else textNodes.delete(id)
+function setTextNode(id: string, node: unknown, text: string) {
+  if (!(node instanceof HTMLElement)) {
+    textNodes.delete(id)
+    // A future remount of this id (e.g. navigating back to a slide after leaving it) gets a
+    // brand-new, blank DOM node — forgetting what we last wrote means that node always gets a
+    // real write instead of being skipped because its text happens to match the old node's.
+    lastDomText.delete(id)
+    return
+  }
+  textNodes.set(id, node)
+  if (lastDomText.get(id) !== text) {
+    node.innerText = text
+    lastDomText.set(id, text)
+  }
 }
 
 watch(
@@ -54,7 +74,9 @@ function onElementPointerDown(event: PointerEvent, id: string) {
 }
 
 function onTextInput(id: string, event: Event) {
-  emit('textChange', id, (event.currentTarget as HTMLElement).innerText)
+  const text = (event.currentTarget as HTMLElement).innerText
+  lastDomText.set(id, text)
+  emit('textChange', id, text)
 }
 
 const mediaIds = computed(() => {
@@ -151,10 +173,7 @@ watch(
 onUnmounted(() => clearInterval(nowTickInterval))
 
 function countdownLabel(element: SlideCountdownElement): string | undefined {
-  if (element.label) return element.label
-  if (element.mode === 'service' && !props.serviceDateTime)
-    return 'Add this slide to a service to preview'
-  return undefined
+  return element.label
 }
 
 function countdownValue(element: SlideCountdownElement): string {
@@ -189,6 +208,13 @@ function elementStyle(element: SlideElement) {
     opacity: element.opacity,
     display: element.hidden ? 'none' : undefined,
   }
+}
+
+// Only the fonts actually bundled with the app (see presentationFonts.ts) are guaranteed to be
+// present on every device this scene might render on — resolving/quoting here, the same as the
+// live presentation output, keeps the editor's own canvas an honest preview of that.
+function elementFontFamily(family: string) {
+  return cssFontFamily(resolvePresentationFontFamily(family))
 }
 
 function textEffectStyle(element: SlideTextElement) {
@@ -236,12 +262,12 @@ function safeAreaStyle(aspectRatio: number, color: string) {
       >
         <div
           v-if="element.type === 'text'"
-          :ref="(node) => setTextNode(element.id, node)"
+          :ref="(node) => setTextNode(element.id, node, element.text)"
           class="text-element"
           :class="{ editing: editingId === element.id }"
           :contenteditable="interactive && editingId === element.id"
           :style="{
-            fontFamily: element.style.fontFamily,
+            fontFamily: elementFontFamily(element.style.fontFamily),
             fontSize: `${(element.style.fontSize / scene.height) * 100}cqh`,
             fontWeight: element.style.fontWeight,
             fontStyle: element.style.italic ? 'italic' : undefined,
@@ -251,7 +277,7 @@ function safeAreaStyle(aspectRatio: number, color: string) {
             lineHeight: element.style.lineHeight,
             letterSpacing: `${element.style.letterSpacing}px`,
             textShadow: textEffectStyle(element),
-            alignItems:
+            justifyContent:
               element.style.verticalAlign === 'top'
                 ? 'flex-start'
                 : element.style.verticalAlign === 'bottom'
@@ -260,9 +286,7 @@ function safeAreaStyle(aspectRatio: number, color: string) {
           }"
           @dblclick.stop="interactive && emit('edit', element.id)"
           @input="onTextInput(element.id, $event)"
-        >
-          {{ element.text }}
-        </div>
+        ></div>
         <img
           v-else-if="element.type === 'image' && mediaUrls.get(element.mediaId)"
           :src="mediaUrls.get(element.mediaId)"
@@ -320,7 +344,7 @@ function safeAreaStyle(aspectRatio: number, color: string) {
           v-else-if="element.type === 'countdown'"
           class="countdown-element"
           :style="{
-            fontFamily: element.style.fontFamily,
+            fontFamily: elementFontFamily(element.style.fontFamily),
             color: element.style.color,
             textAlign: element.style.textAlign,
             alignItems:
@@ -384,6 +408,13 @@ function safeAreaStyle(aspectRatio: number, color: string) {
 }
 .text-element {
   display: flex;
+  /* Column, not the flex default row: the raw text becomes an anonymous flex item, and a row's
+     main axis is horizontal — that item would only ever be as wide as its own text (shrink to
+     fit), leaving text-align nothing to center or right-align within. Column makes width the
+     cross axis, which align-items' default 'stretch' fills to 100%, so text-align has real
+     horizontal space to work with; vertical placement (formerly align-items) moves to
+     justify-content, the main axis in this orientation. */
+  flex-direction: column;
   width: 100%;
   height: 100%;
   white-space: pre-wrap;

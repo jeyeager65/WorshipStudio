@@ -18,6 +18,7 @@ import { useMediaStore } from '@/stores/media'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { createBlankScene, createCountdownElement, createTextElement } from '@/utils/slideScene'
+import { bundledPresentationFonts } from '@/utils/presentationFonts'
 import type {
   LibrarySlide,
   SlideCountdownElement,
@@ -1205,11 +1206,15 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
         <template v-if="textElement">
           <div class="property-section-title property-section-title--spaced">Text</div>
           <v-textarea v-model="textElement.text" label="Text" variant="outlined" rows="4" />
-          <v-combobox
+          <v-select
             :model-value="textElement.style.fontFamily"
-            :items="['Inter', 'Arial', 'Georgia', 'Montserrat', 'Times New Roman']"
+            :items="bundledPresentationFonts"
+            item-title="title"
+            item-value="value"
             label="Font"
             density="compact"
+            hint="Bundled with Worship Studio for consistent presentation on every computer."
+            persistent-hint
             @update:model-value="updateTextStyle('fontFamily', String($event))"
           />
           <div class="property-grid">
@@ -1223,30 +1228,32 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
             />
             <v-color-input v-model="textElement.style.color" label="Color" density="compact" />
           </div>
-          <v-btn-toggle v-model="textElement.style.textAlign" mandatory>
-            <v-btn value="left" icon="mdi-format-align-left" />
-            <v-btn value="center" icon="mdi-format-align-center" />
-            <v-btn value="right" icon="mdi-format-align-right" />
-          </v-btn-toggle>
-          <v-btn-toggle class="ml-2">
-            <v-btn
-              icon="mdi-format-bold"
-              :active="textElement.style.fontWeight >= 700"
-              @click="
-                textElement.style.fontWeight = textElement.style.fontWeight >= 700 ? 400 : 700
-              "
-            />
-            <v-btn
-              icon="mdi-format-italic"
-              :active="textElement.style.italic"
-              @click="textElement.style.italic = !textElement.style.italic"
-            />
-            <v-btn
-              icon="mdi-format-underline"
-              :active="textElement.style.underline"
-              @click="textElement.style.underline = !textElement.style.underline"
-            />
-          </v-btn-toggle>
+          <div class="d-flex flex-wrap ga-2">
+            <v-btn-toggle v-model="textElement.style.textAlign" mandatory>
+              <v-btn value="left" icon="mdi-format-align-left" />
+              <v-btn value="center" icon="mdi-format-align-center" />
+              <v-btn value="right" icon="mdi-format-align-right" />
+            </v-btn-toggle>
+            <v-btn-toggle>
+              <v-btn
+                icon="mdi-format-bold"
+                :active="textElement.style.fontWeight >= 700"
+                @click="
+                  textElement.style.fontWeight = textElement.style.fontWeight >= 700 ? 400 : 700
+                "
+              />
+              <v-btn
+                icon="mdi-format-italic"
+                :active="textElement.style.italic"
+                @click="textElement.style.italic = !textElement.style.italic"
+              />
+              <v-btn
+                icon="mdi-format-underline"
+                :active="textElement.style.underline"
+                @click="textElement.style.underline = !textElement.style.underline"
+              />
+            </v-btn-toggle>
+          </div>
           <v-select
             v-model="textEffectType"
             :items="[
@@ -1445,11 +1452,15 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
             variant="outlined"
             class="mb-3"
           />
-          <v-combobox
+          <v-select
             :model-value="countdownElement.style.fontFamily"
-            :items="['Inter', 'Arial', 'Georgia', 'Montserrat', 'Times New Roman']"
+            :items="bundledPresentationFonts"
+            item-title="title"
+            item-value="value"
             label="Font"
             density="compact"
+            hint="Bundled with Worship Studio for consistent presentation on every computer."
+            persistent-hint
             @update:model-value="
               (value: string) => {
                 if (countdownElement) countdownElement.style.fontFamily = value
@@ -1466,21 +1477,23 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
             />
             <v-color-input v-model="countdownElement.style.color" label="Color" density="compact" />
           </div>
-          <v-btn-toggle v-model="countdownElement.style.textAlign" mandatory>
-            <v-btn value="left" icon="mdi-format-align-left" />
-            <v-btn value="center" icon="mdi-format-align-center" />
-            <v-btn value="right" icon="mdi-format-align-right" />
-          </v-btn-toggle>
-          <v-btn-toggle class="ml-2">
-            <v-btn
-              icon="mdi-format-bold"
-              :active="countdownElement.style.fontWeight >= 700"
-              @click="
-                countdownElement.style.fontWeight =
-                  countdownElement.style.fontWeight >= 700 ? 400 : 700
-              "
-            />
-          </v-btn-toggle>
+          <div class="d-flex flex-wrap ga-2">
+            <v-btn-toggle v-model="countdownElement.style.textAlign" mandatory>
+              <v-btn value="left" icon="mdi-format-align-left" />
+              <v-btn value="center" icon="mdi-format-align-center" />
+              <v-btn value="right" icon="mdi-format-align-right" />
+            </v-btn-toggle>
+            <v-btn-toggle>
+              <v-btn
+                icon="mdi-format-bold"
+                :active="countdownElement.style.fontWeight >= 700"
+                @click="
+                  countdownElement.style.fontWeight =
+                    countdownElement.style.fontWeight >= 700 ? 400 : 700
+                "
+              />
+            </v-btn-toggle>
+          </div>
         </template>
         <v-btn
           class="mt-4"
