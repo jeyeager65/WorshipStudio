@@ -78,16 +78,15 @@ function songLine(
 
 function slideRefLine(
   item: Extract<ServiceItem, { type: 'slide-ref' }>,
-  slides: Map<string, SlideLibraryItem>,
   assignments: RoleAssignment[] | undefined,
   personNames: Map<string, string>,
 ): OrderOfWorshipLine {
-  // A reusable slide library item's own label often *is* the bulletin line ("Welcome and
-  // Announcements", "Silent Preparation") — the actual slide text isn't reproduced here,
-  // matching a real printed bulletin rather than a full transcript of what's on screen.
-  const slide = slides.get(item.slideId)
+  // buildLines already filters out a slide item with no bulletinLabel, so roleFor always
+  // resolves to that label here — same "the label is the whole line" shape as media/video. The
+  // slide's own on-screen label/text isn't reproduced (a "Service Starting Soon" countdown or a
+  // QR slide isn't what a real printed bulletin shows), only what the operator explicitly typed.
   return {
-    role: roleFor(item, slide?.label ?? 'Slide'),
+    role: roleFor(item, undefined),
     text: '',
     person: resolveRolePerson(item.roleId, assignments, personNames),
     note: item.bulletinNote,
@@ -110,13 +109,22 @@ function buildLines(
   // External App Hand-off items are a technical hand-off to another program (a slideshow, a
   // video player) with nothing meaningful to print — a real bulletin has no "[External App]"
   // line, so these are left out of the Order of Worship entirely rather than printed as a
-  // placeholder. A media/video item has nothing printable of its own either (unlike a song or
-  // scripture reference) — it only belongs in the bulletin when the operator has explicitly
-  // given it a bulletinLabel to print (e.g. "Offering Video"); with none set, it's left out
-  // rather than printed as a meaningless "[Media]"/"[Video]" placeholder.
+  // placeholder. A media/video/slide item has nothing printable of its own either (unlike a song
+  // or scripture reference) — it only belongs in the bulletin when the operator has explicitly
+  // given it a bulletinLabel to print (e.g. "Offering Video", or a custom slide used as a
+  // spoken/led moment like "Silent Preparation"); with none set, it's left out rather than
+  // printed under whatever label the slide happens to carry on-screen (a "Service Starting
+  // Soon" countdown or a "Visit Our Website" QR slide isn't a bulletin line by default).
   const printableItems = service.items.filter((item) => {
     if (item.type === 'external-app') return false
-    if ((item.type === 'media' || item.type === 'video') && !item.bulletinLabel) return false
+    if (
+      (item.type === 'media' ||
+        item.type === 'video' ||
+        item.type === 'slide-ref' ||
+        item.type === 'text-slide') &&
+      !item.bulletinLabel
+    )
+      return false
     return true
   })
   const lines = printableItems.map((item): OrderOfWorshipLine => {
@@ -157,10 +165,12 @@ function lineFor(
         note: item.bulletinNote,
       }
     case 'slide-ref':
-      return slideRefLine(item, slides, assignments, personNames)
+      return slideRefLine(item, assignments, personNames)
     case 'text-slide':
+      // buildLines already filters out a slide item with no bulletinLabel — see slideRefLine's
+      // own comment for why the slide's own on-screen content isn't reproduced here either.
       return {
-        role: roleFor(item, item.slides[0]?.label ?? 'Custom Slide'),
+        role: roleFor(item, undefined),
         text: '',
         person: resolveRolePerson(item.roleId, assignments, personNames),
         note: item.bulletinNote,

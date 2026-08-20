@@ -141,10 +141,37 @@ describe('buildOrderOfWorship', () => {
     expect(doc.lines[0]?.person).toBeUndefined()
   })
 
-  it("uses a referenced slide's own label as the line", () => {
+  it('excludes a slide item with no bulletinLabel rather than printing its on-screen label/text', () => {
+    const service = baseService({
+      items: [
+        { id: 'item-1', type: 'slide-ref', slideId: 'slide-1' },
+        { id: 'item-2', type: 'text-slide', slides: [{ id: 's1', label: 'Welcome', text: 'Hi!' }] },
+        { id: 'item-3', type: 'song', songId: 'song-1', arrangement: { sequence: [] } },
+      ],
+    })
+    const doc = buildOrderOfWorship(service, songs, slides, new Map())
+    expect(doc.lines).toHaveLength(1)
+    expect(doc.lines[0]?.text).toContain('Come Behold the Wondrous Mystery')
+  })
+
+  it('includes a slide item once it has a bulletinLabel, using that label rather than the slide’s own', () => {
     const service = baseService({
       assignments: [{ roleId: 'Announcer', personId: 'person-rob', tentative: false }],
-      items: [{ id: 'item-1', type: 'slide-ref', slideId: 'slide-1', roleId: 'Announcer' }],
+      items: [
+        {
+          id: 'item-1',
+          type: 'slide-ref',
+          slideId: 'slide-1',
+          roleId: 'Announcer',
+          bulletinLabel: 'Welcome and Announcements',
+        },
+        {
+          id: 'item-2',
+          type: 'text-slide',
+          slides: [{ id: 's1', label: 'Welcome', text: 'Hi!' }],
+          bulletinLabel: 'Silent Preparation',
+        },
+      ],
     })
     const doc = buildOrderOfWorship(
       service,
@@ -152,10 +179,10 @@ describe('buildOrderOfWorship', () => {
       slides,
       new Map([['person-rob', 'Elder Rob Delgado']]),
     )
-    expect(doc.lines[0]).toMatchObject({
-      role: 'Welcome and Announcements',
-      person: 'Elder Rob Delgado',
-    })
+    expect(doc.lines).toMatchObject([
+      { role: 'Welcome and Announcements', text: '', person: 'Elder Rob Delgado' },
+      { role: 'Silent Preparation', text: '' },
+    ])
   })
 
   it('includes the service date but not the service type in the date line', () => {
