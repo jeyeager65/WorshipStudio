@@ -89,19 +89,45 @@ const confirmDialog = useConfirmDialogStore()
 // ~1064x664 landscape/~664x1064 portrait) rather than arbitrary numbers — see the tablet-fit
 // plan for the full reasoning behind each one.
 const { width, height, mdAndDown: isPreviewCompact } = useDisplay()
-// Planning/Assignments/Bulletin collapse into an overflow menu below this width.
-const isNarrowActions = computed(() => width.value < 1060)
-// Below a wider threshold than isNarrowActions above, ask App.vue's nav to give up its rail
+// Below a wider threshold than isNarrowActions below, ask App.vue's nav to give up its rail
 // labels rather than this view giving up the Service Order List column — reclaiming the nav's
 // own space is worth more here than what collapsing it costs elsewhere. Registered/cleared the
-// same way pageTitleOverride is (unsavedChanges.ts) — see that store's own doc comment.
+// same way pageTitleOverride is (unsavedChanges.ts) — see that store's own doc comment. This one
+// is deliberately still keyed off the raw window width (not toolbarWidth below) — it's asking
+// for room back from the nav, so it can't itself depend on how much room the nav is giving.
 const wantsNavCollapsed = computed(() => width.value < 1500)
 watch(wantsNavCollapsed, (wants) => (navCollapseRequested.value = wants), { immediate: true })
 onUnmounted(() => {
   navCollapseRequested.value = false
 })
+// The toolbar's own rendered width, not the window's — window width is a poor proxy here since
+// App.vue's nav rail can be a full labeled drawer, a collapsed 68px rail, or fully hidden
+// depending on both window width and the operator's own manual toggle, so the same window width
+// can leave this toolbar very different amounts of room. Everything below reads this instead of
+// the raw `width` above, so the compacting cascade tracks what the toolbar can actually fit
+// rather than a window-width number that only loosely correlates with it.
+const toolbarRef = ref<HTMLElement>()
+const toolbarWidth = ref(1024)
+let toolbarResizeObserver: ResizeObserver | undefined
+// The toolbar sits behind `v-else-if="service"` further down, which only starts rendering once
+// the service finishes its own async load — plain onMounted runs well before that, so
+// toolbarRef.value would still be unset and .observe() would silently watch nothing, forever.
+// Watching the ref directly instead fires exactly when Vue actually attaches the real element.
+watch(toolbarRef, (el) => {
+  if (!el || typeof ResizeObserver === 'undefined') return
+  toolbarResizeObserver ??= new ResizeObserver(([entry]) => {
+    if (entry) toolbarWidth.value = entry.contentRect.width
+  })
+  toolbarResizeObserver.observe(el)
+})
+onUnmounted(() => toolbarResizeObserver?.disconnect())
+// Planning/Assignments/Bulletin collapse into an overflow menu below this width.
+const isNarrowActions = computed(() => toolbarWidth.value < 960)
 // The toolbar's service-context and actions rows collide below this width without wrapping.
-const isNarrowToolbar = computed(() => width.value < 780)
+const isNarrowToolbar = computed(() => toolbarWidth.value < 700)
+// First line of defense before isNarrowToolbar's wrap — trade the readiness badge and present
+// button's own text for icon-only versions so a single row keeps fitting a bit longer.
+const isCompactActions = computed(() => toolbarWidth.value < 820)
 // Toolbar/heading chrome eats too much of a short landscape-tablet viewport below this height.
 const isShortViewport = computed(() => height.value < 700)
 // The Service Order List becomes a drawer at a narrower width than the preview panel does
@@ -1401,7 +1427,15 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
     >
       Service changes were not saved: {{ servicesStore.mutationError }}
     </v-alert>
-    <div class="workspace-toolbar" :class="{ 'workspace-toolbar--wrap': isNarrowToolbar }">
+    <div
+      ref="toolbarRef"
+      class="workspace-toolbar"
+      :class="{
+        'workspace-toolbar--wrap': isNarrowToolbar,
+        'workspace-toolbar--compact-actions': isCompactActions,
+        'workspace-toolbar--narrow-actions': isNarrowActions,
+      }"
+    >
       <div class="workspace-service-context">
         <v-btn
           icon="mdi-arrow-left"
@@ -3213,6 +3247,12 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
 }
 .workspace-toolbar--wrap .workspace-service-context {
   flex-basis: 100%;
+  /* The icon is purely decorative — drop it and reclaim its grid column at the same point the
+     toolbar wraps, since that's also the point it can least spare the width. */
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+}
+.workspace-toolbar--wrap .workspace-service-icon {
+  display: none;
 }
 .workspace-toolbar--wrap .workspace-actions {
   flex-basis: 100%;
@@ -3230,6 +3270,12 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
 }
 .workspace-service-context {
   display: grid;
+  /* Actions is flex:none (fixed to its own content) and this is the only other child of the
+     flex row above — without growing, this sits at its own shrink-to-fit width even when the
+     row has slack to spare, leaving a visible gap next to Planning/Assignments/etc. while the
+     title truncates for no reason. Growing it means the title only ever truncates once the row
+     is actually out of room, not before. */
+  flex: 1 1 0;
   min-width: 0;
   grid-template-columns: 36px 44px minmax(0, 1fr) auto;
   align-items: center;
@@ -3247,16 +3293,6 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
   border-radius: 10px;
   background: rgba(var(--v-theme-primary), 0.11);
   color: rgb(var(--v-theme-primary));
-}
-/* Same width isNarrowToolbar already treats as tight enough to wrap the toolbar onto two rows —
-   the icon is purely decorative, drop it and reclaim its grid column at the same point. */
-@media (max-width: 780px) {
-  .workspace-service-icon {
-    display: none;
-  }
-  .workspace-service-context {
-    grid-template-columns: 36px minmax(0, 1fr) auto;
-  }
 }
 .workspace-service-heading {
   display: flex;
@@ -3391,34 +3427,35 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
 .present-button-wrap {
   display: inline-flex;
 }
-/* Same width the toolbar wraps to two rows at — keep the readiness badge and present button's
-   own color/shape/styling, just drop their text so both still fit comfortably alongside the
-   drawer toggles on that row instead of forcing a further wrap. */
-@media (max-width: 780px) {
-  .readiness-status {
-    padding: 0 8px;
-  }
-  .readiness-label {
-    display: none;
-  }
-  .present-button {
-    min-width: 0;
-    padding-inline: 12px;
-  }
-  .present-button-label {
-    display: none;
-  }
-  .present-button :deep(.v-icon) {
-    margin-inline-end: 0;
-  }
+/* Keyed off isCompactActions (the toolbar's own measured width, not the window) — this is the
+   first line of defense, trading the readiness badge and present button's own text for
+   icon-only versions (same color/shape otherwise) so a single row keeps fitting a bit longer.
+   Only once that's not enough does isNarrowToolbar's wrap class kick in. */
+.workspace-toolbar--compact-actions .readiness-status {
+  padding: 0 8px;
 }
-@media (max-width: 1060px) {
-  .workspace-service-sermon {
-    display: none;
-  }
-  .action-divider {
-    display: none;
-  }
+.workspace-toolbar--compact-actions .readiness-label {
+  display: none;
+}
+.workspace-toolbar--compact-actions .present-button {
+  min-width: 0;
+  padding-inline: 12px;
+}
+.workspace-toolbar--compact-actions .present-button-label {
+  display: none;
+}
+.workspace-toolbar--compact-actions .present-button :deep(.v-icon) {
+  margin-inline-end: 0;
+}
+/* Keyed off isNarrowActions (same measured width the Planning/Assignments/Bulletin buttons
+   collapse into the overflow menu at) rather than a separately-tuned window-width number, so
+   the two changes that free up this row's space always happen together instead of one lagging
+   the other and leaving a still-too-tight in-between range. */
+.workspace-toolbar--narrow-actions .workspace-service-sermon {
+  display: none;
+}
+.workspace-toolbar--narrow-actions .action-divider {
+  display: none;
 }
 .workspace-layout {
   display: grid;
