@@ -1,3 +1,15 @@
+/* medium-zoom (theme/index.ts) ships with no z-index at all on its own overlay/enlarged-image
+ * styles — it relies on plain DOM stacking order, which is fine on a page with no other
+ * positioned elements but loses to VitePress's own sidebar (--vp-z-index-sidebar: 60, see
+ * vitepress/dist/client/theme-default/styles/vars.css), cutting off whatever part of a zoomed
+ * screenshot sits behind it. Comfortably above every z-index VitePress's own default theme uses
+ * (nav/sidebar/search/etc. all sit at 1001 or under).
+ */
+.medium-zoom-overlay,
+.medium-zoom-image--opened {
+  z-index: 10000;
+}
+
 /* Landing-page hero logo, larger than the default theme's built-in 192/256/320px sizing at
  * the two narrower (stacked-layout) breakpoints, where the heading text otherwise dwarfs it.
  * No CSS custom property exposes this in the default theme, so this duplicates its own
