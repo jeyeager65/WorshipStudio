@@ -21,19 +21,28 @@ readiness check, and everything else in the [Getting Started](/getting-started) 
    realistic for a free, open-source project distributed to a handful of church-owned machines.
    Windows doesn't trust a self-signed certificate by default, so without this step the installer
    shows an "unrecognized publisher" warning (you can still click through it — this step just
-   makes that warning go away for good):
-   - Open the [`scripts/release` folder](https://github.com/jeyeager65/WorshipStudio/tree/main/scripts/release)
-     on GitHub and download both `install-trust-windows.ps1` and `worship-studio-codesign.cer`
-     into the same folder (e.g. your Downloads folder).
-   - Open **PowerShell as Administrator** (search "PowerShell" in the Start menu, right-click →
-     **Run as administrator**).
-   - Navigate to where you saved the two files and run the script, for example:
-     ```powershell
-     cd $HOME\Downloads
-     powershell -ExecutionPolicy Bypass -File .\install-trust-windows.ps1
-     ```
-   - This is genuinely one-time per machine — every future release signed with the same
-     certificate installs cleanly after this, with no need to run it again.
+   makes that warning go away for good). This is genuinely one-time per machine — every future
+   release signed with the same certificate installs cleanly after this, with no need to repeat it.
+   - Download [`worship-studio-codesign.cer`](https://github.com/jeyeager65/WorshipStudio/raw/main/scripts/release/worship-studio-codesign.cer).
+   - Double-click the downloaded file to open it, then click **Install Certificate...**
+   - Choose **Local Machine** (not Current User) and click **Next** — this needs administrator
+     rights, so Windows will prompt you to confirm.
+   - Choose **Place all certificates in the following store**, click **Browse...**, select
+     **Trusted Root Certification Authorities**, then **OK** → **Next** → **Finish**.
+   - Windows will show one more warning asking you to confirm you want to install this root
+     certificate — click **Yes**. That's expected for any self-signed certificate you're
+     intentionally trusting.
+   ::: details Prefer a terminal? (PowerShell alternative)
+   Download both `install-trust-windows.ps1` and `worship-studio-codesign.cer` from the
+   [`scripts/release` folder](https://github.com/jeyeager65/WorshipStudio/tree/main/scripts/release)
+   into the same folder, open **PowerShell as Administrator** (search "PowerShell" in the Start
+   menu, right-click → **Run as administrator**), then:
+   ```powershell
+   cd $HOME\Downloads
+   powershell -ExecutionPolicy Bypass -File .\install-trust-windows.ps1
+   ```
+   Does exactly the same thing as the steps above, just scriptable.
+   :::
 3. Run the installer you downloaded in step 1. A standard Windows installer elevation (UAC)
    prompt showing "Worship Studio" as the publisher is normal.
 4. Launch Worship Studio — the [setup wizard](/getting-started) walks you through the rest.
