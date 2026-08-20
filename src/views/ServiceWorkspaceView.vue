@@ -121,8 +121,11 @@ watch(toolbarRef, (el) => {
   toolbarResizeObserver.observe(el)
 })
 onUnmounted(() => toolbarResizeObserver?.disconnect())
-// Planning/Assignments/Bulletin collapse into an overflow menu below this width.
-const isNarrowActions = computed(() => toolbarWidth.value < 960)
+// Planning/Assignments/Bulletin collapse into an overflow menu below this width. Deliberately
+// generous — three full buttons are by far the biggest space cost in this row (~350px+), so
+// giving them up first, well before the row is actually tight, is what leaves the title enough
+// room instead of both staying full-size while the title gets crushed to a couple characters.
+const isNarrowActions = computed(() => toolbarWidth.value < 1200)
 // The toolbar's service-context and actions rows collide below this width without wrapping.
 const isNarrowToolbar = computed(() => toolbarWidth.value < 700)
 // First line of defense before isNarrowToolbar's wrap — trade the readiness badge and present
@@ -1340,15 +1343,18 @@ function openAddDialog(type: AddItemType) {
   addDialogOpen.value = true
 }
 
-function beginReplacePlaceholder(item: ServiceItem, index: number) {
-  if (item.type !== 'placeholder') return
+// Placeholders use this to get filled in for the first time; song items use it to swap which
+// song fills an already-placed slot without losing that slot's own roleId/bulletinLabel/note or
+// its position in the order — otherwise the only way to change a song was delete-and-re-add.
+function beginReplaceItem(item: ServiceItem, index: number) {
+  if (item.type !== 'placeholder' && item.type !== 'song') return
   addReplaceContext.value = {
     index,
     roleId: item.roleId,
-    label: item.bulletinLabel ?? item.label,
+    label: item.type === 'placeholder' ? (item.bulletinLabel ?? item.label) : item.bulletinLabel,
     note: item.bulletinNote,
   }
-  addTab.value = (item.suggestedTab as AddItemType) ?? 'songs'
+  addTab.value = item.type === 'placeholder' ? ((item.suggestedTab as AddItemType) ?? 'songs') : 'songs'
   addDialogOpen.value = true
 }
 
@@ -1620,6 +1626,16 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
           </div>
 
           <template v-if="selectedItem.type === 'song' && selectedSong">
+            <v-btn
+              variant="text"
+              size="small"
+              color="secondary"
+              prepend-icon="mdi-swap-horizontal"
+              class="mb-2"
+              @click="beginReplaceItem(selectedItem, selectedItemIndex)"
+            >
+              Change Song
+            </v-btn>
             <VueDraggable
               v-model="selectedItem.arrangement.sequence"
               handle=".drag-handle"
@@ -2980,7 +2996,7 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
               color="primary"
               class="mt-3"
               prepend-icon="mdi-pencil"
-              @click="beginReplacePlaceholder(selectedItem, selectedItemIndex)"
+              @click="beginReplaceItem(selectedItem, selectedItemIndex)"
             >
               Fill In This Slot
             </v-btn>
