@@ -51,8 +51,7 @@ mod tests {
             background_id: None,
             auto_advance: None,
             usage: Usage {
-                last_used_at: None,
-                uses_past_year: 0,
+                last_used_date: None,
             },
             updated_at: String::new(),
             updated_by_device: String::new(),

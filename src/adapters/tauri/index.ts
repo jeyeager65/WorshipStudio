@@ -271,7 +271,7 @@ export function createTauriAdapter(): StudioAdapter {
     const thisWindow = new WebviewWindow('help', {
       url,
       title: 'Worship Studio Help',
-      width: 1000,
+      width: 1400,
       height: 800,
       minWidth: 640,
       minHeight: 480,

@@ -1,13 +1,18 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use chrono::{Duration, NaiveDate};
-
 use crate::domain::opensong;
-use crate::models::{ServiceItemContent, Song, Usage};
+use crate::models::{Service, ServiceItemContent, Song, SongUsageEntry};
 
 use super::services;
 use super::{delete_file_if_exists, read_json_dir, read_json_file, write_json_file};
+
+/// Marker file (empty library root, not a per-song thing) recording that
+/// `migrate_usage_dates_if_needed` has already run against this library — see that function's
+/// own doc comment for why a dedicated marker is used here instead of this codebase's more usual
+/// "does the new artifact already exist" gating (there's no new artifact: `usage_dates` is a
+/// field on files that already exist).
+const USAGE_DATES_MIGRATION_MARKER: &str = "songs.usage-dates-migrated.json";
 
 fn songs_dir(root: &Path) -> PathBuf {
     root.join("songs")
@@ -36,70 +41,138 @@ pub fn delete(root: &Path, id: &str) -> std::io::Result<()> {
     delete_file_if_exists(&song_path(root, id))
 }
 
-/// Recomputes every song's usage stats (lastUsedAt / usesPastYear) from the full set of saved
-/// services, rather than incrementing them on each save — the only way "last used" stays
-/// correct if a service's songs or date are edited later, or the most recent service
-/// referencing a song is deleted (same "full rebuild over incremental patching" philosophy as
-/// manifest::compute). lastUsedAt is the *service's own date*, not when it was saved. Only
-/// songs whose stats actually changed are rewritten, so saving/deleting a service that doesn't
-/// affect a given song's history never touches that song's file (avoids needless sync
-/// churn/conflicts across every song in the library on every save).
-///
-/// Only services dated on or before `today` count — a service planned for a future date is a
-/// plan, not a use, so it must not show up as "last used" or count toward this year's total
-/// until its date actually arrives. Each song counts at most once per service regardless of how
-/// many items in that service reference it (e.g. an opening song reprised as the closing song),
-/// so a single week never inflates a song's "used N times this year" total by more than one.
-pub fn recompute_usage(root: &Path, today: &str, device: &str, now: &str) -> std::io::Result<()> {
-    let services = services::list(root)?;
-    let one_year_ago = NaiveDate::parse_from_str(today, "%Y-%m-%d")
-        .ok()
-        .map(|d| (d - Duration::days(365)).format("%Y-%m-%d").to_string());
+/// The distinct song ids a service references, deduplicated so a song reprised twice in one
+/// service (e.g. opening and closing) still only counts as one reference for that service.
+fn song_ids_in(service: &Service) -> HashSet<String> {
+    service
+        .items
+        .iter()
+        .filter_map(|item| match &item.content {
+            ServiceItemContent::Song { song_id, .. } => Some(song_id.clone()),
+            _ => None,
+        })
+        .collect()
+}
 
-    let mut last_used_at: HashMap<String, String> = HashMap::new();
-    let mut uses_past_year: HashMap<String, u32> = HashMap::new();
+/// Incrementally updates every affected song's `usage_dates` for one service being saved or
+/// deleted, instead of rescanning the entire service library (see `rebuild_all_usage_dates` for
+/// the full-rescan fallback, used only for migration/repair). `old_service` is the previously
+/// saved version of this service — `None` for a brand new service (including one just imported,
+/// which has nothing to diff against). `new_service` is the version now being saved — `None`
+/// when the service is being deleted. Only the songs whose reference to this service actually
+/// changed (added, removed, or its date changed) are rewritten, so saving/deleting a service
+/// never touches songs it has nothing to do with (avoids needless sync churn/conflicts). Each
+/// song gets at most one `usage_dates` entry per service, keyed by `service_id`, regardless of
+/// how many items in that service reference it.
+pub fn update_usage_dates_for_service(
+    root: &Path,
+    service_id: &str,
+    old_service: Option<&Service>,
+    new_service: Option<&Service>,
+    device: &str,
+    now: &str,
+) -> std::io::Result<()> {
+    let old_song_ids = old_service.map(song_ids_in).unwrap_or_default();
+    let new_song_ids = new_service.map(song_ids_in).unwrap_or_default();
+    let new_date = new_service.map(|service| service.date.clone());
 
-    for service in &services {
-        if service.date.as_str() > today {
+    let mut affected: HashSet<String> = old_song_ids;
+    affected.extend(new_song_ids.iter().cloned());
+
+    for song_id in affected {
+        let Some(song) = get(root, &song_id)? else {
+            continue;
+        };
+        let existing_index = song
+            .usage_dates
+            .iter()
+            .position(|entry| entry.service_id == service_id);
+        let desired = if new_song_ids.contains(&song_id) {
+            new_date.clone().map(|date| SongUsageEntry {
+                service_id: service_id.to_string(),
+                date,
+            })
+        } else {
+            None
+        };
+
+        let changed = match (existing_index, &desired) {
+            (Some(index), Some(entry)) => song.usage_dates[index] != *entry,
+            (Some(_), None) | (None, Some(_)) => true,
+            (None, None) => false,
+        };
+        if !changed {
             continue;
         }
-        let song_ids_in_service: HashSet<&str> = service
-            .items
-            .iter()
-            .filter_map(|item| match &item.content {
-                ServiceItemContent::Song { song_id, .. } => Some(song_id.as_str()),
-                _ => None,
-            })
-            .collect();
-        for song_id in song_ids_in_service {
-            let entry = last_used_at
-                .entry(song_id.to_string())
-                .or_insert_with(|| service.date.clone());
-            if service.date > *entry {
-                *entry = service.date.clone();
+
+        let mut updated = song;
+        match (existing_index, desired) {
+            (Some(index), Some(entry)) => updated.usage_dates[index] = entry,
+            (Some(index), None) => {
+                updated.usage_dates.remove(index);
             }
-            if one_year_ago
-                .as_deref()
-                .is_none_or(|cutoff| service.date.as_str() >= cutoff)
-            {
-                *uses_past_year.entry(song_id.to_string()).or_insert(0) += 1;
-            }
+            (None, Some(entry)) => updated.usage_dates.push(entry),
+            (None, None) => unreachable!("changed is false in this case"),
         }
+        save(root, updated, device, now)?;
+    }
+    Ok(())
+}
+
+/// Rebuilds every song's `usage_dates` from scratch against the full set of currently-saved
+/// services — the "full rebuild" counterpart to `update_usage_dates_for_service`'s incremental
+/// patching. Used two ways: as `migrate_usage_dates_if_needed`'s one-time backfill for a library
+/// that predates `usage_dates` existing (every entry is fully re-derivable from existing
+/// services, so this is never a lossy migration), and as a standing internal consistency-repair
+/// capability if `usage_dates` ever drifts. Only songs whose rebuilt `usage_dates` actually
+/// differ from what's on disk are rewritten.
+pub fn rebuild_all_usage_dates(root: &Path, device: &str, now: &str) -> std::io::Result<()> {
+    let mut entries_by_song: HashMap<String, Vec<SongUsageEntry>> = HashMap::new();
+    for service in services::list(root)? {
+        for song_id in song_ids_in(&service) {
+            entries_by_song
+                .entry(song_id)
+                .or_default()
+                .push(SongUsageEntry {
+                    service_id: service.id.clone(),
+                    date: service.date.clone(),
+                });
+        }
+    }
+    for entries in entries_by_song.values_mut() {
+        entries.sort_by(|a, b| a.service_id.cmp(&b.service_id));
     }
 
     for song in list(root)? {
-        let new_last_used_at = last_used_at.get(&song.id).cloned();
-        let new_uses_past_year = uses_past_year.get(&song.id).copied().unwrap_or(0);
-        if song.usage.last_used_at == new_last_used_at
-            && song.usage.uses_past_year == new_uses_past_year
-        {
+        let mut rebuilt = entries_by_song.remove(&song.id).unwrap_or_default();
+        rebuilt.sort_by(|a, b| a.service_id.cmp(&b.service_id));
+        let mut current = song.usage_dates.clone();
+        current.sort_by(|a, b| a.service_id.cmp(&b.service_id));
+        if current == rebuilt {
             continue;
         }
         let mut updated = song;
-        updated.usage.last_used_at = new_last_used_at;
-        updated.usage.uses_past_year = new_uses_past_year;
+        updated.usage_dates = rebuilt;
         save(root, updated, device, now)?;
     }
+    Ok(())
+}
+
+/// One-time migration for a library saved before `Song::usage_dates` existed: on first run
+/// (`songs.usage-dates-migrated.json` absent from the library root), backfills every song's
+/// `usage_dates` from the full set of already-saved services via `rebuild_all_usage_dates`, then
+/// writes the marker so this never runs again. A genuinely fresh library (nothing on disk yet)
+/// still gets the marker written — `rebuild_all_usage_dates` is a safe, cheap no-op against zero
+/// services/songs. Follows this codebase's established one-time-migration shape (see, e.g., the
+/// old `commands::roles::migrate_if_needed`): gate on a marker, trigger eagerly from the
+/// relevant list command (`commands::songs::list_songs`).
+pub fn migrate_usage_dates_if_needed(root: &Path, device: &str, now: &str) -> std::io::Result<()> {
+    let marker_path = root.join(USAGE_DATES_MIGRATION_MARKER);
+    if marker_path.is_file() {
+        return Ok(());
+    }
+    rebuild_all_usage_dates(root, device, now)?;
+    write_json_file(&marker_path, &serde_json::json!({ "migratedAt": now }))?;
     Ok(())
 }
 
@@ -123,10 +196,7 @@ pub fn import_from_opensong_xml(
         notes: None,
         blocks: parsed.blocks,
         default_arrangement: parsed.arrangement,
-        usage: Usage {
-            last_used_at: None,
-            uses_past_year: 0,
-        },
+        usage_dates: vec![],
         archived: false,
         updated_at: now.to_string(),
         updated_by_device: device.to_string(),
@@ -153,10 +223,7 @@ mod tests {
             notes: None,
             blocks: vec![],
             default_arrangement: Arrangement { sequence: vec![] },
-            usage: Usage {
-                last_used_at: None,
-                uses_past_year: 0,
-            },
+            usage_dates: vec![],
             archived: false,
             updated_at: String::new(),
             updated_by_device: String::new(),
@@ -266,64 +333,173 @@ mod tests {
     }
 
     #[test]
-    fn recompute_usage_sets_last_used_at_to_the_most_recent_service_date() {
+    fn saving_a_service_adds_usage_entries_to_the_songs_it_references() {
         let dir = tempfile::tempdir().unwrap();
         save(dir.path(), sample_song("song-1"), "d", "now").unwrap();
-        services::save(
-            dir.path(),
-            sample_service("svc-1", "2026-01-01", "song-1"),
-            "d",
-            "now",
-        )
-        .unwrap();
-        services::save(
-            dir.path(),
-            sample_service("svc-2", "2026-03-01", "song-1"),
-            "d",
-            "now",
-        )
-        .unwrap();
+        let service = sample_service("svc-1", "2026-03-01", "song-1");
+        let saved = services::save(dir.path(), service, "d", "now").unwrap();
 
-        recompute_usage(dir.path(), "2026-07-28", "d", "recompute-time").unwrap();
+        update_usage_dates_for_service(dir.path(), "svc-1", None, Some(&saved), "d", "now")
+            .unwrap();
 
         let updated = get(dir.path(), "song-1").unwrap().unwrap();
-        assert_eq!(updated.usage.last_used_at.as_deref(), Some("2026-03-01"));
+        assert_eq!(
+            updated.usage_dates,
+            vec![SongUsageEntry {
+                service_id: "svc-1".to_string(),
+                date: "2026-03-01".to_string(),
+            }]
+        );
     }
 
     #[test]
-    fn recompute_usage_only_counts_uses_past_year_within_the_window_but_still_sets_last_used_at() {
+    fn editing_a_service_to_remove_a_song_removes_that_songs_entry_for_it() {
         let dir = tempfile::tempdir().unwrap();
         save(dir.path(), sample_song("song-1"), "d", "now").unwrap();
-        // Well over a year before "today" below.
-        services::save(
+        let old_service = sample_service("svc-1", "2026-03-01", "song-1");
+        update_usage_dates_for_service(dir.path(), "svc-1", None, Some(&old_service), "d", "now")
+            .unwrap();
+        assert_eq!(
+            get(dir.path(), "song-1")
+                .unwrap()
+                .unwrap()
+                .usage_dates
+                .len(),
+            1
+        );
+
+        // The edited service no longer references song-1 at all.
+        let mut new_service = old_service.clone();
+        new_service.items.clear();
+
+        update_usage_dates_for_service(
             dir.path(),
-            sample_service("svc-1", "2024-01-01", "song-1"),
+            "svc-1",
+            Some(&old_service),
+            Some(&new_service),
             "d",
             "now",
         )
         .unwrap();
 
-        recompute_usage(dir.path(), "2026-07-28", "d", "recompute-time").unwrap();
-
         let updated = get(dir.path(), "song-1").unwrap().unwrap();
-        assert_eq!(updated.usage.last_used_at.as_deref(), Some("2024-01-01"));
-        assert_eq!(updated.usage.uses_past_year, 0);
+        assert!(updated.usage_dates.is_empty());
     }
 
     #[test]
-    fn recompute_usage_leaves_a_song_with_unchanged_stats_untouched() {
+    fn editing_a_services_date_updates_the_existing_entry_instead_of_duplicating_it() {
+        let dir = tempfile::tempdir().unwrap();
+        save(dir.path(), sample_song("song-1"), "d", "now").unwrap();
+        let old_service = sample_service("svc-1", "2026-03-01", "song-1");
+        update_usage_dates_for_service(dir.path(), "svc-1", None, Some(&old_service), "d", "now")
+            .unwrap();
+
+        let new_service = sample_service("svc-1", "2026-03-08", "song-1");
+        update_usage_dates_for_service(
+            dir.path(),
+            "svc-1",
+            Some(&old_service),
+            Some(&new_service),
+            "d",
+            "now",
+        )
+        .unwrap();
+
+        let updated = get(dir.path(), "song-1").unwrap().unwrap();
+        assert_eq!(
+            updated.usage_dates,
+            vec![SongUsageEntry {
+                service_id: "svc-1".to_string(),
+                date: "2026-03-08".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn deleting_a_service_removes_its_entries_from_every_song_that_had_one() {
+        let dir = tempfile::tempdir().unwrap();
+        save(dir.path(), sample_song("song-1"), "d", "now").unwrap();
+        save(dir.path(), sample_song("song-2"), "d", "now").unwrap();
+        let mut service = sample_service("svc-1", "2026-03-01", "song-1");
+        service.items.push(crate::models::ServiceItem {
+            theme_id: None,
+            id: "item-song-2".to_string(),
+            content: ServiceItemContent::Song {
+                song_id: "song-2".to_string(),
+                arrangement: Arrangement { sequence: vec![] },
+            },
+            role_id: None,
+            bulletin_label: None,
+            bulletin_note: None,
+            auto_advance: None,
+        });
+        update_usage_dates_for_service(dir.path(), "svc-1", None, Some(&service), "d", "now")
+            .unwrap();
+
+        update_usage_dates_for_service(dir.path(), "svc-1", Some(&service), None, "d", "now")
+            .unwrap();
+
+        assert!(get(dir.path(), "song-1")
+            .unwrap()
+            .unwrap()
+            .usage_dates
+            .is_empty());
+        assert!(get(dir.path(), "song-2")
+            .unwrap()
+            .unwrap()
+            .usage_dates
+            .is_empty());
+    }
+
+    #[test]
+    fn a_song_referenced_twice_in_one_service_only_gets_one_usage_entry_for_it() {
+        let dir = tempfile::tempdir().unwrap();
+        save(dir.path(), sample_song("song-1"), "d", "now").unwrap();
+        let mut service = sample_service("svc-1", "2026-07-01", "song-1");
+        // The same song reprised as a second item within the same service (e.g. opening and
+        // closing) — should still only produce one usage_dates entry for that service.
+        let mut second_item = service.items[0].clone();
+        second_item.id = "item-song-1-again".to_string();
+        service.items.push(second_item);
+
+        update_usage_dates_for_service(dir.path(), "svc-1", None, Some(&service), "d", "now")
+            .unwrap();
+
+        let updated = get(dir.path(), "song-1").unwrap().unwrap();
+        assert_eq!(updated.usage_dates.len(), 1);
+    }
+
+    #[test]
+    fn update_usage_dates_leaves_a_song_whose_usage_dates_did_not_change_untouched() {
         let dir = tempfile::tempdir().unwrap();
         save(dir.path(), sample_song("song-1"), "d", "original-timestamp").unwrap();
-        // No services reference this song, so computed stats (None/0) already match the song's
-        // existing usage — recompute must not rewrite (and re-stamp) the file in that case.
-        recompute_usage(dir.path(), "2026-07-28", "d", "recompute-time").unwrap();
+        // No service references this song, so its usage_dates (already empty) doesn't actually
+        // change — must not rewrite (and re-stamp) the file in that case.
+        let service = sample_service("svc-1", "2026-07-01", "song-2");
+        update_usage_dates_for_service(dir.path(), "svc-1", None, Some(&service), "d", "now")
+            .unwrap();
 
         let updated = get(dir.path(), "song-1").unwrap().unwrap();
         assert_eq!(updated.updated_at, "original-timestamp");
     }
 
     #[test]
-    fn recompute_usage_counts_each_service_within_the_past_year_once() {
+    fn update_usage_dates_stores_a_future_dated_service_entry_without_filtering_it() {
+        // The write path is date-agnostic -- filtering future dates out of "last used"/"past
+        // year" is a display-time concern for whoever reads usage_dates, not this function's.
+        let dir = tempfile::tempdir().unwrap();
+        save(dir.path(), sample_song("song-1"), "d", "now").unwrap();
+        let service = sample_service("svc-1", "2099-01-01", "song-1");
+
+        update_usage_dates_for_service(dir.path(), "svc-1", None, Some(&service), "d", "now")
+            .unwrap();
+
+        let updated = get(dir.path(), "song-1").unwrap().unwrap();
+        assert_eq!(updated.usage_dates[0].date, "2099-01-01");
+    }
+
+    #[test]
+    fn rebuild_all_usage_dates_backfills_every_song_from_existing_services() {
         let dir = tempfile::tempdir().unwrap();
         save(dir.path(), sample_song("song-1"), "d", "now").unwrap();
         services::save(
@@ -341,47 +517,73 @@ mod tests {
         )
         .unwrap();
 
-        recompute_usage(dir.path(), "2026-07-28", "d", "recompute-time").unwrap();
+        rebuild_all_usage_dates(dir.path(), "d", "rebuild-time").unwrap();
 
         let updated = get(dir.path(), "song-1").unwrap().unwrap();
-        assert_eq!(updated.usage.uses_past_year, 2);
+        let mut dates: Vec<&str> = updated
+            .usage_dates
+            .iter()
+            .map(|entry| entry.date.as_str())
+            .collect();
+        dates.sort();
+        assert_eq!(dates, vec!["2026-01-01", "2026-03-01"]);
     }
 
     #[test]
-    fn recompute_usage_ignores_a_service_dated_after_today() {
+    fn rebuild_all_usage_dates_leaves_an_already_correct_song_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        save(dir.path(), sample_song("song-1"), "d", "original-timestamp").unwrap();
+        // No services at all, so the rebuilt usage_dates (empty) already matches -- must not
+        // rewrite (and re-stamp) the file.
+        rebuild_all_usage_dates(dir.path(), "d", "rebuild-time").unwrap();
+
+        let updated = get(dir.path(), "song-1").unwrap().unwrap();
+        assert_eq!(updated.updated_at, "original-timestamp");
+    }
+
+    #[test]
+    fn migrate_usage_dates_backfills_when_the_marker_is_absent() {
         let dir = tempfile::tempdir().unwrap();
         save(dir.path(), sample_song("song-1"), "d", "now").unwrap();
-        // Planned for next month — hasn't happened yet as of "today" below.
         services::save(
             dir.path(),
-            sample_service("svc-1", "2026-08-15", "song-1"),
+            sample_service("svc-1", "2026-01-01", "song-1"),
             "d",
             "now",
         )
         .unwrap();
 
-        recompute_usage(dir.path(), "2026-07-28", "d", "recompute-time").unwrap();
+        migrate_usage_dates_if_needed(dir.path(), "d", "migrate-time").unwrap();
 
         let updated = get(dir.path(), "song-1").unwrap().unwrap();
-        assert_eq!(updated.usage.last_used_at, None);
-        assert_eq!(updated.usage.uses_past_year, 0);
+        assert_eq!(updated.usage_dates.len(), 1);
+        assert!(dir.path().join(USAGE_DATES_MIGRATION_MARKER).is_file());
     }
 
     #[test]
-    fn recompute_usage_counts_the_same_song_used_twice_in_one_service_only_once() {
+    fn migrate_usage_dates_is_a_no_op_once_the_marker_already_exists() {
         let dir = tempfile::tempdir().unwrap();
-        save(dir.path(), sample_song("song-1"), "d", "now").unwrap();
-        let mut service = sample_service("svc-1", "2026-07-01", "song-1");
-        // The same song reprised as a second item within the same service (e.g. opening and
-        // closing) — should still only count as one use of that song for the week.
-        let mut second_item = service.items[0].clone();
-        second_item.id = "item-song-1-again".to_string();
-        service.items.push(second_item);
-        services::save(dir.path(), service, "d", "now").unwrap();
+        save(dir.path(), sample_song("song-1"), "d", "original-timestamp").unwrap();
+        services::save(
+            dir.path(),
+            sample_service("svc-1", "2026-01-01", "song-1"),
+            "d",
+            "now",
+        )
+        .unwrap();
+        // Marker already present -- as if the migration already ran (or a fresh install that
+        // never needed it) -- so this must not backfill anything, even though the song's
+        // usage_dates doesn't reflect the service above.
+        write_json_file(
+            &dir.path().join(USAGE_DATES_MIGRATION_MARKER),
+            &serde_json::json!({ "migratedAt": "already-migrated" }),
+        )
+        .unwrap();
 
-        recompute_usage(dir.path(), "2026-07-28", "d", "recompute-time").unwrap();
+        migrate_usage_dates_if_needed(dir.path(), "d", "migrate-time").unwrap();
 
         let updated = get(dir.path(), "song-1").unwrap().unwrap();
-        assert_eq!(updated.usage.uses_past_year, 1);
+        assert!(updated.usage_dates.is_empty());
+        assert_eq!(updated.updated_at, "original-timestamp");
     }
 }

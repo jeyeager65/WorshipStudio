@@ -1069,7 +1069,7 @@ onUnmounted(() => {
   color: rgba(var(--v-theme-on-surface), 0.72);
 }
 
-/* Report screens (e.g. CcliReportView) use the browser/OS "print to PDF" flow rather than a
+/* Report screens (e.g. SongUsageReportView) use the browser/OS "print to PDF" flow rather than a
    bundled PDF library — the persistent app-bar has to disappear for that printout too, not
    just whatever a report screen hides within its own content area. */
 @media print {

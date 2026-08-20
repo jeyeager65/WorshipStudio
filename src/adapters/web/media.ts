@@ -208,7 +208,7 @@ export function createWebMediaPort(
           location: commit.location,
           duplicateOfId: commit.duplicateOfId,
           contentHash: await hashBytes(bytes),
-          usage: { usesPastYear: 0 },
+          usage: {},
           updatedAt: '',
           updatedByDevice: '',
         })
@@ -267,7 +267,7 @@ export function createWebMediaPort(
           tags: ['Background', 'Stock'],
           location: 'synced',
           contentHash: await hashBytes(bytes),
-          usage: { usesPastYear: 0 },
+          usage: {},
           updatedAt: '',
           updatedByDevice: '',
         })

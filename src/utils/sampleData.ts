@@ -7,6 +7,7 @@ import type {
   ServiceTypeDefinition,
   SongCollectionDefinition,
 } from '@/models/settings'
+import { songIdsInService } from '@/utils/songUsage'
 
 // Fixed (not random) IDs, all under a `sample-` sub-prefix — this is what makes "Load Sample
 // Data" idempotent: clicking it again just refreshes these same records in place (moving the
@@ -48,7 +49,7 @@ export const sampleSongs: Song[] = [
       },
     ],
     defaultArrangement: { sequence: ['v1', 'v2', 'v3', 'v4'] },
-    usage: { usesPastYear: 0 },
+    usageDates: [],
     updatedAt: now,
     updatedByDevice: device,
   },
@@ -76,7 +77,7 @@ export const sampleSongs: Song[] = [
       },
     ],
     defaultArrangement: { sequence: ['v1', 'v2', 'v3'] },
-    usage: { usesPastYear: 0 },
+    usageDates: [],
     updatedAt: now,
     updatedByDevice: device,
   },
@@ -104,7 +105,7 @@ export const sampleSongs: Song[] = [
       },
     ],
     defaultArrangement: { sequence: ['v1', 'c1', 'v2', 'c1'] },
-    usage: { usesPastYear: 0 },
+    usageDates: [],
     updatedAt: now,
     updatedByDevice: device,
   },
@@ -127,7 +128,7 @@ export const sampleSongs: Song[] = [
       },
     ],
     defaultArrangement: { sequence: ['v1', 'c1'] },
-    usage: { usesPastYear: 0 },
+    usageDates: [],
     updatedAt: now,
     updatedByDevice: device,
   },
@@ -150,7 +151,7 @@ export const sampleSongs: Song[] = [
       },
     ],
     defaultArrangement: { sequence: ['v1', 'c1'] },
-    usage: { usesPastYear: 0 },
+    usageDates: [],
     updatedAt: now,
     updatedByDevice: device,
   },
@@ -173,7 +174,7 @@ export const sampleSongs: Song[] = [
       },
     ],
     defaultArrangement: { sequence: ['v1', 'v2'] },
-    usage: { usesPastYear: 0 },
+    usageDates: [],
     updatedAt: now,
     updatedByDevice: device,
   },
@@ -196,7 +197,7 @@ export const sampleSongs: Song[] = [
       },
     ],
     defaultArrangement: { sequence: ['v1', 'v2'] },
-    usage: { usesPastYear: 0 },
+    usageDates: [],
     updatedAt: now,
     updatedByDevice: device,
   },
@@ -219,7 +220,7 @@ export const sampleSongs: Song[] = [
       },
     ],
     defaultArrangement: { sequence: ['v1', 'v2'] },
-    usage: { usesPastYear: 0 },
+    usageDates: [],
     updatedAt: now,
     updatedByDevice: device,
   },
@@ -848,4 +849,28 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
       updatedByDevice: device,
     },
   ]
+}
+
+/** Derives each song's `usageDates` from an already-built `services` array (e.g.
+ *  `buildSampleServices()`'s own output) rather than hand-computing dates that would have to be
+ *  kept in sync with that function's "relative to today" logic by hand. `sampleSongs` itself
+ *  keeps its `usageDates` empty — the in-app "Load Sample Data" flow (LibrarySyncSection.vue)
+ *  saves songs before services, so the normal incremental usage-update path (services.save's
+ *  own port implementation) fills them in for that flow already; this helper exists for the
+ *  public demo build's fixtures.ts, which seeds each collection directly rather than through
+ *  that save flow, and would otherwise start with every song showing "Not yet used" despite the
+ *  seeded services obviously referencing them. */
+export function withSampleUsageDates(songs: Song[], services: Service[]): Song[] {
+  const entriesBySongId = new Map<string, Song['usageDates']>()
+  for (const service of services) {
+    for (const songId of songIdsInService(service)) {
+      const entries = entriesBySongId.get(songId) ?? []
+      entries.push({ serviceId: service.id, date: service.date })
+      entriesBySongId.set(songId, entries)
+    }
+  }
+  return songs.map((song) => ({
+    ...song,
+    usageDates: entriesBySongId.get(song.id) ?? song.usageDates,
+  }))
 }

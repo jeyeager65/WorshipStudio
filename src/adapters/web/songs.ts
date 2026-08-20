@@ -5,16 +5,56 @@
  * remaining collections.
  */
 
-import type { Song } from '@/models/song'
+import type { Song, SongUsageEntry } from '@/models/song'
 import type { SettingsPort, SongPort } from '@/adapters/types'
 import { parseOpenSongXml } from '@/adapters/mock/opensongParser'
 import { pickFilesInBrowser } from '@/adapters/mock/pickFiles'
-import { createFsaCollection } from './collection'
+import { songIdsInService } from '@/utils/songUsage'
+import { createFsaCollection, type FsaCollection } from './collection'
+import { readJsonFile, writeJsonFile } from './fsaStorage'
+import { listServices } from './services'
 
 const SONGS_DIR = 'songs'
+const USAGE_DATES_MIGRATION_MARKER = 'songs.usage-dates-migrated.json'
 
 function newId(): string {
   return `song-${crypto.randomUUID()}`
+}
+
+function sortByServiceId(a: SongUsageEntry, b: SongUsageEntry): number {
+  return a.serviceId.localeCompare(b.serviceId)
+}
+
+/** One-time backfill for a library saved before Song.usageDates existed, mirroring Rust's
+ *  songs::migrate_usage_dates_if_needed exactly — same marker filename, so a folder opened by
+ *  both this web build and the Tauri app shares one migrated/not-migrated state instead of each
+ *  redoing it independently. Every entry is fully re-derivable from currently-saved services
+ *  (nothing lost), gated on the marker so this only ever runs once. Triggered from the songs
+ *  port's own `list()`, the same place the Rust side triggers it from `list_songs`. */
+async function migrateUsageDatesIfNeeded(
+  root: FileSystemDirectoryHandle,
+  collection: FsaCollection<Song>,
+): Promise<void> {
+  const marker = await readJsonFile(root, USAGE_DATES_MIGRATION_MARKER)
+  if (marker) return
+
+  const entriesBySong = new Map<string, SongUsageEntry[]>()
+  for (const service of await listServices(root)) {
+    for (const songId of songIdsInService(service)) {
+      const entries = entriesBySong.get(songId) ?? []
+      entries.push({ serviceId: service.id, date: service.date })
+      entriesBySong.set(songId, entries)
+    }
+  }
+
+  for (const song of await collection.list()) {
+    const rebuilt = (entriesBySong.get(song.id) ?? []).slice().sort(sortByServiceId)
+    const current = song.usageDates.slice().sort(sortByServiceId)
+    if (JSON.stringify(current) === JSON.stringify(rebuilt)) continue
+    await collection.save({ ...song, usageDates: rebuilt })
+  }
+
+  await writeJsonFile(root, USAGE_DATES_MIGRATION_MARKER, { migratedAt: new Date().toISOString() })
 }
 
 export function createWebSongsPort(
@@ -34,14 +74,17 @@ export function createWebSongsPort(
       tags: [],
       blocks: parsed.blocks,
       defaultArrangement: parsed.arrangement,
-      usage: { usesPastYear: 0 },
+      usageDates: [],
       updatedAt: '',
       updatedByDevice: '',
     }
   }
 
   return {
-    list: () => collection.list(),
+    list: async () => {
+      await migrateUsageDatesIfNeeded(root, collection)
+      return collection.list()
+    },
     get: (id) => collection.get(id),
     save: async (song) => {
       await collection.save(song)

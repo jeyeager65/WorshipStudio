@@ -15,7 +15,7 @@ const song: Song = {
   tags: [],
   blocks: [],
   defaultArrangement: { sequence: ['v1'] },
-  usage: { usesPastYear: 0 },
+  usageDates: [],
   updatedAt: '',
   updatedByDevice: '',
 }

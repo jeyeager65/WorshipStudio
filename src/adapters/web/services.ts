@@ -8,6 +8,7 @@
 
 import type { Service } from '@/models/service'
 import type { ImportSetsSummary, ServicePort, SettingsPort, SongPort } from '@/adapters/types'
+import { affectedSongIds, applyServiceUsageChange, songIdsInService } from '@/utils/songUsage'
 import { joinPath, listEntries, readJsonFile, removeFile, writeJsonFile } from './fsaStorage'
 
 const SERVICES_DIR = 'services'
@@ -29,7 +30,10 @@ async function listYearDirs(root: FileSystemDirectoryHandle): Promise<string[]> 
   return entries.filter((e) => e.kind === 'directory').map((e) => e.name)
 }
 
-async function listServices(root: FileSystemDirectoryHandle): Promise<Service[]> {
+// Exported for songs.ts's own migrateUsageDatesIfNeeded — a raw-storage-level read, not through
+// the ServicePort, avoiding a circular port dependency (createWebServicesPort itself takes an
+// already-constructed SongPort, so songs.ts can't depend on a ServicePort back).
+export async function listServices(root: FileSystemDirectoryHandle): Promise<Service[]> {
   const services: Service[] = []
   for (const year of await listYearDirs(root)) {
     const dir = joinPath(SERVICES_DIR, year)
@@ -68,43 +72,25 @@ async function removeExistingExcept(
   }
 }
 
-/** Mirrors adapters/mock/index.ts's recomputeSongUsage, itself mirroring the Rust backend's
- *  songs::recompute_usage — recomputed from every saved service rather than incremented on each
- *  save, so "last used" stays correct if a service's songs or date are edited later, or the most
- *  recent service referencing a song is deleted. Only future-or-today services never count as a
- *  use yet; only songs whose stats actually changed are re-saved. */
-async function recomputeSongUsage(root: FileSystemDirectoryHandle, songs: SongPort): Promise<void> {
-  const allServices = await listServices(root)
-  const today = new Date().toISOString().slice(0, 10)
-  const oneYearAgo = new Date()
-  oneYearAgo.setDate(oneYearAgo.getDate() - 365)
-  const oneYearAgoStr = oneYearAgo.toISOString().slice(0, 10)
-
-  const lastUsedAt = new Map<string, string>()
-  const usesPastYear = new Map<string, number>()
-  for (const service of allServices) {
-    if (service.date > today) continue
-    const songIdsInService = new Set(
-      service.items.filter((item) => item.type === 'song').map((item) => item.songId),
-    )
-    for (const songId of songIdsInService) {
-      const current = lastUsedAt.get(songId)
-      if (!current || service.date > current) lastUsedAt.set(songId, service.date)
-      if (service.date >= oneYearAgoStr)
-        usesPastYear.set(songId, (usesPastYear.get(songId) ?? 0) + 1)
-    }
-  }
-
-  const allSongs = await songs.list()
-  for (const song of allSongs) {
-    const newLastUsedAt = lastUsedAt.get(song.id)
-    const newUsesPastYear = usesPastYear.get(song.id) ?? 0
-    if (song.usage.lastUsedAt === newLastUsedAt && song.usage.usesPastYear === newUsesPastYear)
-      continue
-    await songs.save({
-      ...song,
-      usage: { lastUsedAt: newLastUsedAt, usesPastYear: newUsesPastYear },
-    })
+/** Incrementally updates every affected song's `usageDates` for one service being saved or
+ *  deleted, mirroring songs::update_usage_dates_for_service (Rust) instead of the full-library
+ *  recompute this replaced — see that function's own doc comment. `oldService` is the previously
+ *  saved version (undefined for a brand new service), `newService` the version now being saved
+ *  (undefined when the service is being deleted). */
+async function updateUsageDatesForService(
+  songs: SongPort,
+  serviceId: string,
+  oldService: Service | undefined,
+  newService: Service | undefined,
+): Promise<void> {
+  const ids = affectedSongIds(oldService, newService)
+  const newSongIds = newService ? songIdsInService(newService) : new Set<string>()
+  for (const id of ids) {
+    const song = await songs.get(id)
+    if (!song) continue
+    const desiredDate = newService && newSongIds.has(id) ? newService.date : undefined
+    const updated = applyServiceUsageChange(song, serviceId, desiredDate)
+    if (updated) await songs.save(updated)
   }
 }
 
@@ -117,6 +103,10 @@ export function createWebServicesPort(
     list: () => listServices(root),
     get: (id) => getService(root, id),
     save: async (service) => {
+      // Read the old version before it's overwritten so the songs it referenced can be diffed
+      // against what the new version references — see updateUsageDatesForService's own doc
+      // comment for why this replaced a full-library recompute on every save.
+      const oldService = await getService(root, service.id)
       const stamped: Service = {
         ...service,
         updatedAt: new Date().toISOString(),
@@ -127,11 +117,12 @@ export function createWebServicesPort(
       // fails, the previous service remains intact and visible, same ordering as the Rust side.
       await writeJsonFile(root, destination, stamped)
       await removeExistingExcept(root, stamped.id, destination)
-      await recomputeSongUsage(root, songs)
+      await updateUsageDatesForService(songs, stamped.id, oldService, stamped)
     },
     delete: async (id) => {
+      const oldService = await getService(root, id)
       await removeExistingExcept(root, id, undefined)
-      await recomputeSongUsage(root, songs)
+      if (oldService) await updateUsageDatesForService(songs, id, oldService, undefined)
     },
     listUpcoming: async (fromDate, toDate) => {
       const all = await listServices(root)

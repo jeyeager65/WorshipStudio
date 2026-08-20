@@ -95,7 +95,7 @@ function blankItem(): SlideLibraryItem {
     tags: [],
     documentVersion: 2,
     slides: [slide],
-    usage: { usesPastYear: 0 },
+    usage: {},
     updatedAt: '',
     updatedByDevice: '',
   }
@@ -814,7 +814,11 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
           ><v-icon icon="mdi-view-carousel-outline" size="17" />{{ item.slides.length }}
           {{ item.slides.length === 1 ? 'Slide' : 'Slides' }}</span
         >
-        <span><v-icon icon="mdi-history" size="17" />{{ item.usage.usesPastYear }}x This Year</span>
+        <span
+          ><v-icon icon="mdi-history" size="17" />{{
+            item.usage.lastUsedDate ? `Last Used ${item.usage.lastUsedDate}` : 'Not Yet Used'
+          }}</span
+        >
       </div>
     </header>
 

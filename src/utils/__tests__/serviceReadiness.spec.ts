@@ -10,7 +10,7 @@ const song: Song = {
   tags: [],
   blocks: [{ id: 'v1', label: 'Verse 1', text: 'Amazing grace' }],
   defaultArrangement: { sequence: ['v1'] },
-  usage: { usesPastYear: 0 },
+  usageDates: [],
   updatedAt: '',
   updatedByDevice: '',
 }
@@ -151,7 +151,7 @@ describe('evaluateServiceReadiness', () => {
               tags: [],
               location: 'local',
               contentHash: 'hash',
-              usage: { usesPastYear: 0 },
+              usage: {},
               updatedAt: '',
               updatedByDevice: '',
             },

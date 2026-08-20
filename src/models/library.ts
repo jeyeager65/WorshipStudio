@@ -144,9 +144,11 @@ export interface SlideLibraryItem {
   /** Default auto-advance/looping timer applied whenever this item is added to a service,
    *  unless that service item sets its own autoAdvance override. */
   autoAdvance?: AutoAdvanceConfig
+  /** Nothing currently populates this for media/slide items — kept intentionally minimal (just
+   *  the most recent date something used this item, not a count). Song has its own, richer
+   *  `usageDates` array instead (models/song.ts). */
   usage: {
-    lastUsedAt?: string
-    usesPastYear: number
+    lastUsedDate?: string
   }
   updatedAt: string
   updatedByDevice: string
@@ -172,9 +174,11 @@ export interface MediaItem {
     | { type: 'canva-video'; designId: string }
   /** Non-cryptographic content hash used only to notice accidental duplicate imports. */
   contentHash: string
+  /** Nothing currently populates this for media/slide items — kept intentionally minimal (just
+   *  the most recent date something used this item, not a count). Song has its own, richer
+   *  `usageDates` array instead (models/song.ts). */
   usage: {
-    lastUsedAt?: string
-    usesPastYear: number
+    lastUsedDate?: string
   }
   updatedAt: string
   updatedByDevice: string

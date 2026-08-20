@@ -17,6 +17,16 @@ export interface SongCollectionEntry {
   number?: string
 }
 
+/** One service that currently references a song, as of that song's own `usageDates` array —
+ *  see `Song.usageDates`'s own doc comment for why this replaced a cached usage-count snapshot.
+ *  `date` is the service's own date ("YYYY-MM-DD"), not when the reference was recorded, and is
+ *  stored regardless of whether that date is in the past, present, or future: the write path is
+ *  deliberately date-agnostic (see utils/songUsage.ts for the display-time filtering). */
+export interface SongUsageEntry {
+  serviceId: string
+  date: string
+}
+
 export interface Song {
   id: string
   title: string
@@ -33,13 +43,14 @@ export interface Song {
   notes?: string
   blocks: SongBlock[]
   defaultArrangement: Arrangement
-  usage: {
-    lastUsedAt?: string
-    usesPastYear: number
-  }
+  /** Every service that currently references this song — the live source for "last used"/"uses
+   *  in the past year" (derived by filtering this against the current date at display time via
+   *  utils/songUsage.ts, so those figures can never go stale) and for the Song Usage report. Kept
+   *  incrementally in sync on service save/delete rather than recomputed by a full rescan. */
+  usageDates: SongUsageEntry[]
   /** Hidden from the library list and the Add-to-Service song picker, but otherwise untouched —
    *  a past service that already references this song still resolves and renders it normally,
-   *  and usage/CCLI reporting is unaffected. Reversible (see Unarchive), unlike deleting. */
+   *  and the Song Usage report is unaffected. Reversible (see Unarchive), unlike deleting. */
   archived?: boolean
   updatedAt: string
   updatedByDevice: string

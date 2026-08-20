@@ -357,8 +357,7 @@ pub fn commit_imports(
             content_hash,
             origin: file.origin,
             usage: Usage {
-                last_used_at: None,
-                uses_past_year: 0,
+                last_used_date: None,
             },
             updated_at: now.to_string(),
             updated_by_device: device.to_string(),
@@ -396,8 +395,7 @@ mod tests {
             content_hash: content_hash.to_string(),
             origin: None,
             usage: Usage {
-                last_used_at: None,
-                uses_past_year: 0,
+                last_used_date: None,
             },
             updated_at: String::new(),
             updated_by_device: String::new(),

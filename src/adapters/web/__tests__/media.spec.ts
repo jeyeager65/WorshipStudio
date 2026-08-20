@@ -299,7 +299,7 @@ describe('createWebMediaPort', () => {
         tags: [],
         location: 'local',
         contentHash: 'abc',
-        usage: { usesPastYear: 0 },
+        usage: {},
         updatedAt: '',
         updatedByDevice: '',
       })
@@ -397,7 +397,7 @@ describe('createWebMediaPort', () => {
         tags: [],
         location: 'local',
         contentHash: 'abc',
-        usage: { usesPastYear: 0 },
+        usage: {},
         updatedAt: '',
         updatedByDevice: '',
       })
@@ -410,7 +410,7 @@ describe('createWebMediaPort', () => {
         tags: [],
         location: 'synced',
         contentHash: 'abc',
-        usage: { usesPastYear: 0 },
+        usage: {},
         updatedAt: '',
         updatedByDevice: '',
       })

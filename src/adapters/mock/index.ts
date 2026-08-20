@@ -19,6 +19,7 @@ import type {
   RoleDefinition,
 } from '@/models/settings'
 import { MockCollection, MockSingleton } from './collection'
+import { affectedSongIds, applyServiceUsageChange, songIdsInService } from '@/utils/songUsage'
 import { stockBackgrounds, stockThemes } from '@/data/stockContent'
 import { presentationThemeDefaults } from '@/utils/presentationTheme'
 import {
@@ -58,48 +59,25 @@ function nowStamp() {
   return { updatedAt: new Date().toISOString(), updatedByDevice: 'demo-machine' }
 }
 
-// Mirrors the Tauri backend's songs::recompute_usage — recomputed from every saved service
-// rather than incremented on each save, so "last used" stays correct if a service's songs or
-// date are edited later, or the most recent service referencing a song is deleted. lastUsedAt
-// is the service's own date, not when it was saved. Only songs whose stats actually changed are
-// re-saved.
-//
-// Only services dated on or before today count — a future-dated (planned) service isn't a use
-// yet. Each song counts at most once per service regardless of how many items in that service
-// reference it (e.g. an opening song reprised as the closing song).
-async function recomputeSongUsage(songs: MockCollection<Song>, services: MockCollection<Service>) {
-  const allServices = (await services.list()) as Service[]
-  const today = new Date().toISOString().slice(0, 10)
-  const oneYearAgo = new Date()
-  oneYearAgo.setDate(oneYearAgo.getDate() - 365)
-  const oneYearAgoStr = oneYearAgo.toISOString().slice(0, 10)
-
-  const lastUsedAt = new Map<string, string>()
-  const usesPastYear = new Map<string, number>()
-  for (const service of allServices) {
-    if (service.date > today) continue
-    const songIdsInService = new Set(
-      service.items.filter((item) => item.type === 'song').map((item) => item.songId),
-    )
-    for (const songId of songIdsInService) {
-      const current = lastUsedAt.get(songId)
-      if (!current || service.date > current) lastUsedAt.set(songId, service.date)
-      if (service.date >= oneYearAgoStr)
-        usesPastYear.set(songId, (usesPastYear.get(songId) ?? 0) + 1)
-    }
-  }
-
-  const allSongs = (await songs.list()) as Song[]
-  for (const song of allSongs) {
-    const newLastUsedAt = lastUsedAt.get(song.id)
-    const newUsesPastYear = usesPastYear.get(song.id) ?? 0
-    if (song.usage.lastUsedAt === newLastUsedAt && song.usage.usesPastYear === newUsesPastYear)
-      continue
-    await songs.save({
-      ...song,
-      usage: { lastUsedAt: newLastUsedAt, usesPastYear: newUsesPastYear },
-      ...nowStamp(),
-    })
+// Incrementally updates every affected song's usageDates for one service being saved or
+// deleted, mirroring songs::update_usage_dates_for_service (Rust) instead of a full-library
+// recompute — see utils/songUsage.ts. `oldService` is the previously saved version (undefined
+// for a brand new service), `newService` the version now being saved (undefined when the
+// service is being deleted).
+async function updateUsageDatesForService(
+  songs: MockCollection<Song>,
+  serviceId: string,
+  oldService: Service | undefined,
+  newService: Service | undefined,
+) {
+  const ids = affectedSongIds(oldService, newService)
+  const newSongIds = newService ? songIdsInService(newService) : new Set<string>()
+  for (const id of ids) {
+    const song = (await songs.get(id)) as Song | undefined
+    if (!song) continue
+    const desiredDate = newService && newSongIds.has(id) ? newService.date : undefined
+    const updated = applyServiceUsageChange(song, serviceId, desiredDate)
+    if (updated) await songs.save({ ...updated, ...nowStamp() })
   }
 }
 
@@ -181,7 +159,7 @@ export function createMockAdapter(): StudioAdapter {
       tags: [],
       blocks: parsed.blocks,
       defaultArrangement: parsed.arrangement,
-      usage: { usesPastYear: 0 },
+      usageDates: [],
       ...nowStamp(),
     }
     await songs.save(song)
@@ -246,12 +224,15 @@ export function createMockAdapter(): StudioAdapter {
       list: () => services.list() as Promise<Service[]>,
       get: (id) => services.get(id) as Promise<Service | undefined>,
       save: async (service) => {
-        await services.save({ ...service, ...nowStamp() })
-        await recomputeSongUsage(songs, services)
+        const oldService = (await services.get(service.id)) as Service | undefined
+        const stamped: Service = { ...service, ...nowStamp() }
+        await services.save(stamped)
+        await updateUsageDatesForService(songs, stamped.id, oldService, stamped)
       },
       delete: async (id) => {
+        const oldService = (await services.get(id)) as Service | undefined
         await services.delete(id)
-        await recomputeSongUsage(songs, services)
+        if (oldService) await updateUsageDatesForService(songs, id, oldService, undefined)
       },
       listUpcoming: async (fromDate, toDate) => {
         const all = (await services.list()) as Service[]
@@ -314,7 +295,7 @@ export function createMockAdapter(): StudioAdapter {
             location: file.location,
             duplicateOfId: file.duplicateOfId,
             contentHash: source ? fakeContentHash(source) : newId('hash'),
-            usage: { usesPastYear: 0 },
+            usage: {},
             ...nowStamp(),
           }
           if (source) mediaPreviewUrls.set(item.id, URL.createObjectURL(source))
@@ -364,7 +345,7 @@ export function createMockAdapter(): StudioAdapter {
             // getPreviewUrl above), so this is just a stable per-id placeholder, distinct
             // enough that it won't collide with a real import's hash.
             contentHash: `stock:${background.id}`,
-            usage: { usesPastYear: 0 },
+            usage: {},
             ...nowStamp(),
           }
           await media.save(item)

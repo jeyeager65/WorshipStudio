@@ -88,7 +88,7 @@ pub fn compute(root: &Path) -> std::io::Result<Vec<ManifestEntry>> {
 mod tests {
     use super::*;
     use crate::domain::songs;
-    use crate::models::{Arrangement, Song, Usage};
+    use crate::models::{Arrangement, Song};
 
     #[test]
     fn compute_indexes_every_saved_song() {
@@ -107,10 +107,7 @@ mod tests {
                 notes: None,
                 blocks: vec![],
                 default_arrangement: Arrangement { sequence: vec![] },
-                usage: Usage {
-                    last_used_at: None,
-                    uses_past_year: 0,
-                },
+                usage_dates: vec![],
                 archived: false,
                 updated_at: String::new(),
                 updated_by_device: String::new(),

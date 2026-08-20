@@ -35,12 +35,29 @@ pub struct SongCollectionEntry {
     pub number: Option<String>,
 }
 
+/// Shared by `MediaItem.usage`/`SlideLibraryItem.usage` only — Song has its own, richer
+/// `usage_dates: Vec<SongUsageEntry>` instead (see that field's own doc comment). Nothing
+/// currently populates this for media/slide items (no recompute function exists for them), so
+/// it stays intentionally minimal: just the most recent date something used this item, not a
+/// count — a plain date, not a timestamp, hence `last_used_date` rather than `last_used_at`.
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Usage {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_used_at: Option<String>,
-    pub uses_past_year: u32,
+    pub last_used_date: Option<String>,
+}
+
+/// One service that currently references a song, as of that song's own `usage_dates` array —
+/// see `Song::usage_dates`'s own doc comment for why this replaced a cached `Usage` snapshot.
+/// `date` is the service's own date ("YYYY-MM-DD"), not when the reference was recorded, and is
+/// stored regardless of whether that date is in the past, present, or future: the write path is
+/// deliberately date-agnostic, and it's up to whoever reads this array (a "last used" badge, the
+/// Song Usage report) to decide how to filter it for their own purpose.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SongUsageEntry {
+    pub service_id: String,
+    pub date: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -67,10 +84,20 @@ pub struct Song {
     #[serde(default)]
     pub blocks: Vec<SongBlock>,
     pub default_arrangement: Arrangement,
-    pub usage: Usage,
+    /// Every service that currently references this song — the live source for "last used"/
+    /// "uses in the past year" (derived by filtering this against the current date at display
+    /// time, so those figures can never go stale the way a cached count could) and for the Song
+    /// Usage report. Kept incrementally in sync on service save/delete (see
+    /// `domain::songs::update_usage_dates_for_service`) rather than recomputed by a full rescan.
+    /// `#[serde(default)]` so a pre-migration library-on-disk Song (which has no `usageDates`
+    /// key at all yet) deserializes to an empty vec rather than failing — see
+    /// `domain::songs::migrate_usage_dates_if_needed` for the one-time backfill that then
+    /// populates it for real from existing services.
+    #[serde(default)]
+    pub usage_dates: Vec<SongUsageEntry>,
     /// Hidden from the library list and the Add-to-Service song picker, but otherwise untouched
     /// — a past service that already references this song still resolves and renders it
-    /// normally, and usage/CCLI reporting is unaffected. Reversible, unlike deleting.
+    /// normally, and the Song Usage report is unaffected. Reversible, unlike deleting.
     #[serde(default)]
     pub archived: bool,
     pub updated_at: String,

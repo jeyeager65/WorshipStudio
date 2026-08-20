@@ -8,7 +8,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::domain::opensong::decode_xml_entities;
-use crate::models::{Service, ServiceItem, ServiceItemContent, Song, Usage};
+use crate::models::{Service, ServiceItem, ServiceItemContent, Song};
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
@@ -60,24 +60,22 @@ pub fn parse_set_filename_date(filename: &str) -> Option<NaiveDate> {
 /// Reads every file directly inside `sets_dir` (non-recursive — archived-year subfolders use a
 /// different naming convention entirely and are a later slice), keeps only the ones whose
 /// filename parses to a date in `year`, and turns each into a draft `Service` with its songs
-/// matched by title (case-insensitively) against `songs`. Also returns updated `Usage` for
-/// every matched song — a count of how many of this year's sets it appeared in, and the most
-/// recent one — since this is meant to run once, seeding history from a real OpenSong library
-/// rather than starting every imported song at zero. Callers own actually persisting the
-/// returned services and song usage updates.
+/// matched by title (case-insensitively) against `songs`. Doesn't compute any song usage stats
+/// itself — a newly-imported service is just another "service now exists" event, so callers seed
+/// `Song::usage_dates` the same way any other new service does, via
+/// `songs::update_usage_dates_for_service` (see `commands::opensong::import_opensong_sets`).
 pub fn import_sets(
     sets_dir: &Path,
     songs: &[Song],
     year: i32,
     default_service_type_id: &str,
-) -> std::io::Result<(Vec<Service>, HashMap<String, Usage>, ImportSetsSummary)> {
+) -> std::io::Result<(Vec<Service>, ImportSetsSummary)> {
     let mut services = Vec::new();
-    let mut usage_by_song_id: HashMap<String, (u32, Option<String>)> = HashMap::new();
     let mut unmatched_song_titles = Vec::new();
     let mut skipped_files = Vec::new();
 
     if !sets_dir.exists() {
-        return Ok((services, HashMap::new(), ImportSetsSummary::default()));
+        return Ok((services, ImportSetsSummary::default()));
     }
 
     let title_lookup: HashMap<String, &Song> =
@@ -121,15 +119,6 @@ pub fn import_sets(
                         auto_advance: None,
                     });
                     song_references_matched += 1;
-                    let record = usage_by_song_id.entry(song.id.clone()).or_insert((0, None));
-                    record.0 += 1;
-                    if record
-                        .1
-                        .as_deref()
-                        .is_none_or(|last| date_str.as_str() > last)
-                    {
-                        record.1 = Some(date_str.clone());
-                    }
                 }
                 None => unmatched_song_titles.push(title),
             }
@@ -156,19 +145,6 @@ pub fn import_sets(
     unmatched_song_titles.sort();
     unmatched_song_titles.dedup();
 
-    let usage_updates = usage_by_song_id
-        .into_iter()
-        .map(|(id, (count, last_used_at))| {
-            (
-                id,
-                Usage {
-                    uses_past_year: count,
-                    last_used_at,
-                },
-            )
-        })
-        .collect();
-
     let summary = ImportSetsSummary {
         services_created: services.len(),
         song_references_matched,
@@ -176,7 +152,7 @@ pub fn import_sets(
         skipped_files,
     };
 
-    Ok((services, usage_updates, summary))
+    Ok((services, summary))
 }
 
 #[cfg(test)]
@@ -199,10 +175,7 @@ mod tests {
             default_arrangement: Arrangement {
                 sequence: vec!["v1".to_string()],
             },
-            usage: Usage {
-                last_used_at: None,
-                uses_past_year: 0,
-            },
+            usage_dates: vec![],
             archived: false,
             updated_at: String::new(),
             updated_by_device: String::new(),
@@ -278,7 +251,7 @@ mod tests {
         .unwrap();
 
         let songs = vec![sample_song("song-1", "Amazing Grace")];
-        let (services, usage, summary) =
+        let (services, summary) =
             import_sets(dir.path(), &songs, 2026, "Sunday Morning Worship").unwrap();
 
         // Only the 2026 file should produce a service -- the 2025 one is out of scope for
@@ -287,11 +260,6 @@ mod tests {
         assert_eq!(services[0].date, "2026-02-26");
         assert_eq!(summary.services_created, 1);
         assert_eq!(summary.song_references_matched, 1);
-        assert_eq!(usage.get("song-1").unwrap().uses_past_year, 1);
-        assert_eq!(
-            usage.get("song-1").unwrap().last_used_at.as_deref(),
-            Some("2026-02-26")
-        );
     }
 
     #[test]
@@ -308,7 +276,7 @@ mod tests {
         )
         .unwrap();
 
-        let (services, _usage, summary) =
+        let (services, summary) =
             import_sets(dir.path(), &[], 2026, "Sunday Morning Worship").unwrap();
 
         assert_eq!(services.len(), 1);
@@ -323,7 +291,12 @@ mod tests {
     }
 
     #[test]
-    fn import_sets_counts_multiple_appearances_of_the_same_song_across_sets() {
+    fn import_sets_creates_a_separate_service_for_each_set_the_same_song_appears_in() {
+        // This function no longer aggregates usage stats itself -- that's now the caller's job
+        // (see commands::opensong::import_opensong_sets, which feeds each created service
+        // through songs::update_usage_dates_for_service the same way any other new service
+        // would be) -- so this only checks that each in-year set still produces its own service
+        // referencing the matched song.
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("01.04.2026"),
@@ -337,23 +310,24 @@ mod tests {
         .unwrap();
 
         let songs = vec![sample_song("song-1", "Amazing Grace")];
-        let (_services, usage, _summary) =
-            import_sets(dir.path(), &songs, 2026, "Service").unwrap();
+        let (services, summary) = import_sets(dir.path(), &songs, 2026, "Service").unwrap();
 
-        assert_eq!(usage.get("song-1").unwrap().uses_past_year, 2);
-        assert_eq!(
-            usage.get("song-1").unwrap().last_used_at.as_deref(),
-            Some("2026-02-01")
-        );
+        assert_eq!(services.len(), 2);
+        assert_eq!(summary.song_references_matched, 2);
+        for service in &services {
+            assert!(matches!(
+                &service.items[0].content,
+                ServiceItemContent::Song { song_id, .. } if song_id == "song-1"
+            ));
+        }
     }
 
     #[test]
     fn import_sets_returns_empty_when_the_directory_does_not_exist() {
         let dir = tempfile::tempdir().unwrap();
         let missing = dir.path().join("does-not-exist");
-        let (services, usage, summary) = import_sets(&missing, &[], 2026, "Service").unwrap();
+        let (services, summary) = import_sets(&missing, &[], 2026, "Service").unwrap();
         assert!(services.is_empty());
-        assert!(usage.is_empty());
         assert_eq!(summary.services_created, 0);
     }
 }

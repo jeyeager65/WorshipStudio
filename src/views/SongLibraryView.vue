@@ -17,6 +17,12 @@ import {
   fillPlanningSongSlot,
   isPlanningSongSlot,
 } from '@/utils/planningSongs'
+import {
+  getLastUsedDate,
+  getUsesInPastYear,
+  todayLocal,
+  isArchiveCandidate as isSongArchiveCandidate,
+} from '@/utils/songUsage'
 
 const router = useRouter()
 const route = useRoute()
@@ -178,16 +184,18 @@ function firstCollectionLabel(song: Song): string | undefined {
     : collectionName(collection.collectionId)
 }
 
-// The same usage data as the Song Editor, split into two aligned lines in this directory — see
-// domain::songs::recompute_usage (Rust) / recomputeSongUsage (mock adapter), which keep this
-// current from the service's own date whenever a service is saved or deleted, not save time.
+// The same usage data as the Song Editor, split into two aligned lines in this directory —
+// derived live at display time from song.usageDates (see utils/songUsage.ts), which is kept
+// current by an incremental update on every service save/delete rather than recomputed here.
+const today = todayLocal()
+
 function lastUsedLabel(song: Song): string {
-  const { lastUsedAt } = song.usage
-  // A song can have a lastUsedAt with usesPastYear still 0 — used before, just not within the
-  // last 365 days (recompute_usage tracks these independently; a song doesn't need any use in
-  // the past year to have ever been used at all).
-  if (!lastUsedAt) return 'Not yet used'
-  const last = new Date(`${lastUsedAt}T00:00:00`).toLocaleDateString(undefined, {
+  const lastUsedDate = getLastUsedDate(song.usageDates, today)
+  // A song can have a lastUsedDate with 0 uses in the past year — used before, just not within
+  // the last 365 days (a song doesn't need any use in the past year to have ever been used at
+  // all).
+  if (!lastUsedDate) return 'Not yet used'
+  const last = new Date(`${lastUsedDate}T00:00:00`).toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -196,22 +204,15 @@ function lastUsedLabel(song: Song): string {
 }
 
 function yearlyUsageLabel(song: Song): string {
-  return `${song.usage.usesPastYear}x this year`
+  return `${getUsesInPastYear(song.usageDates, today)}x in the past year`
 }
 
 // A nudge, not a rule — surfaced only in the active view, since a song that's already archived
-// doesn't need to be told it's a candidate for the thing it already is. Deliberately NOT based
-// on usage.usesPastYear (a rolling 365-day window) — that would flag every once-a-year seasonal
-// song (Christmas, New Year's, etc.) the moment its normal annual gap ticks past 365 days,
-// dumping a cluster of false-alarm suggestions right as each one's anniversary rolls over. 18
-// months gives a genuine annual song several months of slack past a normal cycle before it's
-// suggested, while still catching songs that have truly fallen out of rotation.
-const ARCHIVE_CANDIDATE_DAYS = 548
+// doesn't need to be told it's a candidate for the thing it already is. See
+// utils/songUsage.ts's isArchiveCandidate for why this uses an 18-month window rather than the
+// rolling-365-day "uses in the past year" figure above.
 function isArchiveCandidate(song: Song): boolean {
-  if (!song.usage.lastUsedAt) return false
-  const daysSinceLastUse =
-    (Date.now() - new Date(`${song.usage.lastUsedAt}T00:00:00`).getTime()) / 86_400_000
-  return daysSinceLastUse > ARCHIVE_CANDIDATE_DAYS
+  return isSongArchiveCandidate(song.usageDates, today)
 }
 
 // Reversible, unlike Delete — hides the song from this list and the Add-to-Service picker

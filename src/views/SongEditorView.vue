@@ -14,6 +14,7 @@ import { errorMessage } from '@/composables/useAsyncStoreState'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import type { Song, SongBlock } from '@/models/song'
 import type { SongCollectionDefinition } from '@/models/settings'
+import { getLastUsedDate, getUsesInPastYear, todayLocal } from '@/utils/songUsage'
 
 const route = useRoute()
 const router = useRouter()
@@ -39,7 +40,7 @@ function blankSong(): Song {
     tags: [],
     blocks: [],
     defaultArrangement: { sequence: [] },
-    usage: { usesPastYear: 0 },
+    usageDates: [],
     updatedAt: '',
     updatedByDevice: '',
   }
@@ -108,18 +109,20 @@ async function saveSong() {
 
 const usageLabel = computed(() => {
   if (!song.value) return ''
-  const { lastUsedAt, usesPastYear } = song.value.usage
-  // A song can have a lastUsedAt with usesPastYear still 0 — used before, just not within the
-  // last 365 days (recompute_usage tracks these independently; a song doesn't need any use in
-  // the past year to have ever been used at all).
-  if (!lastUsedAt) return 'Not yet used'
-  const last = new Date(`${lastUsedAt}T00:00:00`).toLocaleDateString(undefined, {
+  const today = todayLocal()
+  const lastUsedDate = getLastUsedDate(song.value.usageDates, today)
+  const usesPastYear = getUsesInPastYear(song.value.usageDates, today)
+  // A song can have a lastUsedDate with 0 uses in the past year — used before, just not within
+  // the last 365 days (a song doesn't need any use in the past year to have ever been used at
+  // all).
+  if (!lastUsedDate) return 'Not yet used'
+  const last = new Date(`${lastUsedDate}T00:00:00`).toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   })
   return usesPastYear > 0
-    ? `Last used ${last} · used ${usesPastYear}x this year`
+    ? `Last used ${last} · used ${usesPastYear}x in the past year`
     : `Last used ${last}`
 })
 

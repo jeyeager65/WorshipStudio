@@ -11,6 +11,7 @@ import {
   sampleServiceTypes,
   sampleServiceTemplates,
   buildSampleServices,
+  withSampleUsageDates,
 } from '@/utils/sampleData'
 
 // The public GitHub Pages demo shares its content with the in-app "Load Sample Data" feature
@@ -18,10 +19,14 @@ import {
 // the same thing: public-domain songs (no CCLI/copyright entanglement) and fabricated people
 // (no real names). Services are built fresh (not a static array) so their dates stay relative
 // to "today" instead of drifting into the past as a hardcoded date would.
-export const seedSongs = sampleSongs
+export const seedServices = buildSampleServices()
+// Pre-populated from seedServices (rather than left empty like sampleSongs itself) so the
+// public demo's very first render already shows real "last used"/"used Nx this year" figures —
+// see withSampleUsageDates's own doc comment for why this differs from the in-app "Load Sample
+// Data" flow, which fills usageDates in via the normal save path instead.
+export const seedSongs = withSampleUsageDates(sampleSongs, seedServices)
 export const seedPeople = samplePeople
 export const seedThemes = sampleThemes
-export const seedServices = buildSampleServices()
 export const seedSongCollections = structuredClone(sampleCollections)
 export const seedServiceTypes = structuredClone(sampleServiceTypes)
 export const seedRoleGroups = structuredClone(sampleRoleGroups)

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createMockAdapter } from '@/adapters/mock'
 import { stockBackgrounds, stockThemes } from '@/data/stockContent'
+import { getLastUsedDate, getUsesInPastYear } from '@/utils/songUsage'
 
 beforeEach(() => {
   localStorage.clear()
@@ -109,7 +110,7 @@ describe('mock adapter', () => {
       tags: [],
       blocks: [],
       defaultArrangement: { sequence: [] },
-      usage: { usesPastYear: 0 },
+      usageDates: [],
       updatedAt: '',
       updatedByDevice: '',
     })
@@ -150,7 +151,7 @@ describe('mock adapter', () => {
       tags: [],
       blocks: [],
       defaultArrangement: { sequence: [] },
-      usage: { usesPastYear: 0 },
+      usageDates: [],
       updatedAt: '',
       updatedByDevice: '',
     })
@@ -166,10 +167,12 @@ describe('mock adapter', () => {
     })
 
     const song = await adapter.songs.get('song-usage-test')
-    expect(song?.usage.lastUsedAt).toBe('2026-01-15')
+    expect(song?.usageDates).toEqual([
+      { serviceId: 'service-usage-test', date: '2026-01-15' },
+    ])
   })
 
-  it('recomputes usage instead of incrementing, so deleting the referencing service clears it again', async () => {
+  it('incrementally updates usage instead of recomputing, so deleting the referencing service clears it again', async () => {
     const adapter = createMockAdapter()
     await adapter.songs.save({
       id: 'song-usage-test-2',
@@ -178,7 +181,7 @@ describe('mock adapter', () => {
       tags: [],
       blocks: [],
       defaultArrangement: { sequence: [] },
-      usage: { usesPastYear: 0 },
+      usageDates: [],
       updatedAt: '',
       updatedByDevice: '',
     })
@@ -195,11 +198,10 @@ describe('mock adapter', () => {
     await adapter.services.delete('service-usage-test-2')
 
     const song = await adapter.songs.get('song-usage-test-2')
-    expect(song?.usage.lastUsedAt).toBeUndefined()
-    expect(song?.usage.usesPastYear).toBe(0)
+    expect(song?.usageDates).toEqual([])
   })
 
-  it('ignores a service dated after today — a planned service is not a use yet', async () => {
+  it('stores a future-dated service entry without filtering it — the write side is date-agnostic', async () => {
     const adapter = createMockAdapter()
     await adapter.songs.save({
       id: 'song-usage-future',
@@ -208,7 +210,7 @@ describe('mock adapter', () => {
       tags: [],
       blocks: [],
       defaultArrangement: { sequence: [] },
-      usage: { usesPastYear: 0 },
+      usageDates: [],
       updatedAt: '',
       updatedByDevice: '',
     })
@@ -225,9 +227,16 @@ describe('mock adapter', () => {
       updatedByDevice: '',
     })
 
+    const futureDateStr = farFuture.toISOString().slice(0, 10)
     const song = await adapter.songs.get('song-usage-future')
-    expect(song?.usage.lastUsedAt).toBeUndefined()
-    expect(song?.usage.usesPastYear).toBe(0)
+    // The write side stores the entry regardless of date -- it's up to a reader (see
+    // utils/songUsage.ts) to exclude future-dated entries from "last used"/"uses this year".
+    expect(song?.usageDates).toEqual([
+      { serviceId: 'service-usage-future', date: futureDateStr },
+    ])
+    const today = new Date().toISOString().slice(0, 10)
+    expect(getLastUsedDate(song?.usageDates ?? [], today)).toBeUndefined()
+    expect(getUsesInPastYear(song?.usageDates ?? [], today)).toBe(0)
   })
 
   it('counts the same song used twice in one service only once', async () => {
@@ -239,7 +248,7 @@ describe('mock adapter', () => {
       tags: [],
       blocks: [],
       defaultArrangement: { sequence: [] },
-      usage: { usesPastYear: 0 },
+      usageDates: [],
       updatedAt: '',
       updatedByDevice: '',
     })
@@ -256,6 +265,8 @@ describe('mock adapter', () => {
     })
 
     const song = await adapter.songs.get('song-usage-twice')
-    expect(song?.usage.usesPastYear).toBe(1)
+    expect(song?.usageDates).toEqual([
+      { serviceId: 'service-usage-twice', date: '2026-01-15' },
+    ])
   })
 })

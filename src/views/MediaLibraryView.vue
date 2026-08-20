@@ -105,8 +105,8 @@ function clearFilters() {
 }
 
 function lastUsedLabel(item: MediaItem): string {
-  if (!item.usage.lastUsedAt) return 'Not Yet Used'
-  const date = new Date(`${item.usage.lastUsedAt}T00:00:00`).toLocaleDateString(undefined, {
+  if (!item.usage.lastUsedDate) return 'Not Yet Used'
+  const date = new Date(`${item.usage.lastUsedDate}T00:00:00`).toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -457,7 +457,6 @@ async function saveEdits() {
                   </span>
                   <span class="usage-label">
                     <strong>{{ lastUsedLabel(item) }}</strong>
-                    <small>{{ item.usage.usesPastYear }}x This Year</small>
                   </span>
                 </div>
               </div>

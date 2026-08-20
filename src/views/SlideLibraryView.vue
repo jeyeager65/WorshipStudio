@@ -54,8 +54,8 @@ function clearFilters() {
 }
 
 function lastUsedLabel(item: SlideLibraryItem): string {
-  if (!item.usage.lastUsedAt) return 'Not Yet Used'
-  const date = new Date(`${item.usage.lastUsedAt}T00:00:00`).toLocaleDateString(undefined, {
+  if (!item.usage.lastUsedDate) return 'Not Yet Used'
+  const date = new Date(`${item.usage.lastUsedDate}T00:00:00`).toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -278,7 +278,6 @@ function openSlide(item: SlideLibraryItem) {
                   >
                   <span class="presentation-usage-label">
                     <strong>{{ lastUsedLabel(presentation) }}</strong>
-                    <small>{{ presentation.usage.usesPastYear }}x This Year</small>
                   </span>
                 </div>
               </div>

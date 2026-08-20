@@ -15,7 +15,7 @@ function sampleSlide(): SlideLibraryItem {
     tags: [],
     documentVersion: 2,
     slides: [],
-    usage: { usesPastYear: 0 },
+    usage: {},
     updatedAt: '',
     updatedByDevice: '',
   }

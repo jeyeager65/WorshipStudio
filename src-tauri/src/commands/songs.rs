@@ -6,7 +6,13 @@ use crate::paths::{library_root, now_iso, this_device_name};
 
 #[tauri::command]
 pub fn list_songs(app: AppHandle) -> Result<Vec<Song>, String> {
-    songs::list(&library_root(&app)).map_err(|e| e.to_string())
+    let root = library_root(&app);
+    // One-time backfill for a library saved before Song::usage_dates existed -- see
+    // songs::migrate_usage_dates_if_needed's own doc comment. Cheap no-op on every call after
+    // the first real one (gated on a marker file), so it's safe to invoke unconditionally here.
+    songs::migrate_usage_dates_if_needed(&root, &this_device_name(&app), &now_iso())
+        .map_err(|e| e.to_string())?;
+    songs::list(&root).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

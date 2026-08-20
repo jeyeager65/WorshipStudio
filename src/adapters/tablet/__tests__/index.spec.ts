@@ -77,7 +77,7 @@ describe('createTabletAdapter', () => {
       tags: [],
       blocks: [],
       defaultArrangement: { sequence: [] },
-      usage: { usesPastYear: 0 },
+      usageDates: [],
       updatedAt: '',
       updatedByDevice: '',
     })
