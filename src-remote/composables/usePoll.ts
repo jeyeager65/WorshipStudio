@@ -69,5 +69,13 @@ export function usePoll() {
     if (timer) clearTimeout(timer)
   })
 
-  return { state, connected, unpaired }
+  // After a device pairs itself from the unpaired screen (App.vue) — clears the flag and
+  // restarts the poll loop, which stopped scheduling itself the moment unpaired became true
+  // (see poll()'s own finally block above) and needs a fresh call to pick back up.
+  function retryAfterPairing() {
+    unpaired.value = false
+    void poll()
+  }
+
+  return { state, connected, unpaired, retryAfterPairing }
 }

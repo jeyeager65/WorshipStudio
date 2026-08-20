@@ -174,6 +174,19 @@ async function pairDevice() {
   }
 }
 
+// iOS opens a scanned/tapped pairing link in a plain Safari tab, never routing it into an
+// already-installed Home Screen copy of the remote page — a separate storage partition, so
+// pairing there doesn't carry over (see src-remote/App.vue's own unpaired-screen recovery input,
+// the other end of this). Copying the link makes it easy to hand to the device some other way
+// (AirDrop, text, or just pasted straight into that recovery input) instead of retyping it.
+const pairingLinkCopied = ref(false)
+async function copyPairingLink() {
+  if (!pairingResult.value) return
+  await navigator.clipboard.writeText(pairingResult.value.pairingUrl)
+  pairingLinkCopied.value = true
+  setTimeout(() => (pairingLinkCopied.value = false), 2000)
+}
+
 async function repairDevice(device: RemoteDevice) {
   pairingDeviceId.value = device.id
   try {
@@ -563,6 +576,19 @@ function formatDateRange(range: UnavailableDateRange): string {
             Scan this code with {{ newDeviceName }}, or open the link directly on the device.
           </p>
           <p class="pairing-link">{{ pairingResult.pairingUrl }}</p>
+          <v-btn
+            variant="text"
+            size="small"
+            block
+            :prepend-icon="pairingLinkCopied ? 'mdi-check' : 'mdi-content-copy'"
+            @click="copyPairingLink"
+          >
+            {{ pairingLinkCopied ? 'Copied' : 'Copy Link' }}
+          </v-btn>
+          <p class="text-caption text-medium-emphasis text-center mt-2">
+            iOS tip: install to the Home Screen before pairing. Open it from its icon, then paste
+            this link there — pairing while still in Safari won't carry over once it's added.
+          </p>
         </template>
       </v-card-text>
       <v-card-actions>

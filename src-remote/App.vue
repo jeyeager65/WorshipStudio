@@ -5,10 +5,61 @@ import RemoteMirror from './components/RemoteMirror.vue'
 import ControlsFullControl from './components/ControlsFullControl.vue'
 import { usePoll } from './composables/usePoll'
 
-const { state, connected, unpaired } = usePoll()
+const { state, connected, unpaired, retryAfterPairing } = usePoll()
 
 function reload() {
   window.location.reload()
+}
+
+// Recovery path for iOS's "Add to Home Screen" storage isolation: the pairing link the operator
+// shows (PersonEditorView.vue's Pair a Device dialog) sets an HttpOnly cookie when *visited*
+// (src-tauri/src/remote_server.rs's /pair handler) — fine for Android (link taps often route
+// straight into an already-installed PWA there) or for using this page directly in a browser
+// tab, but iOS always opens a tapped/scanned link in a plain Safari tab, a completely separate
+// storage partition from a home-screen-installed copy of this same page. Pairing while scanning
+// in Safari, then adding to home screen afterward, leaves the *installed* copy looking
+// permanently unpaired — it never saw that cookie. This input lets pairing happen again from
+// wherever the page is *actually* running right now (a plain fetch() call, same-origin, so its
+// Set-Cookie lands in whatever storage context made the request) — paste the link (or just the
+// raw token) after installing, and it's paired correctly in the copy that's actually going to be
+// used going forward. Same reasoning already applied to the tablet build's own connect-code flow
+// (see BootGate.vue's own doc comment).
+const pairInput = ref('')
+const pairing = ref(false)
+const pairError = ref('')
+
+function extractPairToken(input: string): string | undefined {
+  const trimmed = input.trim()
+  if (!trimmed) return undefined
+  try {
+    return new URL(trimmed).searchParams.get('token') ?? undefined
+  } catch {
+    // Not a URL — maybe they pasted just the raw token itself.
+    return trimmed
+  }
+}
+
+async function submitPairInput() {
+  const token = extractPairToken(pairInput.value)
+  if (!token) {
+    pairError.value = "That doesn't look like a pairing link. Ask the operator to show it again."
+    return
+  }
+  pairError.value = ''
+  pairing.value = true
+  try {
+    const res = await fetch(`/pair?token=${encodeURIComponent(token)}`)
+    if (!res.ok) {
+      pairError.value = 'That pairing link has expired or was revoked. Ask the operator for a new one.'
+      return
+    }
+    pairInput.value = ''
+    retryAfterPairing()
+  } catch {
+    pairError.value = "Couldn't reach Worship Studio. Check the connection and try again."
+  } finally {
+    pairing.value = false
+  }
 }
 
 // Same format describeSlide() in useLiveTransport.ts builds each slide's own label from — lets
@@ -103,7 +154,28 @@ const spacious = computed(() => showControlsPanel.value && !isSideBySide.value)
 
 <template>
   <div v-if="unpaired" class="unpaired-message">
-    This device is no longer paired. Ask the operator to re-pair it in Settings.
+    <p class="unpaired-title">This device is no longer paired.</p>
+    <p class="unpaired-hint">
+      Ask the operator for a new pairing link from your Person record (People), or paste one
+      below — this also fixes an iOS-only issue where pairing while scanning in Safari doesn't
+      carry over once the app is added to the Home Screen, since that's a separate copy with its
+      own storage.
+    </p>
+    <textarea
+      v-model="pairInput"
+      class="pair-input"
+      placeholder="Paste the pairing link here"
+      rows="3"
+    />
+    <button
+      type="button"
+      class="retry-btn"
+      :disabled="!pairInput.trim() || pairing"
+      @click="submitPairInput"
+    >
+      {{ pairing ? 'Pairing…' : 'Pair This Device' }}
+    </button>
+    <p v-if="pairError" class="pair-error">{{ pairError }}</p>
   </div>
   <div v-else class="layout">
     <ConnectionStatus
@@ -147,9 +219,41 @@ const spacious = computed(() => showControlsPanel.value && !isSideBySide.value)
 
 <style scoped>
 .unpaired-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ws-space-2);
   padding: var(--ws-space-6);
   text-align: center;
   color: var(--ws-text-secondary);
+}
+.unpaired-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ws-text-primary);
+}
+.unpaired-hint {
+  max-width: 420px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.pair-input {
+  width: 100%;
+  max-width: 420px;
+  margin-top: var(--ws-space-2);
+  padding: var(--ws-space-2) var(--ws-space-3);
+  border: 1px solid rgba(255, 255, 255, var(--ws-border-opacity));
+  border-radius: var(--ws-radius-md);
+  background: transparent;
+  color: var(--ws-text-primary);
+  font-size: 0.85rem;
+  font-family: inherit;
+  resize: vertical;
+}
+.pair-error {
+  max-width: 420px;
+  color: #ff6b6b;
+  font-size: 0.82rem;
 }
 .disconnected-message {
   flex: 1;
@@ -184,6 +288,10 @@ const spacious = computed(() => showControlsPanel.value && !isSideBySide.value)
 }
 .retry-btn:active {
   background: rgba(255, 255, 255, 0.08);
+}
+.retry-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .layout {
   display: flex;
