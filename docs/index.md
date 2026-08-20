@@ -32,8 +32,8 @@ hero:
     alt: Worship Studio
   actions:
     - theme: brand
-      text: Getting Started
-      link: /getting-started
+      text: Installation
+      link: /installation
     - theme: alt
       text: Try the Web Demo
       link: https://jeyeager65.github.io/WorshipStudio/app/?demo=1
@@ -56,7 +56,7 @@ features:
     details: Track who's serving each week and keep a reusable list of roles and role groups.
     link: /people
   - title: Reports
-    details: Multi-week planning views and CCLI song-usage reporting, drawn straight from your services.
+    details: Multi-week planning views and song-usage reporting, drawn straight from your services.
     link: /reports
   - title: Settings
     details: Library location and sync, display setup, external app hand-off, and general preferences.

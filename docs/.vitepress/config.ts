@@ -39,6 +39,7 @@ export default defineConfig({
     // left-nav layout (which groups by "primary vs. design vs. utility" for icon real estate,
     // not by task) — a help site is browsed differently than an app sidebar is used.
     sidebar: [
+      { text: 'Installation', link: '/installation' },
       { text: 'Getting Started', link: '/getting-started' },
       {
         text: 'Running a Service',

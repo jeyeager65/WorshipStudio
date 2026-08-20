@@ -150,13 +150,15 @@ user-facing realization of that original idea, rather than a brand-new direction
 
 ## Open items for the help-docs system
 
-- Topic list (16 now — 15 originally, grouped by workflow in the sidebar rather than mirroring
-  the app's own left-nav layout, plus Sync added later): Getting Started (solo) · Running a
-  Service: Services, Assignments, Bulletin, Announcements · Your Library: Songs, Slides, Media,
-  Presentation Themes, Service Templates · People & Teams: People, Roles · Reports & Settings:
-  Reports, Library Health, Settings, Sync. Assignments and Bulletin were split out from a single
-  "Services" topic specifically so F1 from those two screens doesn't land on the same page as the
-  main order-of-worship workspace.
+- Topic list (17 now — 15 originally, grouped by workflow in the sidebar rather than mirroring
+  the app's own left-nav layout, plus Sync and Installation added later): Installation (solo,
+  the only topic with no in-app screen behind it — covers getting the app itself, ahead of
+  Getting Started's in-app setup wizard) · Getting Started (solo) · Running a Service: Services,
+  Assignments, Bulletin, Announcements · Your Library: Songs, Slides, Media, Presentation Themes,
+  Service Templates · People & Teams: People, Roles · Reports & Settings: Reports, Library Health,
+  Settings, Sync. Assignments and Bulletin were split out from a single "Services" topic
+  specifically so F1 from those two screens doesn't land on the same page as the main
+  order-of-worship workspace.
 - ~~Write the actual help content~~ — done: every topic page has real content and screenshots
   (`e2e/docs-screenshots/capture.js` drives the app through ~17 documented screens and captures
   each one, converted to WebP via `scripts/convert-doc-screenshots.mjs`).
