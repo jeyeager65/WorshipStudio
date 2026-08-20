@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "help",
+  "description": "The in-app help window (a plain static VitePress site, not part of the Tauri-aware app UI) only ever needs to hand off an external link (e.g. GitHub) to the system browser — everything else default.json grants (window management, dialogs, the updater, ...) is unrelated to it and deliberately left out.",
+  "windows": ["help"],
+  "permissions": [
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://github.com/jeyeager65/WorshipStudio/**"
+        },
+        {
+          "url": "https://jeyeager65.github.io/**"
+        }
+      ]
+    }
+  ]
+}
