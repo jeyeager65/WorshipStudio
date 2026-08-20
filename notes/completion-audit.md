@@ -244,9 +244,13 @@ The shared history implementation lives in `src/stores/history.ts` and `src/comp
 
 ### Automatic updates
 
-Status: deprioritized (decided August 8, 2026) — day-to-day use is mostly running in dev mode rather than the distributed installer, so the lack of an updater isn't currently felt. Revisit priority as real distribution to church machines picks up.
-
-The release workflow creates versioned artifacts, but the application does not check for, download, or install updates. Add a Tauri updater before distributing broadly, or document a clear manual update process and expose the Releases page prominently.
+Status: implemented (August 2026, after this item was originally deprioritized on August 8 for
+the reasoning below — see release-process.md's "Auto-updater" section for the full setup). The
+app checks for updates on launch and every 30 minutes while visible, prompting via a banner
+(`App.vue`) or Settings → About's "Check for Updates" button — never applying anything without an
+explicit tap, and suppressed entirely while presenting. `src/stores/tauriUpdate.ts` and
+`src/composables/useTauriUpdate.ts` are the implementation. Only ever reaches an installed copy
+once a release is actually **published** (not left draft) — see release-process.md.
 
 ### Help and documentation generation
 
@@ -492,7 +496,7 @@ This does not apply to user-facing imports such as OpenSong or to migrations del
 9. Local Bible-file import
 10. Web-based prep build: File System Access storage layer, conflict-detection ported to TypeScript, Bible API key wiring, Window Management API monitor labeling
 11. Full automated help-video generation
-12. Automatic updates — deprioritized August 8, 2026; user-accessible diagnostics already completed August 1, 2026
+12. Automatic updates — implemented, see the "Automatic updates" section above; user-accessible diagnostics already completed August 1, 2026
 13. Finalize the 1.0 persisted schemas and remove development-era compatibility code
 14. Documentation and licensing reconciliation
 
@@ -512,7 +516,7 @@ This does not apply to user-facing imports such as OpenSong or to migrations del
 ### Before 1.0
 
 - Credential-boundary verification and rotation documentation
-- Updater or a deliberate documented alternative — deprioritized, see below
+- ~~Updater or a deliberate documented alternative~~ — done, see "Automatic updates" above
 - Manual Windows E2E pre-release run (deliberately not CI)
 - Diagnostics export
 - Licensing confirmation

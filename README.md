@@ -47,10 +47,10 @@ undo mechanism, and this release pipeline. See
 breakdown. Four backends implement the same `StudioAdapter` interface
 (`src/adapters/types.ts` — the authoritative list of what each port does):
 `tauri` (the real desktop app), `web` (the File System Access build), `tablet` (the
-cloud-synced PWA), and `mock` (the browser demo and local dev fixtures). Not yet in scope for
-1.0: a native audio service-item player (the data model exists; live playback doesn't yet), and
-an in-app auto-updater (deprioritized while day-to-day use is mostly `pnpm tauri dev` rather than
-distributed installs).
+cloud-synced PWA), and `mock` (the browser demo and local dev fixtures). The desktop app checks
+for and prompts about updates automatically (see [Releases](#releases) below — only a *published*
+release is ever offered). Not yet in scope for 1.0: a native audio service-item player (the data
+model exists; live playback doesn't yet).
 
 - **Technical architecture & build plan**: [notes/architecture-plan.md](notes/architecture-plan.md)
 - **Cutting a release / code-signing setup**: [notes/release-process.md](notes/release-process.md)
