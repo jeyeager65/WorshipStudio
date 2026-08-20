@@ -427,16 +427,36 @@ The diagnostic payload is allowlist-based. It deliberately excludes settings fil
 
 ## Security review
 
-Before broader public distribution:
+Verified against real code August 20, 2026 (not just this list's original claims): remote-control
+cookie is genuinely `HttpOnly; SameSite=Lax` with a passing test asserting it; the diagnostics
+export has a real redaction regex catching `authorization`/`access_token`/`refresh_token`/
+`client_secret`/`api_key`/OAuth `code` before export, with a passing test proving it; no `.pfx` is
+tracked and `.gitignore` blocks it; Canva temp files are cleaned up on their write paths; report
+exports go through a real native save dialog (`adapters/tauri/index.ts`'s `saveFile`), not a silent
+overwrite. All of these check out for the trusted-church-computer threat model this app is built
+for.
 
-- Verify that plaintext credentials follow the documented trusted-church-library boundary and never enter logs or diagnostics.
-- Review remote-control authentication, cookie behavior, token revocation, and LAN threat assumptions.
-- Review whether HTTP-only LAN control is acceptable and document the boundary.
-- Narrow the disabled Content Security Policy if practical.
-- Narrow the unrestricted Tauri asset-protocol scope if practical.
-- Confirm that no private code-signing key is tracked or packaged. The public `.cer` may be tracked; the `.pfx` must remain private and ignored.
-- Review temporary Canva downloads and deletion behavior.
-- Verify that exported reports cannot overwrite files without an explicit native save choice.
+Two items remain intentionally open, decided August 20, 2026: **the disabled CSP and the
+unrestricted (`["**"]`) Tauri asset-protocol scope stay as-is, including at 1.0.** Both are
+"second line of defense" settings that only matter if something else first gets untrusted script
+running in the webview — and there is no `v-html`/`innerHTML`-with-untrusted-content path anywhere
+in the app today that could cause that. Narrowing the asset-protocol scope specifically is also not
+a simple config change: `library_root()` (`src-tauri/src/paths.rs`) resolves the library folder
+from user-configured `MachineSettings.library_path` at runtime — it could be anywhere (Dropbox,
+OneDrive, a custom path, a portable relative path), so a static `tauri.conf.json` scope can't
+enumerate it in advance. The real fix would mean new runtime-scope-widening code (Tauri's
+`allow_directory` API, called after settings load and again on library-folder change) covering
+every legitimate source — the library folder, the separately-configured local-media folder, the
+Canva temp-download folder, bundled stock backgrounds — with real risk of silently breaking
+image/background loading if any one is missed. Not worth the regression risk for a benefit that
+only guards against a bug class that doesn't currently exist in the code. Revisit only if a real
+XSS-shaped vector is ever introduced (e.g. rendering untrusted content via `v-html`).
+
+Still worth doing, lower urgency:
+
+- Review whether HTTP-only LAN control is acceptable and document the boundary (remote-control
+  already has token/cookie protections above; this is about documenting the LAN-trust assumption
+  itself).
 
 ## Licensing and distribution follow-up
 

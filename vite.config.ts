@@ -4,7 +4,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vuetify from 'vite-plugin-vuetify'
 import { VitePWA } from 'vite-plugin-pwa'
-import { version } from './package.json'
+import { version } from './package.json' with { type: 'json' }
 
 export default defineConfig({
   // Only the GitHub Pages static-demo deploy (release.yml) sets VITE_BASE_PATH — the demo is

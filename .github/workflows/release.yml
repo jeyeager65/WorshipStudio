@@ -72,7 +72,7 @@ jobs:
           } | ConvertTo-Json -Depth 5
           Set-Content -Path windows-signing.json -Value $signingConfig
 
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Signs the update bundle/manifest (latest.json) tauri.conf.json's createUpdaterArtifacts
@@ -85,10 +85,16 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Worship Studio ${{ github.ref_name }}'
+          # generateReleaseNotes pulls real "what changed" content from GitHub's Release Notes
+          # API instead of a static placeholder — falls back to a plain commit list today (no
+          # PRs yet) and gets richer (grouped by PR, New Contributors, etc.) automatically once
+          # the project moves off direct-to-main commits post-1.0. releaseBody prepends to it.
+          generateReleaseNotes: true
           releaseBody: |
-            See the commit history for what changed. Windows builds are signed — see the
-            "install-trust-windows.ps1" note in notes/release-process.md if this is the first
-            install on a given machine.
+            Windows builds are signed with a self-signed certificate, so Windows will show an
+            "unrecognized publisher" warning on first install. See the Installation guide
+            (https://jeyeager65.github.io/WorshipStudio/installation.html) for the one-time
+            trust step, needed once per machine.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.platform == 'windows-latest' && '--config windows-signing.json' || '' }}
