@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { getVersion } from '@tauri-apps/api/app'
-import { mdiCheck, mdiCheckCircle } from '@mdi/js'
 import logoDark from '@/assets/logo-dark.png'
 
 defineProps<{
@@ -31,20 +30,13 @@ void getVersion()
             :class="{ 'step--active': step === index + 1, 'step--complete': step > index + 1 }"
           >
             <span class="step-dot">
-              <!-- Inline path data rather than v-icon: this screen paints before the MDI
-                   webfont has necessarily loaded, and an icon font with nothing loaded yet
-                   renders its missing-glyph box (visible as a stray rectangle) instead of
-                   nothing -- an SVG path has no such loading state. -->
-              <svg
-                v-if="step > index + 1"
-                viewBox="0 0 24 24"
-                width="10"
-                height="10"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path :d="mdiCheck" />
-              </svg>
+              <!-- Plain CSS shape, not an icon font or an SVG path: this screen paints before
+                   the MDI webfont has necessarily loaded (a missing glyph shows as a stray box,
+                   not nothing), and a real installed build also showed the same box in place of
+                   an inline SVG checkmark here -- a WebView2-specific paint issue with this
+                   particular case that a plain border-only shape has no equivalent of, since
+                   there's no font, vector path, or dynamic attribute involved at all. -->
+              <span v-if="step > index + 1" class="check-mark" aria-hidden="true" />
             </span>
             <span>{{ label }}</span>
           </div>
@@ -57,17 +49,7 @@ void getVersion()
       </div>
       <div class="status-row" role="status" aria-live="polite">
         <span v-if="step < 3" class="status-pulse" />
-        <svg
-          v-else
-          viewBox="0 0 24 24"
-          width="16"
-          height="16"
-          fill="currentColor"
-          class="ready-icon"
-          aria-hidden="true"
-        >
-          <path :d="mdiCheckCircle" />
-        </svg>
+        <span v-else class="ready-icon" aria-hidden="true"><span class="check-mark" /></span>
         <span class="status-text">{{ statusText }}</span>
       </div>
     </div>
@@ -136,6 +118,17 @@ void getVersion()
   border-radius: 999px;
   transition: all 180ms ease;
 }
+/* A checkmark built from two plain borders rotated 45deg -- no font, no SVG, no vector path
+   binding. currentColor so it automatically matches whichever container it's in (step-dot's own
+   white on completion, or ready-icon's white below). */
+.check-mark {
+  width: 5px;
+  height: 9px;
+  margin-bottom: 2px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
 .step--active {
   color: rgba(255, 255, 255, 0.92);
 }
@@ -177,7 +170,21 @@ void getVersion()
   animation: status-pulse 1.4s ease-out infinite;
 }
 .ready-icon {
-  color: #70bd91;
+  display: flex;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #70bd91;
+  color: white;
+}
+.ready-icon .check-mark {
+  width: 4px;
+  height: 8px;
+  margin-bottom: 1px;
+  border-width: 0 1.5px 1.5px 0;
 }
 .status-text {
   color: rgba(255, 255, 255, 0.72);
