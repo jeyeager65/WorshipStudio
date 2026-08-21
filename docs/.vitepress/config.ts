@@ -4,8 +4,8 @@ import { defineConfig } from 'vitepress'
 // shipped two ways — bundled into the Tauri app for offline in-app help (outDir below points
 // straight at the Tauri resource dir the app opens at runtime, see src/adapters/tauri/index.ts's
 // openHelp), and deployed to GitHub Pages as the project's public landing page (this same
-// index.md's hero, see docs/index.md) with the web demo nested at /app/ underneath it — see
-// release.yml's deploy-demo job. This config only covers the site itself.
+// index.md's hero, see docs/index.md) with the web/tablet app nested at /app/ underneath it —
+// see release.yml's deploy-pages job. This config only covers the site itself.
 export default defineConfig({
   title: 'Worship Studio Help',
   description: 'Help documentation for Worship Studio',

@@ -101,11 +101,12 @@ jobs:
           prerelease: false
           args: ${{ matrix.platform == 'windows-latest' && '--config windows-signing.json' || '' }}
 
-  deploy-demo:
+  deploy-pages:
     # The project's public GitHub Pages site, republished on every release: the VitePress help
-    # site (docs/) as the landing page at the root, and the web-only static demo (mock adapter,
-    # no Tauri backend) nested at /app/ underneath it — see README's "static demo" note,
-    # notes/release-process.md, and notes/help-system-plan.md.
+    # site (docs/) as the landing page at the root, and the real web/tablet build (the same one
+    # a browser or tablet installs as a PWA against a real synced library — "try the demo" is
+    # just one option it offers, not what it fundamentally is) nested at /app/ underneath it —
+    # see README's "static demo" note, notes/release-process.md, and notes/help-system-plan.md.
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -133,7 +134,7 @@ jobs:
         env:
           VITEPRESS_BASE_PATH: /WorshipStudio/
 
-      - name: Assemble combined Pages site (help site at root, demo nested at /app/)
+      - name: Assemble combined Pages site (help site at root, web/tablet app nested at /app/)
         run: |
           mkdir -p pages
           cp -r src-tauri/resources/help/. pages/

@@ -47,7 +47,7 @@ Do this once, not per-release.
 2. **Store three *repository* secrets** (repo Settings → Secrets and variables → Actions →
    **Repository secrets** tab — not Environment secrets. The signing step runs in
    `build-tauri`, which doesn't declare an `environment:`, so an environment-scoped secret
-   would be invisible to it; only `deploy-demo` declares one, for `actions/deploy-pages`,
+   would be invisible to it; only `deploy-pages` declares one, for `actions/deploy-pages`,
    and needs none of these three):
    - `WINDOWS_CERTIFICATE` — the `.pfx` file, base64-encoded:
      ```powershell
@@ -57,7 +57,7 @@ Do this once, not per-release.
    - `WINDOWS_CERT_THUMBPRINT` — the thumbprint printed in step 1.
 
 3. **Enable GitHub Pages via Actions.** Repo Settings → Pages → Source → "GitHub Actions".
-   One-time only; `release.yml`'s `deploy-demo` job handles every deploy after that.
+   One-time only; `release.yml`'s `deploy-pages` job handles every deploy after that.
 
 4. Commit `scripts/release/worship-studio-codesign.cer` (from step 1) to the repo — churches
    need it present at that path for `install-trust-windows.ps1` to find.
@@ -148,7 +148,7 @@ maintain.
 
 ## GitHub Pages site structure
 
-`release.yml`'s `deploy-demo` job builds two things and combines them into one artifact before
+`release.yml`'s `deploy-pages` job builds two things and combines them into one artifact before
 `actions/upload-pages-artifact`/`actions/deploy-pages`, since Pages only takes one artifact per
 deploy:
 

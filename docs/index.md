@@ -2,7 +2,7 @@
 layout: home
 
 # This same hero doubles as the project's public GitHub Pages landing page (root of the deploy,
-# see release.yml's deploy-demo job) and the in-app help home page opened from the Tauri app's
+# see release.yml's deploy-pages job) and the in-app help home page opened from the Tauri app's
 # Help button/F1. The "Try the Web Demo" action below deliberately uses the full, absolute
 # Pages URL rather than a relative /app/ link: a relative link resolves fine on Pages itself,
 # but from inside the desktop app's bundled help:// site there is no /app/ to resolve against —

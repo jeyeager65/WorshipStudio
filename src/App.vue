@@ -236,11 +236,11 @@ function openHelp() {
     return
   }
   // No native help window in the browser build — the help site isn't bundled here the way it
-  // is in the Tauri app. On the real GitHub Pages deploy the demo is served one level under the
-  // help site's own root (see release.yml's deploy-demo job), so a relative `../<topic>.html`
-  // reaches it correctly in a new tab; in plain local `pnpm dev` there's no sibling help build
-  // to reach at all, so this just 404s there (same accepted gap as the help site's own "Try the
-  // Web Demo" button, which only resolves for real once actually deployed).
+  // is in the Tauri app. On the real GitHub Pages deploy the web/tablet app is served one level
+  // under the help site's own root (see release.yml's deploy-pages job), so a relative
+  // `../<topic>.html` reaches it correctly in a new tab; in plain local `pnpm dev` there's no
+  // sibling help build to reach at all, so this just 404s there (same accepted gap as the help
+  // site's own "Try the Web Demo" button, which only resolves for real once actually deployed).
   window.open(`../${slug}.html${anchor ? `#${anchor}` : ''}`, '_blank', 'noopener')
 }
 function handleHelpShortcut(event: KeyboardEvent) {

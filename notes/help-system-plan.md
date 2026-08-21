@@ -121,7 +121,7 @@ currently on, with an obvious way to instead browse the whole help site.
     and both problems disappear together. GitHub Pages deployment will need its own `base`
     matching whatever subpath it's served from — a second build invocation with that
     overridden, not a change to this default (see Open items).
-- **GitHub Pages**: wired up. `release.yml`'s `deploy-demo` job now builds *both* the VitePress
+- **GitHub Pages**: wired up. `release.yml`'s `deploy-pages` job now builds *both* the VitePress
   site (`VITEPRESS_BASE_PATH=/WorshipStudio/`) and the static browser demo
   (`VITE_BASE_PATH=/WorshipStudio/app/`), copies them into one staging directory (help site at
   the root, demo under `app/`), and uploads that combined directory as the single Pages
