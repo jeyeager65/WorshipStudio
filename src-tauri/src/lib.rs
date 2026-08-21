@@ -20,6 +20,46 @@ use tauri::Manager;
 #[folder = "resources/help/"]
 struct HelpAssets;
 
+const WEBVIEW_CACHE_VERSION_MARKER: &str = "webview-cache-cleared-for-version.txt";
+
+/// Windows-only: `EBWebView` is WebView2's own internal folder name for its cached content --
+/// there's no equivalent to generalize to on macOS (WKWebView) or Linux (WebKitGTK), which are
+/// different engines with their own, unrelated cache storage (moot anyway, since macOS was
+/// dropped from the release matrix and Linux was never in it -- see notes/release-process.md).
+/// Lives at `%LOCALAPPDATA%\{identifier}\EBWebView` -- entirely separate from `app_data_dir`
+/// (Roaming, used everywhere else in this app for settings/library paths, see paths.rs) -- and
+/// neither a normal Windows uninstall nor tauri-plugin-updater's binary replacement clears it.
+/// Confirmed on a real installed build: three consecutive in-app updates, each shipping a
+/// genuinely different frontend fix, all rendered identically stale until this folder was deleted
+/// by hand. Clearing it here once per version change means every future update -- in-app or a
+/// fresh install -- starts its next launch with a clean cache automatically, with no manual step
+/// for the operator ever again.
+///
+/// Must run before any `WebviewWindow` is built in this process: the *current* process's own
+/// WebView2 instance holds this folder open for the duration of that process, so it can only be
+/// safely cleared at the start of a fresh process, never mid-session (this is why clearing it
+/// from the update-apply step itself, right before relaunching, isn't viable -- the still-running
+/// old process has the folder locked until it actually exits).
+#[cfg(windows)]
+fn clear_stale_webview_cache(app: &tauri::AppHandle) {
+    let Ok(local_data_dir) = app.path().app_local_data_dir() else {
+        return;
+    };
+    let marker_path = local_data_dir.join(WEBVIEW_CACHE_VERSION_MARKER);
+    let current_version = app.package_info().version.to_string();
+    if std::fs::read_to_string(&marker_path).ok().as_deref() == Some(current_version.as_str()) {
+        return;
+    }
+    let _ = std::fs::remove_dir_all(local_data_dir.join("EBWebView"));
+    let _ = std::fs::create_dir_all(&local_data_dir);
+    let _ = std::fs::write(&marker_path, &current_version);
+}
+
+/// No-op stand-in so the call site in `run()`'s `setup()` needs no `#[cfg]` of its own -- see the
+/// Windows version above for what this does and why it's Windows-only.
+#[cfg(not(windows))]
+fn clear_stale_webview_cache(_app: &tauri::AppHandle) {}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Local-dev convenience only (e.g. ESV_API_KEY — see notes/release-process.md and
@@ -51,6 +91,8 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            clear_stale_webview_cache(app.handle());
+
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .level(log::LevelFilter::Info)
