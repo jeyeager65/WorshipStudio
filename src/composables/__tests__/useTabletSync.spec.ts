@@ -14,7 +14,6 @@ function makeAdapter(kind: string, runSync = vi.fn()) {
       runSync,
       getStatus: vi.fn().mockResolvedValue({
         folderReadable: true,
-        syncClientRunning: true,
         conflictCount: 0,
         recoveryCount: 0,
       }),

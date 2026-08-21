@@ -228,6 +228,7 @@ pub fn run() {
             commands::announcements::save_announcement,
             commands::announcements::delete_announcement,
             commands::sync::get_sync_status,
+            commands::sync::get_cloud_sync_client_status,
             commands::sync::list_recovery_issues,
             commands::sync::recover_library_file,
             commands::sync::quarantine_library_file,

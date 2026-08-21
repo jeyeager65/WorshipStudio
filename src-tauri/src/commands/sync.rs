@@ -1,11 +1,18 @@
 use tauri::AppHandle;
 
-use crate::domain::sync::{self, ConflictedItem, RecoveryIssue, SyncStatus};
+use crate::domain::sync::{self, CloudSyncClientStatus, ConflictedItem, RecoveryIssue, SyncStatus};
 use crate::paths::library_root;
 
 #[tauri::command]
 pub fn get_sync_status(app: AppHandle) -> Result<SyncStatus, String> {
     sync::get_status(&library_root(&app)).map_err(|e| e.to_string())
+}
+
+// Kept separate from get_sync_status above — see CloudSyncClientStatus's own doc comment for
+// why (a slow subprocess spawn, only ever needed by one settings page, not every app launch).
+#[tauri::command]
+pub fn get_cloud_sync_client_status(app: AppHandle) -> CloudSyncClientStatus {
+    sync::get_cloud_sync_client_status(&library_root(&app))
 }
 
 #[tauri::command]

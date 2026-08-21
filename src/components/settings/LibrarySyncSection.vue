@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { getAdapter } from '@/adapters'
+import type { CloudSyncClientStatus } from '@/adapters/types'
 import type { DataLocation } from '@/models/settings'
 import { useSettingsStore } from '@/stores/settings'
 import { useSyncStore } from '@/stores/sync'
@@ -81,6 +82,17 @@ onMounted(async () => {
   cloudConnected.value = await (cloudProvider.value === 'onedrive' ? isOneDriveConnected() : isDropboxConnected())
 })
 
+// Lazy, this page's own concern — see CloudSyncClientStatus's doc comment (adapters/types.ts)
+// for why this isn't part of the eager syncStore.load() every other field on this page comes
+// from: the Tauri adapter's real detection spawns a `tasklist` subprocess, cheap once warm but
+// genuinely slow (multi-second) on a fresh launch, and this is the only place it's ever shown.
+const cloudSyncClientStatus = ref<CloudSyncClientStatus>()
+async function loadCloudSyncClientStatus() {
+  if (isCloudConnected) return
+  cloudSyncClientStatus.value = await getAdapter().sync.getCloudSyncClientStatus()
+}
+onMounted(loadCloudSyncClientStatus)
+
 // The app key/client ID this device connected with isn't editable here: it's bound to the OAuth
 // tokens already held for that specific app registration (pasting in a different one without
 // redoing sign-in would just break the connection), and the library folder path is baked into
@@ -146,7 +158,7 @@ const refreshingSync = ref(false)
 async function refreshSyncStatus() {
   refreshingSync.value = true
   try {
-    await syncStore.load()
+    await Promise.all([syncStore.load(), loadCloudSyncClientStatus()])
   } finally {
     refreshingSync.value = false
   }
@@ -809,16 +821,16 @@ async function saveDataLocationPath() {
               {{ syncStore.status.folderReadable ? 'readable' : 'not readable' }}</span
             >
           </div>
-          <div class="d-flex align-center ga-2 mb-2">
+          <div v-if="cloudSyncClientStatus" class="d-flex align-center ga-2 mb-2">
             <v-icon
-              :icon="syncStore.status.syncClientRunning ? 'mdi-check-circle' : 'mdi-alert-circle'"
-              :color="syncStore.status.syncClientRunning ? 'success' : 'warning'"
+              :icon="cloudSyncClientStatus.running ? 'mdi-check-circle' : 'mdi-alert-circle'"
+              :color="cloudSyncClientStatus.running ? 'success' : 'warning'"
               size="small"
             />
             <span class="text-body-2">
-              {{ syncStore.status.syncClientName ?? 'A cloud sync app' }}
+              {{ cloudSyncClientStatus.name ?? 'A cloud sync app' }}
               {{
-                syncStore.status.syncClientRunning
+                cloudSyncClientStatus.running
                   ? 'appears to be running'
                   : "doesn't appear to be running"
               }}

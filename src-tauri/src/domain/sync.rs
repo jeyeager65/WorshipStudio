@@ -83,17 +83,28 @@ pub struct ConflictedItem {
 #[serde(rename_all = "camelCase")]
 pub struct SyncStatus {
     pub folder_readable: bool,
-    pub sync_client_running: bool,
-    /// Which known cloud sync provider the library folder appears to live inside ("OneDrive" /
-    /// "Dropbox"), or absent if the path doesn't look like either. Purely a display label for
-    /// `sync_client_running` above — see `detect_sync_provider`'s own doc comment for how it's
-    /// inferred and its limits.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sync_client_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_library_change_at: Option<String>,
     pub conflict_count: usize,
     pub recovery_count: usize,
+}
+
+/// Separate from `SyncStatus` (and from `get_status` below) because computing it means spawning
+/// a `tasklist` subprocess — cheap once warm, but a genuinely slow (multi-second) cold spawn the
+/// first time Windows Defender scans a freshly-launched process. `get_status` runs eagerly on
+/// every app launch (App.vue's startup sequence, for the app-bar badge/reconnect banner), but
+/// this is only ever displayed on the Library & Sync settings page (LibrarySyncSection.vue), so
+/// it's computed lazily on that page's own mount instead of riding along on every launch.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudSyncClientStatus {
+    pub running: bool,
+    /// Which known cloud sync provider the library folder appears to live inside ("OneDrive" /
+    /// "Dropbox"), or absent if the path doesn't look like either — see `detect_sync_provider`'s
+    /// own doc comment for how it's inferred and its limits. Purely a display label for
+    /// `running` above.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -434,6 +445,14 @@ fn sync_client_running(provider: Option<&str>) -> bool {
     }
 }
 
+pub fn get_cloud_sync_client_status(root: &Path) -> CloudSyncClientStatus {
+    let sync_provider = detect_sync_provider(root);
+    CloudSyncClientStatus {
+        running: sync_client_running(sync_provider),
+        name: sync_provider.map(str::to_string),
+    }
+}
+
 pub fn get_status(root: &Path) -> std::io::Result<SyncStatus> {
     let folder_readable = root.exists() && fs::read_dir(root).is_ok();
     // No persisted manifest file — compute fresh on demand. This is only called at app launch
@@ -450,11 +469,8 @@ pub fn get_status(root: &Path) -> std::io::Result<SyncStatus> {
         .max();
     let conflict_count = detect_conflicts(root)?.len();
     let recovery_count = detect_recovery_issues(root)?.len();
-    let sync_provider = detect_sync_provider(root);
     Ok(SyncStatus {
         folder_readable,
-        sync_client_running: sync_client_running(sync_provider),
-        sync_client_name: sync_provider.map(str::to_string),
         last_library_change_at,
         conflict_count,
         recovery_count,

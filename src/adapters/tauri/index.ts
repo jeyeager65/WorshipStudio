@@ -14,6 +14,7 @@ import type {
   RemoteDevice,
   RemoteCommand,
   SyncStatus,
+  CloudSyncClientStatus,
   RecoveryIssue,
   ConflictedItem,
   ImportSetsSummary,
@@ -585,6 +586,8 @@ export function createTauriAdapter(): StudioAdapter {
     },
     sync: {
       getStatus: () => invoke<SyncStatus>('get_sync_status'),
+      getCloudSyncClientStatus: () =>
+        invoke<CloudSyncClientStatus>('get_cloud_sync_client_status'),
       listRecoveryIssues: () => invoke<RecoveryIssue[]>('list_recovery_issues'),
       recoverFile: (filePath) => invoke('recover_library_file', { filePath }),
       quarantineFile: (filePath) => invoke<string>('quarantine_library_file', { filePath }),

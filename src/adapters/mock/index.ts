@@ -526,11 +526,11 @@ export function createMockAdapter(): StudioAdapter {
     sync: {
       getStatus: async (): Promise<SyncStatus> => ({
         folderReadable: true,
-        syncClientRunning: true,
         lastLibraryChangeAt: new Date().toISOString(),
         conflictCount: 0,
         recoveryCount: 0,
       }),
+      getCloudSyncClientStatus: async () => ({ running: true }),
       listRecoveryIssues: async () => [],
       recoverFile: async () => {},
       quarantineFile: async () => 'damaged-file.json.damaged',

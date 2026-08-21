@@ -203,7 +203,6 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
         ])
         return {
           folderReadable: true,
-          syncClientRunning: true,
           conflictCount: conflicts.length,
           recoveryCount: recovery.length,
           lastSyncedAt: cloudStatus.lastSyncedAt,
@@ -211,6 +210,7 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
           needsReconnect: cloudStatus.needsReconnect,
         }
       },
+      getCloudSyncClientStatus: async () => ({ running: true }),
       listRecoveryIssues: () => sync.detectRecoveryIssues(trackedRoot),
       recoverFile: (filePath) => sync.recoverFromBackup(trackedRoot, filePath),
       quarantineFile: (filePath) => sync.quarantineDamagedFile(trackedRoot, filePath),

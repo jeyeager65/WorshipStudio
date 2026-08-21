@@ -569,13 +569,6 @@ export interface RemotePort {
 
 export interface SyncStatus {
   folderReadable: boolean
-  syncClientRunning: boolean
-  /** Which known cloud sync provider ("OneDrive" / "Dropbox") the library folder appears to
-   *  live inside, inferred from the folder path — see the Rust `detect_sync_provider` doc
-   *  comment for how and its limits. Undefined when unrecognized; UI falls back to generic
-   *  wording rather than assuming Dropbox. Tauri-only — every other adapter kind leaves it
-   *  undefined along with `syncClientRunning`'s own always-true placeholder value. */
-  syncClientName?: string
   lastLibraryChangeAt?: string
   conflictCount: number
   recoveryCount: number
@@ -590,6 +583,23 @@ export interface SyncStatus {
    *  visible reconnect. Left undefined/false by every other adapter kind and by Dropbox, whose
    *  refresh tokens don't expire on their own. */
   needsReconnect?: boolean
+}
+
+/** Whether a cloud sync client (OneDrive/Dropbox's own desktop app) appears to be running,
+ *  and which one — display-only, for the Library & Sync settings page (LibrarySyncSection.vue),
+ *  the only place this is shown. Kept separate from SyncStatus/getStatus() above, which loads
+ *  eagerly on every app launch (App.vue's startup sequence) for the app-bar badge/reconnect
+ *  banner: the Tauri adapter's real detection spawns a `tasklist` subprocess, which can be
+ *  genuinely slow (multi-second) the first time it's spawned, so this is only fetched lazily
+ *  when that settings page is actually opened. */
+export interface CloudSyncClientStatus {
+  running: boolean
+  /** Which known cloud sync provider ("OneDrive" / "Dropbox") the library folder appears to
+   *  live inside, inferred from the folder path — see the Rust `detect_sync_provider` doc
+   *  comment for how and its limits. Undefined when unrecognized; UI falls back to generic
+   *  wording rather than assuming Dropbox. Tauri-only — every other adapter kind leaves it
+   *  undefined along with `running`'s own always-true placeholder value. */
+  name?: string
 }
 
 /** Tablet-only — live progress for a pull/push cycle currently in flight
@@ -630,6 +640,9 @@ export interface ConflictedItem {
 
 export interface SyncPort {
   getStatus(): Promise<SyncStatus>
+  /** Only ever called lazily from LibrarySyncSection.vue's own mount — see
+   *  CloudSyncClientStatus's own doc comment for why this is split out of getStatus() above. */
+  getCloudSyncClientStatus(): Promise<CloudSyncClientStatus>
   listRecoveryIssues(): Promise<RecoveryIssue[]>
   recoverFile(filePath: string): Promise<void>
   /** Preserves damaged bytes outside the active `.json` set and returns their new path. */

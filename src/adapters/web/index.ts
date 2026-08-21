@@ -160,11 +160,11 @@ export function createWebAdapter(root: FileSystemDirectoryHandle): StudioAdapter
         ])
         return {
           folderReadable: true,
-          syncClientRunning: true,
           conflictCount: conflicts.length,
           recoveryCount: recovery.length,
         }
       },
+      getCloudSyncClientStatus: async () => ({ running: true }),
       listRecoveryIssues: () => sync.detectRecoveryIssues(root),
       recoverFile: (filePath) => sync.recoverFromBackup(root, filePath),
       quarantineFile: (filePath) => sync.quarantineDamagedFile(root, filePath),
