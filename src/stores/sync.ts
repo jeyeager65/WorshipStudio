@@ -46,6 +46,32 @@ export const useSyncStore = defineStore('sync', () => {
     await load()
   }
 
+  /** Bulk counterpart to resolve() above, for a library health page carrying dozens of conflicts
+   *  at once (a real case: a botched migration or a stale device left running an old build can
+   *  produce 60+ in one pass — resolving those one at a time, each with its own confirm dialog and
+   *  full reload, is not a reasonable ask of the operator). Deliberately does NOT go through
+   *  runMutation/rethrow-on-first-failure: a transient error on one item (of possibly many) should
+   *  not abort the rest of an otherwise-successful batch, so every path is attempted and the
+   *  caller gets back which succeeded vs failed to report a genuine partial-success summary.
+   *  Reloads once at the end regardless of outcome, not once per item. */
+  async function resolveMany(
+    conflictFilePaths: string[],
+    keep: 'mine' | 'theirs',
+  ): Promise<{ succeeded: string[]; failed: { path: string; error: string }[] }> {
+    const succeeded: string[] = []
+    const failed: { path: string; error: string }[] = []
+    for (const path of conflictFilePaths) {
+      try {
+        await getAdapter().sync.resolveConflict(path, keep)
+        succeeded.push(path)
+      } catch (error) {
+        failed.push({ path, error: error instanceof Error ? error.message : String(error) })
+      }
+    }
+    await load()
+    return { succeeded, failed }
+  }
+
   async function recover(filePath: string) {
     await asyncState.runMutation(() => getAdapter().sync.recoverFile(filePath))
     await load()
@@ -134,6 +160,7 @@ export const useSyncStore = defineStore('sync', () => {
     progress,
     load,
     resolve,
+    resolveMany,
     recover,
     quarantine,
     runSync,

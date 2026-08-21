@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import LibraryEmptyState from '@/components/LibraryEmptyState.vue'
@@ -39,6 +39,39 @@ const initialConflictCount = ref(0)
 const issueCount = computed(() => store.conflicts.length + store.recoveryIssues.length)
 const finishedReview = computed(
   () => store.loaded && initialIssueCount.value > 0 && issueCount.value === 0,
+)
+
+// Bulk selection for the "Versions to review" list — a real church library that's gone through a
+// botched migration or a stale device can surface 60+ conflicts in one pass, and resolving those
+// one at a time (each its own confirm dialog and full list reload) is not reasonable. Deliberately
+// one uniform choice (mine/theirs) applied to every selected item rather than a per-row picker —
+// the real motivating case is "these are all the same underlying problem," not a mix.
+const selectedPaths = ref<Set<string>>(new Set())
+const bulkRunning = ref(false)
+const allSelected = computed(
+  () => store.conflicts.length > 0 && selectedPaths.value.size === store.conflicts.length,
+)
+function toggleSelected(path: string) {
+  const next = new Set(selectedPaths.value)
+  if (next.has(path)) next.delete(path)
+  else next.add(path)
+  selectedPaths.value = next
+}
+function toggleSelectAll() {
+  selectedPaths.value = allSelected.value
+    ? new Set()
+    : new Set(store.conflicts.map((conflict) => conflict.conflictFilePath))
+}
+// Drops any selected path that's no longer an open conflict (resolved individually, or by a
+// concurrent sync elsewhere) so the "N selected"/select-all state never drifts out of sync with
+// what's actually still on screen.
+watch(
+  () => store.conflicts,
+  (current) => {
+    const stillOpen = new Set(current.map((conflict) => conflict.conflictFilePath))
+    const next = new Set([...selectedPaths.value].filter((path) => stillOpen.has(path)))
+    if (next.size !== selectedPaths.value.size) selectedPaths.value = next
+  },
 )
 
 onMounted(async () => {
@@ -152,6 +185,52 @@ async function resolveConflict(conflict: ConflictedItem, keep: 'mine' | 'theirs'
   } finally {
     activePath.value = ''
     activeOperation.value = ''
+  }
+}
+
+async function resolveSelected(keep: 'mine' | 'theirs') {
+  const paths = [...selectedPaths.value]
+  if (!paths.length || bulkRunning.value) return
+
+  const detail =
+    keep === 'mine'
+      ? `Keep this computer's version for all ${paths.length} selected items, permanently discarding each conflicted copy? This cannot be undone for the discarded copies.`
+      : `Replace all ${paths.length} selected items with their synced copy? Each current version remains available as its automatic backup.`
+  if (!(await confirmDialog.confirm(detail, `Resolve ${paths.length} Selected`))) return
+
+  // Which library stores need refreshing afterward — computed before resolving, since a resolved
+  // conflict drops out of store.conflicts once the batch reloads it.
+  const touched = new Map<string, { kind: string; id: string }>()
+  for (const conflict of store.conflicts) {
+    if (selectedPaths.value.has(conflict.conflictFilePath)) {
+      touched.set(`${conflict.kind}:${conflict.id}`, { kind: conflict.kind, id: conflict.id })
+    }
+  }
+
+  bulkRunning.value = true
+  actionError.value = ''
+  actionNotice.value = ''
+  try {
+    const { succeeded, failed } = await store.resolveMany(paths, keep)
+    resolvedConflictCount.value += succeeded.length
+    selectedPaths.value = new Set()
+
+    let refreshFailed = false
+    for (const { kind, id } of touched.values()) {
+      if (!(await refreshLibraryKind(kind, id))) refreshFailed = true
+    }
+
+    if (failed.length) {
+      actionError.value = `${succeeded.length} resolved, but ${failed.length} could not be: ${failed[0]!.error}${
+        failed.length > 1 ? ` (and ${failed.length - 1} more)` : ''
+      }`
+    } else if (refreshFailed) {
+      actionError.value = `${succeeded.length} items were resolved, but the in-memory library could not be fully refreshed. Retry the affected library pages or restart Worship Studio.`
+    } else {
+      actionNotice.value = `${succeeded.length} item${succeeded.length === 1 ? '' : 's'} resolved.`
+    }
+  } finally {
+    bulkRunning.value = false
   }
 }
 
@@ -313,7 +392,7 @@ async function moveAside(issue: RecoveryIssue) {
                 variant="flat"
                 prepend-icon="mdi-backup-restore"
                 :loading="activeOperation === `${issue.filePath}:restore`"
-                :disabled="!!activePath"
+                :disabled="!!activePath || bulkRunning"
                 @click="restore(issue)"
               >
                 Restore Backup
@@ -323,7 +402,7 @@ async function moveAside(issue: RecoveryIssue) {
                 variant="tonal"
                 prepend-icon="mdi-file-move-outline"
                 :loading="activeOperation === `${issue.filePath}:move`"
-                :disabled="!!activePath"
+                :disabled="!!activePath || bulkRunning"
                 @click="moveAside(issue)"
               >
                 Move Aside
@@ -365,12 +444,49 @@ async function moveAside(issue: RecoveryIssue) {
           />
         </div>
 
+        <div class="bulk-toolbar">
+          <v-checkbox-btn
+            :model-value="allSelected"
+            :disabled="bulkRunning"
+            label="Select All"
+            @update:model-value="toggleSelectAll"
+          />
+          <template v-if="selectedPaths.size">
+            <span class="bulk-count">{{ selectedPaths.size }} selected</span>
+            <v-btn
+              variant="outlined"
+              size="small"
+              :loading="bulkRunning"
+              :disabled="!!activePath || bulkRunning"
+              @click="resolveSelected('mine')"
+            >
+              Keep This Computer
+            </v-btn>
+            <v-btn
+              color="primary"
+              variant="flat"
+              size="small"
+              :loading="bulkRunning"
+              :disabled="!!activePath || bulkRunning"
+              @click="resolveSelected('theirs')"
+            >
+              Keep Synced Copy
+            </v-btn>
+          </template>
+        </div>
+
         <article
           v-for="conflict in store.conflicts"
           :key="conflict.conflictFilePath"
           class="conflict-card"
+          :class="{ 'conflict-card--selected': selectedPaths.has(conflict.conflictFilePath) }"
         >
           <header class="conflict-title">
+            <v-checkbox-btn
+              :model-value="selectedPaths.has(conflict.conflictFilePath)"
+              :disabled="bulkRunning"
+              @update:model-value="toggleSelected(conflict.conflictFilePath)"
+            />
             <span class="kind-badge"
               ><v-icon icon="mdi-file-compare" size="18" />{{ kindLabel(conflict.kind) }}</span
             >
@@ -423,7 +539,7 @@ async function moveAside(issue: RecoveryIssue) {
             <v-btn
               variant="outlined"
               :loading="activeOperation === `${conflict.conflictFilePath}:mine`"
-              :disabled="!!activePath"
+              :disabled="!!activePath || bulkRunning"
               @click="resolveConflict(conflict, 'mine')"
               >Keep This Computer</v-btn
             >
@@ -431,7 +547,7 @@ async function moveAside(issue: RecoveryIssue) {
               color="primary"
               variant="flat"
               :loading="activeOperation === `${conflict.conflictFilePath}:theirs`"
-              :disabled="!!activePath"
+              :disabled="!!activePath || bulkRunning"
               @click="resolveConflict(conflict, 'theirs')"
               >Keep {{ conflict.otherDevice }}</v-btn
             >
@@ -672,11 +788,28 @@ async function moveAside(issue: RecoveryIssue) {
 .review-progress span {
   color: rgba(var(--v-theme-on-surface), 0.5);
 }
+.bulk-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+.bulk-count {
+  font-size: 0.68rem;
+  font-weight: 650;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+}
 .conflict-card {
   margin: 14px;
   border: 1px solid rgba(var(--v-theme-warning), 0.23);
   border-radius: 11px;
   background: rgba(var(--v-theme-background), 0.24);
+}
+.conflict-card--selected {
+  border-color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.05);
 }
 .conflict-title {
   display: flex;
