@@ -48,6 +48,18 @@ struct SlideSummary {
     label: String,
 }
 
+/// One button on the phone's mirror while an External App Hand-off item is live — id+label
+/// only, same set ServiceWorkspaceView's own live-item panel shows (never the key combos
+/// themselves, meaningless off the operator's own machine). `pub` (unlike `SlideSummary`) since
+/// `commands::remote` deserializes the frontend's payload straight into this shape rather than
+/// a separate input struct — there's no difference in representation to justify one.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalAppCommandSummary {
+    pub id: String,
+    pub label: String,
+}
+
 /// The real audience display's own logical resolution (see useLiveTransport.ts's
 /// `presentationSize`, the same value its own Previous/Current/Next preview thumbnails use) —
 /// pushed so the phone's mirror can letterbox/pillarbox to the *real* display's aspect ratio
@@ -66,6 +78,7 @@ pub struct LiveStateUpdate {
     pub content: Option<LiveSlideContent>,
     pub is_presenting: bool,
     pub external_app_active: bool,
+    pub external_app_commands: Vec<ExternalAppCommandSummary>,
     pub display_size: Option<(u32, u32)>,
     pub is_blank_screen: bool,
     pub background_only: bool,
@@ -83,6 +96,7 @@ struct SharedLiveState {
     /// is still pushed (just an app-name label with no useful body) for callers that don't
     /// check this flag.
     external_app_active: bool,
+    external_app_commands: Vec<ExternalAppCommandSummary>,
     display_size: Option<DisplaySize>,
     is_blank_screen: bool,
     background_only: bool,
@@ -167,6 +181,7 @@ impl RemoteServerHandle {
         state.content = update.content;
         state.is_presenting = update.is_presenting;
         state.external_app_active = update.external_app_active;
+        state.external_app_commands = update.external_app_commands;
         state.display_size = update
             .display_size
             .map(|(width, height)| DisplaySize { width, height });
@@ -492,6 +507,7 @@ struct StatePayload {
     /// view-only phones just have no UI that reads it.
     slides: Vec<SlideSummary>,
     external_app_active: bool,
+    external_app_commands: Vec<ExternalAppCommandSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
     display_size: Option<DisplaySize>,
     is_blank_screen: bool,
@@ -512,6 +528,7 @@ async fn get_state(State(handle): State<RemoteServerHandle>, headers: HeaderMap)
         access_level: device.access_level,
         slides: live.slides.clone(),
         external_app_active: live.external_app_active,
+        external_app_commands: live.external_app_commands.clone(),
         display_size: live.display_size,
         is_blank_screen: live.is_blank_screen,
         background_only: live.background_only,
@@ -528,6 +545,9 @@ struct ActionPayload {
     index: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     service_id: Option<String>,
+    /// `external-app-command` only — which of `StatePayload::external_app_commands` to fire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    command_id: Option<String>,
 }
 
 /// Access-level gating (feature-spec.md section 4): View Only gets nothing, Full Control adds
@@ -547,6 +567,7 @@ fn action_allowed(access_level: &str, action: &str) -> bool {
                 | "toggle-background-only"
                 | "external-app-relaunch"
                 | "external-app-close"
+                | "external-app-command"
         ),
         _ => false,
     }
@@ -975,6 +996,7 @@ mod tests {
         assert!(!action_allowed("view-only", "select-service"));
         assert!(!action_allowed("view-only", "external-app-relaunch"));
         assert!(!action_allowed("view-only", "external-app-close"));
+        assert!(!action_allowed("view-only", "external-app-command"));
     }
 
     #[test]
@@ -988,6 +1010,7 @@ mod tests {
         assert!(action_allowed("full-control", "toggle-background-only"));
         assert!(action_allowed("full-control", "external-app-relaunch"));
         assert!(action_allowed("full-control", "external-app-close"));
+        assert!(action_allowed("full-control", "external-app-command"));
     }
 
     #[test]

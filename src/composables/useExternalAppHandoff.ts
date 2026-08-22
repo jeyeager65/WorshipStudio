@@ -3,6 +3,7 @@ import { getAdapter } from '@/adapters'
 import type { ExternalAppProfile } from '@/adapters/types'
 import type { FlatSlide } from '@/utils/flattenService'
 import type { Service, ServiceItem } from '@/models/service'
+import { comboFromKeyboardEvent } from '@/utils/keyCombo'
 
 function errorMessage(e: unknown, fallback: string): string {
   if (typeof e === 'string') return e
@@ -14,9 +15,10 @@ function errorMessage(e: unknown, fallback: string): string {
  * External App Hand-off (spec section 12): auto-launches/focuses a configured application when
  * its service item goes live, restores Worship Studio to the foreground when advancing past it,
  * verifies each external-app item is launchable ahead of time for the readiness check, and
- * forwards Next/Prev as a keystroke to the app's own window when its profile has that configured
- * (Basic Remote Controls). Mutates nothing on `service` — purely local hand-off state plus a
- * read-only view into it for the caller's own `readiness` computation.
+ * forwards a Basic Remote Controls command's key combo to the app's own window — either via a
+ * matching keyboard trigger (tryForwardKeydown) or its always-present button (sendManualCommand).
+ * Mutates nothing on `service` — purely local hand-off state plus a read-only view into it for
+ * the caller's own `readiness` computation.
  */
 export function useExternalAppHandoff(
   service: Ref<Service | undefined>,
@@ -81,21 +83,40 @@ export function useExternalAppHandoff(
   )
 
   // Basic Remote Controls (spec section 12) — while an External App Hand-off item is live and
-  // its profile has this configured, Next/Prev forward a keystroke to the app's own window
-  // instead of advancing the service's slide sequence.
-  async function tryForwardKeystroke(direction: 'next' | 'previous'): Promise<boolean> {
+  // presenting, a keydown matching one of its profile's commands' triggerKey fires that command
+  // instead of whatever Worship Studio would otherwise do with that key (arrows/B/G's sidebar
+  // nav/blank-screen/background-only, or nothing at all) — keyboard-only by design: clicking
+  // Worship Studio's own on-screen Next/Previous, or tapping Next/Previous on the phone remote,
+  // never fires a bound command, only that command's own button does (sendManualCommand below).
+  // Synchronous and returns immediately on a match — useLiveTransport.ts's onKeydown needs the
+  // boolean *before* the event's default action happens (to call preventDefault()), even though
+  // the actual send is async and fires in the background.
+  function tryForwardKeydown(event: KeyboardEvent): boolean {
     if (!isPresenting.value) return false
     const externalApp = liveSlide.value?.externalApp
     if (!externalApp) return false
     const profile = externalAppProfilesById.value.get(externalApp.profileId)
-    const key = direction === 'next' ? profile?.nextKey : profile?.prevKey
-    if (!profile?.remoteControlsEnabled || !key) return false
-    try {
-      await getAdapter().externalApps?.sendKeystroke(profile.id, direction)
-    } catch (e) {
-      console.error(`Failed to forward ${direction} to the external app:`, e)
-    }
+    if (!profile?.remoteControlsEnabled) return false
+    const combo = comboFromKeyboardEvent(event)
+    if (!combo) return false
+    const command = profile.keyCommands.find((c) => c.triggerKey === combo)
+    if (!command || !command.keyCombo.trim()) return false
+    getAdapter()
+      .externalApps?.sendKeystroke(profile.id, command.id)
+      .catch((e) => console.error(`Failed to forward "${command.label}" to the external app:`, e))
     return true
+  }
+
+  // The always-present button (ServiceWorkspaceView's live-item panel, the phone Remote
+  // Control) for a command — same fire-and-forget error handling as tryForwardKeydown above.
+  const manualCommandError = ref<string>()
+  async function sendManualCommand(profileId: string, commandId: string) {
+    manualCommandError.value = undefined
+    try {
+      await getAdapter().externalApps?.sendKeystroke(profileId, commandId)
+    } catch (e) {
+      manualCommandError.value = errorMessage(e, 'Failed to send that command to the external app.')
+    }
   }
 
   // External App Hand-off (spec section 12): "on advance" launches/focuses the configured app;
@@ -210,6 +231,8 @@ export function useExternalAppHandoff(
     closeExternalApp,
     prelaunchError,
     prelaunchExternalApp,
-    tryForwardKeystroke,
+    tryForwardKeydown,
+    manualCommandError,
+    sendManualCommand,
   }
 }

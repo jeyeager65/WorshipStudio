@@ -1,17 +1,19 @@
 <script setup lang="ts">
-import { onMounted, ref, toRaw } from 'vue'
+import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { getAdapter } from '@/adapters'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
-import { previewExternalAppCommand } from '@/utils/externalAppPreview'
 import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 import type { ExternalAppProfile } from '@/adapters/types'
 
+const router = useRouter()
 const confirmDialog = useConfirmDialogStore()
 
 // External App Profiles (spec section 12) — Windows-only, feature-detected same as Display
-// Setup. Edited via a modal (design/sketches/external-app-profile.html) rather than inline like
-// Theme Editor, since a profile has enough fields (launch config, remote controls, window
-// position) to warrant its own focused surface.
+// Setup. Editing lives on its own routed page (ExternalAppProfileEditorView.vue) rather than
+// inline or in a dialog — Basic Remote Controls' key-commands list made a dialog grow past what
+// a modal can reasonably hold, the same reasoning ServiceTemplateEditorView/RolesView already
+// settled on for their own multi-field editors.
 const externalAppProfiles = ref<ExternalAppProfile[]>([])
 async function loadExternalApps() {
   try {
@@ -21,59 +23,11 @@ async function loadExternalApps() {
     externalAppProfiles.value = []
   }
 }
-const launchModeOptions: {
-  title: string
-  value: ExternalAppProfile['launchMode']
-  hint: string
-}[] = [
-  {
-    title: 'Already Running',
-    value: 'already-running',
-    hint: 'Operator opens it manually before the service',
-  },
-  {
-    title: 'Launch Automatically',
-    value: 'launch-automatically',
-    hint: 'Worship Studio opens it when the slide is reached',
-  },
-]
-
-const profileDialogOpen = ref(false)
-const editingProfile = ref<ExternalAppProfile>()
-
-function blankExternalAppProfile(): ExternalAppProfile {
-  return {
-    id: crypto.randomUUID(),
-    name: '',
-    launchMode: 'launch-automatically',
-    executablePath: '',
-    parameterFormat: '',
-    remoteControlsEnabled: false,
-    nextKey: '',
-    prevKey: '',
-    updatedAt: '',
-    updatedByDevice: '',
-  }
-}
 function openNewExternalAppProfile() {
-  editingProfile.value = blankExternalAppProfile()
-  profileDialogOpen.value = true
+  void router.push({ name: 'external-app-profile-new' })
 }
 function openEditExternalAppProfile(profile: ExternalAppProfile) {
-  // toRaw first — profile is the reactive v-for item, and structuredClone can't clone a Vue
-  // reactive Proxy directly (throws DataCloneError).
-  editingProfile.value = structuredClone(toRaw(profile))
-  profileDialogOpen.value = true
-}
-async function pickExternalAppExecutable() {
-  const path = await getAdapter().externalApps?.pickExecutable()
-  if (path && editingProfile.value) editingProfile.value.executablePath = path
-}
-async function saveExternalAppProfile() {
-  if (!editingProfile.value) return
-  await getAdapter().externalApps?.saveProfile(editingProfile.value)
-  profileDialogOpen.value = false
-  await loadExternalApps()
+  void router.push({ name: 'external-app-profile-editor', params: { profileId: profile.id } })
 }
 async function deleteExternalAppProfile(profile: ExternalAppProfile) {
   if (
@@ -82,6 +36,22 @@ async function deleteExternalAppProfile(profile: ExternalAppProfile) {
     return
   await getAdapter().externalApps?.deleteProfile(profile.id)
   await loadExternalApps()
+}
+
+// Starter profiles for common apps (PowerPoint, VLC, ...) — same "one-off bulk library action"
+// category as LibrarySyncSection.vue's Add Stock Backgrounds, and just as safe to click more than
+// once (matched by a stable id, never duplicates or overwrites an already-edited profile).
+const addingDefaultProfiles = ref(false)
+const defaultProfilesAdded = ref<number>()
+async function addDefaultExternalAppProfiles() {
+  addingDefaultProfiles.value = true
+  defaultProfilesAdded.value = undefined
+  try {
+    defaultProfilesAdded.value = await getAdapter().externalApps?.importDefaultProfiles()
+    await loadExternalApps()
+  } finally {
+    addingDefaultProfiles.value = false
+  }
 }
 
 onMounted(loadExternalApps)
@@ -97,25 +67,43 @@ onMounted(loadExternalApps)
       icon="mdi-application-cog-outline"
     >
       <template #action>
-        <v-btn
-          variant="flat"
-          color="primary"
-          prepend-icon="mdi-plus"
-          @click="openNewExternalAppProfile"
-        >
-          Add Profile
-        </v-btn>
+        <div class="d-flex ga-2">
+          <v-btn
+            variant="outlined"
+            :loading="addingDefaultProfiles"
+            prepend-icon="mdi-auto-fix"
+            @click="addDefaultExternalAppProfiles"
+          >
+            Add Suggested Profiles
+          </v-btn>
+          <v-btn
+            variant="flat"
+            color="primary"
+            prepend-icon="mdi-plus"
+            @click="openNewExternalAppProfile"
+          >
+            Add Profile
+          </v-btn>
+        </div>
       </template>
+      <div v-if="defaultProfilesAdded !== undefined" class="text-caption text-medium-emphasis mb-3">
+        {{
+          defaultProfilesAdded > 0
+            ? `Added ${defaultProfilesAdded} profile${defaultProfilesAdded === 1 ? '' : 's'} — check each one's Executable field, since the install location couldn't always be found automatically.`
+            : 'Every suggested profile is already here.'
+        }}
+      </div>
       <v-list v-if="externalAppProfiles.length > 0" density="comfortable" class="settings-list">
         <v-list-item
           v-for="profile in externalAppProfiles"
           :key="profile.id"
           rounded="lg"
-          class="mb-1"
+          class="mb-1 app-profile-item"
           border
+          @click="openEditExternalAppProfile(profile)"
         >
           <template #prepend>
-            <v-icon icon="mdi-application-outline" class="mr-3" />
+            <span class="app-profile-icon"><v-icon icon="mdi-application-outline" /></span>
           </template>
           <v-list-item-title class="font-weight-bold">{{
             profile.name || '(Unnamed)'
@@ -126,12 +114,6 @@ onMounted(loadExternalApps)
             }}
           </v-list-item-subtitle>
           <template #append>
-            <v-btn
-              icon="mdi-pencil-outline"
-              variant="text"
-              size="small"
-              @click.stop="openEditExternalAppProfile(profile)"
-            />
             <v-btn
               icon="mdi-trash-can-outline"
               variant="text"
@@ -147,123 +129,34 @@ onMounted(loadExternalApps)
         <span>No external app profiles configured yet.</span>
       </div>
     </SettingsPanel>
-
-    <v-dialog v-model="profileDialogOpen" max-width="640">
-      <v-card v-if="editingProfile">
-        <v-card-title
-          >External App Profile{{
-            editingProfile.name ? ` — ${editingProfile.name}` : ''
-          }}</v-card-title
-        >
-        <v-card-text>
-          <v-text-field
-            v-model="editingProfile.name"
-            label="Name"
-            variant="outlined"
-            density="compact"
-            class="mb-4"
-          />
-
-          <v-select
-            v-model="editingProfile.launchMode"
-            :items="launchModeOptions"
-            item-title="title"
-            item-value="value"
-            label="Launch Mode"
-            variant="outlined"
-            density="compact"
-            class="mb-4"
-          >
-            <template #item="{ item, props: itemProps }">
-              <v-list-item v-bind="itemProps" :subtitle="item.hint" />
-            </template>
-          </v-select>
-
-          <v-text-field
-            v-model="editingProfile.executablePath"
-            label="Executable"
-            variant="outlined"
-            density="compact"
-            hint="Used to launch the app and/or recognize its already-running process."
-            persistent-hint
-            class="mb-4"
-          >
-            <template #append>
-              <v-btn variant="outlined" @click="pickExternalAppExecutable">Browse…</v-btn>
-            </template>
-          </v-text-field>
-
-          <template v-if="editingProfile.launchMode === 'launch-automatically'">
-            <v-text-field
-              v-model="editingProfile.parameterFormat"
-              label="Parameter Format"
-              variant="outlined"
-              density="compact"
-              hint="{file} is replaced with the file chosen when this app is added to a service."
-              persistent-hint
-              class="mb-1"
-            />
-            <div class="param-preview mb-4">
-              Will run:
-              {{
-                previewExternalAppCommand(
-                  editingProfile.executablePath,
-                  editingProfile.parameterFormat,
-                )
-              }}
-            </div>
-          </template>
-
-          <v-divider class="my-5" />
-
-          <div class="d-flex align-center justify-space-between mb-3">
-            <div>
-              <div class="font-weight-bold">Basic Remote Controls</div>
-              <div class="text-caption text-medium-emphasis">
-                Let Next/Prev and the remote control also drive this app, if it supports simple
-                commands
-              </div>
-            </div>
-            <v-switch v-model="editingProfile.remoteControlsEnabled" color="primary" hide-details />
-          </div>
-          <template v-if="editingProfile.remoteControlsEnabled">
-            <v-text-field
-              v-model="editingProfile.nextKey"
-              label="Next slide key"
-              placeholder="e.g. Right Arrow"
-              variant="outlined"
-              density="compact"
-              class="mb-2"
-            />
-            <v-text-field
-              v-model="editingProfile.prevKey"
-              label="Previous slide key"
-              placeholder="e.g. Left Arrow"
-              variant="outlined"
-              density="compact"
-              class="mb-1"
-            />
-            <div class="text-caption text-medium-emphasis mb-2">
-              Sent as a keystroke to the app's window when Next/Prev is pressed while this item is
-              live. Leave blank if the app doesn't support this.
-            </div>
-          </template>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="profileDialogOpen = false">Cancel</v-btn>
-          <v-btn variant="flat" color="primary" @click="saveExternalAppProfile">Save Profile</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
   </div>
 </template>
 
 <style scoped>
 .settings-list {
-  max-width: 680px;
   padding: 0;
   background: transparent;
+}
+.app-profile-item {
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+.app-profile-item:hover {
+  border-color: rgba(var(--v-theme-primary), 0.3);
+  background: rgba(var(--v-theme-primary), 0.04);
+}
+.app-profile-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  place-items: center;
+  margin-right: 14px;
+  border-radius: 9px;
+  background: rgba(var(--v-theme-primary), 0.12);
+  color: rgb(var(--v-theme-primary));
 }
 .settings-empty {
   display: flex;
@@ -275,13 +168,5 @@ onMounted(loadExternalApps)
   border-radius: 9px;
   color: rgba(var(--v-theme-on-surface), 0.45);
   font-size: 0.73rem;
-}
-.param-preview {
-  font-family: monospace;
-  font-size: 12px;
-  background: rgba(var(--v-theme-on-surface), 0.05);
-  border-radius: 6px;
-  padding: 8px 10px;
-  color: rgba(var(--v-theme-on-surface), 0.7);
 }
 </style>

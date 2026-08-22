@@ -190,6 +190,7 @@ describe('evaluateServiceReadiness', () => {
           executablePath: 'C:\\Program Files\\PowerPoint.exe',
           parameterFormat: '{file}',
           remoteControlsEnabled: false,
+          keyCommands: [],
           updatedAt: '',
           updatedByDevice: '',
         },

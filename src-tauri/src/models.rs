@@ -451,12 +451,32 @@ pub struct ExternalAppProfile {
     pub parameter_format: Option<String>,
     #[serde(default)]
     pub remote_controls_enabled: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub next_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub prev_key: Option<String>,
+    #[serde(default)]
+    pub key_commands: Vec<ExternalAppKeyCommand>,
     pub updated_at: String,
     pub updated_by_device: String,
+}
+
+/// One named, freely-rebindable Basic Remote Controls command (feature-spec.md section 12) —
+/// no fixed/reserved ids; "Next"/"Previous" are just what a starter profile happens to come
+/// with (see `domain::external_apps::default_profiles`), fully editable/deletable like any
+/// other entry. Always available as a manual button (ServiceWorkspaceView's live-item panel and
+/// the phone Remote Control both render one per command, regardless of `trigger_key`).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalAppKeyCommand {
+    pub id: String,
+    pub label: String,
+    /// Sent to the *external app's* window when this command fires (either via its button or
+    /// `trigger_key` below) — parsed/sent by `domain::win32::parse_key_combo`/`send_keystroke`.
+    pub key_combo: String,
+    /// Optional shortcut on the *operator's own* keyboard that fires this command while this
+    /// profile's item is live and presenting — independent of `key_combo` above (e.g. trigger
+    /// on "1", send "F5"). `None` means button-only. Same string format as `key_combo`
+    /// (canonical "Ctrl+Shift+F5" order, see `src/utils/keyCombo.ts`), but interpreted
+    /// client-side against real keydown events — never reaches win32.rs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trigger_key: Option<String>,
 }
 
 /// Persisted per-machine (never synced) — a paired phone/tablet only makes sense on the

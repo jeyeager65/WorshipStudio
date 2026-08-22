@@ -455,6 +455,18 @@ const mediaById = computed(() => new Map(mediaStore.items.map((item) => [item.id
 const externalAppProfilesById = computed(
   () => new Map(externalAppsStore.profiles.map((profile) => [profile.id, profile])),
 )
+// The always-present manual buttons (spec section 12's Basic Remote Controls) for whichever
+// external-app item is currently selected — every command with a real keyCombo, regardless of
+// whether it also has a triggerKey. The phone Remote Control shows the same set (see
+// useLiveTransport.ts's pushRemoteLiveState).
+const selectedItemExternalAppCommands = computed(() => {
+  if (!selectedItem.value || selectedItem.value.type !== 'external-app') return []
+  return (
+    externalAppProfilesById.value
+      .get(selectedItem.value.profileId)
+      ?.keyCommands.filter((command) => command.keyCombo.trim()) ?? []
+  )
+})
 const peopleById = computed(() => new Map(peopleStore.people.map((person) => [person.id, person])))
 const readiness = computed(() =>
   service.value
@@ -1222,9 +1234,11 @@ const {
   isPresenting,
   readiness,
   readinessDialogOpen,
-  tryForwardKeystroke: (direction) => tryForwardKeystroke(direction),
+  externalAppProfilesById,
+  tryForwardKeydown: (event) => tryForwardKeydown(event),
   retryExternalApp: () => retryExternalApp(),
   closeExternalApp: () => closeExternalApp(),
+  sendManualCommand: (profileId, commandId) => sendManualCommand(profileId, commandId),
 })
 
 // Previous/Next changes the transport's live slide directly, bypassing the sermon-flow row
@@ -1267,7 +1281,9 @@ const {
   closeExternalApp,
   prelaunchError,
   prelaunchExternalApp,
-  tryForwardKeystroke,
+  tryForwardKeydown,
+  manualCommandError,
+  sendManualCommand,
 } = useExternalAppHandoff(service, liveSlide, isPresenting, externalAppProfilesById)
 
 // The Add Item menu chooses the item type before opening AddServiceItemDialog's focused form —
@@ -3054,6 +3070,25 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
                 Launch Now
               </v-btn>
             </div>
+            <!-- Every configured command always gets a button here (spec section 12's Basic
+                 Remote Controls) — same set the phone Remote Control shows, regardless of
+                 whether a command also has a keyboard trigger. Only meaningful once this item is
+                 actually engaged, same condition as Reopen/Close App above. -->
+            <div
+              v-if="isPresenting && itemHasLive(selectedItemIndex) && selectedItemExternalAppCommands.length"
+              class="d-flex align-center flex-wrap ga-2 mt-2"
+              style="max-width: 460px"
+            >
+              <v-btn
+                v-for="command in selectedItemExternalAppCommands"
+                :key="command.id"
+                variant="outlined"
+                size="small"
+                @click="sendManualCommand(selectedItem.profileId, command.id)"
+              >
+                {{ command.label }}
+              </v-btn>
+            </div>
             <v-alert
               v-if="prelaunchError"
               type="error"
@@ -3063,6 +3098,16 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
               style="max-width: 460px"
             >
               {{ prelaunchError }}
+            </v-alert>
+            <v-alert
+              v-if="manualCommandError"
+              type="error"
+              variant="tonal"
+              density="compact"
+              class="mt-2"
+              style="max-width: 460px"
+            >
+              {{ manualCommandError }}
             </v-alert>
           </template>
 

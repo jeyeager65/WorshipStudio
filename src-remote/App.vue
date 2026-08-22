@@ -195,6 +195,7 @@ const spacious = computed(() => showControlsPanel.value && !isSideBySide.value)
       <RemoteMirror
         :content="state?.content"
         :external-app-active="!!state?.isPresenting && !!state?.externalAppActive"
+        :external-app-commands="state?.externalAppCommands"
         :is-blank-screen="!!state?.isPresenting && !!state?.isBlankScreen"
         :display-size="state?.displaySize"
         :has-controls="hasControls"

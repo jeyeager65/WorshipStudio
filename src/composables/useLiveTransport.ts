@@ -11,6 +11,7 @@ import type { MediaItem, SlideLibraryItem } from '@/models/library'
 import type { ServiceReadinessResult } from '@/utils/serviceReadiness'
 import type {
   DisplayInfo,
+  ExternalAppProfile,
   LivePresentationTheme,
   LiveSlideContent,
   RemoteCommand,
@@ -37,12 +38,17 @@ interface UseLiveTransportOptions {
   isPresenting: Ref<boolean>
   readiness: ComputedRef<ServiceReadinessResult>
   readinessDialogOpen: Ref<boolean>
-  tryForwardKeystroke: (direction: 'next' | 'previous') => Promise<boolean>
+  externalAppProfilesById: ComputedRef<Map<string, ExternalAppProfile>>
+  /** Synchronous — see useExternalAppHandoff.ts's own doc comment for why (onKeydown needs the
+   *  match result before calling preventDefault(), even though the actual send is async). */
+  tryForwardKeydown: (event: KeyboardEvent) => boolean
   /** Remote Control (spec section 4/12): a Full Control device gets the same "Reopen App" /
-   *  "Close App" buttons the operator's own transport bar shows while an External App Hand-off
-   *  item is live — same underlying calls as those buttons, just triggered remotely. */
+   *  "Close App" buttons, and the same per-command buttons, the operator's own transport bar
+   *  shows while an External App Hand-off item is live — same underlying calls, just triggered
+   *  remotely. */
   retryExternalApp: () => Promise<void>
   closeExternalApp: () => Promise<void>
+  sendManualCommand: (profileId: string, commandId: string) => Promise<void>
 }
 
 /**
@@ -69,9 +75,11 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     isPresenting,
     readiness,
     readinessDialogOpen,
-    tryForwardKeystroke,
+    externalAppProfilesById,
+    tryForwardKeydown,
     retryExternalApp,
     closeExternalApp,
+    sendManualCommand,
   } = options
 
   const liveSlideKey = ref<string>()
@@ -120,13 +128,14 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     liveSlideKey.value = flatSlides.value[index]?.key
   }
 
+  // Basic Remote Controls forwarding (spec section 12) is keyboard-only (see onKeydown below,
+  // tryForwardKeydown) — not tied to next()/previous() themselves, so clicking Worship Studio's
+  // own on-screen Next/Previous (or the phone remote's) always does the normal thing.
   async function next() {
-    if (await tryForwardKeystroke('next')) return
     if (nextDisabled.value) return
     goLive(nextIndex.value)
   }
   async function previous() {
-    if (await tryForwardKeystroke('previous')) return
     if (previousDisabled.value) return
     goLive(prevIndex.value)
   }
@@ -215,10 +224,20 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     presenting: boolean,
     externalAppActive: boolean,
   ) {
+    // Same button set the operator's own workspace shows (ServiceWorkspaceView's live-item
+    // panel) — every command on the live external-app profile, id+label only (never the key
+    // combos themselves, meaningless off the operator's own machine).
+    const profileId = externalAppActive ? liveSlide.value?.externalApp?.profileId : undefined
+    const externalAppCommands = profileId
+      ? (externalAppProfilesById.value
+          .get(profileId)
+          ?.keyCommands.map((c) => ({ id: c.id, label: c.label })) ?? [])
+      : []
     getAdapter().remote?.pushLiveState({
       content,
       isPresenting: presenting,
       externalAppActive,
+      externalAppCommands,
       displaySize: presentationSize.value,
       isBlankScreen: isBlankScreen.value,
       backgroundOnly: backgroundOnly.value,
@@ -551,6 +570,16 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     const target = event.target as HTMLElement
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable) return
     if (!service.value) return
+    // Basic Remote Controls (spec section 12) takes priority over every shortcut below — a
+    // command bound to, say, the arrows/B/G/Ctrl+S overrides Worship Studio's own handling for
+    // that key entirely while its item is live and presenting (preventDefault+stopPropagation
+    // suppresses this same event reaching any other listener, e.g. App.vue's save/undo/help
+    // shortcuts, so it doesn't also fire alongside the external command).
+    if (tryForwardKeydown(event)) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
     switch (event.key) {
       case 'ArrowUp':
         event.preventDefault()
@@ -606,6 +635,10 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
       else if (command.action === 'toggle-background-only') toggleBackgroundOnly()
       else if (command.action === 'external-app-relaunch') void retryExternalApp()
       else if (command.action === 'external-app-close') void closeExternalApp()
+      else if (command.action === 'external-app-command' && command.commandId) {
+        const profileId = liveSlide.value?.externalApp?.profileId
+        if (profileId) void sendManualCommand(profileId, command.commandId)
+      }
     })
   })
   onUnmounted(() => {

@@ -6,6 +6,14 @@ export interface SlideSummary {
   label: string
 }
 
+/** One button on the mirror while an External App Hand-off item is live — same set
+ *  ServiceWorkspaceView's own live-item panel shows (id+label only, never the key combo
+ *  itself). */
+export interface ExternalAppCommandSummary {
+  id: string
+  label: string
+}
+
 /** Mirrors the Rust server's StatePayload (src-tauri/src/remote_server.rs). */
 export interface RemoteState {
   deviceName: string
@@ -14,6 +22,7 @@ export interface RemoteState {
   accessLevel: 'view-only' | 'full-control'
   slides: SlideSummary[]
   externalAppActive: boolean
+  externalAppCommands: ExternalAppCommandSummary[]
   /** The real audience display's own logical resolution — absent only if nothing has ever
    *  started presenting yet this app session (see remote_server.rs's `display_size`). */
   displaySize?: { width: number; height: number }

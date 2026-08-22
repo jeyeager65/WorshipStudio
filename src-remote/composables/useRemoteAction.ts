@@ -8,7 +8,7 @@ export function useRemoteAction() {
 
   async function sendAction(
     action: string,
-    extra?: { index?: number; serviceId?: string },
+    extra?: { index?: number; serviceId?: string; commandId?: string },
   ): Promise<boolean> {
     pending.value = true
     try {

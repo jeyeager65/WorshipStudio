@@ -4,7 +4,7 @@ use tauri::{AppHandle, Manager};
 use crate::domain::{people, remote};
 use crate::models::{LiveSlideContent, RemoteDevice, RemoteDeviceSummary};
 use crate::paths::{library_root, now_iso, remote_devices_path, this_device_name};
-use crate::remote_server::{self, LiveStateUpdate, RemoteServerHandle};
+use crate::remote_server::{self, ExternalAppCommandSummary, LiveStateUpdate, RemoteServerHandle};
 
 #[tauri::command]
 pub fn list_remote_devices(app: AppHandle) -> Result<Vec<RemoteDeviceSummary>, String> {
@@ -131,6 +131,8 @@ pub struct LiveStateUpdateInput {
     pub content: Option<LiveSlideContent>,
     pub is_presenting: bool,
     pub external_app_active: bool,
+    #[serde(default)]
+    pub external_app_commands: Vec<ExternalAppCommandSummary>,
     pub display_width: Option<u32>,
     pub display_height: Option<u32>,
     pub is_blank_screen: bool,
@@ -152,6 +154,7 @@ pub async fn update_remote_live_state(app: AppHandle, payload: LiveStateUpdateIn
             content: payload.content,
             is_presenting: payload.is_presenting,
             external_app_active: payload.external_app_active,
+            external_app_commands: payload.external_app_commands,
             display_size,
             is_blank_screen: payload.is_blank_screen,
             background_only: payload.background_only,

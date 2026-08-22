@@ -140,6 +140,18 @@ const router = createRouter({
       meta: { title: 'Settings', helpTopic: 'settings' },
     },
     {
+      path: '/settings/external-apps/new',
+      name: 'external-app-profile-new',
+      component: () => import('@/views/ExternalAppProfileEditorView.vue'),
+      meta: { helpTopic: 'settings' },
+    },
+    {
+      path: '/settings/external-apps/edit/:profileId',
+      name: 'external-app-profile-editor',
+      component: () => import('@/views/ExternalAppProfileEditorView.vue'),
+      meta: { helpTopic: 'settings' },
+    },
+    {
       path: '/library/service-templates',
       name: 'service-template-library',
       component: () => import('@/views/ServiceTemplateLibraryView.vue'),

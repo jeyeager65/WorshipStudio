@@ -405,9 +405,9 @@ mod imp {
     }
 
     fn key_name_to_vk(name: &str) -> Option<VIRTUAL_KEY> {
-        // Covers the handful of keys the sketch's "Basic Remote Controls" fields realistically
-        // need (arrow keys for Next/Prev) plus a few common extras — not a full keyboard map.
-        let vk = match name.to_lowercase().replace(' ', "").as_str() {
+        let normalized = name.trim();
+        let lower = normalized.to_lowercase().replace(' ', "");
+        let vk = match lower.as_str() {
             "rightarrow" | "right" => 0x27,
             "leftarrow" | "left" => 0x25,
             "uparrow" | "up" => 0x26,
@@ -418,16 +418,76 @@ mod imp {
             "pageup" => 0x21,
             "pagedown" => 0x22,
             "tab" => 0x09,
-            "f5" => 0x74,
-            _ => return None,
+            "backspace" => 0x08,
+            "delete" | "del" => 0x2E,
+            "home" => 0x24,
+            "end" => 0x23,
+            _ => {
+                // F1-F12 — capped there since no real keyboard/consumer software goes further,
+                // and the capture UI (KeyComboField.vue, via keyCombo.ts) can never produce
+                // anything past F12 anyway.
+                if let Some(n) = lower
+                    .strip_prefix('f')
+                    .and_then(|rest| rest.parse::<u16>().ok())
+                {
+                    if (1..=12).contains(&n) {
+                        return Some(VIRTUAL_KEY(0x70 + (n - 1)));
+                    }
+                }
+                // A-Z/0-9 map directly to their ASCII (uppercase) value — how Win32 virtual-key
+                // codes for those already work.
+                let mut chars = normalized.chars();
+                if let (Some(c), None) = (chars.next(), chars.next()) {
+                    if c.is_ascii_alphanumeric() {
+                        return Some(VIRTUAL_KEY(c.to_ascii_uppercase() as u16));
+                    }
+                }
+                return None;
+            }
         };
         Some(VIRTUAL_KEY(vk))
     }
 
-    pub fn send_keystroke(key_name: &str) -> Result<(), String> {
-        let vk = key_name_to_vk(key_name)
-            .ok_or_else(|| format!("\"{key_name}\" isn't a recognized key name."))?;
-        let make_input = |flags: KEYBD_EVENT_FLAGS| INPUT {
+    /// Splits a canonical combo string (`src/utils/keyCombo.ts`'s format — modifiers in fixed
+    /// `Ctrl+Shift+Alt+` order, then the main key) into generic modifier virtual-keys plus the
+    /// main one. Generic `VK_CONTROL`/`VK_SHIFT`/`VK_MENU`, not left/right-specific variants —
+    /// "either side" is what every combo/accelerator convention expects.
+    fn parse_key_combo(combo: &str) -> Option<(Vec<VIRTUAL_KEY>, VIRTUAL_KEY)> {
+        let parts: Vec<&str> = combo
+            .split('+')
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .collect();
+        let (modifier_parts, main_part) = parts.split_at(parts.len().checked_sub(1)?);
+        let main_key = key_name_to_vk(main_part.first()?)?;
+        let mut modifiers = Vec::with_capacity(modifier_parts.len());
+        for part in modifier_parts {
+            let vk = match part.to_lowercase().as_str() {
+                "ctrl" | "control" => VIRTUAL_KEY(0x11),
+                "shift" => VIRTUAL_KEY(0x10),
+                "alt" => VIRTUAL_KEY(0x12),
+                _ => return None,
+            };
+            modifiers.push(vk);
+        }
+        Some((modifiers, main_key))
+    }
+
+    /// `SendInput` has no per-window addressing — it always targets whatever window currently
+    /// has OS keyboard focus. That's *not* reliably the external app by the time this fires:
+    /// the trigger-key path only ever reaches here while Worship Studio's own window has focus
+    /// (its keydown listener couldn't otherwise have seen the keypress at all), and the manual
+    /// button path runs from a button the operator just clicked *inside* Worship Studio's own
+    /// window, which independently steals focus back to it the moment it's clicked. Explicitly
+    /// re-foregrounding the target hwnd first (same retry-based `activate_and_position` used by
+    /// `launch_and_focus`/`focus_process`, just without repositioning) is what actually makes
+    /// the keystroke land in the external app instead of Worship Studio itself.
+    pub fn send_keystroke(hwnd_value: isize, combo: &str) -> Result<(), String> {
+        let hwnd = HWND(hwnd_value as *mut std::ffi::c_void);
+        activate_and_position(hwnd, None)?;
+        let (modifiers, main_key) = parse_key_combo(combo)
+            .ok_or_else(|| format!("\"{combo}\" isn't a recognized key combo."))?;
+        let make_input = |vk: VIRTUAL_KEY, flags: KEYBD_EVENT_FLAGS| INPUT {
             r#type: INPUT_KEYBOARD,
             Anonymous: INPUT_0 {
                 ki: KEYBDINPUT {
@@ -439,10 +499,19 @@ mod imp {
                 },
             },
         };
-        let inputs = [
-            make_input(KEYBD_EVENT_FLAGS(0)),
-            make_input(KEYEVENTF_KEYUP),
-        ];
+        // One single Vec, sent in one single SendInput call — modifiers down (in order), main
+        // key down+up, modifiers up (reverse order). A single call is what guarantees Windows
+        // won't interleave other input mid-combo; splitting this into one SendInput per key
+        // would reopen exactly that race.
+        let mut inputs = Vec::with_capacity(modifiers.len() * 2 + 2);
+        for &modifier in &modifiers {
+            inputs.push(make_input(modifier, KEYBD_EVENT_FLAGS(0)));
+        }
+        inputs.push(make_input(main_key, KEYBD_EVENT_FLAGS(0)));
+        inputs.push(make_input(main_key, KEYEVENTF_KEYUP));
+        for &modifier in modifiers.iter().rev() {
+            inputs.push(make_input(modifier, KEYEVENTF_KEYUP));
+        }
         let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
         if sent as usize == inputs.len() {
             Ok(())
@@ -583,6 +652,53 @@ mod imp {
             Ok(png_bytes)
         }
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn parses_a_plain_named_key() {
+            let (modifiers, main) = parse_key_combo("Right").unwrap();
+            assert!(modifiers.is_empty());
+            assert_eq!(main.0, 0x27);
+        }
+
+        #[test]
+        fn parses_an_f_key() {
+            let (modifiers, main) = parse_key_combo("F5").unwrap();
+            assert!(modifiers.is_empty());
+            assert_eq!(main.0, 0x74);
+        }
+
+        #[test]
+        fn rejects_f_keys_past_f12() {
+            assert!(parse_key_combo("F13").is_none());
+        }
+
+        #[test]
+        fn parses_a_single_letter() {
+            let (modifiers, main) = parse_key_combo("s").unwrap();
+            assert!(modifiers.is_empty());
+            assert_eq!(main.0, 0x53);
+        }
+
+        #[test]
+        fn parses_a_modifier_combo_in_fixed_order() {
+            let (modifiers, main) = parse_key_combo("Ctrl+Shift+F5").unwrap();
+            assert_eq!(
+                modifiers.iter().map(|vk| vk.0).collect::<Vec<_>>(),
+                vec![0x11, 0x10]
+            );
+            assert_eq!(main.0, 0x74);
+        }
+
+        #[test]
+        fn rejects_an_unrecognized_combo() {
+            assert!(parse_key_combo("Ctrl+NotAKey").is_none());
+            assert!(parse_key_combo("").is_none());
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -627,7 +743,7 @@ mod imp {
     pub fn peek_window_for_pid(_pid: u32) -> Option<isize> {
         None
     }
-    pub fn send_keystroke(_key_name: &str) -> Result<(), String> {
+    pub fn send_keystroke(_hwnd_value: isize, _combo: &str) -> Result<(), String> {
         Err(UNSUPPORTED.to_string())
     }
     pub fn find_running_process_id(_executable_name: &str) -> Option<u32> {

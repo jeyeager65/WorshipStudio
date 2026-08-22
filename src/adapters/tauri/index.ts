@@ -520,6 +520,7 @@ export function createTauriAdapter(): StudioAdapter {
       listProfiles: () => invoke<ExternalAppProfile[]>('list_external_app_profiles'),
       saveProfile: (profile) => invoke('save_external_app_profile', { profile }),
       deleteProfile: (id) => invoke('delete_external_app_profile', { id }),
+      importDefaultProfiles: () => invoke<number>('import_default_external_app_profiles'),
       pickExecutable: async () => {
         const selection = await open({
           title: 'Select Executable',
@@ -547,8 +548,8 @@ export function createTauriAdapter(): StudioAdapter {
       closeCurrent: () => invoke('close_current_external_app'),
       closeAll: () => invoke('close_all_external_apps'),
       verifyItem: (profileId, file) => invoke('verify_external_app_item', { profileId, file }),
-      sendKeystroke: (profileId, direction) =>
-        invoke('send_external_app_keystroke', { profileId, direction }),
+      sendKeystroke: (profileId, commandId) =>
+        invoke('send_external_app_keystroke', { profileId, commandId }),
     },
     remote: {
       listDevices: () => invoke<RemoteDevice[]>('list_remote_devices'),
@@ -569,6 +570,7 @@ export function createTauriAdapter(): StudioAdapter {
             content: update.content ?? null,
             isPresenting: update.isPresenting,
             externalAppActive: update.externalAppActive,
+            externalAppCommands: update.externalAppCommands,
             displayWidth: update.displaySize.width,
             displayHeight: update.displaySize.height,
             isBlankScreen: update.isBlankScreen,

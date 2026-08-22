@@ -52,6 +52,16 @@ pub fn delete_external_app_profile(app: AppHandle, id: String) -> Result<(), Str
     external_apps::delete(&external_apps_path(&app), &id).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn import_default_external_app_profiles(app: AppHandle) -> Result<u32, String> {
+    external_apps::import_defaults(
+        &external_apps_path(&app),
+        &this_device_name(&app),
+        &now_iso(),
+    )
+    .map_err(|e| e.to_string())
+}
+
 fn find_profile(app: &AppHandle, profile_id: &str) -> Result<ExternalAppProfile, String> {
     external_apps::list(&external_apps_path(app))
         .map_err(|error| error.to_string())?
@@ -114,7 +124,7 @@ pub fn launch_external_app(
             .as_deref()
             .and_then(|p| std::path::Path::new(p).file_name())
             .and_then(|n| n.to_str())
-            .ok_or_else(|| "This profile has no executable name to look for.".to_string())?;
+            .ok_or_else(|| "This profile has no process name to look for.".to_string())?;
         let pid = win32::find_running_process_id(executable_name).ok_or_else(|| {
             format!("{executable_name} doesn't appear to be open. Open it, then try again.")
         })?;
@@ -159,7 +169,7 @@ pub fn prelaunch_external_app(
             .as_deref()
             .and_then(|p| std::path::Path::new(p).file_name())
             .and_then(|n| n.to_str())
-            .ok_or_else(|| "This profile has no executable name to look for.".to_string())?;
+            .ok_or_else(|| "This profile has no process name to look for.".to_string())?;
         let pid = win32::find_running_process_id(executable_name).ok_or_else(|| {
             format!("{executable_name} doesn't appear to be open. Open it, then try again.")
         })?;
@@ -186,7 +196,7 @@ pub fn verify_external_app_item(
     let profile = find_profile(&app, &profile_id)?;
     if profile.launch_mode == "already-running" {
         if profile.executable_path.as_deref().unwrap_or("").is_empty() {
-            return Err("This profile has no executable configured.".to_string());
+            return Err("This profile has no process name configured.".to_string());
         }
         return Ok(());
     }
@@ -194,28 +204,39 @@ pub fn verify_external_app_item(
     Ok(())
 }
 
-/// Basic Remote Controls (feature-spec.md section 12) — Next/Prev forwarded as a keystroke to
-/// the external app's own window instead of advancing the service's slide sequence, only
-/// while this profile's item is actually live and configured for it.
+/// Basic Remote Controls (feature-spec.md section 12) — a named command's `key_combo` forwarded
+/// as a keystroke to the external app's own window, whether triggered by its own button
+/// (ServiceWorkspaceView's live-item panel, the phone Remote Control) or by a matching
+/// `trigger_key` keypress on the operator's own keyboard (useExternalAppHandoff.ts's
+/// `tryForwardKeydown` resolves which command id this is *before* calling here). Needs the
+/// currently-engaged hwnd (not just the key combo) — see `win32::send_keystroke`'s own doc
+/// comment for why: `SendInput` has no per-window addressing, and by the time this fires,
+/// Worship Studio's own window is what actually has OS focus (either because its keydown
+/// listener just saw the trigger key, or because the operator just clicked the button itself),
+/// not the external app.
 #[tauri::command]
 pub fn send_external_app_keystroke(
     app: AppHandle,
+    engaged: tauri::State<EngagedExternalApp>,
     profile_id: String,
-    direction: String,
+    command_id: String,
 ) -> Result<(), String> {
     let profile = find_profile(&app, &profile_id)?;
     if !profile.remote_controls_enabled {
         return Err("Basic Remote Controls aren't enabled for this profile.".to_string());
     }
-    let key = match direction.as_str() {
-        "next" => &profile.next_key,
-        "previous" => &profile.prev_key,
-        _ => return Err(format!("Unknown direction: {direction}")),
-    };
-    let key = key
-        .as_deref()
-        .ok_or_else(|| format!("No {direction} key is configured for this profile."))?;
-    win32::send_keystroke(key)
+    let command = profile
+        .key_commands
+        .iter()
+        .find(|c| c.id == command_id)
+        .ok_or_else(|| "That command no longer exists on this profile.".to_string())?;
+    if command.key_combo.trim().is_empty() {
+        return Err(format!("No key is configured for \"{}\".", command.label));
+    }
+    let hwnd = engaged.current.lock().unwrap().ok_or_else(|| {
+        "This app isn't currently engaged — its item must be live first.".to_string()
+    })?;
+    win32::send_keystroke(hwnd, &command.key_combo)
 }
 
 fn hwnd_of(window: &tauri::WebviewWindow) -> Result<isize, String> {

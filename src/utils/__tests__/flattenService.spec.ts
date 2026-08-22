@@ -324,6 +324,7 @@ describe('flattenService', () => {
           name: 'PowerPoint',
           launchMode: 'launch-automatically' as const,
           remoteControlsEnabled: false,
+          keyCommands: [],
           updatedAt: '',
           updatedByDevice: '',
         },

@@ -237,6 +237,7 @@ pub fn run() {
             commands::external_apps::list_external_app_profiles,
             commands::external_apps::save_external_app_profile,
             commands::external_apps::delete_external_app_profile,
+            commands::external_apps::import_default_external_app_profiles,
             commands::external_apps::launch_external_app,
             commands::external_apps::prelaunch_external_app,
             commands::external_apps::restore_self,

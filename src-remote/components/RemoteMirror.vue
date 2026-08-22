@@ -2,11 +2,15 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import SlideContentRenderer from '@/components/live/SlideContentRenderer.vue'
 import type { LiveMediaRef, LiveSlideContent } from '@/adapters/types'
+import type { ExternalAppCommandSummary } from '../composables/usePoll'
 import { useRemoteAction } from '../composables/useRemoteAction'
 
 const props = defineProps<{
   content?: LiveSlideContent
   externalAppActive?: boolean
+  /** Every command on the live external-app profile (spec section 12's Basic Remote Controls) —
+   *  same set ServiceWorkspaceView's own live-item panel shows as buttons. */
+  externalAppCommands?: ExternalAppCommandSummary[]
   /** Distinguishes "screen intentionally blanked while presenting" from "not presenting at
    *  all" — both leave `content` empty (the operator's own blank-screen override clears the
    *  live slide), but they're different states worth different placeholder copy. */
@@ -152,9 +156,19 @@ const offsetY = computed(() => Math.max((wrapHeight.value - scaledHeight.value) 
         @load="screenshotFailed = false"
       />
       <div v-if="!screenshotSrc || screenshotFailed" class="mirror-empty external-app-fallback">
-        An external app is on screen.<br />Use Previous/Next to control it.
+        An external app is on screen.<br />Use the buttons below to control it.
       </div>
       <div v-if="hasControls" class="external-app-actions">
+        <button
+          v-for="command in externalAppCommands"
+          :key="command.id"
+          type="button"
+          class="action-btn"
+          :disabled="externalAppActionPending"
+          @click="sendExternalAppAction('external-app-command', { commandId: command.id })"
+        >
+          {{ command.label }}
+        </button>
         <button
           type="button"
           class="action-btn"

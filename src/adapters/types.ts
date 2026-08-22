@@ -457,6 +457,25 @@ export interface WindowPosition {
   height: number
 }
 
+/** One named, freely-rebindable Basic Remote Controls command (feature-spec.md section 12) —
+ *  no fixed/reserved ids; "Next"/"Previous" are just what a starter profile happens to come with
+ *  (see the Tauri adapter's importDefaultProfiles), fully editable/deletable like any other
+ *  entry. Always available as a manual button (ServiceWorkspaceView's live-item panel and the
+ *  phone Remote Control both render one per command, regardless of `triggerKey`). */
+export interface ExternalAppKeyCommand {
+  id: string
+  label: string
+  /** Sent to the *external app's* window when this command fires (either via its button or
+   *  `triggerKey` below) — parsed/sent by the Rust side's win32.rs. */
+  keyCombo: string
+  /** Optional shortcut on the *operator's own* keyboard that fires this command while this
+   *  profile's item is live and presenting — independent of `keyCombo` above (e.g. trigger on
+   *  "1", send "F5"). Undefined means button-only. Same canonical string format as `keyCombo`
+   *  (see src/utils/keyCombo.ts), but interpreted client-side against real keydown events —
+   *  never reaches the Rust side. */
+  triggerKey?: string
+}
+
 export interface ExternalAppProfile {
   id: string
   name: string
@@ -464,8 +483,7 @@ export interface ExternalAppProfile {
   executablePath?: string
   parameterFormat?: string
   remoteControlsEnabled: boolean
-  nextKey?: string
-  prevKey?: string
+  keyCommands: ExternalAppKeyCommand[]
   updatedAt: string
   updatedByDevice: string
 }
@@ -475,6 +493,10 @@ export interface ExternalAppPort {
   listProfiles(): Promise<ExternalAppProfile[]>
   saveProfile(profile: ExternalAppProfile): Promise<void>
   deleteProfile(id: string): Promise<void>
+  /** Adds a starter profile for each common app (PowerPoint, VLC, ...) not already present,
+   *  matched by a stable id — safe to call repeatedly, never duplicates or overwrites an
+   *  existing/edited profile. Returns how many were newly added. */
+  importDefaultProfiles(): Promise<number>
   /** Opens a native file picker for the profile editor's Executable field. */
   pickExecutable(): Promise<string | undefined>
   /** Opens a native file picker (no extension filter) for the file an Add-to-Service item hands to the app. */
@@ -499,8 +521,10 @@ export interface ExternalAppPort {
   closeAll(): Promise<void>
   /** Add-time robustness check (spec section 12) — executable/file existence, no launch. */
   verifyItem(profileId: string, file?: string): Promise<void>
-  /** Basic Remote Controls — forwards Next/Prev as a keystroke instead of advancing the service, while this item is live. */
-  sendKeystroke(profileId: string, direction: 'next' | 'previous'): Promise<void>
+  /** Basic Remote Controls — sends the given command's keyCombo to the external app's window,
+   *  whether triggered by its own button or a matching keyboard shortcut while this item is
+   *  live (see useExternalAppHandoff.ts's tryForwardKeydown/sendManualCommand). */
+  sendKeystroke(profileId: string, commandId: string): Promise<void>
 }
 
 export interface RemoteDevice {
@@ -522,8 +546,13 @@ export interface RemoteCommand {
     | 'toggle-background-only'
     | 'external-app-relaunch'
     | 'external-app-close'
+    | 'external-app-command'
   index?: number
   serviceId?: string
+  /** `external-app-command` only — which of the live item's ExternalAppKeyCommand entries to
+   *  fire (see RemoteLiveStateUpdate.externalAppCommands, which is what the phone's buttons are
+   *  built from). */
+  commandId?: string
 }
 
 export interface RemoteLiveStateUpdate {
@@ -533,6 +562,11 @@ export interface RemoteLiveStateUpdate {
    *  remote_server.rs's `external_app_active` doc comment for why this can't just be inferred
    *  from `content` being empty. */
   externalAppActive: boolean
+  /** Every command on the live item's external-app profile (id+label only — never the key
+   *  combos themselves, which are meaningless off the operator's own machine) — the phone's
+   *  mirror renders one button per entry, same as ServiceWorkspaceView's live-item panel. `[]`
+   *  when the live item isn't an external-app item or has no commands configured. */
+  externalAppCommands: { id: string; label: string }[]
   /** The real audience display's own logical resolution (same value as `PREVIEW_VIRTUAL_SIZE`)
    *  so the phone can letterbox/pillarbox to the *real* display's aspect ratio instead of
    *  stretching to fill its own screen's shape. */

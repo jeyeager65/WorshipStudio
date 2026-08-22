@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, toRaw } from 'vue'
 import { storeToRefs } from 'pinia'
+import { useRoute } from 'vue-router'
 import { getAdapter } from '@/adapters'
 import { useSettingsStore } from '@/stores/settings'
 import { useServiceTypesStore } from '@/stores/serviceTypes'
@@ -26,6 +27,7 @@ import CanvaSection from '@/components/settings/CanvaSection.vue'
 import SongCollectionsSection from '@/components/settings/SongCollectionsSection.vue'
 import ServiceTypesSection from '@/components/settings/ServiceTypesSection.vue'
 
+const route = useRoute()
 const store = useSettingsStore()
 const { librarySettings, machineSettings, libraryCredentials } = storeToRefs(store)
 const serviceTypesStore = useServiceTypesStore()
@@ -133,6 +135,13 @@ const sections: { key: Section; label: string; group: string }[] = [
   // their own core management page because they are also used by people and assignments.
   { key: 'service-types', label: 'Service Types', group: 'Service Planning' },
 ]
+// Lets ExternalAppProfileEditorView's back button (and anywhere else that navigates here with
+// a specific section in mind) land back on that section instead of always resetting to
+// General — activeSection is otherwise just local component state, not synced to the route.
+const requestedSection = route.query.section
+if (typeof requestedSection === 'string' && sections.some((s) => s.key === requestedSection)) {
+  activeSection.value = requestedSection as Section
+}
 const sectionIcons: Record<Section, string> = {
   general: 'mdi-laptop',
   sync: 'mdi-folder-sync-outline',
