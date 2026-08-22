@@ -50,7 +50,30 @@ fn clear_stale_webview_cache(app: &tauri::AppHandle) {
     if std::fs::read_to_string(&marker_path).ok().as_deref() == Some(current_version.as_str()) {
         return;
     }
-    let _ = std::fs::remove_dir_all(local_data_dir.join("EBWebView"));
+
+    let cache_dir = local_data_dir.join("EBWebView");
+    // The previous instance's WebView2 helper process (msedgewebview2.exe) can still hold this
+    // folder's files open for a brief moment after the main app process itself has already
+    // exited -- silently swallowing remove_dir_all's error here (as an earlier version of this
+    // function did) meant a transient lock got permanently recorded as "already cleared for this
+    // version" below, so a fresh launch could never retry and the stale cache lived on until an
+    // operator manually forced a cache-bypassing reload (Ctrl+F5) inside the app. Retrying a
+    // few times rides out that transient lock instead.
+    let mut cleared = !cache_dir.exists();
+    for _ in 0..10 {
+        if cleared {
+            break;
+        }
+        match std::fs::remove_dir_all(&cache_dir) {
+            Ok(()) => cleared = true,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => cleared = true,
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(300)),
+        }
+    }
+    if !cleared {
+        return;
+    }
+
     let _ = std::fs::create_dir_all(&local_data_dir);
     let _ = std::fs::write(&marker_path, &current_version);
 }

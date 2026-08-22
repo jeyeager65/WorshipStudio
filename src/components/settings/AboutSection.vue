@@ -255,7 +255,6 @@ async function exportDiagnosticBundle() {
 }
 .about-stack {
   display: grid;
-  max-width: 760px;
   gap: 18px;
 }
 .about-stack .about-card {
