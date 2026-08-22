@@ -35,6 +35,17 @@ export const useSettingsStore = defineStore('settings', () => {
             servingSchedule: { enabled: true, roleIds: [] },
           },
         },
+        // Same story again — demo localStorage saved before fontSizesPx was grouped out of 8 flat
+        // fields has no `fontSizesPx` key at all, which crashed ServiceWorkspaceView's render
+        // (every read assumes librarySettings.fontSizesPx itself, not just librarySettings, is
+        // always present). Same numeric defaults as adapters/web/settings.ts's
+        // defaultLibrarySettings() and adapters/mock/fixtures.ts's seed.
+        fontSizesPx: library.fontSizesPx ?? {
+          scripture: { min: 72, max: 120 },
+          song: { min: 16, max: 120 },
+          slide: { header: 48, footer: 48 },
+          wayfinding: { min: 56, max: 150 },
+        },
       }
       libraryCredentials.value = credentials
       machineSettings.value = machine
