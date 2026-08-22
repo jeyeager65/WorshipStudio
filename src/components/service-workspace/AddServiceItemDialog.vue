@@ -469,6 +469,7 @@ function closeAddDialog() {
               density="compact"
               prepend-inner-icon="mdi-magnify"
               autofocus
+              class="first-field"
             />
             <v-list :disabled="addingSong">
               <v-list-item
@@ -607,7 +608,7 @@ function closeAddDialog() {
               label="App Profile"
               variant="outlined"
               density="compact"
-              class="mb-3"
+              class="first-field mb-3"
             />
             <template v-if="selectedExternalAppProfile">
               <v-text-field
@@ -651,7 +652,8 @@ function closeAddDialog() {
               label="Sermon Title (optional)"
               placeholder="e.g. Our Lord's Prayer"
               variant="outlined"
-              class="mb-3"
+              density="compact"
+              class="first-field mb-3"
             />
             <div class="text-overline text-medium-emphasis mb-2">Passages</div>
             <v-card
@@ -766,7 +768,7 @@ function closeAddDialog() {
               placeholder="e.g. Silent Preparation"
               variant="outlined"
               density="compact"
-              class="mb-3"
+              class="first-field mb-3"
             />
             <v-textarea
               v-model="bulletinNoteText"
@@ -848,5 +850,11 @@ function closeAddDialog() {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+}
+/* Whichever field is first in its tab sits flush against the top of the surrounding v-window,
+   which clips both axes for its own slide transition — with zero clearance above it, that clips
+   the top few pixels an outlined field's floating label rises above its own box. */
+.first-field {
+  padding-top: 3px;
 }
 </style>

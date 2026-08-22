@@ -214,6 +214,63 @@ describe('evaluateServiceReadiness', () => {
     expect(verified.ready).toBe(true)
   })
 
+  it('does not require a translation for reference-only scripture, and allows a sermon with no passages', () => {
+    const result = evaluateServiceReadiness(
+      service({
+        items: [
+          {
+            id: 'scripture',
+            type: 'scripture',
+            reference: 'John 3:16',
+            translation: '',
+            displayMode: 'reference-only',
+          },
+          {
+            id: 'sermon',
+            type: 'sermon',
+            passages: [],
+            mainPassageId: '',
+            outline: [],
+            flow: [],
+          },
+        ],
+      }),
+      context(),
+    )
+
+    expect(result.ready).toBe(true)
+    expect(result.issues).toEqual([])
+  })
+
+  it('still requires a translation for full-display scripture and sermon passages', () => {
+    const result = evaluateServiceReadiness(
+      service({
+        items: [
+          {
+            id: 'scripture',
+            type: 'scripture',
+            reference: 'John 3:16',
+            translation: '',
+            displayMode: 'full',
+          },
+          {
+            id: 'sermon',
+            type: 'sermon',
+            passages: [{ id: 'p1', reference: 'Romans 8:28', translation: '', displayMode: 'full' }],
+            mainPassageId: 'p1',
+            outline: [],
+            flow: [],
+          },
+        ],
+      }),
+      context(),
+    )
+
+    expect(result.blockers.map((issue) => issue.title)).toEqual(
+      expect.arrayContaining(['Scripture details are incomplete', 'Sermon has an incomplete passage']),
+    )
+  })
+
   it('reports only synced conflicts that affect the current service', () => {
     const result = evaluateServiceReadiness(
       service(),

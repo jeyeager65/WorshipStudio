@@ -276,12 +276,12 @@ export function evaluateServiceReadiness(
         )
       }
     } else if (item.type === 'scripture') {
-      if (!item.reference.trim() || !item.translation.trim()) {
+      if (!item.reference.trim() || (item.displayMode === 'full' && !item.translation.trim())) {
         add(
           'blocker',
           'invalid-scripture',
           'Scripture details are incomplete',
-          'Enter a reference and translation.',
+          item.displayMode === 'full' ? 'Enter a reference and translation.' : 'Enter a reference.',
           'service-item',
           item.id,
         )
@@ -306,24 +306,19 @@ export function evaluateServiceReadiness(
           )
       }
     } else if (item.type === 'sermon') {
-      if (!item.passages.length) {
-        add(
-          'blocker',
-          'empty-sermon',
-          `${label} has no scripture passages`,
-          'Add at least one sermon passage.',
-          'service-item',
-          item.id,
-        )
-      }
       for (const passage of item.passages) {
         const key = `${item.id}:${passage.id}`
-        if (!passage.reference.trim() || !passage.translation.trim()) {
+        if (
+          !passage.reference.trim() ||
+          (passage.displayMode === 'full' && !passage.translation.trim())
+        ) {
           add(
             'blocker',
             'invalid-sermon-passage',
             `${label} has an incomplete passage`,
-            'Enter a reference and translation.',
+            passage.displayMode === 'full'
+              ? 'Enter a reference and translation.'
+              : 'Enter a reference.',
             'service-item',
             item.id,
           )
