@@ -32,7 +32,16 @@ const ring: LogEntry[] = []
 // module, and this file is imported *from* some of those adapters (see the diagnostics wiring in
 // adapters/web/index.ts and adapters/tablet/index.ts) to surface the ring buffer, so importing
 // back from '@/adapters' here would risk a module cycle for no real benefit over this same
-// one-line check main.ts already uses independently.
+// one-line check main.ts already uses independently. The ambient Window augmentation is declared
+// locally too (not reused from adapters/index.ts's identical one) -- this file is also compiled
+// standalone by tsconfig.remote.json (src-remote's build), which includes src/utils/**/*.ts but
+// not adapters/index.ts, so that file's declare global wouldn't be visible here.
+declare global {
+  interface Window {
+    __TAURI_INTERNALS__?: unknown
+  }
+}
+
 function isTauri(): boolean {
   return typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__)
 }
