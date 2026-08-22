@@ -15,6 +15,8 @@ function makeFakeSyncStore() {
     clearCursor: async () => {},
     getLastSyncedAt: async () => undefined,
     setLastSyncedAt: async () => {},
+    getConsecutiveReauthFailures: async () => 0,
+    setConsecutiveReauthFailures: async () => {},
     getDirty: async (path: string) => dirty.get(path),
     setDirty: async (
       path: string,

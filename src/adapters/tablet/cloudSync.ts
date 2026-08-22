@@ -90,8 +90,13 @@ export function createCloudSync(config: CloudSyncConfig) {
   // during its 10s window) — confirmed on a real device this fired even though the underlying
   // connection was completely fine (reconnecting afterward needed no new sign-in at all). Cleared
   // back to zero the moment any attempt succeeds.
-  let needsReconnect = false
-  let consecutiveReauthFailures = 0
+  //
+  // Persisted via syncStore (not a plain in-memory counter here) — confirmed on a real iPad that
+  // an in-memory-only counter never actually reached the threshold: iOS Safari discards a
+  // backgrounded PWA's whole page and reloads it fresh well before two consecutive failures could
+  // ever accumulate within one continuous session, so the reconnect banner silently never
+  // appeared even though sync had genuinely been failing for a day. Reading/writing this on every
+  // runSync() means the count survives exactly that kind of reload.
   const REAUTH_FAILURE_THRESHOLD = 2
   // Live snapshot of whichever phase is currently running — set at the top of each loop
   // iteration in pull()/push() below and cleared once that phase finishes, so getProgress() (and
@@ -435,20 +440,19 @@ export function createCloudSync(config: CloudSyncConfig) {
     try {
       await pull()
       await push()
-      consecutiveReauthFailures = 0
-      needsReconnect = false
+      await syncStore.setConsecutiveReauthFailures(0)
     } catch (error) {
       if (error instanceof ProviderReauthRequiredError) {
-        consecutiveReauthFailures += 1
-        needsReconnect = consecutiveReauthFailures >= REAUTH_FAILURE_THRESHOLD
+        const failures = (await syncStore.getConsecutiveReauthFailures()) + 1
+        await syncStore.setConsecutiveReauthFailures(failures)
         // Not every reauth failure -- this runs on a timer (useTabletSync.ts), so logging every
         // one of possibly many consecutive attempts would just be noise. Only the moment it
         // actually flips needsReconnect (the point an operator needs to do something) is worth a
         // log line.
-        if (needsReconnect) {
+        if (failures === REAUTH_FAILURE_THRESHOLD) {
           logger.warn(
             'sync',
-            `Cloud sync needs reconnecting after ${consecutiveReauthFailures} consecutive auth failures`,
+            `Cloud sync needs reconnecting after ${failures} consecutive auth failures`,
           )
         }
       } else {
@@ -504,11 +508,16 @@ export function createCloudSync(config: CloudSyncConfig) {
     pendingPushCount: number
     needsReconnect: boolean
   }> {
-    const [lastSyncedAt, dirty] = await Promise.all([
+    const [lastSyncedAt, dirty, consecutiveReauthFailures] = await Promise.all([
       syncStore.getLastSyncedAt(),
       syncStore.getAllDirty(),
+      syncStore.getConsecutiveReauthFailures(),
     ])
-    return { lastSyncedAt, pendingPushCount: dirty.length, needsReconnect }
+    return {
+      lastSyncedAt,
+      pendingPushCount: dirty.length,
+      needsReconnect: consecutiveReauthFailures >= REAUTH_FAILURE_THRESHOLD,
+    }
   }
 
   async function getProgress(): Promise<SyncProgress | undefined> {

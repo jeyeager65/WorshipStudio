@@ -33,6 +33,7 @@ function makeFakeSyncStore() {
   >()
   let cursor: string | undefined
   let lastSyncedAt: string | undefined
+  let consecutiveReauthFailures = 0
   return {
     getCursor: async () => cursor,
     setCursor: async (value: string) => {
@@ -44,6 +45,10 @@ function makeFakeSyncStore() {
     getLastSyncedAt: async () => lastSyncedAt,
     setLastSyncedAt: async (value: string) => {
       lastSyncedAt = value
+    },
+    getConsecutiveReauthFailures: async () => consecutiveReauthFailures,
+    setConsecutiveReauthFailures: async (count: number) => {
+      consecutiveReauthFailures = count
     },
     getDirty: async (path: string) => dirty.get(path),
     setDirty: async (path: string, entry: { deleted: boolean; attempts: number; nextRetryAt: number }) => {
@@ -74,6 +79,7 @@ function makeFakeSyncStore() {
     clearAll: async () => {
       cursor = undefined
       lastSyncedAt = undefined
+      consecutiveReauthFailures = 0
       dirty.clear()
       revs.clear()
       conflicts.clear()

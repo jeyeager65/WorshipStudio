@@ -42,6 +42,7 @@ const REVS_STORE = 'revs'
 const CONFLICTS_STORE = 'conflicts'
 const CURSOR_KEY = 'cursor'
 const LAST_SYNCED_AT_KEY = 'lastSyncedAt'
+const CONSECUTIVE_REAUTH_FAILURES_KEY = 'consecutiveReauthFailures'
 
 // Cached rather than opened fresh per call — every getValue/putValue/deleteValue/getAllEntries
 // below used to call this independently, meaning a single pull() applying a few hundred small
@@ -137,6 +138,17 @@ export const syncStore = {
   getLastSyncedAt: (): Promise<string | undefined> =>
     getValue<string>(META_STORE, LAST_SYNCED_AT_KEY),
   setLastSyncedAt: (iso: string): Promise<void> => putValue(META_STORE, LAST_SYNCED_AT_KEY, iso),
+
+  // Persisted (not just an in-memory counter in cloudSync.ts) so a reconnect-needed state
+  // actually survives a page reload -- iOS Safari in particular can discard a backgrounded PWA's
+  // whole page and reload it fresh well before REAUTH_FAILURE_THRESHOLD consecutive failures ever
+  // accumulate in memory, so the reconnect banner never appeared even though every sync attempt
+  // since was genuinely failing (confirmed on a real iPad: the app-bar sync icon kept showing
+  // fine while OneDrive silently needed reauth, only surfacing after a manual Settings > Sync).
+  getConsecutiveReauthFailures: async (): Promise<number> =>
+    (await getValue<number>(META_STORE, CONSECUTIVE_REAUTH_FAILURES_KEY)) ?? 0,
+  setConsecutiveReauthFailures: (count: number): Promise<void> =>
+    putValue(META_STORE, CONSECUTIVE_REAUTH_FAILURES_KEY, count),
 
   getDirty: (path: string): Promise<DirtyEntry | undefined> => getValue(DIRTY_STORE, path),
   setDirty: (path: string, entry: DirtyEntry): Promise<void> => putValue(DIRTY_STORE, path, entry),
