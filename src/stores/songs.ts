@@ -6,7 +6,7 @@ import type { Song } from '@/models/song'
 
 export const useSongsStore = defineStore('songs', () => {
   const songs = ref<Song[]>([])
-  const asyncState = useAsyncStoreState()
+  const asyncState = useAsyncStoreState('songs')
 
   async function load() {
     return asyncState.runLoad(async () => {

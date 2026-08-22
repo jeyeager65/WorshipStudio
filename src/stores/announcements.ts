@@ -6,7 +6,7 @@ import type { Announcement } from '@/models/announcement'
 
 export const useAnnouncementsStore = defineStore('announcements', () => {
   const announcements = ref<Announcement[]>([])
-  const asyncState = useAsyncStoreState()
+  const asyncState = useAsyncStoreState('announcements')
 
   async function load() {
     return asyncState.runLoad(async () => {

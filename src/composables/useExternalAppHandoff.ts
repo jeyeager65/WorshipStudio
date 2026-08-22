@@ -4,6 +4,7 @@ import type { ExternalAppProfile } from '@/adapters/types'
 import type { FlatSlide } from '@/utils/flattenService'
 import type { Service, ServiceItem } from '@/models/service'
 import { comboFromKeyboardEvent } from '@/utils/keyCombo'
+import { logger } from '@/utils/logger'
 
 function errorMessage(e: unknown, fallback: string): string {
   if (typeof e === 'string') return e
@@ -103,7 +104,9 @@ export function useExternalAppHandoff(
     if (!command || !command.keyCombo.trim()) return false
     getAdapter()
       .externalApps?.sendKeystroke(profile.id, command.id)
-      .catch((e) => console.error(`Failed to forward "${command.label}" to the external app:`, e))
+      .catch((e) =>
+        logger.error('external-app', `Failed to forward "${command.label}" to the external app`, e),
+      )
     return true
   }
 
@@ -116,6 +119,7 @@ export function useExternalAppHandoff(
       await getAdapter().externalApps?.sendKeystroke(profileId, commandId)
     } catch (e) {
       manualCommandError.value = errorMessage(e, 'Failed to send that command to the external app.')
+      logger.error('external-app', 'Failed to send a manual command to the external app', e)
     }
   }
 
@@ -137,7 +141,7 @@ export function useExternalAppHandoff(
       try {
         await getAdapter().externalApps?.closeAll()
       } catch (e) {
-        console.error('Failed to close external apps:', e)
+        logger.error('external-app', 'Failed to close external apps', e)
       }
       return
     }
@@ -154,7 +158,7 @@ export function useExternalAppHandoff(
       try {
         await getAdapter().externalApps?.restoreSelf()
       } catch (e) {
-        console.error('Failed to restore Worship Studio to the foreground:', e)
+        logger.error('external-app', 'Failed to restore Worship Studio to the foreground', e)
       }
     }
     externalAppActiveKey.value = enteringKey
@@ -165,6 +169,7 @@ export function useExternalAppHandoff(
       await getAdapter().externalApps?.launch(slide.externalApp.profileId, slide.externalApp.file)
     } catch (e) {
       externalAppError.value = errorMessage(e, 'Failed to launch the external app.')
+      logger.error('external-app', 'Failed to launch the external app for the live slide', e)
     }
   }
   watch([liveSlide, isPresenting], engageExternalAppIfNeeded)
@@ -195,7 +200,7 @@ export function useExternalAppHandoff(
     try {
       await getAdapter().externalApps?.closeCurrent()
     } catch (e) {
-      console.error('Failed to close the external app:', e)
+      logger.error('external-app', 'Failed to close the external app', e)
     }
   }
 
@@ -211,6 +216,7 @@ export function useExternalAppHandoff(
       await getAdapter().externalApps?.prelaunch(item.profileId, item.file)
     } catch (e) {
       prelaunchError.value = errorMessage(e, 'Failed to launch the external app.')
+      logger.error('external-app', 'Failed to prelaunch the external app', e)
     }
   }
 

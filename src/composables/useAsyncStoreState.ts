@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { logger } from '@/utils/logger'
 
 export function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) return error.message
@@ -11,8 +12,14 @@ export function errorMessage(error: unknown): string {
  * from background refresh so an existing collection never disappears behind a spinner. Load
  * failures are retained for retry; mutation failures are retained for the active editor while
  * still being rethrown so callers can decide whether navigation or dirty state should change.
+ *
+ * Every store built on this shares one logging point (`scope` is just that store's own
+ * defineStore id) rather than each store logging its own load/save failures individually --
+ * covers songs/services/slides/media/etc. saves and loads uniformly without instrumenting each
+ * one by hand. Only failures are logged; a successful save/load is the unremarkable common case
+ * and isn't worth a log line every time.
  */
-export function useAsyncStoreState() {
+export function useAsyncStoreState(scope: string) {
   const loaded = ref(false)
   const loading = ref(false)
   const refreshing = ref(false)
@@ -33,6 +40,7 @@ export function useAsyncStoreState() {
         return true
       } catch (error) {
         loadError.value = errorMessage(error)
+        logger.error(scope, 'Failed to load', error)
         return false
       } finally {
         loading.value = false
@@ -49,6 +57,7 @@ export function useAsyncStoreState() {
       return await operation()
     } catch (error) {
       mutationError.value = errorMessage(error)
+      logger.error(scope, 'Failed to save', error)
       throw error
     }
   }

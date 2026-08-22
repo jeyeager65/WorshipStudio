@@ -34,6 +34,7 @@ import {
 } from '@/adapters/web/fsaStorage'
 import { CONFLICT_PATTERN } from '@/adapters/web/sync'
 import type { SyncProgress } from '@/adapters/types'
+import { logger } from '@/utils/logger'
 
 /** Mirrors web/sync.ts's CONFLICT_PATTERN scope exactly — only paths under these top-level
  *  folders are ever scanned by detectConflicts(), so only pushes to these are worth
@@ -440,6 +441,18 @@ export function createCloudSync(config: CloudSyncConfig) {
       if (error instanceof ProviderReauthRequiredError) {
         consecutiveReauthFailures += 1
         needsReconnect = consecutiveReauthFailures >= REAUTH_FAILURE_THRESHOLD
+        // Not every reauth failure -- this runs on a timer (useTabletSync.ts), so logging every
+        // one of possibly many consecutive attempts would just be noise. Only the moment it
+        // actually flips needsReconnect (the point an operator needs to do something) is worth a
+        // log line.
+        if (needsReconnect) {
+          logger.warn(
+            'sync',
+            `Cloud sync needs reconnecting after ${consecutiveReauthFailures} consecutive auth failures`,
+          )
+        }
+      } else {
+        logger.warn('sync', 'Cloud sync cycle failed', error)
       }
       throw error
     } finally {

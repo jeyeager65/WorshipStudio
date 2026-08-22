@@ -6,7 +6,7 @@ import type { MediaItem } from '@/models/library'
 
 export const useMediaStore = defineStore('media', () => {
   const items = ref<MediaItem[]>([])
-  const asyncState = useAsyncStoreState()
+  const asyncState = useAsyncStoreState('media')
 
   async function load() {
     return asyncState.runLoad(async () => {

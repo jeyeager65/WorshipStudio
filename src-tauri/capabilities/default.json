@@ -34,6 +34,7 @@
     "core:event:default",
     "updater:default",
     "process:allow-restart",
+    "log:default",
     {
       "identifier": "opener:allow-open-url",
       "allow": [

@@ -8,7 +8,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const librarySettings = ref<LibrarySettings>()
   const libraryCredentials = ref<LibraryCredentials>()
   const machineSettings = ref<MachineSettings>()
-  const asyncState = useAsyncStoreState()
+  const asyncState = useAsyncStoreState('settings')
 
   async function load() {
     return asyncState.runLoad(async () => {

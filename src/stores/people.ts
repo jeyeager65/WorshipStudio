@@ -6,7 +6,7 @@ import type { Person } from '@/models/library'
 
 export const usePeopleStore = defineStore('people', () => {
   const people = ref<Person[]>([])
-  const asyncState = useAsyncStoreState()
+  const asyncState = useAsyncStoreState('people')
 
   async function load() {
     return asyncState.runLoad(async () => {

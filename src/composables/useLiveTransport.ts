@@ -5,6 +5,7 @@ import { useThemesStore } from '@/stores/themes'
 import { cssFontFamily, resolvePresentationFontFamily } from '@/utils/presentationFonts'
 import { presentationTextEffect } from '@/utils/presentationTextEffect'
 import { resolvePresentationTheme } from '@/utils/presentationTheme'
+import { logger } from '@/utils/logger'
 import type { FlatSlide } from '@/utils/flattenService'
 import type { Service } from '@/models/service'
 import type { MediaItem, SlideLibraryItem } from '@/models/library'
@@ -259,6 +260,7 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     } else {
       await getAdapter().live.stopPresenting()
       isPresenting.value = false
+      logger.info('presentation', 'Stopped presenting')
       pushRemoteLiveState(undefined, false, false)
     }
   }
@@ -268,13 +270,14 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
       if (flatIndex.value === -1 && flatSlides.value.length > 0) goLive(0)
       await getAdapter().live.startPresenting()
       isPresenting.value = true
+      logger.info('presentation', 'Started presenting')
       // Explicit send in addition to the watch below — if flatIndex was already at this value
       // (e.g. the operator had already clicked this slide before pressing Start Presenting),
       // the watch alone wouldn't fire since liveContentPayload wouldn't actually change.
       await getAdapter().live.setLiveContent(liveContentPayload.value)
       pushRemoteLiveState(liveContentPayload.value, true, !!liveSlide.value?.externalApp)
     } catch (e) {
-      console.error('Failed to start presentation:', e)
+      logger.error('presentation', 'Failed to start presentation', e)
       audienceDisplayAvailable.value = false
       presentationDisplayError.value = errorMessage(
         e,
@@ -648,7 +651,10 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     // presenting, but if this view ever unmounts some other way, don't leave the app
     // permanently believing a torn-down workspace is still live — or a presentation window
     // open with nothing left able to close it.
-    if (isPresenting.value) getAdapter().live.stopPresenting()
+    if (isPresenting.value) {
+      logger.warn('presentation', 'Workspace unmounted while still presenting -- stopping now')
+      getAdapter().live.stopPresenting()
+    }
     isPresenting.value = false
     getAdapter().remote?.pushServiceOpen(false)
     unlistenRemoteCommand?.()

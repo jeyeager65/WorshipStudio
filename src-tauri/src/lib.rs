@@ -124,6 +124,18 @@ pub fn run() {
                     .build(),
             )?;
 
+            log::info!(
+                "Worship Studio v{} starting ({}/{}, {})",
+                app.package_info().version,
+                std::env::consts::OS,
+                std::env::consts::ARCH,
+                if crate::paths::is_portable(app.handle()) {
+                    "portable"
+                } else {
+                    "installed"
+                },
+            );
+
             // Remote Control's local HTTP server (design/feature-spec.md section 4) — started
             // once here rather than lazily on first use, so it's already reachable by the
             // time an operator opens Settings > Remote Control to provision a device.

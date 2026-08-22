@@ -8,7 +8,7 @@ import type { ExternalAppProfile } from '@/adapters/types'
  * `profiles` empty there rather than erroring. */
 export const useExternalAppsStore = defineStore('externalApps', () => {
   const profiles = ref<ExternalAppProfile[]>([])
-  const asyncState = useAsyncStoreState()
+  const asyncState = useAsyncStoreState('externalApps')
 
   async function load() {
     return asyncState.runLoad(async () => {

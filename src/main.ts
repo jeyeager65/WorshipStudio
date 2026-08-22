@@ -13,6 +13,18 @@ import BootGate from './BootGate.vue'
 import WebAudienceView from './views/WebAudienceView.vue'
 import router from './router'
 import vuetify from './plugins/vuetify'
+import { logger } from './utils/logger'
+
+// Previously invisible everywhere: an uncaught exception or a rejected promise with no .catch
+// just vanished once devtools closed, on every platform including the Tauri desktop build. These
+// two cover anything outside Vue's own render/lifecycle functions (a plain event handler, a
+// timer callback, a fire-and-forget async call) -- Vue's own errorHandler below covers the rest.
+window.addEventListener('error', (event) => {
+  logger.error('window', event.message || 'Uncaught error', event.error)
+})
+window.addEventListener('unhandledrejection', (event) => {
+  logger.error('window', 'Unhandled promise rejection', event.reason)
+})
 
 // The audience window (see src/utils/liveAudienceWindow.ts, used by both the mock/demo and real
 // web adapters) opens this same page with ?presentation=1 and expects only the current slide,
@@ -32,6 +44,9 @@ if (isAudienceWindow) {
   createApp(WebAudienceView).mount('#app')
 } else {
   const app = createApp(BootGate)
+  app.config.errorHandler = (error, _instance, info) => {
+    logger.error('vue', `Uncaught error in ${info}`, error)
+  }
   app.use(createPinia())
   app.use(router)
   app.use(vuetify)

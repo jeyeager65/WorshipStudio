@@ -6,7 +6,7 @@ import type { ServiceTemplate } from '@/models/service'
 
 export const useServiceTemplatesStore = defineStore('serviceTemplates', () => {
   const serviceTemplates = ref<ServiceTemplate[]>([])
-  const asyncState = useAsyncStoreState()
+  const asyncState = useAsyncStoreState('serviceTemplates')
 
   async function load() {
     return asyncState.runLoad(async () => {

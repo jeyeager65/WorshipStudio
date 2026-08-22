@@ -16,7 +16,7 @@ export const useSyncStore = defineStore('sync', () => {
   const status = ref<SyncStatus>()
   const conflicts = ref<ConflictedItem[]>([])
   const recoveryIssues = ref<RecoveryIssue[]>([])
-  const asyncState = useAsyncStoreState()
+  const asyncState = useAsyncStoreState('sync')
   // Separate from asyncState's own loading flag — that one's scoped to *this store's* own
   // load()/resolve()/etc. calls, but a tablet cloud sync is triggered from multiple places
   // (useTabletSync.ts's automatic triggers, the manual "Sync Now" button) that all need one

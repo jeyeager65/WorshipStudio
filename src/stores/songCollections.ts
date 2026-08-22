@@ -6,7 +6,7 @@ import type { SongCollectionDefinition } from '@/models/settings'
 
 export const useSongCollectionsStore = defineStore('songCollections', () => {
   const collections = ref<SongCollectionDefinition[]>([])
-  const asyncState = useAsyncStoreState()
+  const asyncState = useAsyncStoreState('songCollections')
 
   async function load() {
     return asyncState.runLoad(async () => {

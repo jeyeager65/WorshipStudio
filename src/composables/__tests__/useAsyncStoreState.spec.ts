@@ -3,7 +3,7 @@ import { useAsyncStoreState } from '@/composables/useAsyncStoreState'
 
 describe('useAsyncStoreState', () => {
   it('distinguishes initial loading from a background refresh', async () => {
-    const state = useAsyncStoreState()
+    const state = useAsyncStoreState('test')
     let finishLoad!: () => void
     const firstLoad = state.runLoad(() => new Promise<void>((resolve) => (finishLoad = resolve)))
 
@@ -23,7 +23,7 @@ describe('useAsyncStoreState', () => {
   })
 
   it('retains a load error for retry and clears it after success', async () => {
-    const state = useAsyncStoreState()
+    const state = useAsyncStoreState('test')
 
     expect(await state.runLoad(() => Promise.reject(new Error('Library unavailable')))).toBe(false)
     expect(state.loaded.value).toBe(false)
@@ -35,7 +35,7 @@ describe('useAsyncStoreState', () => {
   })
 
   it('records mutation failures while preserving rejection semantics', async () => {
-    const state = useAsyncStoreState()
+    const state = useAsyncStoreState('test')
 
     await expect(
       state.runMutation(() => Promise.reject(new Error('Disk is full'))),

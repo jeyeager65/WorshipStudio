@@ -22,6 +22,7 @@ import { useTabletSync } from '@/composables/useTabletSync'
 import { usePwaUpdate } from '@/composables/usePwaUpdate'
 import { useTauriUpdate } from '@/composables/useTauriUpdate'
 import { formatSyncProgressLabel } from '@/utils/syncProgress'
+import { logger } from '@/utils/logger'
 import appIcon from '@/assets/app-icon.png'
 
 useTabletSync()
@@ -354,6 +355,8 @@ onMounted(async () => {
     return
   }
   if (isPresentationWindow || isIdentifyWindow) return
+
+  logger.info('startup', `Worship Studio starting (adapter: ${getAdapter().kind})`)
 
   document.addEventListener('keydown', handleSaveShortcut)
   document.addEventListener('keydown', handleHistoryShortcut)

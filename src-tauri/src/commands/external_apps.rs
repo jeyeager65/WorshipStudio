@@ -103,40 +103,52 @@ pub fn launch_external_app(
     // visible here too.
     audience_bounds: WindowPosition,
 ) -> Result<(), String> {
-    let profile = find_profile(&app, &profile_id)?;
-    let cache_key = format!("{profile_id}|{}", file.as_deref().unwrap_or(""));
+    // Wrapped in an immediately-invoked closure so every early `?` return still funnels through
+    // one place to log a failure -- this is a live-service action (advancing to an external-app
+    // item), so a failure here is exactly the kind of thing worth having in the log afterward.
+    // The already-cached-window reposition path deliberately isn't logged even on success: that
+    // fires on every advance back to an already-open item, and success there is the unremarkable
+    // common case, not something worth a log line each time.
+    let result = (|| -> Result<(), String> {
+        let profile = find_profile(&app, &profile_id)?;
+        let cache_key = format!("{profile_id}|{}", file.as_deref().unwrap_or(""));
 
-    let cached_hwnd = engaged.known.lock().unwrap().get(&cache_key).copied();
-    if let Some(hwnd) = cached_hwnd {
-        if win32::is_window_alive(hwnd) {
-            win32::reposition_existing(hwnd, &audience_bounds)?;
-            *engaged.current.lock().unwrap() = Some(hwnd);
-            return Ok(());
+        let cached_hwnd = engaged.known.lock().unwrap().get(&cache_key).copied();
+        if let Some(hwnd) = cached_hwnd {
+            if win32::is_window_alive(hwnd) {
+                win32::reposition_existing(hwnd, &audience_bounds)?;
+                *engaged.current.lock().unwrap() = Some(hwnd);
+                return Ok(());
+            }
+            // Closed since we last saw it — fall through and relaunch, but forget the stale
+            // handle first so a second failure doesn't keep tripping this same check.
+            engaged.known.lock().unwrap().remove(&cache_key);
         }
-        // Closed since we last saw it — fall through and relaunch, but forget the stale handle
-        // first so a second failure doesn't keep tripping this same check.
-        engaged.known.lock().unwrap().remove(&cache_key);
-    }
 
-    let hwnd = if profile.launch_mode == "already-running" {
-        let executable_name = profile
-            .executable_path
-            .as_deref()
-            .and_then(|p| std::path::Path::new(p).file_name())
-            .and_then(|n| n.to_str())
-            .ok_or_else(|| "This profile has no process name to look for.".to_string())?;
-        let pid = win32::find_running_process_id(executable_name).ok_or_else(|| {
-            format!("{executable_name} doesn't appear to be open. Open it, then try again.")
-        })?;
-        win32::focus_process(pid, Some(&audience_bounds))?
-    } else {
-        let executable = verify_paths(&profile, file.as_deref())?;
-        let args = external_apps::build_args(&profile.parameter_format, file.as_deref());
-        win32::launch_and_focus(&executable, &args, Some(&audience_bounds))?
-    };
-    engaged.known.lock().unwrap().insert(cache_key, hwnd);
-    *engaged.current.lock().unwrap() = Some(hwnd);
-    Ok(())
+        let hwnd = if profile.launch_mode == "already-running" {
+            let executable_name = profile
+                .executable_path
+                .as_deref()
+                .and_then(|p| std::path::Path::new(p).file_name())
+                .and_then(|n| n.to_str())
+                .ok_or_else(|| "This profile has no process name to look for.".to_string())?;
+            let pid = win32::find_running_process_id(executable_name).ok_or_else(|| {
+                format!("{executable_name} doesn't appear to be open. Open it, then try again.")
+            })?;
+            win32::focus_process(pid, Some(&audience_bounds))?
+        } else {
+            let executable = verify_paths(&profile, file.as_deref())?;
+            let args = external_apps::build_args(&profile.parameter_format, file.as_deref());
+            win32::launch_and_focus(&executable, &args, Some(&audience_bounds))?
+        };
+        engaged.known.lock().unwrap().insert(cache_key, hwnd);
+        *engaged.current.lock().unwrap() = Some(hwnd);
+        Ok(())
+    })();
+    if let Err(error) = &result {
+        log::warn!("Failed to launch external app profile \"{profile_id}\": {error}");
+    }
+    result
 }
 
 /// "Launch Now" — starts an item's app ahead of its slide going live, so the cold-start delay

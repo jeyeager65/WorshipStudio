@@ -6,7 +6,7 @@ import type { Theme } from '@/models/library'
 
 export const useThemesStore = defineStore('themes', () => {
   const themes = ref<Theme[]>([])
-  const asyncState = useAsyncStoreState()
+  const asyncState = useAsyncStoreState('themes')
 
   async function load() {
     return asyncState.runLoad(async () => {

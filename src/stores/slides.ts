@@ -6,7 +6,7 @@ import type { SlideLibraryItem } from '@/models/library'
 
 export const useSlidesStore = defineStore('slides', () => {
   const slides = ref<SlideLibraryItem[]>([])
-  const asyncState = useAsyncStoreState()
+  const asyncState = useAsyncStoreState('slides')
 
   async function load() {
     return asyncState.runLoad(async () => {

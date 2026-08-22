@@ -28,6 +28,7 @@ import {
   parseReference,
 } from '@/utils/scriptureReference'
 import { createLiveAudienceWindowPort } from '@/utils/liveAudienceWindow'
+import { logger } from '@/utils/logger'
 import { createWebAnnouncementsPort } from './announcements'
 import { createWebMediaPort } from './media'
 import { createWebPeoplePort } from './people'
@@ -59,6 +60,57 @@ export function createWebAdapter(root: FileSystemDirectoryHandle): StudioAdapter
   const media = createWebMediaPort(root, settings, themes, createPickedLocalMediaRoot())
   const people = createWebPeoplePort(root, settings)
   const announcements = createWebAnnouncementsPort(root, settings)
+
+  // Shared by getSummary and createBundle below, same as the Tauri backend's own
+  // diagnostic_summary() helper (commands/diagnostics.rs) -- there's no real log *file* to count
+  // on the web build (see logger.ts), so logFileCount/logBytes stand in for "is there anything in
+  // this session's in-memory ring buffer, and how big is it" instead.
+  async function buildDiagnosticSummary(): Promise<DiagnosticSummary> {
+    const entries = logger.recent()
+    const [
+      songCount,
+      serviceCount,
+      slideCount,
+      mediaCount,
+      themeCount,
+      peopleCount,
+      conflicts,
+      recovery,
+    ] = await Promise.all([
+      songs.list().then((list) => list.length),
+      services.list().then((list) => list.length),
+      slides.list().then((list) => list.length),
+      media.list().then((list) => list.length),
+      themes.list().then((list) => list.length),
+      people.list().then((list) => list.length),
+      sync.detectConflicts(root),
+      sync.detectRecoveryIssues(root),
+    ])
+    return {
+      generatedAt: new Date().toISOString(),
+      appVersion: 'Web build',
+      buildProfile: 'development',
+      platform: navigator.platform || 'browser',
+      architecture: 'browser',
+      installationMode: 'web',
+      setupComplete: (await settings.getMachineSettings()).hasCompletedSetup,
+      libraryReadable: true,
+      libraryItems: {
+        songs: songCount,
+        services: serviceCount,
+        slides: slideCount,
+        media: mediaCount,
+        themes: themeCount,
+        people: peopleCount,
+      },
+      syncConflictCount: conflicts.length,
+      recoveryIssueCount: recovery.length,
+      displayAssignmentCount: 0,
+      remotePortMode: 'unavailable',
+      logFileCount: entries.length > 0 ? 1 : 0,
+      logBytes: JSON.stringify(entries).length,
+    }
+  }
 
   return {
     kind: 'web',
@@ -173,58 +225,17 @@ export function createWebAdapter(root: FileSystemDirectoryHandle): StudioAdapter
         sync.resolveConflict(root, conflictFilePath, keep),
     },
     diagnostics: {
-      getSummary: async (): Promise<DiagnosticSummary> => {
-        const [
-          songCount,
-          serviceCount,
-          slideCount,
-          mediaCount,
-          themeCount,
-          peopleCount,
-          conflicts,
-          recovery,
-        ] = await Promise.all([
-          songs.list().then((list) => list.length),
-          services.list().then((list) => list.length),
-          slides.list().then((list) => list.length),
-          media.list().then((list) => list.length),
-          themes.list().then((list) => list.length),
-          people.list().then((list) => list.length),
-          sync.detectConflicts(root),
-          sync.detectRecoveryIssues(root),
-        ])
-        return {
-          generatedAt: new Date().toISOString(),
-          appVersion: 'Web build',
-          buildProfile: 'development',
-          platform: navigator.platform || 'browser',
-          architecture: 'browser',
-          installationMode: 'web',
-          setupComplete: (await settings.getMachineSettings()).hasCompletedSetup,
-          libraryReadable: true,
-          libraryItems: {
-            songs: songCount,
-            services: serviceCount,
-            slides: slideCount,
-            media: mediaCount,
-            themes: themeCount,
-            people: peopleCount,
-          },
-          syncConflictCount: conflicts.length,
-          recoveryIssueCount: recovery.length,
-          displayAssignmentCount: 0,
-          remotePortMode: 'unavailable',
-          logFileCount: 0,
-          logBytes: 0,
-        }
-      },
+      getSummary: () => buildDiagnosticSummary(),
       createBundle: async () => {
+        // There's no OS-level log file to read on the web build (see logger.ts's own top-of-file
+        // comment) -- the ring buffer of recent frontend activity is the closest equivalent, so
+        // it's what gets bundled here instead of the Tauri adapter's actual log file excerpts.
         return JSON.stringify(
           {
             privacyNotice:
-              'Web build diagnostics contain operational summary data only. No local logs are available.',
-            summary: {},
-            logs: [],
+              'Web build diagnostics contain operational summary data and recent in-session activity only. Settings files, library content, credentials, and personal records are excluded.',
+            summary: await buildDiagnosticSummary(),
+            logs: logger.recent(),
           },
           null,
           2,

@@ -6,7 +6,7 @@ import type { RoleGroupDefinition } from '@/models/settings'
 
 export const useRoleGroupsStore = defineStore('roleGroups', () => {
   const roleGroups = ref<RoleGroupDefinition[]>([])
-  const asyncState = useAsyncStoreState()
+  const asyncState = useAsyncStoreState('roleGroups')
 
   async function load() {
     return asyncState.runLoad(async () => {

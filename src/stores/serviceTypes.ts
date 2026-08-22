@@ -6,7 +6,7 @@ import type { ServiceTypeDefinition } from '@/models/settings'
 
 export const useServiceTypesStore = defineStore('serviceTypes', () => {
   const serviceTypes = ref<ServiceTypeDefinition[]>([])
-  const asyncState = useAsyncStoreState()
+  const asyncState = useAsyncStoreState('serviceTypes')
 
   async function load() {
     return asyncState.runLoad(async () => {
