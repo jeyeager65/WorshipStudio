@@ -43,13 +43,24 @@ const WEBVIEW_CACHE_VERSION_MARKER: &str = "webview-cache-cleared-for-version.tx
 #[cfg(windows)]
 fn clear_stale_webview_cache(app: &tauri::AppHandle) {
     let Ok(local_data_dir) = app.path().app_local_data_dir() else {
+        log::warn!("Could not resolve app_local_data_dir(); skipping WebView2 cache clear");
         return;
     };
     let marker_path = local_data_dir.join(WEBVIEW_CACHE_VERSION_MARKER);
     let current_version = app.package_info().version.to_string();
-    if std::fs::read_to_string(&marker_path).ok().as_deref() == Some(current_version.as_str()) {
+    let marker_contents = std::fs::read_to_string(&marker_path).ok();
+    if marker_contents.as_deref() == Some(current_version.as_str()) {
+        log::info!(
+            "WebView2 cache already marked cleared for v{current_version}; skipping ({})",
+            marker_path.display()
+        );
         return;
     }
+    log::info!(
+        "Clearing WebView2 cache for v{current_version} (previously marked: {:?}, dir: {})",
+        marker_contents,
+        local_data_dir.join("EBWebView").display()
+    );
 
     let cache_dir = local_data_dir.join("EBWebView");
     // The previous instance's WebView2 helper process (msedgewebview2.exe) can still hold this
@@ -60,22 +71,34 @@ fn clear_stale_webview_cache(app: &tauri::AppHandle) {
     // operator manually forced a cache-bypassing reload (Ctrl+F5) inside the app. Retrying a
     // few times rides out that transient lock instead.
     let mut cleared = !cache_dir.exists();
-    for _ in 0..10 {
+    let mut last_error = None;
+    for attempt in 0..10 {
         if cleared {
             break;
         }
         match std::fs::remove_dir_all(&cache_dir) {
             Ok(()) => cleared = true,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => cleared = true,
-            Err(_) => std::thread::sleep(std::time::Duration::from_millis(300)),
+            Err(e) => {
+                log::warn!("EBWebView removal attempt {attempt} failed: {e}");
+                last_error = Some(e);
+                std::thread::sleep(std::time::Duration::from_millis(300));
+            }
         }
     }
     if !cleared {
+        log::warn!(
+            "Giving up clearing WebView2 cache after 10 attempts, last error: {:?}",
+            last_error
+        );
         return;
     }
 
     let _ = std::fs::create_dir_all(&local_data_dir);
-    let _ = std::fs::write(&marker_path, &current_version);
+    match std::fs::write(&marker_path, &current_version) {
+        Ok(()) => log::info!("WebView2 cache cleared and marked for v{current_version}"),
+        Err(e) => log::warn!("WebView2 cache cleared, but failed to write marker file: {e}"),
+    }
 }
 
 /// No-op stand-in so the call site in `run()`'s `setup()` needs no `#[cfg]` of its own -- see the
@@ -114,8 +137,6 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            clear_stale_webview_cache(app.handle());
-
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .level(log::LevelFilter::Info)
@@ -123,6 +144,17 @@ pub fn run() {
                     .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(4))
                     .build(),
             )?;
+
+            // Must run before the "main" WebviewWindow is built just below -- see this
+            // function's own doc comment. Tauri's own setup() (the caller of this closure)
+            // auto-builds every config-declared window with `"create": true` *before* running
+            // this closure at all, which for "main" would mean its WebView2 environment is
+            // already open against EBWebView by the time this runs, permanently locking the very
+            // folder being cleared (confirmed: every removal attempt failed, not just an
+            // occasional one, which a mere transient post-exit lock wouldn't explain). "main" is
+            // marked `"create": false` in tauri.conf.json specifically so it isn't auto-built,
+            // and is instead built by hand a few lines down, after the cache is cleared.
+            clear_stale_webview_cache(app.handle());
 
             log::info!(
                 "Worship Studio v{} starting ({}/{}, {})",
@@ -135,6 +167,16 @@ pub fn run() {
                     "installed"
                 },
             );
+
+            let main_window_config = app
+                .config()
+                .app
+                .windows
+                .iter()
+                .find(|window| window.label == "main")
+                .cloned()
+                .expect("\"main\" window must be declared in tauri.conf.json");
+            tauri::WebviewWindowBuilder::from_config(app, &main_window_config)?.build()?;
 
             // Remote Control's local HTTP server (design/feature-spec.md section 4) — started
             // once here rather than lazily on first use, so it's already reachable by the

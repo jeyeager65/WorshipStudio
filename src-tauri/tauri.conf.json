@@ -21,7 +21,8 @@
         "visible": false,
         "decorations": false,
         "dragDropEnabled": false,
-        "zoomHotkeysEnabled": true
+        "zoomHotkeysEnabled": true,
+        "create": false
       }
     ],
     "security": {
