@@ -330,13 +330,15 @@ onUnmounted(() => {
 // directly by the reference itself) and min (the farthest book actually shown) — using
 // Math.abs on every distance here, not just the current one, since the farthest book present
 // isn't always at the full configured radius (e.g. Revelation has no books after it).
-// Settings > Font Sizes' header/footer values are chosen against a normal-size presentation
-// display and used verbatim there (8cqh resolves well above a typical configured 40-60px at
-// that size, so the clamp's max branch wins). Capping proportionally by container height keeps
-// them from dominating a much shorter container instead — e.g. presenting directly on a phone's
-// own screen, where the configured px would otherwise be a much bigger fraction of the height.
+// Settings > Font Sizes' header/footer values are chosen against a normal-size (~16:9)
+// presentation display and used verbatim there — both cqh and cqw candidates resolve well above
+// a typical configured 40-60px at that aspect ratio, so the clamp's max branch wins. Capping
+// proportionally by *both* container height and width (the smaller of the two candidates) keeps
+// the label from dominating a container that's short (a phone's own screen), narrow (a resized
+// desktop window), or both — a height-only cap still let a long label like a hymnal citation
+// render at full configured size and wrap across a narrow width, each wrapped line still huge.
 function labelFontSize(configuredPx: number | undefined): string {
-  return `clamp(10px, 8cqh, ${configuredPx ?? 48}px)`
+  return `clamp(10px, min(8cqh, 5cqw), ${configuredPx ?? 48}px)`
 }
 
 function bookStyle(distance: number) {
