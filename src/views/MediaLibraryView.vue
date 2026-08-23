@@ -593,7 +593,7 @@ async function saveEdits() {
 
         <v-card-actions class="media-editor-actions">
           <v-btn
-            variant="text"
+            variant="outlined"
             color="error"
             prepend-icon="mdi-trash-can-outline"
             @click="deleteEditingItem"
@@ -1187,6 +1187,8 @@ async function saveEdits() {
 .media-editor-actions {
   padding: 13px 16px 16px;
   border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  flex-wrap: wrap;
+  row-gap: 8px;
 }
 @media (max-width: 960px) {
   .media-toolbar,
