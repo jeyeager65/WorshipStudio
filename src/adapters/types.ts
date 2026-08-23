@@ -702,6 +702,13 @@ export interface SyncPort {
    *  than pushing it first — a deliberate "trust the cloud" recovery lever, not an ordinary sync.
    *  Absent on every other adapter kind. */
   resetAndResync?(): Promise<void>
+  /** Tablet-only — a lighter recovery lever than resetAndResync above: re-derives current state
+   *  from the cloud (including cleaning up anything deleted upstream that an incremental sync
+   *  missed) without discarding this device's own bookkeeping — an unpushed local edit stays
+   *  protected, and an already-current file is never needlessly re-downloaded. See
+   *  cloudSync.ts's own reconcile() doc comment for why clearing just the cursor is enough.
+   *  Absent on every other adapter kind. */
+  reconcile?(): Promise<void>
 }
 
 export interface DiagnosticSummary {

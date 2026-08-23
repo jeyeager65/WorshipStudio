@@ -226,6 +226,20 @@ async function syncNow() {
   }
 }
 
+// A lighter recovery lever than Clear & Re-sync below — re-checks against the cloud (including
+// cleaning up anything deleted elsewhere that an ordinary sync might have missed) without
+// discarding anything local, so it doesn't need Clear & Re-sync's explicit confirmation: nothing
+// this device hasn't already pushed is ever at risk.
+async function reconcileNow() {
+  syncActionError.value = ''
+  try {
+    await syncStore.reconcile()
+    await reloadContentAfterSync()
+  } catch (error) {
+    syncActionError.value = error instanceof Error ? error.message : 'Reconcile failed.'
+  }
+}
+
 // A deliberate "discard this device's local cache and trust the cloud" lever — real recovery
 // tool if this device's cache ever ends up in a bad state, not an everyday action, hence the
 // explicit confirmation spelling out exactly what's discarded (unpushed edits) versus what isn't
@@ -919,6 +933,21 @@ async function saveDataLocationPath() {
 
         <template v-if="isCloudConnected">
           <v-divider class="my-4" />
+          <v-btn
+            variant="outlined"
+            size="small"
+            prepend-icon="mdi-cloud-search-outline"
+            :loading="syncStore.syncing"
+            :disabled="syncStore.syncing"
+            @click="reconcileNow"
+          >
+            Reconcile With {{ cloudProviderLabel }}
+          </v-btn>
+          <p class="text-caption text-medium-emphasis mt-2 mb-4">
+            Re-checks against {{ cloudProviderLabel }} for anything an ordinary sync might have
+            missed — including a file deleted elsewhere that's still showing here. Nothing local
+            is discarded; use this before reaching for Clear & Re-sync below.
+          </p>
           <v-btn
             variant="outlined"
             color="error"

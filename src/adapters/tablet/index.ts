@@ -279,6 +279,7 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
       runSync: () => cloudSync.runSync(),
       getProgress: () => cloudSync.getProgress(),
       resetAndResync: () => cloudSync.resetAndResync(),
+      reconcile: () => cloudSync.reconcile(),
     },
     // Identical shape to adapters/web/index.ts's diagnostics port, plus the cloud-sync-specific
     // counts sync.getStatus() above already surfaces separately.

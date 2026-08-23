@@ -11,6 +11,7 @@
 import type { CloudSyncProvider, ProviderEntry, ProviderWriteMode } from './types'
 import { ProviderApiError, ProviderReauthRequiredError } from './types'
 import * as auth from './onedriveAuth'
+import * as idMap from './onedriveIdMap'
 
 export interface OneDriveProviderConfig {
   clientId: string
@@ -27,7 +28,11 @@ const UPLOAD_CHUNK_SIZE_BYTES = 32 * 327_680
 const SIMPLE_UPLOAD_LIMIT_BYTES = 4 * 1024 * 1024
 
 interface GraphItem {
-  name: string
+  /** The one property Microsoft Graph guarantees on every delta entry, deleted or not -- see
+   *  toProviderEntry's own doc comment for why this matters. */
+  id?: string
+  /** Absent, in practice, on many deleted-item delta entries alongside parentReference below. */
+  name?: string
   parentReference?: { path?: string }
   file?: { hashes?: { quickXorHash?: string } }
   folder?: unknown
@@ -108,6 +113,7 @@ export function createOneDriveProvider(config: OneDriveProviderConfig): CloudSyn
   }
 
   function relativePathFromItem(item: GraphItem): string | undefined {
+    if (!item.name) return undefined
     const parentPath = item.parentReference?.path ?? ''
     const marker = '/root:'
     const markerIndex = parentPath.indexOf(marker)
@@ -122,11 +128,26 @@ export function createOneDriveProvider(config: OneDriveProviderConfig): CloudSyn
     return path || undefined
   }
 
-  function toProviderEntry(item: GraphItem): ProviderEntry | undefined {
+  /** Microsoft Graph only guarantees `id` on a deleted delta entry -- `parentReference`/`name`
+   *  (what relativePathFromItem needs) are frequently absent specifically for deletions, unlike
+   *  for a live item. Left unhandled, a deletion Graph describes that sparsely is silently
+   *  dropped: relativePathFromItem returns undefined, so it never becomes a ProviderEntry at all,
+   *  and cloudSync.ts never learns the file is gone (confirmed on a real device: items deleted
+   *  upstream stayed cached locally forever, until a full Clear & Re-sync -- a completely
+   *  different, id-independent mechanism, see cloudSync.ts's reconcileOrphans doc comment).
+   *  onedriveIdMap.ts's id -> path record (kept up to date below, every time a live item resolves
+   *  a path) lets an otherwise-unresolvable deletion still be traced back to the real path. */
+  async function toProviderEntry(item: GraphItem): Promise<ProviderEntry | undefined> {
+    if (item.deleted?.state) {
+      const path = relativePathFromItem(item) ?? (item.id ? await idMap.getPathForId(item.id) : undefined)
+      if (!path) return undefined
+      if (item.id) await idMap.deletePathForId(item.id)
+      return { tag: 'deleted', path }
+    }
     if (item.folder) return undefined
     const path = relativePathFromItem(item)
     if (!path) return undefined
-    if (item.deleted?.state) return { tag: 'deleted', path }
+    if (item.id) await idMap.setPathForId(item.id, path)
     return {
       tag: 'file',
       path,
@@ -149,7 +170,7 @@ export function createOneDriveProvider(config: OneDriveProviderConfig): CloudSyn
         '@odata.deltaLink'?: string
       }
       for (const item of body.value) {
-        const entry = toProviderEntry(item)
+        const entry = await toProviderEntry(item)
         if (entry) entries.push(entry)
       }
       if (body['@odata.deltaLink']) {

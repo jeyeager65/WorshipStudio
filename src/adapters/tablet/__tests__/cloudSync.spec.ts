@@ -750,6 +750,65 @@ describe('resetAndResync', () => {
   })
 })
 
+describe('reconcile', () => {
+  it('clears only the cursor, forcing a from-scratch listing that cleans up a file deleted upstream — without resetAndResync\'s clearAll', async () => {
+    const root = createFakeRoot()
+    await writeJsonFile(root, 'songs/deleted-elsewhere.json', { id: 'deleted-elsewhere' })
+    await syncStore.setRev('songs/deleted-elsewhere.json', { rev: 'rev-old', sizeBytes: 10 })
+    await syncStore.setCursor('cursor-old')
+    // Omitting the file (rather than a 'deleted' entry) is exactly how a from-scratch listing
+    // reports something gone — see resetAndResync's identical regression test above.
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({
+      entries: [],
+      cursor: 'cursor-new',
+      isFromScratchListing: true,
+    })
+
+    await makeSync(root).reconcile()
+
+    expect(vi.mocked(provider.listChanges)).toHaveBeenCalledWith('token-1', undefined)
+    expect(await readJsonFile(root, 'songs/deleted-elsewhere.json')).toBeNull()
+    expect(await syncStore.getCursor()).toBe('cursor-new')
+  })
+
+  it('never discards an unpushed local edit — unlike resetAndResync, dirty bookkeeping is left alone', async () => {
+    const root = createFakeRoot()
+    await writeJsonFile(root, 'songs/not-yet-pushed.json', { id: 'not-yet-pushed' })
+    await syncStore.setDirty('songs/not-yet-pushed.json', {
+      deleted: false,
+      attempts: 0,
+      nextRetryAt: 0,
+    })
+    await syncStore.setCursor('cursor-old')
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({
+      entries: [],
+      cursor: 'cursor-new',
+      isFromScratchListing: true,
+    })
+
+    await makeSync(root).reconcile()
+
+    expect(await readJsonFile(root, 'songs/not-yet-pushed.json')).not.toBeNull()
+    expect(await syncStore.getDirty('songs/not-yet-pushed.json')).toBeDefined()
+  })
+
+  it('never re-downloads a file whose cached rev still matches the fresh listing', async () => {
+    const root = createFakeRoot()
+    await writeJsonFile(root, 'songs/unchanged.json', { id: 'unchanged' })
+    await syncStore.setRev('songs/unchanged.json', { rev: 'rev-1', sizeBytes: 10 })
+    await syncStore.setCursor('cursor-old')
+    vi.mocked(provider.listChanges).mockResolvedValueOnce({
+      entries: [{ tag: 'file', path: 'songs/unchanged.json', rev: 'rev-1', sizeBytes: 10 }],
+      cursor: 'cursor-new',
+      isFromScratchListing: true,
+    })
+
+    await makeSync(root).reconcile()
+
+    expect(provider.download).not.toHaveBeenCalled()
+  })
+})
+
 describe('resolveConflict', () => {
   it("clears dirty and adopts the remote rev when keeping 'theirs'", async () => {
     await syncStore.setDirty('songs/a.json', { deleted: false, attempts: 0, nextRetryAt: 0 })

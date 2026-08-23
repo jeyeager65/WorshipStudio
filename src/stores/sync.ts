@@ -128,6 +128,17 @@ export const useSyncStore = defineStore('sync', () => {
     })
   }
 
+  /** Tablet-only — a lighter recovery lever than resetAndResync above: re-derives current state
+   *  from the cloud (including cleaning up anything deleted upstream an incremental sync missed)
+   *  without discarding this device's own bookkeeping — an unpushed local edit stays protected,
+   *  and an already-current file is never needlessly re-downloaded (see cloudSync.ts's own
+   *  reconcile() doc comment). */
+  async function reconcile() {
+    await runWithProgress(async () => {
+      await getAdapter().sync.reconcile?.()
+    })
+  }
+
   // Shared by both surfaces that offer a one-tap reconnect (App.vue's app-wide banner and
   // LibrarySyncSection.vue's inline prompt) so there's one loading/error state regardless of
   // which one the operator happened to tap, not two independently-tracked copies of the same
@@ -165,6 +176,7 @@ export const useSyncStore = defineStore('sync', () => {
     quarantine,
     runSync,
     resetAndResync,
+    reconcile,
     reconnectingCloud,
     reconnectError,
     reconnectCloud,

@@ -9,6 +9,20 @@ const { getValidAccessToken, isConnected, disconnect } = vi.hoisted(() => ({
 }))
 vi.mock('../onedriveAuth', () => ({ getValidAccessToken, isConnected, disconnect }))
 
+// jsdom (this project's vitest environment) has no real IndexedDB, so onedriveIdMap.ts's own
+// real implementation can't run here — an in-memory stand-in, same reasoning/pattern as
+// cloudSync.spec.ts's fake syncStore.
+const idMapEntries = vi.hoisted(() => new Map<string, string>())
+vi.mock('../onedriveIdMap', () => ({
+  getPathForId: async (id: string) => idMapEntries.get(id),
+  setPathForId: async (id: string, path: string) => {
+    idMapEntries.set(id, path)
+  },
+  deletePathForId: async (id: string) => {
+    idMapEntries.delete(id)
+  },
+}))
+
 const fetchMock = vi.fn()
 
 beforeEach(() => {
@@ -16,6 +30,7 @@ beforeEach(() => {
   isConnected.mockReset()
   disconnect.mockReset()
   fetchMock.mockReset()
+  idMapEntries.clear()
   vi.stubGlobal('fetch', fetchMock)
 })
 
@@ -164,6 +179,53 @@ describe('listChanges', () => {
     const result = await makeProvider().listChanges('token-1', undefined)
 
     expect(result.entries).toEqual([{ tag: 'deleted', path: 'a.json' }])
+  })
+
+  it('records a live item\'s id -> path, then resolves a later deletion that reports only that id', async () => {
+    const provider = makeProvider()
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        value: [
+          {
+            id: 'item-1',
+            name: 'a.json',
+            parentReference: { path: '/drive/root:/Library/songs' },
+            eTag: 'etag-1',
+            size: 5,
+          },
+        ],
+        '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/delta?token=page1',
+      }),
+    )
+    await provider.listChanges('token-1', undefined)
+
+    // Real Graph behavior for a deletion: only `id` is guaranteed -- parentReference/name are
+    // absent here, unlike the fully-described deletion in the test above.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        value: [{ id: 'item-1', deleted: { state: 'deleted' } }],
+        '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/delta?token=page2',
+      }),
+    )
+    const result = await provider.listChanges(
+      'token-1',
+      'https://graph.microsoft.com/v1.0/delta?token=page1',
+    )
+
+    expect(result.entries).toEqual([{ tag: 'deleted', path: 'songs/a.json' }])
+  })
+
+  it('drops a deletion it has never seen the id for and cannot otherwise resolve a path', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        value: [{ id: 'never-seen', deleted: { state: 'deleted' } }],
+        '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/delta?token=final',
+      }),
+    )
+
+    const result = await makeProvider().listChanges('token-1', undefined)
+
+    expect(result.entries).toEqual([])
   })
 
   it('normalizes a 429 as ProviderApiError kind "rate-limit"', async () => {

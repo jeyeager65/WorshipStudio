@@ -503,6 +503,28 @@ export function createCloudSync(config: CloudSyncConfig) {
     }
   }
 
+  /** A lighter alternative to resetAndResync() above — re-derives what's actually on the cloud
+   *  right now without discarding any of this device's own bookkeeping: an unpushed local edit
+   *  stays protected (dirty is untouched), and a file already at the latest rev is never
+   *  re-downloaded (rev cache is untouched too) — only the cursor is cleared. That alone is
+   *  enough to get everything reconcile() exists for: a cleared cursor makes the very next pull()
+   *  perform a from-scratch listing, which both applies anything an incremental delta genuinely
+   *  missed and — via reconcileOrphans(), gated on exactly this "from-scratch" condition — cleans
+   *  up anything deleted upstream that a delta failed to report at all (a real, confirmed gap in
+   *  OneDrive's own delta feed for deletions specifically, not just defensive nicety; see
+   *  onedrive.ts's own doc comment). A recovery lever for exactly that kind of provider-side gap,
+   *  present or future, without the "discard my unpushed edits" cost resetAndResync carries. */
+  async function reconcile(): Promise<void> {
+    if (syncing) return
+    syncing = true
+    try {
+      await syncStore.clearCursor()
+      await pull()
+    } finally {
+      syncing = false
+    }
+  }
+
   async function getSyncStatus(): Promise<{
     lastSyncedAt?: string
     pendingPushCount: number
@@ -524,5 +546,14 @@ export function createCloudSync(config: CloudSyncConfig) {
     return progress
   }
 
-  return { pull, push, runSync, resetAndResync, getSyncStatus, getProgress, resolveConflict }
+  return {
+    pull,
+    push,
+    runSync,
+    resetAndResync,
+    reconcile,
+    getSyncStatus,
+    getProgress,
+    resolveConflict,
+  }
 }
