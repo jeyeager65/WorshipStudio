@@ -276,6 +276,26 @@ function fitAutoSizedText() {
           hi = mid - 1
         }
       }
+    } else {
+      // Even the configured minimum doesn't fit this container (e.g. several verses of scripture
+      // on a phone held in landscape, where the available height is quite short) — search below
+      // it down to a hard floor instead of forcing range.minPx and overflowing into the
+      // header/footer labels. An overlapping, half-illegible slide is worse than a smaller one
+      // that's still fully legible and doesn't collide with anything.
+      const FLOOR_PX = 12
+      let shrinkHi = lo - 1
+      let shrinkLo = Math.min(FLOOR_PX, Math.max(1, shrinkHi))
+      best = shrinkLo
+      while (shrinkLo <= shrinkHi) {
+        const mid = Math.floor((shrinkLo + shrinkHi) / 2)
+        text.style.fontSize = `${mid}px`
+        if (text.scrollHeight <= maxHeightPx) {
+          best = mid
+          shrinkLo = mid + 1
+        } else {
+          shrinkHi = mid - 1
+        }
+      }
     }
     text.style.fontSize = `${best}px`
     displayText.value = rawText
