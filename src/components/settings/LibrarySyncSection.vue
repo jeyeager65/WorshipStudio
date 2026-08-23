@@ -61,6 +61,10 @@ const confirmDialog = useConfirmDialogStore()
 // against the now-current, already-saved state, rather than leaving a stale "unsaved changes"
 // prompt (or a misleading Undo entry) behind for something that already happened for real.
 const emit = defineEmits<{ 'bulk-data-change': [] }>()
+// Whether this is the currently-selected Settings section — see the cloud-sync-client-status
+// watcher below for why this component needs to know, even though it (like every other section)
+// stays mounted via v-show the whole time Settings is open (SettingsView.vue).
+const props = defineProps<{ active?: boolean }>()
 
 // This one page now covers every adapter kind's idea of "where the library lives" — a real
 // folder (tauri/web) or a cloud provider connection (tablet, over whichever of
@@ -86,12 +90,26 @@ onMounted(async () => {
 // for why this isn't part of the eager syncStore.load() every other field on this page comes
 // from: the Tauri adapter's real detection spawns a `tasklist` subprocess, cheap once warm but
 // genuinely slow (multi-second) on a fresh launch, and this is the only place it's ever shown.
+// Deferred further still, to this section's own first *selection* rather than just Settings'
+// first mount: every section mounts together via v-show (see SettingsView.vue's own comment on
+// that), so an onMounted here fired this same multi-second cost no matter which section an
+// operator actually opened Settings to first — confirmed as the cause of a reported "About page
+// takes 2-5 seconds to appear" delay, since About's own mount was paying this section's cost too.
 const cloudSyncClientStatus = ref<CloudSyncClientStatus>()
+let cloudSyncClientStatusRequested = false
 async function loadCloudSyncClientStatus() {
   if (isCloudConnected) return
   cloudSyncClientStatus.value = await getAdapter().sync.getCloudSyncClientStatus()
 }
-onMounted(loadCloudSyncClientStatus)
+watch(
+  () => props.active,
+  (active) => {
+    if (!active || cloudSyncClientStatusRequested) return
+    cloudSyncClientStatusRequested = true
+    void loadCloudSyncClientStatus()
+  },
+  { immediate: true },
+)
 
 // The app key/client ID this device connected with isn't editable here: it's bound to the OAuth
 // tokens already held for that specific app registration (pasting in a different one without

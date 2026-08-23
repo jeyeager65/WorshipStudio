@@ -406,6 +406,7 @@ async function saveSettings() {
       <GeneralSection v-show="activeSection === 'general'" />
       <LibrarySyncSection
         v-show="activeSection === 'sync'"
+        :active="activeSection === 'sync'"
         @bulk-data-change="rebaselineHistory"
       />
       <AboutSection v-show="activeSection === 'about'" />
