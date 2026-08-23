@@ -76,10 +76,20 @@ async function goFullscreenOnScreen(screen?: ScreenDetailed) {
   }
 }
 
+// Also bound directly to the Close button below — the 'stop' broadcast (see audienceChannel.ts)
+// is what makes Stop Presenting reliably reach this window from the operator's tab on iOS Safari,
+// but this window needs its own way to close itself too: on an iPad especially, there's no
+// keyboard/window-chrome to fall back on, so without a control in here the only way out is force-
+// closing the whole app.
+function closeSelf() {
+  window.close()
+}
+
 onMounted(() => {
   channel = new BroadcastChannel(AUDIENCE_CHANNEL_NAME)
   channel.onmessage = (event: MessageEvent<AudienceMessage>) => {
     if (event.data?.type === 'content') current.value = event.data.content ?? undefined
+    if (event.data?.type === 'stop') closeSelf()
   }
   const readyMessage: AudienceMessage = { type: 'ready' }
   channel.postMessage(readyMessage)
@@ -95,6 +105,14 @@ onBeforeUnmount(() => {
 <template>
   <div class="audience-root">
     <SlideContentRenderer :content="current" transition />
+
+    <!-- Always present, regardless of fullscreen state — a stuck audience window with no way to
+         close it otherwise means force-closing the whole app (see closeSelf's doc comment above).
+         Kept small/low-opacity like RemoteMirror.vue's mute toggle so it doesn't distract the
+         congregation, but never fully hidden the way the display-choosing controls below are. -->
+    <button type="button" class="close-btn" aria-label="Close presentation window" @click="closeSelf">
+      ✕
+    </button>
 
     <div v-if="!isFullscreen" class="controls">
       <button v-if="!screenPickerOpen" type="button" class="control-btn" @click="chooseDisplay">
@@ -162,5 +180,25 @@ onBeforeUnmount(() => {
 }
 .control-btn--cancel {
   opacity: 0.7;
+}
+.close-btn {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.4);
+  color: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 10;
+}
+.close-btn:hover {
+  background: rgba(0, 0, 0, 0.75);
+  color: white;
 }
 </style>

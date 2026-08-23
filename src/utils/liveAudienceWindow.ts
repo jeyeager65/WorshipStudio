@@ -57,6 +57,10 @@ export function createLiveAudienceWindowPort(): LivePresentationPort {
       if (liveIndex === -1) liveIndex = 0
     },
     stopPresenting: async () => {
+      // Broadcasting 'stop' (rather than relying solely on the direct .close() below) is what
+      // actually works on iOS Safari — see audienceChannel.ts's doc comment on the 'stop' message.
+      const message: AudienceMessage = { type: 'stop' }
+      channel.postMessage(message)
       audienceWindow?.close()
       audienceWindow = null
       liveIndex = -1

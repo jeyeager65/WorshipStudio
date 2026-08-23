@@ -169,6 +169,8 @@ const rootStyle = computed(() => {
 // fontRange, so they keep the static CSS clamp below untouched.
 const rootRef = ref<HTMLElement>()
 const textRef = ref<HTMLElement>()
+const headerRef = ref<HTMLElement>()
+const footerRef = ref<HTMLElement>()
 const fittedFontSizePx = ref<number>()
 const displayText = ref('')
 let resizeObserver: ResizeObserver | undefined
@@ -197,9 +199,21 @@ function fitAutoSizedText() {
     displayText.value = rawText
     return
   }
-  // Leaves headroom for the reference/translation label above the text and general breathing
-  // room, rather than filling the window edge-to-edge.
-  const maxHeightPx = root.clientHeight * 0.85
+  // Reserves exactly the header/footer's own rendered footprint (if either is showing for this
+  // slide), plus a little breathing room — not a flat percentage guess. A flat guess (the
+  // previous approach) badly under-reserves on a short container, such as presenting directly on
+  // a phone's own screen: the header/footer's font size shrinks proportionally there too (see
+  // labelFontSize below) but a fixed percentage doesn't know that, so the centered text would
+  // still grow right into their fixed top/bottom insets.
+  const rootRect = root.getBoundingClientRect()
+  const breathingPx = root.clientHeight * 0.04
+  const topBoundPx = headerRef.value
+    ? headerRef.value.getBoundingClientRect().bottom - rootRect.top + breathingPx
+    : breathingPx
+  const bottomBoundPx = footerRef.value
+    ? rootRect.bottom - footerRef.value.getBoundingClientRect().top + breathingPx
+    : breathingPx
+  const maxHeightPx = Math.max(0, root.clientHeight - topBoundPx - bottomBoundPx)
   let lo = Math.floor(range.minPx)
   let hi = Math.floor(range.maxPx)
   let best = lo
@@ -276,6 +290,7 @@ watch(
       displayedContent.value?.fontRange,
       displayedContent.value?.lineWrap,
       displayedContent.value?.itemLabel,
+      footerDisplayText.value,
     ] as const,
   () => nextTick(fitAutoSizedText),
   { flush: 'post' },
@@ -315,6 +330,15 @@ onUnmounted(() => {
 // directly by the reference itself) and min (the farthest book actually shown) — using
 // Math.abs on every distance here, not just the current one, since the farthest book present
 // isn't always at the full configured radius (e.g. Revelation has no books after it).
+// Settings > Font Sizes' header/footer values are chosen against a normal-size presentation
+// display and used verbatim there (8cqh resolves well above a typical configured 40-60px at
+// that size, so the clamp's max branch wins). Capping proportionally by container height keeps
+// them from dominating a much shorter container instead — e.g. presenting directly on a phone's
+// own screen, where the configured px would otherwise be a much bigger fraction of the height.
+function labelFontSize(configuredPx: number | undefined): string {
+  return `clamp(10px, 8cqh, ${configuredPx ?? 48}px)`
+}
+
 function bookStyle(distance: number) {
   const level = Math.abs(distance)
   const maxPx = displayedContent.value?.wayfindingMaxFontSizePx ?? 150
@@ -529,9 +553,10 @@ const progressSegments = computed(() => {
     <Transition :name="transition ? 'content-crossfade' : ''" mode="out-in">
       <div
         v-if="isTextSlide && displayedContent?.itemLabel"
+        ref="headerRef"
         :key="displayedContent.itemLabel"
         class="slide-header"
-        :style="{ fontSize: `${displayedContent?.headerFontSizePx ?? 48}px` }"
+        :style="{ fontSize: labelFontSize(displayedContent?.headerFontSizePx) }"
       >
         {{ displayedContent.itemLabel }}
       </div>
@@ -539,9 +564,10 @@ const progressSegments = computed(() => {
     <Transition :name="transition ? 'content-crossfade' : ''" mode="out-in">
       <div
         v-if="isTextSlide && footerDisplayText"
+        ref="footerRef"
         :key="footerDisplayText"
         class="slide-footer"
-        :style="{ fontSize: `${displayedContent?.footerFontSizePx ?? 48}px` }"
+        :style="{ fontSize: labelFontSize(displayedContent?.footerFontSizePx) }"
       >
         {{ footerDisplayText }}
       </div>
@@ -645,10 +671,10 @@ const progressSegments = computed(() => {
   letter-spacing: 0.08em;
 }
 .slide-header {
-  top: 40px;
+  top: clamp(8px, 4cqh, 40px);
 }
 .slide-footer {
-  bottom: 40px;
+  bottom: clamp(8px, 4cqh, 40px);
 }
 .slide-repeat-label {
   position: absolute;
