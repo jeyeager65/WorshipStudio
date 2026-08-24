@@ -429,6 +429,21 @@ export interface LiveSlideContent {
    *  everything in between is linearly interpolated by distance. */
   wayfindingMinFontSizePx?: number
   wayfindingMaxFontSizePx?: number
+  /** Full-text scripture slides only — the same content as `text`, split so each verse's number
+   *  can render as a distinct chip (see SlideContentRenderer.vue) instead of plain inline text.
+   *  Undefined for a reference-only scripture slide and every other slide type, which just use
+   *  `text` directly. */
+  verseSegments?: ScriptureTextSegment[]
+}
+
+/** One piece of a full-text scripture slide, in reading order — a verse's number, then its own
+ *  text, verse after verse. Kept as real structured data (rather than re-deriving verse
+ *  boundaries from `text` by pattern-matching) since verse *text* itself often contains a bare
+ *  number ("forty days and forty nights") that would be indistinguishable from a real verse
+ *  number by pattern alone. */
+export interface ScriptureTextSegment {
+  type: 'number' | 'text'
+  value: string
 }
 
 export interface LivePresentationPort {

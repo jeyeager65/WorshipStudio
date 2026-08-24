@@ -336,6 +336,7 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
       itemLabel: slide.itemLabel,
       subLabel: slide.subLabel,
       text: slide.text,
+      verseSegments: slide.verseSegments,
       presentationTheme: buildPresentationTheme(slide),
       scene: slide.scene,
       serviceDateTime: slide.serviceDateTime,

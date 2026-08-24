@@ -2,7 +2,7 @@ import type { Service, ServiceItem } from '@/models/service'
 import type { Song } from '@/models/song'
 import type { PresentationThemeTarget, SlideLibraryItem, SlideScene } from '@/models/library'
 import type { SongCollectionDefinition } from '@/models/settings'
-import type { ScripturePassage, ExternalAppProfile } from '@/adapters/types'
+import type { ScripturePassage, ExternalAppProfile, ScriptureTextSegment } from '@/adapters/types'
 import {
   getBibleProgress,
   getWayfindingBooks,
@@ -80,6 +80,10 @@ export interface FlatSlide {
    *  with `text` (its details, if any) below it in a smaller size, instead of the usual single
    *  auto-fit block. Undefined for every other slide type. */
   outlineTitle?: string
+  /** Full-text scripture slides only — the same content as `text`, split so each verse's number
+   *  can render as a distinct chip instead of plain inline text. Undefined for a reference-only
+   *  scripture slide and every other slide type. */
+  verseSegments?: ScriptureTextSegment[]
 }
 
 // Presentation footer for a song block: the song's own reference material (its first hymnal/
@@ -179,7 +183,20 @@ function pushScriptureSlides(
   // verses onto separate slides instead when they don't all fit.
   const verseUnits = passage.verses.map((v) => `${v.number} ${v.text}`)
   const pages = paginateTextUnits(verseUnits, scriptureFontRange, ' ')
+  // paginateTextUnits partitions `verseUnits` in order, one contiguous run per page, never
+  // splitting or reordering a unit — so walking `passage.verses` in lockstep with each page's
+  // unit count re-associates every page back to its own original verse objects (number and
+  // text kept separate, unlike `verseUnits` above) without re-deriving verse boundaries from
+  // the joined text itself, which a verse containing a bare number of its own ("forty days and
+  // forty nights") would make ambiguous.
+  let verseCursor = 0
   pages.forEach((pageUnits, i) => {
+    const pageVerses = passage.verses.slice(verseCursor, verseCursor + pageUnits.length)
+    verseCursor += pageUnits.length
+    const verseSegments: ScriptureTextSegment[] = pageVerses.flatMap((v, vi) => [
+      { type: 'number', value: String(v.number) },
+      { type: 'text', value: vi === pageVerses.length - 1 ? v.text : `${v.text} ` },
+    ])
     flat.push({
       key: keyFor(i),
       itemIndex,
@@ -190,6 +207,7 @@ function pushScriptureSlides(
           ? `${passage.translation} (${i + 1}/${pages.length})`
           : passage.translation,
       text: pageUnits.join(' '),
+      verseSegments,
       themeTarget,
       passageId,
       fontRange: scriptureFontRange,

@@ -432,6 +432,27 @@ describe('flattenService — scripture', () => {
     expect(flat[0].text).toBe('16 For God so loved the world... 17 For God sent not his Son...')
   })
 
+  it('splits resolved verse text into number/text segments for chip rendering', () => {
+    const service = makeService({
+      items: [
+        {
+          id: 'item-1',
+          type: 'scripture',
+          reference: 'John 3:16-17',
+          translation: 'KJV',
+          displayMode: 'full',
+        },
+      ],
+    })
+    const flat = flattenService(service, new Map(), new Map([['item-1', makePassage()]]))
+    expect(flat[0].verseSegments).toEqual([
+      { type: 'number', value: '16' },
+      { type: 'text', value: 'For God so loved the world... ' },
+      { type: 'number', value: '17' },
+      { type: 'text', value: 'For God sent not his Son...' },
+    ])
+  })
+
   it('applies the configured font range to a resolved full-text scripture slide', () => {
     const service = makeService({
       items: [
@@ -491,6 +512,18 @@ describe('flattenService — scripture', () => {
       [...s.text.matchAll(/(?:^|\s)(\d+)\s/g)].map((m) => Number(m[1])),
     )
     expect(allNumbers).toEqual(longVerses.map((v) => v.number))
+    // verseSegments is re-derived from the original verse objects, not pattern-matched back out
+    // of the joined text — confirm it stays correctly split up across the page boundaries this
+    // split produces, not just on a single-slide passage.
+    const segmentNumbers = flat.flatMap(
+      (s) => s.verseSegments?.filter((seg) => seg.type === 'number').map((seg) => Number(seg.value)) ?? [],
+    )
+    expect(segmentNumbers).toEqual(longVerses.map((v) => v.number))
+    for (const slide of flat) {
+      expect(slide.verseSegments?.map((seg) => seg.type)).toEqual(
+        Array.from({ length: slide.verseSegments?.length ?? 0 }, (_, i) => (i % 2 === 0 ? 'number' : 'text')),
+      )
+    }
   })
 
   it('shows no verse text in reference-only mode, even if a passage happens to be resolved', () => {

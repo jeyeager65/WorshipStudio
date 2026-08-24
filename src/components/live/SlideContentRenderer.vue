@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { wrapLineAtPunctuation } from '@/utils/textAutoFit'
 import { OLD_TESTAMENT_FRACTION } from '@/utils/scriptureReference'
 import { presentationTextShadow } from '@/utils/presentationTextEffect'
-import type { LiveSlideContent } from '@/adapters/types'
+import type { LiveSlideContent, ScriptureTextSegment } from '@/adapters/types'
 import SlideSceneRenderer from '@/components/slides/SlideSceneRenderer.vue'
 
 /**
@@ -168,7 +168,7 @@ const rootStyle = computed(() => {
 // to be made before anything is rendered. Other slide types (plain text-slides) don't set
 // fontRange, so they keep the static CSS clamp below untouched.
 const rootRef = ref<HTMLElement>()
-const textRef = ref<HTMLElement>()
+const measureRef = ref<HTMLElement>()
 const headerRef = ref<HTMLElement>()
 const footerRef = ref<HTMLElement>()
 const wayfindingProgressRef = ref<HTMLElement>()
@@ -186,12 +186,28 @@ function measureTextWidthPx(text: string, font: string): number {
   return measureCtx.measureText(text).width
 }
 
+// Builds the same DOM a verse-segments slide's real template (see the v-for above) would
+// produce, into the measurement sandbox — so its scrollHeight accounts for each chip's own
+// padding/border/line-height the same way the real, visible render does. Only ever touches
+// measureEl, never the real .slide-text Vue itself manages (see measureRef's own doc comment).
+function renderVerseSegmentsInto(measureEl: HTMLElement, segments: ScriptureTextSegment[]) {
+  measureEl.replaceChildren(
+    ...segments.map((segment) => {
+      if (segment.type !== 'number') return document.createTextNode(segment.value)
+      const chip = document.createElement('span')
+      chip.className = 'verse-number-chip'
+      chip.textContent = segment.value
+      return chip
+    }),
+  )
+}
+
 function fitAutoSizedText() {
   const range = displayedContent.value?.fontRange
   const root = rootRef.value
-  const text = textRef.value
+  const measureEl = measureRef.value
   const rawText = displayedContent.value?.text ?? ''
-  if (!range || !root || !text) {
+  if (!range || !root || !measureEl) {
     fittedFontSizePx.value = undefined
     displayText.value = rawText
     return
@@ -202,22 +218,38 @@ function fitAutoSizedText() {
   // a phone's own screen: the header/footer's font size shrinks proportionally there too (see
   // labelFontSize below) but a fixed percentage doesn't know that, so the centered text would
   // still grow right into their fixed top/bottom insets.
-  const rootRect = root.getBoundingClientRect()
+  //
+  // Deliberately offsetHeight/getComputedStyle here, never getBoundingClientRect() — the preview
+  // thumbnails render this component at a literal full size, then scale the whole thing down via
+  // a CSS transform on an ancestor (see this file's own fixedSize doc comment), and
+  // getBoundingClientRect() reports coordinates *after* that transform while
+  // offsetHeight/getComputedStyle report the true, un-transformed layout size. Mixing the two
+  // (as this used to) threw off the thumbnail's own reserved space just enough to sometimes pick
+  // a different font size — and thus wrap differently — than the real presentation window
+  // showing the exact same slide.
   const breathingPx = root.clientHeight * 0.04
   const topBoundPx = headerRef.value
-    ? headerRef.value.getBoundingClientRect().bottom - rootRect.top + breathingPx
+    ? (parseFloat(getComputedStyle(headerRef.value).top) || 0) +
+      headerRef.value.offsetHeight +
+      breathingPx
     : breathingPx
   const bottomBoundPx = footerRef.value
-    ? rootRect.bottom - footerRef.value.getBoundingClientRect().top + breathingPx
+    ? (parseFloat(getComputedStyle(footerRef.value).bottom) || 0) +
+      footerRef.value.offsetHeight +
+      breathingPx
     : breathingPx
   const maxHeightPx = Math.max(0, root.clientHeight - topBoundPx - bottomBoundPx)
+  // Matches .slide-content's max-width: 90cqw — the sandbox lives outside that container's own
+  // box (see .measure-sandbox below), so it needs this set explicitly to measure wrapping the
+  // same way the real, visible content would reflow.
+  const maxWidthPx = root.clientWidth * 0.9
+  measureEl.style.width = `${maxWidthPx}px`
   let lo = Math.floor(range.minPx)
   let hi = Math.floor(range.maxPx)
   let best = lo
 
   if (displayedContent.value?.lineWrap) {
-    const maxWidthPx = root.clientWidth * 0.9 // matches .slide-content's max-width: 90cqw
-    const computed = getComputedStyle(text)
+    const computed = getComputedStyle(measureEl)
     const rawLines = rawText.split('\n')
     const fontAt = (sizePx: number) => `${computed.fontWeight} ${sizePx}px ${computed.fontFamily}`
     // Wraps every authored line (preferring a comma/semicolon break over a word boundary — see
@@ -253,9 +285,9 @@ function fitAutoSizedText() {
       const font = fontAt(sizePx)
       const wrapped = wrapAtSize(sizePx)
       if (!wrapped.every((row) => measureTextWidthPx(row, font) <= maxWidthPx)) return false
-      text.textContent = wrapped.join('\n')
-      text.style.fontSize = `${sizePx}px`
-      return text.scrollHeight <= maxHeightPx
+      measureEl.textContent = wrapped.join('\n')
+      measureEl.style.fontSize = `${sizePx}px`
+      return measureEl.scrollHeight <= maxHeightPx
     }
 
     if (fitsWrapped(lo)) {
@@ -287,20 +319,25 @@ function fitAutoSizedText() {
         }
       }
     }
-    text.style.fontSize = `${best}px`
+    measureEl.style.fontSize = `${best}px`
     displayText.value = wrapAtSize(best).join('\n')
   } else {
-    // Vue's reactive update to displayText only patches the DOM on its next tick, not
-    // synchronously here — measuring scrollHeight immediately after just setting the ref would
-    // read the *previous* slide's leftover text, picking the wrong size for the new content.
-    // Writing textContent directly makes the measurement see the real, current text right now.
-    text.textContent = rawText
-    text.style.fontSize = `${lo}px`
-    if (text.scrollHeight <= maxHeightPx) {
+    // The binary search below only ever probes the off-screen sandbox (see measureRef's own doc
+    // comment) — the real, visible .slide-text is never touched here at all, only afterward via
+    // fittedFontSizePx/displayText (plain text) or displayedContent.verseSegments directly
+    // (chips), both already Vue-reactive and rendered through the template.
+    const verseSegments = displayedContent.value?.verseSegments
+    if (verseSegments) {
+      renderVerseSegmentsInto(measureEl, verseSegments)
+    } else {
+      measureEl.textContent = rawText
+    }
+    measureEl.style.fontSize = `${lo}px`
+    if (measureEl.scrollHeight <= maxHeightPx) {
       while (lo <= hi) {
         const mid = Math.floor((lo + hi) / 2)
-        text.style.fontSize = `${mid}px`
-        if (text.scrollHeight <= maxHeightPx) {
+        measureEl.style.fontSize = `${mid}px`
+        if (measureEl.scrollHeight <= maxHeightPx) {
           best = mid
           lo = mid + 1
         } else {
@@ -319,8 +356,8 @@ function fitAutoSizedText() {
       best = shrinkLo
       while (shrinkLo <= shrinkHi) {
         const mid = Math.floor((shrinkLo + shrinkHi) / 2)
-        text.style.fontSize = `${mid}px`
-        if (text.scrollHeight <= maxHeightPx) {
+        measureEl.style.fontSize = `${mid}px`
+        if (measureEl.scrollHeight <= maxHeightPx) {
           best = mid
           shrinkLo = mid + 1
         } else {
@@ -328,8 +365,7 @@ function fitAutoSizedText() {
         }
       }
     }
-    text.style.fontSize = `${best}px`
-    displayText.value = rawText
+    if (!verseSegments) displayText.value = rawText
   }
   fittedFontSizePx.value = best
 }
@@ -418,10 +454,14 @@ function measureWayfindingAvailableHeight() {
     wayfindingAvailableHeightPx.value = 0
     return
   }
-  const rootRect = root.getBoundingClientRect()
+  // Same offsetHeight/getComputedStyle reasoning as fitAutoSizedText's topBoundPx/bottomBoundPx
+  // above — getBoundingClientRect() would report post-transform coordinates in the (literal
+  // full size, then CSS-transform-scaled) preview thumbnails, throwing this off there specifically.
   const breathingPx = root.clientHeight * 0.05
   const bottomReservedPx = wayfindingProgressRef.value
-    ? rootRect.bottom - wayfindingProgressRef.value.getBoundingClientRect().top + breathingPx
+    ? (parseFloat(getComputedStyle(wayfindingProgressRef.value).bottom) || 0) +
+      wayfindingProgressRef.value.offsetHeight +
+      breathingPx
     : breathingPx
   wayfindingAvailableHeightPx.value = Math.max(0, root.clientHeight - breathingPx - bottomReservedPx)
 }
@@ -632,7 +672,6 @@ const progressSegments = computed(() => {
         class="slide-content"
       >
         <div
-          ref="textRef"
           class="slide-text"
           :style="{
             ...(displayedContent.fontRange
@@ -645,8 +684,28 @@ const progressSegments = computed(() => {
             ...(displayedContent.lineWrap ? { whiteSpace: 'pre' } : {}),
           }"
         >
-          {{ displayText }}
+          <template v-if="displayedContent.verseSegments">
+            <template v-for="(segment, segmentIndex) in displayedContent.verseSegments" :key="segmentIndex">
+              <span v-if="segment.type === 'number'" class="verse-number-chip">{{
+                segment.value
+              }}</span>
+              <template v-else>{{ segment.value }}</template>
+            </template>
+          </template>
+          <template v-else>{{ displayText }}</template>
         </div>
+        <!-- Off-screen, never touched by Vue's own template/reactivity — fitAutoSizedText's
+             binary search does its raw textContent/fontSize probing entirely on this element
+             instead of the real .slide-text above (see measureRef's own comment there for why:
+             writing directly into a node Vue also manages via v-if/v-for corrupts Vue's vnode
+             tracking for it). Shares the real element's classes so font-size/line-height/
+             white-space rules match exactly. -->
+        <div
+          ref="measureRef"
+          class="slide-text measure-sandbox"
+          aria-hidden="true"
+          :style="{ ...(displayedContent.lineWrap ? { whiteSpace: 'pre' } : {}) }"
+        />
       </div>
 
       <div v-if="isTextSlide && displayedContent?.repeatLabel" class="slide-repeat-label">
@@ -814,6 +873,55 @@ const progressSegments = computed(() => {
   font-weight: 600;
   line-height: 1.3;
   white-space: pre-line;
+}
+/* A verse-number chip's own border/padding, plus its vertical-align lift above the baseline,
+   render taller than a plain glyph and can rise above .slide-text's own top edge — content
+   rendered above an element's top edge is *never* reflected in its scrollHeight (only overflow
+   below/right of the origin is), so without this reserved space, fitAutoSizedText's binary
+   search (which relies entirely on scrollHeight to decide what fits) stays blind to a chip
+   poking up into the header above, and picks a font size that visibly does. Matches on any
+   .slide-text containing a chip (real or the off-screen measurement sandbox alike, so the
+   search sees the same reserved space it'll actually render with) rather than being conditional
+   in JS, so there's only one place this number needs to stay in sync with the chip's own sizing. */
+.slide-text:has(.verse-number-chip) {
+  padding-top: 0.4em;
+}
+/* fitAutoSizedText's off-screen measurement scratchpad (see measureRef's own doc comment in the
+   template) — shares .slide-text's font-size/line-height/white-space rules exactly, but never
+   visible and never part of normal layout, so probing it with raw textContent/fontSize writes
+   can't affect (or conflict with) anything Vue itself renders. */
+.measure-sandbox {
+  position: fixed;
+  top: -9999px;
+  left: -9999px;
+  visibility: hidden;
+  pointer-events: none;
+}
+/* Scripture verse numbers (displayedContent.verseSegments) — a fixed-shape marker rather than a
+   plain smaller/superscript numeral, so it stays legible at any body size the auto-fit search
+   picks (a proportionally-shrunk plain numeral can all but vanish once the body text itself is
+   small). All sizing is in `em`, scaled off .slide-text's own current font-size — that's what
+   lets fitAutoSizedText's binary search just change .slide-text's font-size per candidate and
+   have this chip resize right along with it, the same as any other descendant text would.
+   Border/background/blur mirror .wayfinding-progress-container::before's own contrast-panel
+   treatment below, for one consistent "readable over any photo" visual language on this slide. */
+.verse-number-chip {
+  display: inline-block;
+  margin-right: 0.3em;
+  padding: 0.05em 0.4em;
+  font-size: 0.55em;
+  font-weight: 700;
+  vertical-align: 0.3em;
+  line-height: 1.4;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(7, 11, 17, 0.46);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(3px);
+  /* Overrides the theme's own text-shadow (inherited from the slide root by default) — same
+     reasoning as .wayfinding-progress-labels: this already has its own dedicated contrast panel
+     behind it, so the theme's outline/shadow effect was never meant to reach it too. */
+  text-shadow: none;
 }
 .outline-content {
   display: flex;
