@@ -618,6 +618,7 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
 
   let unlistenRemoteCommand: (() => void) | undefined
   let unlistenAudienceNavigate: (() => void) | undefined
+  let unlistenAudienceClosed: (() => void) | undefined
   onMounted(async () => {
     window.addEventListener('keydown', onKeydown)
     window.addEventListener('focus', loadPresentationSize)
@@ -651,6 +652,16 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
       if (direction === 'next') next()
       else previous()
     })
+    // The audience window closing on its own (its own Close button, the browser's tab close, the
+    // OS closing it) — without this, the operator side would keep believing it's still
+    // presenting, with Stop Presenting sitting there as if there were still something to stop.
+    // Guarded on isPresenting so this can't re-fire the stop path a second time when the
+    // *operator's own* Stop Presenting already set isPresenting false and closed the window
+    // itself — that close also triggers the audience window's own 'closed' broadcast moments
+    // later (see WebAudienceView.vue's pagehide listener), just after it's already a no-op here.
+    unlistenAudienceClosed = await getAdapter().live.onAudienceClosed?.(() => {
+      if (isPresenting.value) togglePresenting()
+    })
   })
   onUnmounted(() => {
     window.removeEventListener('keydown', onKeydown)
@@ -667,6 +678,7 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     getAdapter().remote?.pushServiceOpen(false)
     unlistenRemoteCommand?.()
     unlistenAudienceNavigate?.()
+    unlistenAudienceClosed?.()
     previewResizeObserver?.disconnect()
     if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer)
   })

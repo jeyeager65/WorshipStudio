@@ -85,6 +85,17 @@ function closeSelf() {
   window.close()
 }
 
+// Fires regardless of *how* this window actually goes away — this Close button, the browser's
+// own tab close, the OS closing it — unlike a Vue onBeforeUnmount, which only runs if Vue itself
+// tears the component down and isn't guaranteed to fire before the JS environment is destroyed
+// when a tab/window is closed out from under it. Tells the operator side to stop presenting
+// (see LivePresentationPort's `onAudienceClosed`) instead of leaving it believing it's still
+// live with nothing actually on screen.
+function broadcastClosed() {
+  const message: AudienceMessage = { type: 'closed' }
+  channel?.postMessage(message)
+}
+
 // Presenting from a tablet with no separate operator screen to switch back to (or no other
 // screen at all): tapping the left/right edge of the slide itself requests Previous/Next, same
 // as the operator's own on-screen buttons — see LivePresentationPort's `onNavigateRequest` and
@@ -132,11 +143,13 @@ onMounted(() => {
   const readyMessage: AudienceMessage = { type: 'ready' }
   channel.postMessage(readyMessage)
   document.addEventListener('fullscreenchange', updateFullscreenState)
+  window.addEventListener('pagehide', broadcastClosed)
 })
 
 onBeforeUnmount(() => {
   channel?.close()
   document.removeEventListener('fullscreenchange', updateFullscreenState)
+  window.removeEventListener('pagehide', broadcastClosed)
   if (overlayHideTimer) clearTimeout(overlayHideTimer)
 })
 </script>

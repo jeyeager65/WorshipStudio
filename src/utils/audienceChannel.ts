@@ -23,6 +23,11 @@
  * 'next'/'previous' flow the *other* direction — the audience window's own tap zones (see
  * WebAudienceView.vue) requesting a transport action, for presenting from a tablet with no
  * separate operator screen to switch back to. See LivePresentationPort's `onNavigateRequest`.
+ *
+ * 'closed' also flows audience-to-operator — broadcast from a `pagehide` listener (fires
+ * regardless of *how* the window went away: our own Close button, the browser's own tab close,
+ * or the OS closing it) so the operator side stops presenting instead of being left thinking
+ * it's still live with nothing actually on screen. See LivePresentationPort's `onAudienceClosed`.
  */
 
 import type { LiveSlideContent } from '@/adapters/types'
@@ -35,3 +40,4 @@ export type AudienceMessage =
   | { type: 'stop' }
   | { type: 'next' }
   | { type: 'previous' }
+  | { type: 'closed' }

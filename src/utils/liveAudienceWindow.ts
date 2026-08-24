@@ -35,9 +35,11 @@ export function createLiveAudienceWindowPort(): LivePresentationPort {
   let audienceWindow: Window | null = null
   let lastContent: LiveSlideContent | null = null
   let liveIndex = -1
-  // Set by onNavigateRequest below — at most one subscriber ever exists (one useLiveTransport
-  // instance per operator tab), so a single slot is simpler than a full listener list.
+  // Set by onNavigateRequest/onAudienceClosed below — at most one subscriber ever exists (one
+  // useLiveTransport instance per operator tab), so a single slot each is simpler than a full
+  // listener list.
   let navigateCallback: ((direction: 'next' | 'previous') => void) | undefined
+  let audienceClosedCallback: (() => void) | undefined
 
   channel.onmessage = (event: MessageEvent<AudienceMessage>) => {
     if (event.data?.type === 'ready') {
@@ -47,6 +49,8 @@ export function createLiveAudienceWindowPort(): LivePresentationPort {
       navigateCallback?.('next')
     } else if (event.data?.type === 'previous') {
       navigateCallback?.('previous')
+    } else if (event.data?.type === 'closed') {
+      audienceClosedCallback?.()
     }
   }
 
@@ -100,6 +104,12 @@ export function createLiveAudienceWindowPort(): LivePresentationPort {
       navigateCallback = callback
       return () => {
         if (navigateCallback === callback) navigateCallback = undefined
+      }
+    },
+    onAudienceClosed: async (callback) => {
+      audienceClosedCallback = callback
+      return () => {
+        if (audienceClosedCallback === callback) audienceClosedCallback = undefined
       }
     },
   }

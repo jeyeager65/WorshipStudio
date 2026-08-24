@@ -452,6 +452,15 @@ export interface LivePresentationPort {
    * unsubscribe function.
    */
   onNavigateRequest?(callback: (direction: 'next' | 'previous') => void): Promise<() => void>
+  /**
+   * Subscribes to the audience-facing window closing itself — by any means (its own Close
+   * button, the browser's own tab close, the OS closing it) — so the operator side can stop
+   * presenting instead of being left believing it's still live with nothing actually on screen.
+   * Only the web/tablet BroadcastChannel port implements this; the Tauri native presentation
+   * window's close is already synchronous from the operator's own stopPresenting() call, so
+   * there's no separate "it closed on its own" case to catch. Returns an unsubscribe function.
+   */
+  onAudienceClosed?(callback: () => void): Promise<() => void>
 }
 
 /** The configured Audience display's current full bounds — computed fresh from the monitor
