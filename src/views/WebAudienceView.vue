@@ -76,13 +76,51 @@ async function goFullscreenOnScreen(screen?: ScreenDetailed) {
   }
 }
 
-// Also bound directly to the Close button below — the 'stop' broadcast (see audienceChannel.ts)
-// is what makes Stop Presenting reliably reach this window from the operator's tab on iOS Safari,
-// but this window needs its own way to close itself too: on an iPad especially, there's no
-// keyboard/window-chrome to fall back on, so without a control in here the only way out is force-
-// closing the whole app.
+// Also bound directly to the Close button in the reveal overlay below — the 'stop' broadcast
+// (see audienceChannel.ts) is what makes Stop Presenting reliably reach this window from the
+// operator's tab on iOS Safari, but this window needs its own way to close itself too: on an
+// iPad especially, there's no keyboard/window-chrome to fall back on, so without a control in
+// here the only way out is force-closing the whole app.
 function closeSelf() {
   window.close()
+}
+
+// Presenting from a tablet with no separate operator screen to switch back to (or no other
+// screen at all): tapping the left/right edge of the slide itself requests Previous/Next, same
+// as the operator's own on-screen buttons — see LivePresentationPort's `onNavigateRequest` and
+// useLiveTransport.ts's subscription to it. A tap in the middle reveals the small overlay below
+// instead (see revealOverlay), rather than navigating.
+const NAV_ZONE_FRACTION = 0.35
+function requestNavigate(direction: 'next' | 'previous') {
+  const message: AudienceMessage = { type: direction }
+  channel?.postMessage(message)
+}
+
+// No persistent on-screen chrome once presenting for real (fullscreen, an external monitor, or
+// just a tablet propped up in front of the room) — the congregation shouldn't see a Close button
+// sitting over the slide. A tap in the middle reveals it briefly instead, the same "tap to
+// reveal, then fade" pattern video players use, so it's there the moment someone touches the
+// screen looking for it and gone the rest of the time.
+const OVERLAY_AUTO_HIDE_MS = 3000
+const overlayVisible = ref(false)
+let overlayHideTimer: ReturnType<typeof setTimeout> | undefined
+function revealOverlay() {
+  overlayVisible.value = true
+  if (overlayHideTimer) clearTimeout(overlayHideTimer)
+  overlayHideTimer = setTimeout(() => {
+    overlayVisible.value = false
+    overlayHideTimer = undefined
+  }, OVERLAY_AUTO_HIDE_MS)
+}
+
+/** Bound to the whole slide area. Buttons inside the overlay/controls stop propagation (see
+ *  their own @click.stop below) so clicking them doesn't also register as a nav-zone tap. */
+function handleTap(event: MouseEvent) {
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  const xFraction = (event.clientX - rect.left) / rect.width
+  if (xFraction < NAV_ZONE_FRACTION) requestNavigate('previous')
+  else if (xFraction > 1 - NAV_ZONE_FRACTION) requestNavigate('next')
+  else revealOverlay()
 }
 
 onMounted(() => {
@@ -99,23 +137,37 @@ onMounted(() => {
 onBeforeUnmount(() => {
   channel?.close()
   document.removeEventListener('fullscreenchange', updateFullscreenState)
+  if (overlayHideTimer) clearTimeout(overlayHideTimer)
 })
 </script>
 
 <template>
-  <div class="audience-root">
+  <!-- Tap zones: left/right edges request Previous/Next (see requestNavigate); the middle
+       reveals the overlay below instead of navigating. Every actual button stops propagation
+       (@click.stop) so tapping one doesn't also register as a nav-zone tap underneath it. -->
+  <div class="audience-root" @click="handleTap">
     <SlideContentRenderer :content="current" transition />
 
-    <!-- Always present, regardless of fullscreen state — a stuck audience window with no way to
-         close it otherwise means force-closing the whole app (see closeSelf's doc comment above).
-         Kept small/low-opacity like RemoteMirror.vue's mute toggle so it doesn't distract the
-         congregation, but never fully hidden the way the display-choosing controls below are. -->
-    <button type="button" class="close-btn" aria-label="Close presentation window" @click="closeSelf">
-      ✕
-    </button>
+    <!-- Tap-to-reveal only — no persistent chrome once presenting for real. Kept small/low-key
+         like RemoteMirror.vue's mute toggle. -->
+    <div v-if="overlayVisible" class="reveal-overlay">
+      <button
+        type="button"
+        class="close-btn"
+        aria-label="Close presentation window"
+        @click.stop="closeSelf"
+      >
+        ✕ Close
+      </button>
+    </div>
 
     <div v-if="!isFullscreen" class="controls">
-      <button v-if="!screenPickerOpen" type="button" class="control-btn" @click="chooseDisplay">
+      <button
+        v-if="!screenPickerOpen"
+        type="button"
+        class="control-btn"
+        @click.stop="chooseDisplay"
+      >
         {{ screenDetailsSupported ? 'Choose Display…' : 'Go Fullscreen' }}
       </button>
       <div v-else class="screen-picker">
@@ -124,14 +176,14 @@ onBeforeUnmount(() => {
           :key="index"
           type="button"
           class="control-btn"
-          @click="goFullscreenOnScreen(screen)"
+          @click.stop="goFullscreenOnScreen(screen)"
         >
           Fullscreen on {{ screenLabel(screen, index) }}
         </button>
         <button
           type="button"
           class="control-btn control-btn--cancel"
-          @click="screenPickerOpen = false"
+          @click.stop="screenPickerOpen = false"
         >
           Cancel
         </button>
@@ -181,24 +233,23 @@ onBeforeUnmount(() => {
 .control-btn--cancel {
   opacity: 0.7;
 }
-.close-btn {
+.reveal-overlay {
   position: absolute;
   left: 12px;
   bottom: 12px;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  background: rgba(0, 0, 0, 0.4);
-  color: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 50%;
-  font-size: 13px;
-  line-height: 1;
-  cursor: pointer;
   z-index: 10;
+}
+.close-btn {
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.55);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 .close-btn:hover {
   background: rgba(0, 0, 0, 0.75);
-  color: white;
 }
 </style>

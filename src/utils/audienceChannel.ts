@@ -19,6 +19,10 @@
  * Stop Presenting) can get the popped-out audience tab's process torn down and recreated, silently
  * invalidating that direct reference, whereas a same-origin BroadcastChannel message still reaches
  * the tab's live script instance.
+ *
+ * 'next'/'previous' flow the *other* direction — the audience window's own tap zones (see
+ * WebAudienceView.vue) requesting a transport action, for presenting from a tablet with no
+ * separate operator screen to switch back to. See LivePresentationPort's `onNavigateRequest`.
  */
 
 import type { LiveSlideContent } from '@/adapters/types'
@@ -29,3 +33,5 @@ export type AudienceMessage =
   | { type: 'ready' }
   | { type: 'content'; content: LiveSlideContent | null }
   | { type: 'stop' }
+  | { type: 'next' }
+  | { type: 'previous' }

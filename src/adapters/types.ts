@@ -443,6 +443,15 @@ export interface LivePresentationPort {
    * audience display is available; the editor then uses a stable 16:9 planning preview.
    */
   getPresentationSize?(): Promise<{ width: number; height: number } | undefined>
+  /**
+   * Subscribes to navigation requests made from *inside* the audience-facing window itself
+   * (tap zones — see WebAudienceView.vue) rather than the operator's own Next/Previous controls.
+   * Covers presenting from a tablet with no separate operator screen to switch back to. Only the
+   * web/tablet BroadcastChannel port (liveAudienceWindow.ts) implements this — the Tauri native
+   * presentation window has no on-screen controls of its own to send a request from. Returns an
+   * unsubscribe function.
+   */
+  onNavigateRequest?(callback: (direction: 'next' | 'previous') => void): Promise<() => void>
 }
 
 /** The configured Audience display's current full bounds — computed fresh from the monitor

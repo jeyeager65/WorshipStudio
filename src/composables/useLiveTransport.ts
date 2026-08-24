@@ -617,6 +617,7 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
   }
 
   let unlistenRemoteCommand: (() => void) | undefined
+  let unlistenAudienceNavigate: (() => void) | undefined
   onMounted(async () => {
     window.addEventListener('keydown', onKeydown)
     window.addEventListener('focus', loadPresentationSize)
@@ -643,6 +644,13 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
         if (profileId) void sendManualCommand(profileId, command.commandId)
       }
     })
+    // Presenting from a tablet with no separate operator screen to switch back to (spec:
+    // tap zones on WebAudienceView.vue's own audience window) — same shape as the Remote Control
+    // subscription just above, just a different transport (BroadcastChannel, not a Tauri event).
+    unlistenAudienceNavigate = await getAdapter().live.onNavigateRequest?.((direction) => {
+      if (direction === 'next') next()
+      else previous()
+    })
   })
   onUnmounted(() => {
     window.removeEventListener('keydown', onKeydown)
@@ -658,6 +666,7 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
     isPresenting.value = false
     getAdapter().remote?.pushServiceOpen(false)
     unlistenRemoteCommand?.()
+    unlistenAudienceNavigate?.()
     previewResizeObserver?.disconnect()
     if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer)
   })
