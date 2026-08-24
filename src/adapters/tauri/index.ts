@@ -1,6 +1,6 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
-import { availableMonitors, currentMonitor } from '@tauri-apps/api/window'
+import { availableMonitors, currentMonitor, getCurrentWindow } from '@tauri-apps/api/window'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type {
@@ -177,6 +177,13 @@ export function createTauriAdapter(): StudioAdapter {
     // before that would otherwise be silently dropped and leave it blank until the next cue.
     unlistenPresentationReady = await listen('presentation:ready', () => {
       void emit('live:slide-changed', lastLiveContent)
+      // Windows appears to force focus onto a window the moment it enters fullscreen, regardless
+      // of this window's own `focus: false` creation flag above — confirmed live: without this,
+      // the operator has to click back into the main window before Prev/Next keyboard shortcuts
+      // work again after Start Presenting. Reasserted here (once the presentation window has
+      // actually finished loading and settled into fullscreen), not right after creation, since
+      // the OS's own focus-steal can happen slightly after that point too.
+      void getCurrentWindow().setFocus()
     })
   }
 
