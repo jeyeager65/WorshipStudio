@@ -171,6 +171,7 @@ const rootRef = ref<HTMLElement>()
 const textRef = ref<HTMLElement>()
 const headerRef = ref<HTMLElement>()
 const footerRef = ref<HTMLElement>()
+const wayfindingProgressRef = ref<HTMLElement>()
 const fittedFontSizePx = ref<number>()
 const displayText = ref('')
 let resizeObserver: ResizeObserver | undefined
@@ -332,7 +333,11 @@ function onFontsLoadingDone() {
 
 onMounted(() => {
   if (rootRef.value) {
-    resizeObserver = new ResizeObserver(() => fitAutoSizedText())
+    measureWayfindingAvailableHeight()
+    resizeObserver = new ResizeObserver(() => {
+      fitAutoSizedText()
+      measureWayfindingAvailableHeight()
+    })
     resizeObserver.observe(rootRef.value)
   }
   document.fonts.addEventListener('loadingdone', onFontsLoadingDone)
@@ -361,18 +366,72 @@ function labelFontSize(configuredPx: number | undefined): string {
   return `clamp(10px, min(8cqh, 5cqw), ${configuredPx ?? 48}px)`
 }
 
-function bookStyle(distance: number) {
-  const level = Math.abs(distance)
+// A CSS clamp() proportional to container height alone (an earlier version of this) couldn't
+// actually guarantee the whole stack fits: it capped each row's *own* size but had no idea how
+// many rows there were, how much the fixed gap/margin between them added up to, or that the
+// progress bar below needs its own real space — so a normal 2-book-radius stack (5 rows) could
+// still overflow (and run into the progress bar) well short of a phone-size window. This measures
+// the *real* total height the stack would need at its natural configured sizes, against the
+// actual space available above the progress bar (wayfindingAvailableHeightPx, kept live by the
+// ResizeObserver below, same idea as the header/footer footprint measurement above), and scales
+// every row — font sizes and the gaps/margin between them — down by the same factor if that
+// total doesn't fit. At a normal presentation size this natural total is well within budget, so
+// scale lands at 1 and nothing changes from the literal configured px.
+const wayfindingAvailableHeightPx = ref(0)
+const WAYFINDING_LINE_HEIGHT_RATIO = 1.2
+const WAYFINDING_GAP_PX = 10
+const WAYFINDING_REFERENCE_MARGIN_PX = 18
+
+function measureWayfindingAvailableHeight() {
+  const root = rootRef.value
+  if (!root) {
+    wayfindingAvailableHeightPx.value = 0
+    return
+  }
+  const rootRect = root.getBoundingClientRect()
+  const breathingPx = root.clientHeight * 0.05
+  const bottomReservedPx = wayfindingProgressRef.value
+    ? rootRect.bottom - wayfindingProgressRef.value.getBoundingClientRect().top + breathingPx
+    : breathingPx
+  wayfindingAvailableHeightPx.value = Math.max(0, root.clientHeight - breathingPx - bottomReservedPx)
+}
+
+function wayfindingNaturalBookSize(distance: number): number {
   const maxPx = displayedContent.value?.wayfindingMaxFontSizePx ?? 150
   const minPx = displayedContent.value?.wayfindingMinFontSizePx ?? 56
   const radius = Math.max(
     1,
     ...(displayedContent.value?.wayfindingBooks ?? []).map((b) => Math.abs(b.distance)),
   )
-  const t = level / radius
+  const t = Math.abs(distance) / radius
+  return maxPx + (minPx - maxPx) * t
+}
+
+const wayfindingScale = computed(() => {
+  const books = displayedContent.value?.wayfindingBooks
+  if (!books || wayfindingAvailableHeightPx.value === 0) return 1
+  const maxPx = displayedContent.value?.wayfindingMaxFontSizePx ?? 150
+  const rowSizes = [...books.map((b) => wayfindingNaturalBookSize(b.distance)), maxPx]
+  const naturalTotalPx =
+    rowSizes.reduce((sum, px) => sum + px * WAYFINDING_LINE_HEIGHT_RATIO, 0) +
+    (rowSizes.length - 1) * WAYFINDING_GAP_PX +
+    2 * WAYFINDING_REFERENCE_MARGIN_PX
+  return Math.min(1, wayfindingAvailableHeightPx.value / naturalTotalPx)
+})
+
+function wayfindingFontSize(configuredPx: number): string {
+  return `${Math.max(10, configuredPx * wayfindingScale.value)}px`
+}
+
+function wayfindingSpacingSize(configuredPx: number): string {
+  return `${Math.max(2, configuredPx * wayfindingScale.value)}px`
+}
+
+function bookStyle(distance: number) {
+  const level = Math.abs(distance)
   const opacities = [0.55, 0.3]
   return {
-    fontSize: `${maxPx + (minPx - maxPx) * t}px`,
+    fontSize: wayfindingFontSize(wayfindingNaturalBookSize(distance)),
     opacity: opacities[level - 1] ?? opacities[opacities.length - 1],
   }
 }
@@ -440,6 +499,7 @@ const progressSegments = computed(() => {
       <div
         v-else-if="displayedContent?.wayfindingBooks && !displayedContent.backgroundOnly"
         class="wayfinding-content"
+        :style="{ gap: wayfindingSpacingSize(10) }"
       >
         <div
           v-for="book in displayedContent.wayfindingBooks.filter((b) => b.distance < 0)"
@@ -451,7 +511,10 @@ const progressSegments = computed(() => {
         </div>
         <div
           class="wayfinding-reference"
-          :style="{ fontSize: `${displayedContent.wayfindingMaxFontSizePx ?? 150}px` }"
+          :style="{
+            fontSize: wayfindingFontSize(displayedContent.wayfindingMaxFontSizePx ?? 150),
+            margin: `${wayfindingSpacingSize(18)} 0`,
+          }"
         >
           {{ displayedContent.itemLabel }}
         </div>
@@ -464,7 +527,7 @@ const progressSegments = computed(() => {
           {{ book.name }}
         </div>
       </div>
-      <div v-if="progressSegments" class="wayfinding-progress-container">
+      <div v-if="progressSegments" ref="wayfindingProgressRef" class="wayfinding-progress-container">
         <div class="wayfinding-progress-labels">
           <span class="wayfinding-progress-label" style="color: #d4af37">Old Testament</span>
           <span class="wayfinding-progress-label" style="color: #4fa8d8">New Testament</span>
@@ -615,6 +678,14 @@ const progressSegments = computed(() => {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  /* This is a live rendering, not a document — selecting its text serves no purpose and, on a
+     touch device, a long-press-to-select on the audience window pops up the phone's own
+     dictionary/"Look Up" definition bubble over the slide. -webkit-touch-callout also suppresses
+     iOS's press-and-hold callout menu, which would otherwise still offer to look up/share the
+     text even with selection itself disabled. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 /* Everything except the background media (see the Transition-wrapped img/video above it in the
    template) — sized/centered exactly like .slide-root used to lay out its direct children
@@ -742,7 +813,7 @@ const progressSegments = computed(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  /* gap set inline (see wayfindingSpacingSize) — responsive to container height and row count */
   max-width: 90cqw;
 }
 .wayfinding-book {
@@ -751,7 +822,7 @@ const progressSegments = computed(() => {
 }
 .wayfinding-reference {
   font-weight: 700;
-  margin: 18px 0;
+  /* margin set inline (see wayfindingSpacingSize) — responsive to container height and row count */
   text-align: center;
   max-width: 90cqw;
 }
