@@ -80,6 +80,19 @@ describe('createWebMediaPort', () => {
     expect(staged[1]?.duplicateOfId).toBeUndefined()
   })
 
+  it('stages an unrecognized extension as a document, and forwards a caller-supplied extension filter', async () => {
+    const root = createFakeRoot()
+    const port = makePort(root)
+
+    vi.mocked(pickFilesInBrowser).mockResolvedValueOnce([
+      new File(['deck bytes'], 'missions-update.pptx'),
+    ])
+    const staged = await port.pickFilesToImport(['pptx'])
+
+    expect(staged[0]?.kind).toBe('document')
+    expect(pickFilesInBrowser).toHaveBeenCalledWith(['pptx'])
+  })
+
   it('commitImport writes real bytes and creates a media-items record', async () => {
     const root = createFakeRoot()
     const port = makePort(root)

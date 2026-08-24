@@ -29,22 +29,24 @@ export function useExternalAppHandoff(
 ) {
   const verifiedExternalAppItemIds = reactive(new Set<string>())
   const externalAppReadinessErrors = reactive(new Map<string, string>())
-  const externalAppVerificationAvailable = computed(() => !!getAdapter().externalApps?.verifyItem)
+  const externalAppVerificationAvailable = computed(() => !!getAdapter().externalApps.verifyItem)
 
   async function verifyExternalAppReadiness(item: ServiceItem) {
-    const verifyItem = getAdapter().externalApps?.verifyItem
+    const verifyItem = getAdapter().externalApps.verifyItem
     if (item.type !== 'external-app' || !verifyItem) return
     const profileId = item.profileId
     const file = item.file
+    const mediaId = item.mediaId
     verifiedExternalAppItemIds.delete(item.id)
     externalAppReadinessErrors.delete(item.id)
     try {
-      await verifyItem(profileId, file)
+      await verifyItem(profileId, { file, mediaId })
       const current = service.value?.items.find((candidate) => candidate.id === item.id)
       if (
         current?.type !== 'external-app' ||
         current.profileId !== profileId ||
-        current.file !== file
+        current.file !== file ||
+        current.mediaId !== mediaId
       )
         return
       verifiedExternalAppItemIds.add(item.id)
@@ -53,7 +55,8 @@ export function useExternalAppHandoff(
       if (
         current?.type !== 'external-app' ||
         current.profileId !== profileId ||
-        current.file !== file
+        current.file !== file ||
+        current.mediaId !== mediaId
       )
         return
       externalAppReadinessErrors.set(
@@ -103,8 +106,8 @@ export function useExternalAppHandoff(
     const command = profile.keyCommands.find((c) => c.triggerKey === combo)
     if (!command || !command.keyCombo.trim()) return false
     getAdapter()
-      .externalApps?.sendKeystroke(profile.id, command.id)
-      .catch((e) =>
+      .externalApps.sendKeystroke?.(profile.id, command.id)
+      ?.catch((e) =>
         logger.error('external-app', `Failed to forward "${command.label}" to the external app`, e),
       )
     return true
@@ -116,7 +119,7 @@ export function useExternalAppHandoff(
   async function sendManualCommand(profileId: string, commandId: string) {
     manualCommandError.value = undefined
     try {
-      await getAdapter().externalApps?.sendKeystroke(profileId, commandId)
+      await getAdapter().externalApps.sendKeystroke?.(profileId, commandId)
     } catch (e) {
       manualCommandError.value = errorMessage(e, 'Failed to send that command to the external app.')
       logger.error('external-app', 'Failed to send a manual command to the external app', e)
@@ -139,7 +142,7 @@ export function useExternalAppHandoff(
       externalAppActiveKey.value = undefined
       externalAppError.value = undefined
       try {
-        await getAdapter().externalApps?.closeAll()
+        await getAdapter().externalApps.closeAll?.()
       } catch (e) {
         logger.error('external-app', 'Failed to close external apps', e)
       }
@@ -156,7 +159,7 @@ export function useExternalAppHandoff(
 
     if (externalAppActiveKey.value) {
       try {
-        await getAdapter().externalApps?.restoreSelf()
+        await getAdapter().externalApps.restoreSelf?.()
       } catch (e) {
         logger.error('external-app', 'Failed to restore Worship Studio to the foreground', e)
       }
@@ -166,7 +169,10 @@ export function useExternalAppHandoff(
     if (!slide?.externalApp) return
 
     try {
-      await getAdapter().externalApps?.launch(slide.externalApp.profileId, slide.externalApp.file)
+      await getAdapter().externalApps.launch?.(slide.externalApp.profileId, {
+        file: slide.externalApp.file,
+        mediaId: slide.externalApp.mediaId,
+      })
     } catch (e) {
       externalAppError.value = errorMessage(e, 'Failed to launch the external app.')
       logger.error('external-app', 'Failed to launch the external app for the live slide', e)
@@ -198,7 +204,7 @@ export function useExternalAppHandoff(
   async function closeExternalApp() {
     externalAppActiveKey.value = undefined
     try {
-      await getAdapter().externalApps?.closeCurrent()
+      await getAdapter().externalApps.closeCurrent?.()
     } catch (e) {
       logger.error('external-app', 'Failed to close the external app', e)
     }
@@ -213,7 +219,10 @@ export function useExternalAppHandoff(
     if (item.type !== 'external-app') return
     prelaunchError.value = undefined
     try {
-      await getAdapter().externalApps?.prelaunch(item.profileId, item.file)
+      await getAdapter().externalApps.prelaunch?.(item.profileId, {
+        file: item.file,
+        mediaId: item.mediaId,
+      })
     } catch (e) {
       prelaunchError.value = errorMessage(e, 'Failed to launch the external app.')
       logger.error('external-app', 'Failed to prelaunch the external app', e)
@@ -224,7 +233,7 @@ export function useExternalAppHandoff(
   // presenting, but if this view ever unmounts some other way, don't leave an external app
   // covering the audience display with nothing left able to restore Worship Studio to it.
   onUnmounted(() => {
-    if (externalAppActiveKey.value) getAdapter().externalApps?.closeAll()
+    if (externalAppActiveKey.value) getAdapter().externalApps.closeAll?.()
   })
 
   return {

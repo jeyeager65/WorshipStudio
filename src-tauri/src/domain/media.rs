@@ -208,6 +208,10 @@ fn hash_file(path: &Path) -> std::io::Result<String> {
     Ok(format!("{:016x}", hasher.finish()))
 }
 
+/// "document" is the fallback for anything that isn't a recognized image/video extension — e.g.
+/// a PowerPoint deck imported for use with an External App Hand-off item. Before "document"
+/// existed, this fell back to "image" for literally anything unrecognized; that's why the image
+/// list here is now explicit rather than the catch-all it used to be.
 fn guess_kind(filename: &str) -> String {
     let ext = Path::new(filename)
         .extension()
@@ -216,7 +220,8 @@ fn guess_kind(filename: &str) -> String {
         .to_lowercase();
     match ext.as_str() {
         "mp4" | "mov" | "webm" | "m4v" => "video",
-        _ => "image",
+        "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "svg" | "avif" => "image",
+        _ => "document",
     }
     .to_string()
 }
@@ -409,10 +414,15 @@ mod tests {
     }
 
     #[test]
-    fn guesses_image_kind_for_anything_else() {
+    fn guesses_image_kind_from_common_extensions() {
         assert_eq!(guess_kind("sunset.jpg"), "image");
         assert_eq!(guess_kind("sunset.PNG"), "image");
-        assert_eq!(guess_kind("no-extension"), "image");
+    }
+
+    #[test]
+    fn guesses_document_kind_for_anything_else() {
+        assert_eq!(guess_kind("missions-update.pptx"), "document");
+        assert_eq!(guess_kind("no-extension"), "document");
     }
 
     #[test]

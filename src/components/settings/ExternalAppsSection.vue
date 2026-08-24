@@ -9,15 +9,17 @@ import type { ExternalAppProfile } from '@/adapters/types'
 const router = useRouter()
 const confirmDialog = useConfirmDialogStore()
 
-// External App Profiles (spec section 12) — Windows-only, feature-detected same as Display
-// Setup. Editing lives on its own routed page (ExternalAppProfileEditorView.vue) rather than
-// inline or in a dialog — Basic Remote Controls' key-commands list made a dialog grow past what
-// a modal can reasonably hold, the same reasoning ServiceTemplateEditorView/RolesView already
-// settled on for their own multi-field editors.
+// External App Profiles (spec section 12) — profile CRUD (this list) works on every adapter,
+// shared/synced data like any other library content; only the per-machine executable path and
+// actual launching are Windows/Tauri-only (see ExternalAppProfileEditorView's own "On This
+// Computer" section, and ExternalAppPort's doc comment). Editing lives on its own routed page
+// (ExternalAppProfileEditorView.vue) rather than inline or in a dialog — Basic Remote Controls'
+// key-commands list made a dialog grow past what a modal can reasonably hold, the same reasoning
+// ServiceTemplateEditorView/RolesView already settled on for their own multi-field editors.
 const externalAppProfiles = ref<ExternalAppProfile[]>([])
 async function loadExternalApps() {
   try {
-    externalAppProfiles.value = (await getAdapter().externalApps?.listProfiles()) ?? []
+    externalAppProfiles.value = await getAdapter().externalApps.listProfiles()
   } catch (e) {
     console.error('Failed to list external app profiles:', e)
     externalAppProfiles.value = []
@@ -34,7 +36,7 @@ async function deleteExternalAppProfile(profile: ExternalAppProfile) {
     !(await confirmDialog.confirm(`Delete the "${profile.name}" external app profile?`, 'Delete'))
   )
     return
-  await getAdapter().externalApps?.deleteProfile(profile.id)
+  await getAdapter().externalApps.deleteProfile(profile.id)
   await loadExternalApps()
 }
 
@@ -47,7 +49,7 @@ async function addDefaultExternalAppProfiles() {
   addingDefaultProfiles.value = true
   defaultProfilesAdded.value = undefined
   try {
-    defaultProfilesAdded.value = await getAdapter().externalApps?.importDefaultProfiles()
+    defaultProfilesAdded.value = await getAdapter().externalApps.importDefaultProfiles()
     await loadExternalApps()
   } finally {
     addingDefaultProfiles.value = false
@@ -89,7 +91,7 @@ onMounted(loadExternalApps)
       <div v-if="defaultProfilesAdded !== undefined" class="text-caption text-medium-emphasis mb-3">
         {{
           defaultProfilesAdded > 0
-            ? `Added ${defaultProfilesAdded} profile${defaultProfilesAdded === 1 ? '' : 's'} — check each one's Executable field, since the install location couldn't always be found automatically.`
+            ? `Added ${defaultProfilesAdded} profile${defaultProfilesAdded === 1 ? '' : 's'} — on the computer that presents, check each one's "On This Computer" section, since the install location couldn't always be found automatically.`
             : 'Every suggested profile is already here.'
         }}
       </div>

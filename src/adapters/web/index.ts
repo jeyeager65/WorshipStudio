@@ -5,9 +5,12 @@
  * against the picked folder, not stubs. `live` is real too (see @/utils/liveAudienceWindow) — a
  * plain browser window plus BroadcastChannel, reusing the same SlideContentRenderer.vue every
  * other live-content consumer already uses (shared with the mock adapter too, since it's
- * genuinely storage-independent). `displays`/`externalApps`/`remote`/`canva` stay omitted
- * (optional on StudioAdapter) since they're confirmed impossible in any browser or need a
- * redesign (Canva's OAuth loopback callback) rather than being merely unbuilt.
+ * genuinely storage-independent). `displays`/`remote`/`canva` stay omitted (optional on
+ * StudioAdapter) since they're confirmed impossible in any browser or need a redesign (Canva's
+ * OAuth loopback callback) rather than being merely unbuilt. `externalApps` *is* implemented here
+ * (see ./externalApps.ts) — profile CRUD is just shared/synced data, nothing browser-impossible
+ * about it; only the per-machine executable path and actual launching stay absent (optional
+ * methods on the port itself, not the whole port).
  *
  * Wired into getAdapter() via src/BootGate.vue, not getAdapter() (adapters/index.ts) itself:
  * constructing this adapter requires an async user gesture (showDirectoryPicker()) first, which
@@ -44,6 +47,7 @@ import { createWebServiceTemplatesPort } from './serviceTemplates'
 import { createWebSongCollectionsPort } from './songCollections'
 import { createWebSongsPort } from './songs'
 import { createWebThemesPort } from './themes'
+import { createWebExternalAppsPort } from './externalApps'
 import * as sync from './sync'
 
 export function createWebAdapter(root: FileSystemDirectoryHandle): StudioAdapter {
@@ -60,6 +64,7 @@ export function createWebAdapter(root: FileSystemDirectoryHandle): StudioAdapter
   const media = createWebMediaPort(root, settings, themes, createPickedLocalMediaRoot())
   const people = createWebPeoplePort(root, settings)
   const announcements = createWebAnnouncementsPort(root, settings)
+  const externalApps = createWebExternalAppsPort(root, settings)
 
   // Shared by getSummary and createBundle below, same as the Tauri backend's own
   // diagnostic_summary() helper (commands/diagnostics.rs) -- there's no real log *file* to count
@@ -202,8 +207,12 @@ export function createWebAdapter(root: FileSystemDirectoryHandle): StudioAdapter
     // rendering through the same SlideContentRenderer.vue the Tauri presentation window and
     // Remote Control mirror both use.
     live: createLiveAudienceWindowPort(),
-    // displays/externalApps/remote intentionally omitted (optional on StudioAdapter) — confirmed
-    // impossible in any browser (web-feature-parity.md §4/§5), not merely unbuilt.
+    // Profile CRUD (shared/synced data) works fine in a browser — only the per-machine
+    // executable path and actual launching are genuinely Tauri/Win32-only (see
+    // ExternalAppPort's own doc comment), so those methods are simply absent here.
+    externalApps,
+    // displays/remote intentionally omitted (optional on StudioAdapter) — confirmed impossible
+    // in any browser (web-feature-parity.md §4/§5), not merely unbuilt.
     sync: {
       getStatus: async (): Promise<SyncStatus> => {
         const [conflicts, recovery] = await Promise.all([

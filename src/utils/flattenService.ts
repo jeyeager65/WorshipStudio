@@ -52,8 +52,9 @@ export interface FlatSlide {
   mediaId?: string
   mediaKind?: 'image' | 'video'
   mediaFit?: 'cover' | 'contain'
-  /** External App Hand-off items only (spec section 12) — what to launch/focus when this slide goes live. */
-  externalApp?: { profileId: string; file?: string }
+  /** External App Hand-off items only (spec section 12) — what to launch/focus when this slide
+   *  goes live. `file`/`mediaId` mutually exclusive, same as ServiceItemContent's own shape. */
+  externalApp?: { profileId: string; file?: string; mediaId?: string }
   /** Full-text scripture and song slides only — the configured auto-fit range (spec section 1) PresentationView fits this slide's text within (see DEFAULT_SCRIPTURE_FONT_RANGE/DEFAULT_SONG_FONT_RANGE). */
   fontRange?: FontSizeRange
   /**
@@ -473,7 +474,7 @@ export function flattenService(
         itemLabel: profile?.name ?? 'External App',
         subLabel: '',
         text: '',
-        externalApp: { profileId: item.profileId, file: item.file },
+        externalApp: { profileId: item.profileId, file: item.file, mediaId: item.mediaId },
       })
     } else if (item.type === 'placeholder') {
       // Deliberately not blank — an unreplaced placeholder accidentally presented live should

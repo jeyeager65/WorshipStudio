@@ -317,7 +317,10 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
           ? {
               url: backgroundMediaUrl,
               mediaId: backgroundMediaItem.id,
-              kind: backgroundMediaItem.kind,
+              // A theme background can only ever be an image or video — the picker that assigns
+              // one already excludes the 'document' kind (MediaPickerDialog's 'background'
+              // purpose), so this narrows what's structurally still a wider MediaItem.kind.
+              kind: backgroundMediaItem.kind === 'video' ? 'video' : 'image',
               fit: 'cover',
             }
           : undefined,

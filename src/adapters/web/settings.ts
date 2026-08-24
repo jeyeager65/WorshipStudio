@@ -20,7 +20,7 @@ const LIBRARY_SETTINGS_PATH = 'library-settings.json'
 const CREDENTIALS_PATH = 'credentials.json'
 const MACHINE_SETTINGS_KEY = 'worship-studio:web:machine-settings'
 
-// Mirrors src-tauri/src/commands/settings.rs's clear_settings_list_backups exactly — same five
+// Mirrors src-tauri/src/commands/settings.rs's clear_settings_list_backups exactly — same six
 // filenames (see each adapters/web/*.ts port's own *_PATH constant), same exclusion of
 // library-settings.json.backup/credentials.json.backup (neither file is ever touched by Clear
 // Existing Data, so neither backup should be swept away).
@@ -30,6 +30,7 @@ const SETTINGS_LIST_FILES = [
   'role-groups.json',
   'roles.json',
   'service-templates.json',
+  'external-app-profiles.json',
 ]
 
 function defaultLibrarySettings(): LibrarySettings {

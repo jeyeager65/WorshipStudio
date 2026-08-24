@@ -160,7 +160,9 @@ export interface MediaItem {
   /** Required — the human-facing label shown everywhere this item appears, instead of the raw filename. */
   title: string
   description?: string
-  kind: 'image' | 'video'
+  /** 'document' is the fallback for anything that isn't a recognized image/video extension —
+   *  e.g. a PowerPoint deck stored for use with an External App Hand-off item. */
+  kind: 'image' | 'video' | 'document'
   tags: string[]
   location: 'synced' | 'local'
   duplicateOfId?: string

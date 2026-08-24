@@ -5,9 +5,19 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import type { StagedMediaFile, MediaImportCommit } from '@/adapters/types'
 import type { MediaItem } from '@/models/library'
 
-const props = withDefaults(defineProps<{ modelValue: boolean; syncedOnly?: boolean }>(), {
-  syncedOnly: false,
-})
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    syncedOnly?: boolean
+    /** Widens (or replaces) the file picker's default image/video filter — e.g. an External App
+     *  profile's own `allowedExtensions`, for importing a document rather than media. Unset uses
+     *  the default image/video filter; an empty array means no filter at all. */
+    extensions?: string[]
+  }>(),
+  {
+    syncedOnly: false,
+  },
+)
 const emit = defineEmits<{ 'update:modelValue': [boolean]; imported: [MediaItem[]] }>()
 const confirmDialog = useConfirmDialogStore()
 
@@ -66,7 +76,7 @@ function formatSize(bytes: number): string {
 // the only entry point for now, callable more than once to add further files to the batch.
 async function browseFiles() {
   const adapter = getAdapter()
-  const staged = await adapter.media.pickFilesToImport()
+  const staged = await adapter.media.pickFilesToImport(props.extensions)
   for (const file of staged) {
     const isLargeFile = file.sizeBytes > maxSyncedBytes.value
     const row: StagedFileRow = {
@@ -138,7 +148,7 @@ async function confirmImport() {
     @update:model-value="(v) => emit('update:modelValue', v)"
   >
     <v-card>
-      <v-card-title>Import Media</v-card-title>
+      <v-card-title>{{ extensions ? 'Import File' : 'Import Media' }}</v-card-title>
 
       <v-card-text style="max-height: 55vh; overflow-y: auto">
         <p class="text-caption text-medium-emphasis mb-4">
@@ -148,7 +158,7 @@ async function confirmImport() {
 
         <div class="drop-zone mb-4" @click="browseFiles">
           <v-icon icon="mdi-folder-open-outline" size="20" />
-          <span>Browse for images and videos…</span>
+          <span>{{ extensions ? 'Browse for a file…' : 'Browse for images and videos…' }}</span>
         </div>
 
         <v-combobox
@@ -176,10 +186,21 @@ async function confirmImport() {
         >
           <div class="file-row-thumb">
             <img v-if="row.previewUrl && row.kind === 'image'" :src="row.previewUrl" alt="" />
-            <video v-else-if="row.previewUrl" :src="row.previewUrl" muted preload="metadata" />
+            <video
+              v-else-if="row.previewUrl && row.kind === 'video'"
+              :src="row.previewUrl"
+              muted
+              preload="metadata"
+            />
             <v-icon
               v-else
-              :icon="row.kind === 'video' ? 'mdi-movie-open-outline' : 'mdi-image-outline'"
+              :icon="
+                row.kind === 'video'
+                  ? 'mdi-movie-open-outline'
+                  : row.kind === 'document'
+                    ? 'mdi-file-document-outline'
+                    : 'mdi-image-outline'
+              "
               size="26"
             />
           </div>

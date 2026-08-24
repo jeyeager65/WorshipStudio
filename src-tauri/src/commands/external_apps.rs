@@ -4,9 +4,12 @@ use std::sync::Mutex;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use tauri::{AppHandle, Manager};
 
-use crate::domain::{external_apps, win32};
-use crate::models::{ExternalAppProfile, WindowPosition};
-use crate::paths::{external_apps_path, now_iso, this_device_name};
+use crate::domain::{external_apps, media, win32};
+use crate::models::{ExternalAppImplementation, ExternalAppProfile, WindowPosition};
+use crate::paths::{
+    external_app_profiles_path, external_apps_path, library_root, local_media_root, now_iso,
+    this_device_name,
+};
 
 /// Live-session hand-off state, scoped to Worship Studio's own process lifetime (never
 /// persisted).
@@ -16,20 +19,28 @@ pub struct EngagedExternalApp {
     /// display, if any — `restore_self` needs it to know which specific window to
     /// un-topmost/minimize when the operator advances past it.
     current: Mutex<Option<isize>>,
-    /// Every hwnd successfully launched/focused this session, keyed by profile id + file, kept
-    /// even after being minimized by `restore_self` — so navigating back to an item whose app is
-    /// already running (just minimized) reuses that same window instead of spawning a second
-    /// instance. Without this, re-engaging the same "launch automatically" item a second time
-    /// would call `Command::spawn` again; many apps are single-instance and just hand off to the
-    /// existing window and exit, so the freshly spawned process never gets a window of its own —
-    /// `wait_for_window` times out and surfaces a false "no window appeared" error even though
-    /// the app's own instance-handoff logic actually did bring its window back correctly.
+    /// Every hwnd successfully launched/focused this session, keyed by profile id + resolved
+    /// file (see `cache_key`), kept even after being minimized by `restore_self` — so navigating
+    /// back to an item whose app is already running (just minimized) reuses that same window
+    /// instead of spawning a second instance. Without this, re-engaging the same "launch
+    /// automatically" item a second time would call `Command::spawn` again; many apps are
+    /// single-instance and just hand off to the existing window and exit, so the freshly spawned
+    /// process never gets a window of its own — `wait_for_window` times out and surfaces a false
+    /// "no window appeared" error even though the app's own instance-handoff logic actually did
+    /// bring its window back correctly.
     known: Mutex<HashMap<String, isize>>,
 }
 
 #[tauri::command]
 pub fn list_external_app_profiles(app: AppHandle) -> Result<Vec<ExternalAppProfile>, String> {
-    external_apps::list(&external_apps_path(&app)).map_err(|error| error.to_string())
+    external_apps::migrate_if_needed(
+        &external_apps_path(&app),
+        &external_app_profiles_path(&app),
+        &this_device_name(&app),
+        &now_iso(),
+    )
+    .map_err(|error| error.to_string())?;
+    external_apps::list(&external_app_profiles_path(&app)).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -38,7 +49,7 @@ pub fn save_external_app_profile(
     profile: ExternalAppProfile,
 ) -> Result<(), String> {
     external_apps::save(
-        &external_apps_path(&app),
+        &external_app_profiles_path(&app),
         profile,
         &this_device_name(&app),
         &now_iso(),
@@ -49,12 +60,13 @@ pub fn save_external_app_profile(
 
 #[tauri::command]
 pub fn delete_external_app_profile(app: AppHandle, id: String) -> Result<(), String> {
-    external_apps::delete(&external_apps_path(&app), &id).map_err(|e| e.to_string())
+    external_apps::delete(&external_app_profiles_path(&app), &id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn import_default_external_app_profiles(app: AppHandle) -> Result<u32, String> {
     external_apps::import_defaults(
+        &external_app_profiles_path(&app),
         &external_apps_path(&app),
         &this_device_name(&app),
         &now_iso(),
@@ -62,23 +74,82 @@ pub fn import_default_external_app_profiles(app: AppHandle) -> Result<u32, Strin
     .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn get_external_app_implementation(
+    app: AppHandle,
+    profile_id: String,
+) -> Result<Option<ExternalAppImplementation>, String> {
+    external_apps::get_implementation(&external_apps_path(&app), &profile_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_external_app_implementation(
+    app: AppHandle,
+    profile_id: String,
+    executable_path: String,
+) -> Result<(), String> {
+    external_apps::save_implementation(&external_apps_path(&app), &profile_id, &executable_path)
+        .map_err(|e| e.to_string())
+}
+
 fn find_profile(app: &AppHandle, profile_id: &str) -> Result<ExternalAppProfile, String> {
-    external_apps::list(&external_apps_path(app))
+    external_apps::list(&external_app_profiles_path(app))
         .map_err(|error| error.to_string())?
         .into_iter()
         .find(|p| p.id == profile_id)
         .ok_or_else(|| "That external app profile no longer exists.".to_string())
 }
 
+fn find_implementation(app: &AppHandle, profile_id: &str) -> Result<String, String> {
+    external_apps::get_implementation(&external_apps_path(app), profile_id)
+        .map_err(|error| error.to_string())?
+        .map(|implementation| implementation.executable_path)
+        .ok_or_else(|| {
+            "This app isn't set up on this computer yet — add its executable path in Settings > External Apps.".to_string()
+        })
+}
+
+/// Exactly one of `file`/`media_id` identifies what to hand off: a raw path already on this
+/// computer, or a stored Media Library item — resolved here to a real absolute path the same way
+/// `commands::media::get_media_file_path` already does (that command's own doc comment covers
+/// why this has to be a genuine OS path, not a preview/blob URL: it becomes a process argument).
+fn resolve_file(
+    app: &AppHandle,
+    file: Option<String>,
+    media_id: Option<String>,
+) -> Result<Option<String>, String> {
+    let Some(media_id) = media_id else {
+        return Ok(file);
+    };
+    let root = library_root(app);
+    let item = media::get(&root, &media_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "That stored file no longer exists.".to_string())?;
+    let path = media::file_path(&root, &local_media_root(app), &item);
+    if !path.exists() {
+        return Err(format!("File not found: {}", path.display()));
+    }
+    Ok(Some(path.to_string_lossy().to_string()))
+}
+
+/// Distinguishes "this item hands off a stored Media Library file" from "this item hands off a
+/// raw path" in the process cache — using the id rather than the resolved path means the cache
+/// stays correct even if the stored file is later moved between synced/local storage (which
+/// changes its resolved path but not its id).
+fn cache_key(profile_id: &str, file: Option<&str>, media_id: Option<&str>) -> String {
+    match (file, media_id) {
+        (_, Some(media_id)) => format!("{profile_id}|media:{media_id}"),
+        (Some(file), None) => format!("{profile_id}|file:{file}"),
+        (None, None) => format!("{profile_id}|none"),
+    }
+}
+
 /// Robustness-first, per feature-spec.md's principle for this feature: the executable (and,
 /// if given, the chosen file) are checked to actually exist *before* attempting to launch —
 /// caught during prep, not discovered mid-service.
-fn verify_paths(profile: &ExternalAppProfile, file: Option<&str>) -> Result<String, String> {
-    let executable = profile
-        .executable_path
-        .clone()
-        .ok_or_else(|| "This profile has no executable configured.".to_string())?;
-    if !std::path::Path::new(&executable).exists() {
+fn verify_paths(executable: &str, file: Option<&str>) -> Result<(), String> {
+    if !std::path::Path::new(executable).exists() {
         return Err(format!("Executable not found: {executable}"));
     }
     if let Some(file) = file {
@@ -86,15 +157,17 @@ fn verify_paths(profile: &ExternalAppProfile, file: Option<&str>) -> Result<Stri
             return Err(format!("File not found: {file}"));
         }
     }
-    Ok(executable)
+    Ok(())
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn launch_external_app(
     app: AppHandle,
     engaged: tauri::State<EngagedExternalApp>,
     profile_id: String,
     file: Option<String>,
+    media_id: Option<String>,
     // The configured Audience display's current full bounds (see the Tauri adapter's
     // computeAudienceMonitorPhysicalBounds) — an external app always fills that display, full
     // screen, with no per-profile position to configure. The frontend itself refuses to call
@@ -111,7 +184,8 @@ pub fn launch_external_app(
     // common case, not something worth a log line each time.
     let result = (|| -> Result<(), String> {
         let profile = find_profile(&app, &profile_id)?;
-        let cache_key = format!("{profile_id}|{}", file.as_deref().unwrap_or(""));
+        let file = resolve_file(&app, file, media_id.clone())?;
+        let cache_key = cache_key(&profile_id, file.as_deref(), media_id.as_deref());
 
         let cached_hwnd = engaged.known.lock().unwrap().get(&cache_key).copied();
         if let Some(hwnd) = cached_hwnd {
@@ -125,19 +199,18 @@ pub fn launch_external_app(
             engaged.known.lock().unwrap().remove(&cache_key);
         }
 
+        let executable = find_implementation(&app, &profile_id)?;
         let hwnd = if profile.launch_mode == "already-running" {
-            let executable_name = profile
-                .executable_path
-                .as_deref()
-                .and_then(|p| std::path::Path::new(p).file_name())
+            let executable_name = std::path::Path::new(&executable)
+                .file_name()
                 .and_then(|n| n.to_str())
-                .ok_or_else(|| "This profile has no process name to look for.".to_string())?;
+                .ok_or_else(|| "This app's executable path has no file name.".to_string())?;
             let pid = win32::find_running_process_id(executable_name).ok_or_else(|| {
                 format!("{executable_name} doesn't appear to be open. Open it, then try again.")
             })?;
             win32::focus_process(pid, Some(&audience_bounds))?
         } else {
-            let executable = verify_paths(&profile, file.as_deref())?;
+            verify_paths(&executable, file.as_deref())?;
             let args = external_apps::build_args(&profile.parameter_format, file.as_deref());
             win32::launch_and_focus(&executable, &args, Some(&audience_bounds))?
         };
@@ -163,9 +236,11 @@ pub fn prelaunch_external_app(
     engaged: tauri::State<EngagedExternalApp>,
     profile_id: String,
     file: Option<String>,
+    media_id: Option<String>,
 ) -> Result<(), String> {
     let profile = find_profile(&app, &profile_id)?;
-    let cache_key = format!("{profile_id}|{}", file.as_deref().unwrap_or(""));
+    let file = resolve_file(&app, file, media_id.clone())?;
+    let cache_key = cache_key(&profile_id, file.as_deref(), media_id.as_deref());
 
     let cached_hwnd = engaged.known.lock().unwrap().get(&cache_key).copied();
     if let Some(hwnd) = cached_hwnd {
@@ -175,20 +250,19 @@ pub fn prelaunch_external_app(
         engaged.known.lock().unwrap().remove(&cache_key);
     }
 
+    let executable = find_implementation(&app, &profile_id)?;
     let hwnd = if profile.launch_mode == "already-running" {
-        let executable_name = profile
-            .executable_path
-            .as_deref()
-            .and_then(|p| std::path::Path::new(p).file_name())
+        let executable_name = std::path::Path::new(&executable)
+            .file_name()
             .and_then(|n| n.to_str())
-            .ok_or_else(|| "This profile has no process name to look for.".to_string())?;
+            .ok_or_else(|| "This app's executable path has no file name.".to_string())?;
         let pid = win32::find_running_process_id(executable_name).ok_or_else(|| {
             format!("{executable_name} doesn't appear to be open. Open it, then try again.")
         })?;
         win32::peek_window_for_pid(pid)
             .ok_or_else(|| "That app doesn't appear to have a visible window.".to_string())?
     } else {
-        let executable = verify_paths(&profile, file.as_deref())?;
+        verify_paths(&executable, file.as_deref())?;
         let args = external_apps::build_args(&profile.parameter_format, file.as_deref());
         win32::launch_in_background(&executable, &args)?
     };
@@ -204,15 +278,21 @@ pub fn verify_external_app_item(
     app: AppHandle,
     profile_id: String,
     file: Option<String>,
+    media_id: Option<String>,
 ) -> Result<(), String> {
     let profile = find_profile(&app, &profile_id)?;
+    let file = resolve_file(&app, file, media_id)?;
+    let executable = find_implementation(&app, &profile_id)?;
     if profile.launch_mode == "already-running" {
-        if profile.executable_path.as_deref().unwrap_or("").is_empty() {
-            return Err("This profile has no process name configured.".to_string());
+        if std::path::Path::new(&executable)
+            .file_name()
+            .is_none()
+        {
+            return Err("This app's executable path has no file name.".to_string());
         }
         return Ok(());
     }
-    verify_paths(&profile, file.as_deref())?;
+    verify_paths(&executable, file.as_deref())?;
     Ok(())
 }
 

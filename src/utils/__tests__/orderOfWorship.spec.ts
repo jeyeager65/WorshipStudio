@@ -191,7 +191,7 @@ describe('buildOrderOfWorship', () => {
     expect(doc.dateLine).not.toContain('Sunday Morning Worship')
   })
 
-  it('excludes external-app items entirely rather than printing a "[External App]" placeholder', () => {
+  it('excludes an external-app item with no bulletinLabel rather than printing a "[External App]" placeholder', () => {
     const service = baseService({
       items: [
         { id: 'item-1', type: 'external-app', profileId: 'profile-1' },
@@ -201,6 +201,21 @@ describe('buildOrderOfWorship', () => {
     const doc = buildOrderOfWorship(service, songs, slides, new Map())
     expect(doc.lines).toHaveLength(1)
     expect(doc.lines[0]?.text).toContain('Come Behold the Wondrous Mystery')
+  })
+
+  it('includes an external-app item once it has a bulletinLabel, with the label as the line and no placeholder text', () => {
+    const service = baseService({
+      items: [
+        {
+          id: 'item-1',
+          type: 'external-app',
+          profileId: 'profile-1',
+          bulletinLabel: 'PowerPoint: Missions Update',
+        },
+      ],
+    })
+    const doc = buildOrderOfWorship(service, songs, slides, new Map())
+    expect(doc.lines).toMatchObject([{ role: 'PowerPoint: Missions Update', text: '' }])
   })
 
   it('excludes a media/video item with no bulletinLabel rather than printing a "[Media]"/"[Video]" placeholder', () => {

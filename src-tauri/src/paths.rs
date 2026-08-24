@@ -219,10 +219,19 @@ pub fn now_iso() -> String {
     chrono::Utc::now().to_rfc3339()
 }
 
-/// External App Profiles (see domain::external_apps) — per-machine, never synced, since
-/// executable paths are local to that computer.
+/// External App *implementations* (see domain::external_apps) — per-machine, never synced: just
+/// `{profileId, executablePath}` pairs, since an executable path is local to that computer. The
+/// shared profile itself (name, launch mode, key commands, ...) lives in the synced library —
+/// see `external_app_profiles_path` below.
 pub fn external_apps_path(app: &AppHandle) -> PathBuf {
     local_root(app).join("external-apps.json")
+}
+
+/// Shared/synced External App profiles (see domain::external_apps) — a peer of
+/// song-collections.json/service-types.json: one small file holding the whole list, not
+/// one-file-per-item, since a church realistically has a handful of these at most.
+pub fn external_app_profiles_path(app: &AppHandle) -> PathBuf {
+    library_root(app).join("external-app-profiles.json")
 }
 
 /// Paired Remote Control devices (see domain::remote) — per-machine, never synced, since a

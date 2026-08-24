@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
@@ -33,6 +33,19 @@ const workingProfile = ref<ExternalAppProfile>()
 const saveError = ref('')
 const documentHistory = useDocumentHistory(workingProfile, 'external app profile')
 
+// Per-machine, not part of the shared/synced profile above (see ExternalAppImplementation's own
+// doc comment) — undefined until getImplementation resolves, so the field starting blank on a
+// fresh-loading page doesn't get mistaken for "no implementation here yet" and trigger a save.
+// Only ever populated/editable where the port supports it (Tauri) — stays hidden otherwise (see
+// implementationSupported below), since there's nothing for a web/tablet session to browse for.
+const implementationExecutablePath = ref<string>()
+const implementationSaving = ref(false)
+const implementationError = ref('')
+const implementationSupported = computed(
+  () => !!getAdapter().externalApps.getImplementation && !!getAdapter().externalApps.saveImplementation,
+)
+let suppressImplementationWatch = false
+
 const heading = computed(() => workingProfile.value?.name.trim() || 'New External App Profile')
 
 const launchModeOptions: { title: string; value: ExternalAppProfile['launchMode']; hint: string }[] = [
@@ -48,14 +61,21 @@ const launchModeOptions: { title: string; value: ExternalAppProfile['launchMode'
   },
 ]
 
+const kindOptions: { title: string; value: ExternalAppProfile['kind'] }[] = [
+  { title: 'PowerPoint', value: 'powerpoint' },
+  { title: 'Video Player', value: 'video' },
+  { title: 'Other', value: 'custom' },
+]
+
 function blankProfile(): ExternalAppProfile {
   return {
     id: crypto.randomUUID(),
     name: '',
+    kind: 'custom',
     launchMode: 'launch-automatically',
-    executablePath: '',
     parameterFormat: '',
     remoteControlsEnabled: false,
+    allowedExtensions: [],
     // A convenience default, not special-cased anywhere else — fully editable/deletable/
     // rebindable like any command the operator adds themselves.
     keyCommands: [
@@ -67,7 +87,34 @@ function blankProfile(): ExternalAppProfile {
   }
 }
 
+// Comma-separated in the UI, a plain string array on the model — mirrors Tags fields elsewhere
+// (v-combobox) but this is deliberately a plain text field instead: extensions are typed, not
+// picked from existing values, and there's no library-wide list of "known extensions" to offer.
+const allowedExtensionsInput = computed({
+  get: () => (workingProfile.value?.allowedExtensions ?? []).join(', '),
+  set: (value: string) => {
+    if (!workingProfile.value) return
+    workingProfile.value.allowedExtensions = value
+      .split(',')
+      .map((extension) => extension.trim().replace(/^\./, '').toLowerCase())
+      .filter(Boolean)
+  },
+})
+
 onMounted(initialize)
+
+async function loadImplementation(profileId: string) {
+  implementationExecutablePath.value = undefined
+  const getImplementation = getAdapter().externalApps.getImplementation
+  if (!getImplementation) return
+  const implementation = await getImplementation(profileId)
+  // Consumed by the watcher below on its very next fire — this assignment is a *load*, not a
+  // user edit, so it must not immediately turn around and "save" the value it just read back
+  // (which, for a profile with no implementation on this machine yet, would wrongly create an
+  // empty one just from opening the page).
+  suppressImplementationWatch = true
+  implementationExecutablePath.value = implementation?.executablePath ?? ''
+}
 
 async function initialize() {
   documentHistory.stop()
@@ -76,6 +123,7 @@ async function initialize() {
   missingProfile.value = false
   if (route.name === 'external-app-profile-new') {
     workingProfile.value = blankProfile()
+    await loadImplementation(workingProfile.value.id)
     loading.value = false
     isDirty.value = true
     documentHistory.start((dirty) => (isDirty.value = dirty), true)
@@ -84,13 +132,14 @@ async function initialize() {
   }
   const id = String(route.params.profileId ?? '')
   try {
-    const profiles = (await getAdapter().externalApps?.listProfiles()) ?? []
+    const profiles = await getAdapter().externalApps.listProfiles()
     const found = profiles.find((profile) => profile.id === id)
     if (!found) {
       missingProfile.value = true
       return
     }
     workingProfile.value = found
+    await loadImplementation(found.id)
     isDirty.value = false
     documentHistory.start((dirty) => (isDirty.value = dirty), false)
     saveHandler.value = save
@@ -108,15 +157,41 @@ onUnmounted(() => {
 })
 
 async function pickExecutable() {
-  const path = await getAdapter().externalApps?.pickExecutable()
+  const path = await getAdapter().externalApps.pickExecutable?.()
   if (!path || !workingProfile.value) return
   // "Already Running" only ever matches by process name (see win32::find_running_process_id) —
   // the full path a picked file carries would just be misleading here, since it's never checked
   // against this computer's own install location the way "Launch Automatically" mode's Executable
   // field is.
-  workingProfile.value.executablePath =
+  implementationExecutablePath.value =
     workingProfile.value.launchMode === 'already-running' ? (path.split(/[/\\]/).pop() ?? path) : path
 }
+
+// Per-machine, so it saves immediately on its own rather than being queued behind the app-bar's
+// Save button alongside the shared profile above (that button — and undo/redo — only ever cover
+// `workingProfile`; this field isn't part of that document at all any more, see
+// implementationExecutablePath's own doc comment). The suppressImplementationWatch flag skips
+// the one change loadImplementation itself causes, so opening the page never immediately
+// re-saves the value it just read back (which, for a not-yet-implemented profile, would wrongly
+// create an empty record just from opening the editor).
+watch(implementationExecutablePath, async (path) => {
+  if (suppressImplementationWatch) {
+    suppressImplementationWatch = false
+    return
+  }
+  if (path === undefined || !workingProfile.value) return
+  const saveImplementation = getAdapter().externalApps.saveImplementation
+  if (!saveImplementation) return
+  implementationSaving.value = true
+  implementationError.value = ''
+  try {
+    await saveImplementation(workingProfile.value.id, path ?? '')
+  } catch (e) {
+    implementationError.value = errorMessage(e)
+  } finally {
+    implementationSaving.value = false
+  }
+})
 
 function addCommand() {
   workingProfile.value?.keyCommands.push({ id: crypto.randomUUID(), label: '', keyCombo: '' })
@@ -148,7 +223,7 @@ async function save() {
   saving.value = true
   saveError.value = ''
   try {
-    await getAdapter().externalApps?.saveProfile(workingProfile.value)
+    await getAdapter().externalApps.saveProfile(workingProfile.value)
     isDirty.value = false
     backToList()
   } catch (e) {
@@ -219,6 +294,17 @@ async function save() {
               hide-details
             />
             <v-select
+              v-model="workingProfile.kind"
+              :items="kindOptions"
+              item-title="title"
+              item-value="value"
+              label="Kind"
+              hint="Just drives the icon shown for this app — has no effect on how it launches."
+              persistent-hint
+              variant="outlined"
+              density="compact"
+            />
+            <v-select
               v-model="workingProfile.launchMode"
               :items="launchModeOptions"
               item-title="title"
@@ -232,25 +318,16 @@ async function save() {
                 <v-list-item v-bind="itemProps" :subtitle="item.hint" />
               </template>
             </v-select>
+            <v-text-field
+              v-model="allowedExtensionsInput"
+              label="Allowed File Extensions (optional)"
+              placeholder="e.g. pptx, ppt"
+              hint="Limits which files can be picked for this app. Leave blank to allow any file."
+              persistent-hint
+              variant="outlined"
+              density="compact"
+            />
           </div>
-
-          <v-text-field
-            v-model="workingProfile.executablePath"
-            :label="workingProfile.launchMode === 'already-running' ? 'Process Name' : 'Executable'"
-            variant="outlined"
-            density="compact"
-            :hint="
-              workingProfile.launchMode === 'already-running'
-                ? 'e.g. OBS64.exe — just the process name Worship Studio looks for. It does not need to exist on this computer or match an install path; type it directly, or Browse to fill it in from an installed copy.'
-                : 'The program Worship Studio launches for this item.'
-            "
-            persistent-hint
-            class="mb-4"
-          >
-            <template #append>
-              <v-btn variant="outlined" @click="pickExecutable">Browse…</v-btn>
-            </template>
-          </v-text-field>
 
           <template v-if="workingProfile.launchMode === 'launch-automatically'">
             <v-text-field
@@ -264,9 +341,45 @@ async function save() {
             />
             <div class="param-preview">
               Will run:
-              {{ previewExternalAppCommand(workingProfile.executablePath, workingProfile.parameterFormat) }}
+              {{ previewExternalAppCommand(implementationExecutablePath, workingProfile.parameterFormat) }}
             </div>
           </template>
+        </section>
+
+        <section v-if="implementationSupported" class="editor-section">
+          <div class="section-heading">
+            <div class="section-icon">
+              <v-icon icon="mdi-desktop-classic" />
+            </div>
+            <div>
+              <h2>On This Computer</h2>
+              <p>
+                Where this app actually lives here — every other computer that presents needs its
+                own copy of this filled in too, since an install path is never the same on two
+                machines.
+              </p>
+            </div>
+          </div>
+
+          <v-text-field
+            v-model="implementationExecutablePath"
+            :label="workingProfile.launchMode === 'already-running' ? 'Process Name' : 'Executable'"
+            variant="outlined"
+            density="compact"
+            :hint="
+              workingProfile.launchMode === 'already-running'
+                ? 'e.g. OBS64.exe — just the process name Worship Studio looks for. It does not need to exist on this computer or match an install path; type it directly, or Browse to fill it in from an installed copy.'
+                : 'The program Worship Studio launches for this item, on this computer.'
+            "
+            persistent-hint
+            :loading="implementationSaving"
+            hide-details="auto"
+            :error-messages="implementationError ? [implementationError] : []"
+          >
+            <template #append>
+              <v-btn variant="outlined" @click="pickExecutable">Browse…</v-btn>
+            </template>
+          </v-text-field>
         </section>
 
         <section class="editor-section">

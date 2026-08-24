@@ -58,9 +58,16 @@ function titleFromFilename(filename: string): string {
   return filename.replace(/\.[^./]+$/, '')
 }
 
-function guessKind(filename: string): 'image' | 'video' {
+// 'document' is the fallback for anything that isn't a recognized image/video extension — e.g. a
+// PowerPoint deck imported for use with an External App Hand-off item. Mirrors
+// src-tauri/src/domain/media.rs's guess_kind exactly (including the same image extension list,
+// since before "document" existed here too, this fell back to "image" for literally anything
+// unrecognized).
+function guessKind(filename: string): 'image' | 'video' | 'document' {
   const ext = filename.split('.').pop()?.toLowerCase() ?? ''
-  return ['mp4', 'mov', 'webm', 'm4v'].includes(ext) ? 'video' : 'image'
+  if (['mp4', 'mov', 'webm', 'm4v'].includes(ext)) return 'video'
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif'].includes(ext)) return 'image'
+  return 'document'
 }
 
 async function hashBytes(bytes: ArrayBuffer): Promise<string> {
@@ -150,8 +157,8 @@ export function createWebMediaPort(
       }
       await items.save(item)
     },
-    pickFilesToImport: async () => {
-      const files = await pickFilesInBrowser()
+    pickFilesToImport: async (extensions) => {
+      const files = await pickFilesInBrowser(extensions)
       const existing = await listNormalized()
       const result: StagedMediaFile[] = []
       for (const file of files) {

@@ -9,6 +9,7 @@ import { getAdapter } from '@/adapters'
 import { useSongsStore } from '@/stores/songs'
 import { useSlidesStore } from '@/stores/slides'
 import { useExternalAppsStore } from '@/stores/externalApps'
+import { useMediaStore } from '@/stores/media'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import type { Service, ServiceItem, SermonPassage } from '@/models/service'
 import type { Song, SongBlock } from '@/models/song'
@@ -51,11 +52,24 @@ const scriptureDraft = defineModel<ScriptureReferenceValue>('scriptureDraft', { 
 const songsStore = useSongsStore()
 const slidesStore = useSlidesStore()
 const externalAppsStore = useExternalAppsStore()
+const mediaStore = useMediaStore()
 const confirmDialog = useConfirmDialogStore()
 
 const addTab = ref<AddItemType>(props.initialTab)
 watch(open, (isOpen) => {
-  if (isOpen) addTab.value = props.initialTab
+  if (!isOpen) return
+  addTab.value = props.initialTab
+  // Editing an existing external-app item (beginReplaceItem's "Change App / File") — pre-fill
+  // from whatever's already there instead of starting blank, same as how a song swap doesn't
+  // make the operator re-search from scratch. Read back out of `service` at replaceContext's own
+  // index rather than threading the item itself through replaceContext, since every other
+  // replaceable type (placeholder/song) already only carries the shared roleId/label/note.
+  if (props.initialTab !== 'external-app' || !props.replaceContext) return
+  const existing = props.service.items[props.replaceContext.index]
+  if (existing?.type !== 'external-app') return
+  externalAppProfileId.value = existing.profileId
+  externalAppFile.value = existing.file
+  externalAppMediaId.value = existing.mediaId
 })
 
 const addQuery = ref('')
@@ -273,7 +287,11 @@ async function addVideoToService(mediaId: string) {
 // "robustness priority over convenience" — runs before the item is actually added, so a
 // broken path is caught during prep rather than discovered mid-service.
 const externalAppProfileId = ref<string>()
+// Mutually exclusive: a raw path already on this computer (native picker, Tauri-only) or a
+// stored Media Library item (authorable from any device — see externalAppFilePickerOpen below).
 const externalAppFile = ref<string>()
+const externalAppMediaId = ref<string>()
+const externalAppFilePickerOpen = ref(false)
 const addingExternalApp = ref(false)
 const externalAppAddError = ref<string>()
 const selectedExternalAppProfile = computed(() =>
@@ -282,22 +300,46 @@ const selectedExternalAppProfile = computed(() =>
 const externalAppNeedsFile = computed(
   () => selectedExternalAppProfile.value?.parameterFormat?.includes('{file}') ?? false,
 )
+// Whichever of the two the operator picked — a raw path shows as-is, a stored file shows its
+// library title (falling back to the id itself if the store hasn't loaded it for some reason).
+const externalAppFileDisplay = computed(() => {
+  if (externalAppFile.value) return externalAppFile.value
+  if (externalAppMediaId.value) {
+    const item = mediaStore.items.find((candidate) => candidate.id === externalAppMediaId.value)
+    return item?.title ?? externalAppMediaId.value
+  }
+  return undefined
+})
 
 async function pickExternalAppFile() {
-  const path = await getAdapter().externalApps?.pickFile()
-  if (path) externalAppFile.value = path
+  const path = await getAdapter().externalApps.pickFile?.(selectedExternalAppProfile.value?.allowedExtensions)
+  if (path) {
+    externalAppFile.value = path
+    externalAppMediaId.value = undefined
+  }
+}
+function chooseExternalAppFileFromLibrary() {
+  externalAppFilePickerOpen.value = true
+}
+function onExternalAppMediaSelected(mediaId: string) {
+  externalAppMediaId.value = mediaId
+  externalAppFile.value = undefined
 }
 async function addExternalAppToService() {
   if (addingExternalApp.value || !externalAppProfileId.value) return
   addingExternalApp.value = true
   externalAppAddError.value = undefined
   try {
-    await getAdapter().externalApps?.verifyItem(externalAppProfileId.value, externalAppFile.value)
+    await getAdapter().externalApps.verifyItem?.(externalAppProfileId.value, {
+      file: externalAppFile.value,
+      mediaId: externalAppMediaId.value,
+    })
     const item: ServiceItem = {
       id: `item-${crypto.randomUUID()}`,
       type: 'external-app',
       profileId: externalAppProfileId.value,
       file: externalAppFile.value,
+      mediaId: externalAppMediaId.value,
     }
     insertItem(item)
     closeAddDialog()
@@ -436,6 +478,8 @@ function closeAddDialog() {
   newTextSlideBlocks.value = []
   externalAppProfileId.value = undefined
   externalAppFile.value = undefined
+  externalAppMediaId.value = undefined
+  externalAppFilePickerOpen.value = false
   externalAppAddError.value = undefined
   sermonTitleDraft.value = ''
   sermonPassages.value = []
@@ -611,19 +655,29 @@ function closeAddDialog() {
               class="first-field mb-3"
             />
             <template v-if="selectedExternalAppProfile">
-              <v-text-field
-                v-if="externalAppNeedsFile"
-                :model-value="externalAppFile"
-                label="File"
-                variant="outlined"
-                density="compact"
-                readonly
-                class="mb-2"
-              >
-                <template #append>
-                  <v-btn variant="outlined" @click="pickExternalAppFile">Browse…</v-btn>
-                </template>
-              </v-text-field>
+              <template v-if="externalAppNeedsFile">
+                <v-text-field
+                  :model-value="externalAppFileDisplay"
+                  label="File"
+                  variant="outlined"
+                  density="compact"
+                  readonly
+                  class="mb-1"
+                />
+                <div class="d-flex ga-2 mb-2">
+                  <v-btn
+                    v-if="getAdapter().externalApps.pickFile"
+                    size="small"
+                    variant="outlined"
+                    @click="pickExternalAppFile"
+                  >
+                    Browse This Computer…
+                  </v-btn>
+                  <v-btn size="small" variant="outlined" @click="chooseExternalAppFileFromLibrary">
+                    Choose Stored File…
+                  </v-btn>
+                </div>
+              </template>
               <v-alert
                 v-if="externalAppAddError"
                 type="error"
@@ -638,7 +692,7 @@ function closeAddDialog() {
                 color="primary"
                 block
                 :loading="addingExternalApp"
-                :disabled="externalAppNeedsFile && !externalAppFile"
+                :disabled="externalAppNeedsFile && !externalAppFile && !externalAppMediaId"
                 @click="addExternalAppToService"
               >
                 Add to Service
@@ -828,6 +882,15 @@ function closeAddDialog() {
     v-model="videoPickerOpen"
     purpose="service-video"
     @select="addVideoToService"
+  />
+  <!-- Nested on top of the external-app sub-form (not a replacement for it, unlike the media/
+       video tabs above) — picking a stored file just returns to that form with the file chosen,
+       it doesn't add the item or close the outer dialog itself. -->
+  <MediaPickerDialog
+    v-model="externalAppFilePickerOpen"
+    purpose="external-app-file"
+    :allowed-extensions="selectedExternalAppProfile?.allowedExtensions"
+    @select="onExternalAppMediaSelected"
   />
 </template>
 

@@ -8,6 +8,7 @@ import type {
   StagedMediaFile,
   MediaImportCommit,
   DiagnosticSummary,
+  ExternalAppProfile,
 } from '@/adapters/types'
 import type { Song } from '@/models/song'
 import type { Service, ServiceTemplate } from '@/models/service'
@@ -43,6 +44,7 @@ import { parseOpenSongXml } from './opensongParser'
 import { pickFilesInBrowser } from './pickFiles'
 import { availableTranslations, loadKjv } from './scriptureFixtures'
 import { generateQrCodeDataUrl } from '@/utils/qrCode'
+import { buildDefaultExternalAppProfiles } from '@/utils/externalAppDefaults'
 import { createLiveAudienceWindowPort } from '@/utils/liveAudienceWindow'
 import {
   formatReference,
@@ -103,6 +105,7 @@ export function createMockAdapter(): StudioAdapter {
   )
   const people = new MockCollection('people', seedPeople)
   const announcements = new MockCollection('announcements', seedAnnouncements)
+  const externalAppProfiles = new MockCollection<ExternalAppProfile>('external-app-profiles', [])
 
   const librarySettingsStore = new MockSingleton('library-settings', seedLibrarySettings)
   const credentialsStore = new MockSingleton('credentials', seedLibraryCredentials)
@@ -125,8 +128,14 @@ export function createMockAdapter(): StudioAdapter {
   // so this in-memory map stands in for one between staging and commitImport.
   const stagedMediaFiles = new Map<string, File>()
 
-  function guessMediaKind(file: File): 'image' | 'video' {
-    return file.type.startsWith('video') ? 'video' : 'image'
+  // 'document' is the fallback for anything that isn't image/video — e.g. a PowerPoint deck
+  // imported for use with an External App Hand-off item (before "document" existed, this fell
+  // back to "image" for literally anything that wasn't a video, same bug the web/Tauri adapters
+  // had until "document" was added there too).
+  function guessMediaKind(file: File): 'image' | 'video' | 'document' {
+    if (file.type.startsWith('video')) return 'video'
+    if (file.type.startsWith('image')) return 'image'
+    return 'document'
   }
   // Name+size stands in for a real content hash here — good enough to catch an obviously
   // re-picked file in a demo, not meant to be cryptographically meaningful.
@@ -251,8 +260,8 @@ export function createMockAdapter(): StudioAdapter {
     media: {
       list: () => media.list() as Promise<MediaItem[]>,
       save: (item) => media.save({ ...item, ...nowStamp() }),
-      pickFilesToImport: async (): Promise<StagedMediaFile[]> => {
-        const files = await pickFilesInBrowser()
+      pickFilesToImport: async (extensions): Promise<StagedMediaFile[]> => {
+        const files = await pickFilesInBrowser(extensions)
         const existing = (await media.list()) as MediaItem[]
         const staged: StagedMediaFile[] = []
         for (const file of files) {
@@ -503,7 +512,23 @@ export function createMockAdapter(): StudioAdapter {
       },
       identify: async () => {},
     },
-    // externalApps intentionally omitted in the mock adapter — Windows-only, feature-detected off.
+    // Profile CRUD (shared/synced data) works the same way here as on the web/tablet build —
+    // only the per-machine executable path and actual launching are genuinely Tauri/Win32-only
+    // (see ExternalAppPort's own doc comment), so those methods stay absent.
+    externalApps: {
+      listProfiles: () => externalAppProfiles.list(),
+      saveProfile: async (profile) => {
+        await externalAppProfiles.save({ ...profile, ...nowStamp() })
+      },
+      deleteProfile: (id) => externalAppProfiles.delete(id),
+      importDefaultProfiles: async () => {
+        const existing = await externalAppProfiles.list()
+        const { updatedAt, updatedByDevice } = nowStamp()
+        const additions = buildDefaultExternalAppProfiles(existing, updatedAt, updatedByDevice)
+        for (const profile of additions) await externalAppProfiles.save(profile)
+        return additions.length
+      },
+    },
     remote: {
       listDevices: async () => structuredClone(mockRemoteDevices),
       provisionDevice: async (personId, name, accessLevel) => {

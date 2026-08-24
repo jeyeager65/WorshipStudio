@@ -30,7 +30,10 @@ export type ServiceItemContent =
   | { type: 'media'; mediaId: string; fit: 'cover' | 'contain' }
   | { type: 'video'; mediaId: string }
   | { type: 'audio'; mediaId: string }
-  | { type: 'external-app'; profileId: string; file?: string }
+  /** `file`/`mediaId` are mutually exclusive: a raw path already on this computer (Tauri-only,
+   *  picked via a native dialog), or a stored Media Library item (authorable from any device,
+   *  resolved to a real path only at launch time on whichever computer actually presents). */
+  | { type: 'external-app'; profileId: string; file?: string; mediaId?: string }
   /** "Worship Through the Word" — presentable passage(s) plus an outline, positioned wherever
    *  it actually falls in the service rather than pinned to a fixed header. This item is the
    *  sole source of truth for the service's sermon (title/passage/preacher, the last via the

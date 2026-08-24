@@ -124,14 +124,15 @@ pub fn save_data_location(app: AppHandle, local_root_path: String) -> Result<(),
     paths::save_data_location(&app, &DataLocation { local_root_path }).map_err(|e| e.to_string())
 }
 
-/// Deletes the `.backup` sibling `write_json_file` keeps beside each of the five normalized
+/// Deletes the `.backup` sibling `write_json_file` keeps beside each of the six normalized
 /// settings-list files (service-types.json, song-collections.json, role-groups.json, roles.json,
-/// service-templates.json). Ordinary deletes only ever shrink these lists — they never delete the
-/// file itself, even once empty — so `write_json_file`'s own backup-of-the-previous-version keeps
-/// holding real, church-specific content indefinitely otherwise. `library-settings.json.backup`
-/// and `credentials.json.backup` are deliberately excluded: unlike the five above, neither file is
-/// ever touched by Clear Existing Data (branding/tuning fields and church credentials both survive
-/// a content wipe), so neither backup should be swept away either.
+/// service-templates.json, external-app-profiles.json). Ordinary deletes only ever shrink these
+/// lists — they never delete the file itself, even once empty — so `write_json_file`'s own
+/// backup-of-the-previous-version keeps holding real, church-specific content indefinitely
+/// otherwise. `library-settings.json.backup` and `credentials.json.backup` are deliberately
+/// excluded: unlike the six above, neither file is ever touched by Clear Existing Data
+/// (branding/tuning fields and church credentials both survive a content wipe), so neither
+/// backup should be swept away either.
 fn clear_settings_list_backups_at(root: &Path) -> std::io::Result<()> {
     for backup_path in [
         crate::domain::song_collections::backup_path(root),
@@ -139,6 +140,7 @@ fn clear_settings_list_backups_at(root: &Path) -> std::io::Result<()> {
         crate::domain::role_groups::backup_path(root),
         crate::domain::roles::backup_path(root),
         crate::domain::service_templates::backup_path(root),
+        crate::domain::external_apps::backup_path(root),
     ] {
         delete_file_if_exists(&backup_path)?;
     }
@@ -164,6 +166,7 @@ mod tests {
             crate::domain::role_groups::backup_path(root),
             crate::domain::roles::backup_path(root),
             crate::domain::service_templates::backup_path(root),
+            crate::domain::external_apps::backup_path(root),
         ];
         for path in &backup_paths {
             std::fs::write(path, "[]").unwrap();

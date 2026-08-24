@@ -177,8 +177,15 @@ pub enum ServiceItemContent {
     },
     ExternalApp {
         profile_id: String,
+        /// Mutually exclusive with `media_id` below: a raw path already on this computer
+        /// (Tauri-only, picked via a native dialog).
         #[serde(skip_serializing_if = "Option::is_none")]
         file: Option<String>,
+        /// A stored Media Library item instead of a raw path — authorable from any device,
+        /// resolved to a real path only at launch time on whichever computer actually presents
+        /// (see commands::external_apps::resolve_file).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        media_id: Option<String>,
     },
     /// "Worship Through the Word" — presentable passage(s) plus an outline, positioned wherever
     /// it actually falls in the service rather than pinned to a fixed header. This item is the
@@ -432,19 +439,25 @@ pub struct WindowPosition {
     pub height: i32,
 }
 
-/// Per-machine, not synced (see MachineSettings — executable paths like `C:\Program Files\...`
-/// are local to that computer, meaningless elsewhere). Stored in its own file
-/// (external-apps.json) rather than as a MachineSettings field since it's a growing list of
-/// records, not a scalar.
+/// Shared/synced identity and behavior of an external app "profile" (feature-spec.md section
+/// 12) — stored in `library-root/external-app-profiles.json` (one small file holding the whole
+/// list, like song-collections.json/service-types.json), so a service item referencing one by
+/// `id` means the same thing on every computer: everything here is a fact about the *software*
+/// ("PowerPoint takes a `/S` switch and a file"), never about a specific machine. What genuinely
+/// differs machine-to-machine — where the executable actually lives on disk — lives separately
+/// in `ExternalAppImplementation` below, never here.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ExternalAppProfile {
     pub id: String,
     pub name: String,
+    /// "powerpoint" | "video" | "custom" — drives the icon shown for this profile everywhere
+    /// it's referenced, including on a device that can never launch it (web/tablet authoring a
+    /// service item). Defaults to "custom" for profiles saved before this field existed.
+    #[serde(default = "default_external_app_kind")]
+    pub kind: String,
     /// "already-running" | "launch-automatically"
     pub launch_mode: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub executable_path: Option<String>,
     /// Contains a literal `{file}` placeholder, substituted with the file chosen when this
     /// profile is added to a specific service — never baked into the profile itself.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -453,8 +466,30 @@ pub struct ExternalAppProfile {
     pub remote_controls_enabled: bool,
     #[serde(default)]
     pub key_commands: Vec<ExternalAppKeyCommand>,
+    /// Restricts which files can be handed to this app (e.g. `["pptx"]` for PowerPoint) — filters
+    /// both the native file-picker dialog and the "pick a stored file" media picker. Empty/absent
+    /// means no restriction, matching every profile's behavior before this field existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_extensions: Vec<String>,
     pub updated_at: String,
     pub updated_by_device: String,
+}
+
+fn default_external_app_kind() -> String {
+    "custom".to_string()
+}
+
+/// The one thing about a profile that's genuinely specific to *this* computer: where its
+/// executable actually lives on disk. Never synced (see MachineSettings — a path like
+/// `C:\Program Files\...` is local to that computer, meaningless elsewhere) — stored in its own
+/// file (external-apps.json) under the machine's Local root, keyed by `profile_id` rather than
+/// nested inside MachineSettings since it's a growing list of records, not a scalar. A profile
+/// with no implementation record on a given computer simply hasn't been set up there yet.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalAppImplementation {
+    pub profile_id: String,
+    pub executable_path: String,
 }
 
 /// One named, freely-rebindable Basic Remote Controls command (feature-spec.md section 12) —
@@ -619,8 +654,10 @@ pub struct MediaItem {
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// "image" | "video" — a plain string rather than an enum, same convention as
-    /// `service_type`/`location` elsewhere in this file for simple open-ended value sets.
+    /// "image" | "video" | "document" ("document" is the fallback for anything that isn't a
+    /// recognized image/video extension — e.g. a PowerPoint deck stored for External App
+    /// Hand-off) — a plain string rather than an enum, same convention as `service_type`/
+    /// `location` elsewhere in this file for simple open-ended value sets.
     pub kind: String,
     #[serde(default)]
     pub tags: Vec<String>,

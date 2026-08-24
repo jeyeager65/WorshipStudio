@@ -25,6 +25,10 @@ export interface ServiceReadinessContext {
   themes: Theme[]
   people: Map<string, Person>
   externalApps: Map<string, ExternalAppProfile>
+  /** This computer's per-machine executable path for each profile it's been set up for (see
+   *  ExternalAppPort's getImplementation/saveImplementation) — profiles have no executablePath
+   *  of their own any more, so `missing-executable` below reads it from here instead. */
+  externalAppImplementations: Map<string, string>
   resolvedScriptureKeys: Set<string>
   scriptureErrorKeys: Set<string>
   resolvedMediaIds: Set<string>
@@ -33,6 +37,13 @@ export interface ServiceReadinessContext {
   verifiedExternalAppItemIds: Set<string>
   externalAppErrors: Map<string, string>
   externalAppVerificationAvailable: boolean
+  /** False on a device that can never launch an external app at all (web/tablet — no `launch`
+   *  method on this adapter's port), as opposed to one that *can* launch but isn't configured
+   *  for this particular profile yet. Downgrades every external-app issue on this item from a
+   *  blocker to a single warning: presenting shouldn't be blocked by something this device was
+   *  never going to be able to do anyway, but the operator should still know to expect it to be
+   *  skipped. */
+  externalAppLaunchAvailable: boolean
   libraryConflictLabels: Map<string, string>
   audienceDisplayAvailable: boolean
   /** RoleDefinition id -> display name, so warning text can print a real role name instead of
@@ -378,7 +389,20 @@ export function evaluateServiceReadiness(
       }
     } else if (item.type === 'external-app') {
       const profile = context.externalApps.get(item.profileId)
-      if (!profile) {
+      if (!context.externalAppLaunchAvailable) {
+        // This device can never launch anything (web/tablet) — none of the checks below are
+        // fixable *here*, so they'd just be a blocker for a problem this screen can't solve.
+        // One informational warning instead: presenting still proceeds, this item just won't
+        // do anything when its slide comes up.
+        add(
+          'warning',
+          'external-app-unavailable-here',
+          `${profile?.name ?? 'This external app'} can't be launched from this device`,
+          'Presenting will skip it — launch it from the computer that actually presents.',
+          'service-item',
+          item.id,
+        )
+      } else if (!profile) {
         add(
           'blocker',
           'missing-external-app',
@@ -388,7 +412,8 @@ export function evaluateServiceReadiness(
           item.id,
         )
       } else {
-        if (profile.launchMode === 'launch-automatically' && !profile.executablePath?.trim())
+        const executablePath = context.externalAppImplementations.get(profile.id)
+        if (profile.launchMode === 'launch-automatically' && !executablePath?.trim())
           add(
             'blocker',
             'missing-executable',
@@ -397,7 +422,7 @@ export function evaluateServiceReadiness(
             'service-item',
             item.id,
           )
-        if (profile.parameterFormat?.includes('{file}') && !item.file?.trim())
+        if (profile.parameterFormat?.includes('{file}') && !item.file?.trim() && !item.mediaId?.trim())
           add(
             'blocker',
             'missing-external-file',

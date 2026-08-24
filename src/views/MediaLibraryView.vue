@@ -18,9 +18,22 @@ const confirmDialog = useConfirmDialogStore()
 const canvaAvailable = !!getAdapter().canva
 
 const query = ref('')
-const typeFilter = ref<'all' | 'image' | 'video'>('all')
+const typeFilter = ref<'all' | 'image' | 'video' | 'document'>('all')
 const activeTag = ref<string>()
 const importDialogOpen = ref(false)
+// undefined = the plain "Import Media" button's usual image/video filter; [] = "Import File"'s
+// deliberately unrestricted filter, for a document like a PowerPoint deck meant for External App
+// Hand-off (see ImportMediaDialog's own `extensions` prop doc comment) — one dialog instance,
+// just opened in a different mode depending on which button was clicked.
+const importExtensions = ref<string[]>()
+function openImportMedia() {
+  importExtensions.value = undefined
+  importDialogOpen.value = true
+}
+function openImportFile() {
+  importExtensions.value = []
+  importDialogOpen.value = true
+}
 const canvaImportOpen = ref(false)
 // Set only when opening the Canva dialog to refresh a specific already-imported item (from the
 // media-details popup below) — left undefined for the toolbar's own "Import from Canva", which
@@ -66,6 +79,9 @@ watch(
 const visibleItems = computed(() => store.items)
 const imageCount = computed(() => visibleItems.value.filter((item) => item.kind === 'image').length)
 const videoCount = computed(() => visibleItems.value.filter((item) => item.kind === 'video').length)
+const documentCount = computed(
+  () => visibleItems.value.filter((item) => item.kind === 'document').length,
+)
 
 const tagCounts = computed(() => {
   const counts = new Map<string, number>()
@@ -243,11 +259,7 @@ async function saveEdits() {
             clearable
             class="media-search"
           />
-          <v-btn
-            variant="flat"
-            color="primary"
-            prepend-icon="mdi-plus"
-            @click="importDialogOpen = true"
+          <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="openImportMedia"
             >Import Media</v-btn
           >
           <v-btn
@@ -256,6 +268,9 @@ async function saveEdits() {
             prepend-icon="mdi-palette-outline"
             @click="openCanvaImport"
             >Import from Canva</v-btn
+          >
+          <v-btn variant="tonal" prepend-icon="mdi-file-plus-outline" @click="openImportFile"
+            >Import File</v-btn
           >
         </div>
       </div>
@@ -300,6 +315,19 @@ async function saveEdits() {
               <span>Videos</span>
               <strong>{{ videoCount }}</strong>
             </button>
+            <button
+              v-if="documentCount > 0"
+              type="button"
+              class="media-filter media-filter--document"
+              :class="{ 'media-filter--active': typeFilter === 'document' }"
+              @click="typeFilter = typeFilter === 'document' ? 'all' : 'document'"
+            >
+              <span class="media-filter-icon"
+                ><v-icon icon="mdi-file-document-outline" size="17"
+              /></span>
+              <span>Files</span>
+              <strong>{{ documentCount }}</strong>
+            </button>
           </div>
 
           <div class="filter-section">
@@ -343,11 +371,7 @@ async function saveEdits() {
             title="No Media Yet"
             message="Import images and videos to build your presentation library."
           >
-            <v-btn
-              variant="flat"
-              color="primary"
-              prepend-icon="mdi-plus"
-              @click="importDialogOpen = true"
+            <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="openImportMedia"
               >Import Media</v-btn
             >
           </LibraryEmptyState>
@@ -387,16 +411,28 @@ async function saveEdits() {
                 />
                 <span v-else class="media-placeholder">
                   <v-icon
-                    :icon="item.kind === 'video' ? 'mdi-movie-open-outline' : 'mdi-image-outline'"
+                    :icon="
+                      item.kind === 'video'
+                        ? 'mdi-movie-open-outline'
+                        : item.kind === 'document'
+                          ? 'mdi-file-document-outline'
+                          : 'mdi-image-outline'
+                    "
                     size="34"
                   />
                 </span>
                 <span class="type-badge">
                   <v-icon
-                    :icon="item.kind === 'video' ? 'mdi-movie-open-outline' : 'mdi-image-outline'"
+                    :icon="
+                      item.kind === 'video'
+                        ? 'mdi-movie-open-outline'
+                        : item.kind === 'document'
+                          ? 'mdi-file-document-outline'
+                          : 'mdi-image-outline'
+                    "
                     size="14"
                   />
-                  {{ item.kind === 'video' ? 'Video' : 'Image' }}
+                  {{ item.kind === 'video' ? 'Video' : item.kind === 'document' ? 'File' : 'Image' }}
                 </span>
                 <span v-if="item.duplicateOfId" class="duplicate-badge"
                   ><v-icon icon="mdi-content-duplicate" size="14" />Possible Duplicate</span
@@ -466,7 +502,11 @@ async function saveEdits() {
       </div>
     </section>
 
-    <ImportMediaDialog v-model="importDialogOpen" @imported="store.load()" />
+    <ImportMediaDialog
+      v-model="importDialogOpen"
+      :extensions="importExtensions"
+      @imported="store.load()"
+    />
     <CanvaImportDialog
       v-model="canvaImportOpen"
       allow-video-export
@@ -485,7 +525,13 @@ async function saveEdits() {
         <div class="media-editor-header">
           <span
             ><v-icon
-              :icon="editingItem.kind === 'video' ? 'mdi-movie-open-outline' : 'mdi-image-outline'"
+              :icon="
+                editingItem.kind === 'video'
+                  ? 'mdi-movie-open-outline'
+                  : editingItem.kind === 'document'
+                    ? 'mdi-file-document-outline'
+                    : 'mdi-image-outline'
+              "
               size="22"
           /></span>
           <div>
@@ -529,11 +575,21 @@ async function saveEdits() {
           />
           <div v-else class="editor-preview-status editor-preview-status--unavailable">
             <v-icon
-              :icon="editingItem.kind === 'video' ? 'mdi-movie-open-outline' : 'mdi-image-outline'"
+              :icon="
+                editingItem.kind === 'video'
+                  ? 'mdi-movie-open-outline'
+                  : editingItem.kind === 'document'
+                    ? 'mdi-file-document-outline'
+                    : 'mdi-image-outline'
+              "
               size="34"
             />
-            <span>Preview Unavailable</span>
-            <small>The original file could not be opened.</small>
+            <span>{{ editingItem.kind === 'document' ? 'No Preview' : 'Preview Unavailable' }}</span>
+            <small>{{
+              editingItem.kind === 'document'
+                ? 'This file type has no visual preview.'
+                : 'The original file could not be opened.'
+            }}</small>
           </div>
         </div>
 

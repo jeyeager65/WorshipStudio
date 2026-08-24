@@ -455,6 +455,11 @@ const mediaById = computed(() => new Map(mediaStore.items.map((item) => [item.id
 const externalAppProfilesById = computed(
   () => new Map(externalAppsStore.profiles.map((profile) => [profile.id, profile])),
 )
+// False on a device that can never launch an external app at all (web/tablet — no `launch`
+// method on this adapter's port), as opposed to one that can launch but isn't set up for this
+// particular profile yet. Drives both the readiness warning (see the readiness computed below)
+// and the live-item panel's own note in place of dead Reopen/Close/Launch Now buttons.
+const externalAppLaunchAvailable = computed(() => !!getAdapter().externalApps.launch)
 // The always-present manual buttons (spec section 12's Basic Remote Controls) for whichever
 // external-app item is currently selected — every command with a real keyCombo, regardless of
 // whether it also has a triggerKey. The phone Remote Control shows the same set (see
@@ -477,6 +482,8 @@ const readiness = computed(() =>
         themes: themesStore.themes,
         people: peopleById.value,
         externalApps: externalAppProfilesById.value,
+        externalAppImplementations: externalAppsStore.implementations,
+        externalAppLaunchAvailable: externalAppLaunchAvailable.value,
         resolvedScriptureKeys: new Set(scriptureById.keys()),
         scriptureErrorKeys: new Set(scriptureErrors.keys()),
         resolvedMediaIds: new Set(mediaUrlById.keys()),
@@ -1359,18 +1366,26 @@ function openAddDialog(type: AddItemType) {
   addDialogOpen.value = true
 }
 
-// Placeholders use this to get filled in for the first time; song items use it to swap which
-// song fills an already-placed slot without losing that slot's own roleId/bulletinLabel/note or
-// its position in the order — otherwise the only way to change a song was delete-and-re-add.
+// Placeholders use this to get filled in for the first time; song and external-app items use it
+// to swap which song/profile+file fills an already-placed slot without losing that slot's own
+// roleId/bulletinLabel/note or its position in the order — otherwise the only way to change one
+// was delete-and-re-add. AddServiceItemDialog reads the existing item back out of `service` at
+// `index` itself (via replaceContext.index) to pre-fill the external-app tab's fields — there's
+// nothing external-app-specific to carry in this context beyond the shared roleId/label/note.
 function beginReplaceItem(item: ServiceItem, index: number) {
-  if (item.type !== 'placeholder' && item.type !== 'song') return
+  if (item.type !== 'placeholder' && item.type !== 'song' && item.type !== 'external-app') return
   addReplaceContext.value = {
     index,
     roleId: item.roleId,
     label: item.type === 'placeholder' ? (item.bulletinLabel ?? item.label) : item.bulletinLabel,
     note: item.bulletinNote,
   }
-  addTab.value = item.type === 'placeholder' ? ((item.suggestedTab as AddItemType) ?? 'songs') : 'songs'
+  addTab.value =
+    item.type === 'placeholder'
+      ? ((item.suggestedTab as AddItemType) ?? 'songs')
+      : item.type === 'external-app'
+        ? 'external-app'
+        : 'songs'
   addDialogOpen.value = true
 }
 
@@ -3019,6 +3034,16 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
           </template>
 
           <template v-else-if="selectedItem.type === 'external-app'">
+            <v-btn
+              variant="text"
+              size="small"
+              color="secondary"
+              prepend-icon="mdi-swap-horizontal"
+              class="mb-2"
+              @click="beginReplaceItem(selectedItem, selectedItemIndex)"
+            >
+              Change App / File
+            </v-btn>
             <div
               class="slide-row"
               :class="{ 'slide-row--live': itemHasLive(selectedItemIndex) }"
@@ -3037,11 +3062,18 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
               <div class="text-body-2">Click to make this item live.</div>
             </div>
 
+            <div v-if="!externalAppLaunchAvailable" class="text-caption text-medium-emphasis mt-2" style="max-width: 460px">
+              External apps aren't available on this device — launch this item from the computer
+              that actually presents.
+            </div>
+
             <!-- Reopen/Close act on whatever's actually engaged right now, so they only make
                  sense while this item IS the live one; otherwise "Launch Now" pre-launches it in
                  the background ahead of time so its slide going live doesn't pay the cold-start
-                 delay (spawning, waiting for its window) live. -->
-            <div class="d-flex align-center ga-2 mt-3" style="max-width: 460px">
+                 delay (spawning, waiting for its window) live. Hidden entirely (rather than shown
+                 disabled) once !externalAppLaunchAvailable — on that device they'd just be dead
+                 buttons, the note above already explains why. -->
+            <div v-if="externalAppLaunchAvailable" class="d-flex align-center ga-2 mt-3" style="max-width: 460px">
               <template v-if="isPresenting && itemHasLive(selectedItemIndex)">
                 <v-btn
                   variant="tonal"
@@ -3075,7 +3107,12 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
                  whether a command also has a keyboard trigger. Only meaningful once this item is
                  actually engaged, same condition as Reopen/Close App above. -->
             <div
-              v-if="isPresenting && itemHasLive(selectedItemIndex) && selectedItemExternalAppCommands.length"
+              v-if="
+                externalAppLaunchAvailable &&
+                isPresenting &&
+                itemHasLive(selectedItemIndex) &&
+                selectedItemExternalAppCommands.length
+              "
               class="d-flex align-center flex-wrap ga-2 mt-2"
               style="max-width: 460px"
             >

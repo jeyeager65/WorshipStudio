@@ -76,7 +76,9 @@ export interface StagedMediaFile {
   path: string
   filename: string
   sizeBytes: number
-  kind: 'image' | 'video'
+  /** 'document' is the fallback for anything that isn't a recognized image/video extension —
+   *  e.g. a PowerPoint deck imported for use with External App Hand-off. */
+  kind: 'image' | 'video' | 'document'
   duplicateOfId?: string
   duplicateOfFilename?: string
 }
@@ -94,8 +96,14 @@ export interface MediaImportCommit {
 export interface MediaPort {
   list(): Promise<MediaItem[]>
   save(item: MediaItem): Promise<void>
-  /** Opens a native/browser file picker and stages each selection (size, kind, duplicate check) for the Import Media review dialog — nothing is copied into the library yet. */
-  pickFilesToImport(): Promise<StagedMediaFile[]>
+  /**
+   * Opens a native/browser file picker and stages each selection (size, kind, duplicate check)
+   * for the Import Media review dialog — nothing is copied into the library yet. Defaults to an
+   * image/video-only filter; pass `extensions` (e.g. an External App profile's own
+   * `allowedExtensions`) to widen or replace that filter for importing a document instead — an
+   * empty/undefined list means no filter at all.
+   */
+  pickFilesToImport(extensions?: string[]): Promise<StagedMediaFile[]>
   /**
    * A ready-to-use `<img>`/`<video>` src for a *staged, not-yet-committed* file's own review row
    * (Import Media dialog) — same "never a raw path the caller has to interpret" contract as
@@ -494,19 +502,48 @@ export interface ExternalAppKeyCommand {
   triggerKey?: string
 }
 
+/**
+ * Identity + behavior of an external app "profile" — shared/synced (feature-spec.md section 12),
+ * so a service item referencing one by `id` means the same thing on every computer: everything
+ * here is a fact about the *software* ("PowerPoint takes a `/S` switch and a file"), never about
+ * a specific machine. What genuinely differs machine-to-machine — where the executable actually
+ * lives on disk — lives separately in `ExternalAppImplementation` below, never here.
+ */
 export interface ExternalAppProfile {
   id: string
   name: string
+  /** Drives the icon shown for this profile everywhere it's referenced (including on a device
+   *  that can never launch it, e.g. web/tablet authoring a service item). */
+  kind: 'powerpoint' | 'video' | 'custom'
   launchMode: 'already-running' | 'launch-automatically'
-  executablePath?: string
   parameterFormat?: string
   remoteControlsEnabled: boolean
   keyCommands: ExternalAppKeyCommand[]
+  /** Restricts which files can be handed to this app — e.g. `['pptx']` for PowerPoint. Filters
+   *  both the native file-picker dialog and the "pick a stored file" media picker. Undefined (the
+   *  default) means no restriction, matching every profile's behavior before this field existed. */
+  allowedExtensions?: string[]
   updatedAt: string
   updatedByDevice: string
 }
 
-/** Windows-only (Win32 window hand-off) — absent port on the macOS/demo build. */
+/** The one thing about a profile that's genuinely specific to *this* computer: where its
+ *  executable actually lives on disk. Never synced — kept in the same never-synced local file
+ *  that used to hold the whole flat profile (see Tauri adapter's storage), now holding just this
+ *  slim per-machine mapping. A profile with no implementation record on a given computer simply
+ *  hasn't been "set up" there yet (see ExternalAppPort.getImplementation). */
+export interface ExternalAppImplementation {
+  profileId: string
+  executablePath: string
+}
+
+/**
+ * Profile CRUD (listProfiles/saveProfile/deleteProfile/importDefaultProfiles) operates on the
+ * shared, synced profile list above and is available on every adapter — authoring "this service
+ * item hands off to PowerPoint" doesn't require Windows or Tauri. Everything else here — the
+ * per-machine implementation mapping, actual launching, and native file pickers — only makes
+ * sense on the Windows/Tauri build and stays optional, same as before.
+ */
 export interface ExternalAppPort {
   listProfiles(): Promise<ExternalAppProfile[]>
   saveProfile(profile: ExternalAppProfile): Promise<void>
@@ -515,34 +552,40 @@ export interface ExternalAppPort {
    *  matched by a stable id — safe to call repeatedly, never duplicates or overwrites an
    *  existing/edited profile. Returns how many were newly added. */
   importDefaultProfiles(): Promise<number>
+  /** This computer's per-machine executable path for a given profile, if it's been set up here. */
+  getImplementation?(profileId: string): Promise<ExternalAppImplementation | undefined>
+  saveImplementation?(profileId: string, executablePath: string): Promise<void>
   /** Opens a native file picker for the profile editor's Executable field. */
-  pickExecutable(): Promise<string | undefined>
-  /** Opens a native file picker (no extension filter) for the file an Add-to-Service item hands to the app. */
-  pickFile(): Promise<string | undefined>
-  /** Always fills the configured Audience display, full screen — throws if none is assigned. */
-  launch(profileId: string, file?: string): Promise<void>
+  pickExecutable?(): Promise<string | undefined>
+  /** Opens a native file picker for the file an Add-to-Service item hands to the app — filtered
+   *  to `extensions` when given (e.g. a profile's own `allowedExtensions`), otherwise unfiltered. */
+  pickFile?(extensions?: string[]): Promise<string | undefined>
+  /** Always fills the configured Audience display, full screen — throws if none is assigned.
+   *  Exactly one of `file`/`mediaId` identifies what to hand off: a raw path already on this
+   *  computer, or a stored Media Library item (resolved to a real path at launch time). */
+  launch?(profileId: string, source?: { file?: string; mediaId?: string }): Promise<void>
   /** "Launch Now" — starts this item's app ahead of time, minimized/in the background, so its
    *  cold-start delay happens before its slide goes live instead of during. A no-op if it's
    *  already running and cached from an earlier launch/prelaunch this session. */
-  prelaunch(profileId: string, file?: string): Promise<void>
+  prelaunch?(profileId: string, source?: { file?: string; mediaId?: string }): Promise<void>
   /** Minimizes whichever app is currently engaged (if any) and restores Worship Studio's own
    *  presentation/operator windows — used when navigating to a different (non-external-app)
    *  slide mid-presentation. Doesn't close anything, so returning to the same item later reuses
    *  the same window instead of relaunching. */
-  restoreSelf(): Promise<void>
+  restoreSelf?(): Promise<void>
   /** Operator-triggered: closes just the currently-engaged app and forgets it, so the next time
    *  its item goes live it launches fresh rather than trying to reuse a handle the operator
    *  deliberately closed. */
-  closeCurrent(): Promise<void>
+  closeCurrent?(): Promise<void>
   /** Stop Presenting's counterpart to restoreSelf — closes every app launched this session
    *  (there can be more than one, across different items), not just the most recent one. */
-  closeAll(): Promise<void>
+  closeAll?(): Promise<void>
   /** Add-time robustness check (spec section 12) — executable/file existence, no launch. */
-  verifyItem(profileId: string, file?: string): Promise<void>
+  verifyItem?(profileId: string, source?: { file?: string; mediaId?: string }): Promise<void>
   /** Basic Remote Controls — sends the given command's keyCombo to the external app's window,
    *  whether triggered by its own button or a matching keyboard shortcut while this item is
    *  live (see useExternalAppHandoff.ts's tryForwardKeydown/sendManualCommand). */
-  sendKeystroke(profileId: string, commandId: string): Promise<void>
+  sendKeystroke?(profileId: string, commandId: string): Promise<void>
 }
 
 export interface RemoteDevice {
@@ -811,7 +854,10 @@ export interface StudioAdapter {
   scripture: ScripturePort
   live: LivePresentationPort
   displays?: DisplayPort
-  externalApps?: ExternalAppPort
+  /** Profile CRUD works everywhere (shared/synced data); launch-related methods on the port
+   *  itself stay optional for adapters that can't actually run a native app — see
+   *  ExternalAppPort's own doc comment. */
+  externalApps: ExternalAppPort
   remote?: RemotePort
   sync: SyncPort
   diagnostics: DiagnosticsPort

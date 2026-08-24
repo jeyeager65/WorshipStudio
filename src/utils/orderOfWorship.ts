@@ -106,22 +106,20 @@ function buildLines(
   collectionDefinitions: SongCollectionDefinition[],
 ): OrderOfWorshipLine[] {
   const assignments = service.assignments
-  // External App Hand-off items are a technical hand-off to another program (a slideshow, a
-  // video player) with nothing meaningful to print — a real bulletin has no "[External App]"
-  // line, so these are left out of the Order of Worship entirely rather than printed as a
-  // placeholder. A media/video/slide item has nothing printable of its own either (unlike a song
-  // or scripture reference) — it only belongs in the bulletin when the operator has explicitly
-  // given it a bulletinLabel to print (e.g. "Offering Video", or a custom slide used as a
-  // spoken/led moment like "Silent Preparation"); with none set, it's left out rather than
-  // printed under whatever label the slide happens to carry on-screen (a "Service Starting
-  // Soon" countdown or a "Visit Our Website" QR slide isn't a bulletin line by default).
+  // A media/video/slide/external-app item has nothing printable of its own (unlike a song or
+  // scripture reference) — it only belongs in the bulletin when the operator has explicitly
+  // given it a bulletinLabel to print (e.g. "Offering Video", a custom slide used as a spoken/
+  // led moment like "Silent Preparation", or "PowerPoint: Missions Update" for a hand-off item);
+  // with none set, it's left out rather than printed under whatever label it happens to carry
+  // on-screen (a "Service Starting Soon" countdown or a "Visit Our Website" QR slide isn't a
+  // bulletin line by default, and neither is an unlabeled External App Hand-off).
   const printableItems = service.items.filter((item) => {
-    if (item.type === 'external-app') return false
     if (
       (item.type === 'media' ||
         item.type === 'video' ||
         item.type === 'slide-ref' ||
-        item.type === 'text-slide') &&
+        item.type === 'text-slide' ||
+        item.type === 'external-app') &&
       !item.bulletinLabel
     )
       return false
@@ -199,11 +197,12 @@ function lineFor(
         note: item.bulletinNote,
       }
     case 'external-app':
-      // Unreachable in practice — buildLines filters these out before calling lineFor (see its
-      // own comment). Kept here so this switch stays exhaustive over ServiceItem's full type.
+      // buildLines already filters out an external-app item with no bulletinLabel, so roleFor
+      // always resolves to that label here — same "the label is the whole line" shape as media/
+      // video/slide-ref (a hand-off to another program has nothing else printable of its own).
       return {
         role: roleFor(item, undefined),
-        text: '[External App]',
+        text: '',
         person: resolveRolePerson(item.roleId, assignments, personNames),
         note: item.bulletinNote,
       }

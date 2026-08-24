@@ -6,7 +6,17 @@ import ImportMediaDialog from '@/components/media/ImportMediaDialog.vue'
 
 const props = withDefaults(
   defineProps<{
-    purpose?: 'slide' | 'logo' | 'background' | 'service-image' | 'service-video'
+    purpose?:
+      | 'slide'
+      | 'logo'
+      | 'background'
+      | 'service-image'
+      | 'service-video'
+      | 'external-app-file'
+    /** external-app-file only — restricts the list to items whose filename extension matches
+     *  (e.g. a PowerPoint profile's own `['pptx']`). Unset/empty means no restriction, same as
+     *  every other purpose here (which restrict by *kind* instead, not extension). */
+    allowedExtensions?: string[]
   }>(),
   {
     purpose: 'slide',
@@ -40,12 +50,24 @@ const restrictedToSyncedOnly = computed(
 const mediaItems = computed(() =>
   store.items.filter((item) => {
     const kindMatches =
-      props.purpose === 'background'
-        ? true
-        : props.purpose === 'service-video'
-          ? item.kind === 'video'
-          : item.kind === 'image'
-    return kindMatches && (!restrictedToSyncedOnly.value || item.location === 'synced')
+      props.purpose === 'external-app-file'
+        ? true // any kind — a VLC profile hands off video, a PowerPoint profile a document
+        : props.purpose === 'background'
+          ? item.kind !== 'document' // a scene/theme background can only be an image or video
+          : props.purpose === 'service-video'
+            ? item.kind === 'video'
+            : item.kind === 'image'
+    const extensionMatches =
+      props.purpose !== 'external-app-file' ||
+      !props.allowedExtensions?.length ||
+      props.allowedExtensions.some((extension) =>
+        item.filename.toLowerCase().endsWith(`.${extension.toLowerCase().replace(/^\./, '')}`),
+      )
+    return (
+      kindMatches &&
+      extensionMatches &&
+      (!restrictedToSyncedOnly.value || item.location === 'synced')
+    )
   }),
 )
 const tagCounts = computed(() => {
@@ -94,6 +116,7 @@ const pickerTitle = computed(() => {
   if (props.purpose === 'logo') return 'Choose a Logo'
   if (props.purpose === 'background') return 'Choose a Background'
   if (props.purpose === 'service-video') return 'Choose a Video'
+  if (props.purpose === 'external-app-file') return 'Choose a Stored File'
   return 'Choose an Image'
 })
 const pickerDescription = computed(() => {
@@ -102,10 +125,12 @@ const pickerDescription = computed(() => {
     return 'Select a synced image or video so the theme works on every library computer.'
   if (props.purpose === 'service-video')
     return 'Select a video already in the library or import a new one.'
+  if (props.purpose === 'external-app-file')
+    return 'Select a file already in the library or import a new one for this app to open.'
   return 'Select an image already in the library or import a new one.'
 })
 const itemNoun = computed(() => {
-  if (props.purpose === 'background') return 'media item'
+  if (props.purpose === 'background' || props.purpose === 'external-app-file') return 'media item'
   if (props.purpose === 'service-video') return 'video'
   return 'image'
 })
@@ -162,7 +187,9 @@ const itemNoun = computed(() => {
                 ? 'Search backgrounds'
                 : purpose === 'service-video'
                   ? 'Search videos'
-                  : 'Search images'
+                  : purpose === 'external-app-file'
+                    ? 'Search files'
+                    : 'Search images'
             "
             variant="outlined"
             density="compact"
@@ -185,7 +212,9 @@ const itemNoun = computed(() => {
                     ? 'All Backgrounds'
                     : purpose === 'service-video'
                       ? 'All Videos'
-                      : 'All Images'
+                      : purpose === 'external-app-file'
+                        ? 'All Files'
+                        : 'All Images'
                 }}
                 <template #append>
                   <span class="text-caption text-medium-emphasis">{{ mediaItems.length }}</span>
@@ -216,17 +245,21 @@ const itemNoun = computed(() => {
                 }"
               >
                 <img
-                  v-if="previewUrlById.has(item.id) && item.kind === 'image'"
+                  v-if="item.kind === 'image' && previewUrlById.has(item.id)"
                   :src="previewUrlById.get(item.id)"
                   alt=""
                 />
                 <video
-                  v-else-if="previewUrlById.has(item.id)"
+                  v-else-if="item.kind === 'video' && previewUrlById.has(item.id)"
                   :src="previewUrlById.get(item.id)"
                   muted
                   preload="metadata"
                 />
-                <v-icon v-else icon="mdi-image-outline" size="32" />
+                <v-icon
+                  v-else
+                  :icon="item.kind === 'document' ? 'mdi-file-document-outline' : 'mdi-image-outline'"
+                  size="32"
+                />
                 <v-chip
                   v-if="item.kind === 'video'"
                   size="x-small"
@@ -235,6 +268,15 @@ const itemNoun = computed(() => {
                   prepend-icon="mdi-video-outline"
                 >
                   VIDEO
+                </v-chip>
+                <v-chip
+                  v-else-if="item.kind === 'document'"
+                  size="x-small"
+                  class="kind-badge"
+                  variant="flat"
+                  prepend-icon="mdi-file-document-outline"
+                >
+                  DOCUMENT
                 </v-chip>
                 <v-chip
                   v-if="item.location === 'local'"
@@ -265,7 +307,9 @@ const itemNoun = computed(() => {
                       ? 'Use as Logo'
                       : purpose === 'background'
                         ? 'Use as Background'
-                        : purpose === 'service-image' || purpose === 'service-video'
+                        : purpose === 'service-image' ||
+                            purpose === 'service-video' ||
+                            purpose === 'external-app-file'
                           ? 'Add to Service'
                           : 'Add to Slide'
                   }}
@@ -288,7 +332,9 @@ const itemNoun = computed(() => {
                     ? 'backgrounds'
                     : purpose === 'service-video'
                       ? 'videos'
-                      : 'images'
+                      : purpose === 'external-app-file'
+                        ? 'files'
+                        : 'images'
                 }}
                 found</strong
               >
@@ -302,6 +348,7 @@ const itemNoun = computed(() => {
     <ImportMediaDialog
       v-model="importDialogOpen"
       :synced-only="restrictedToSyncedOnly"
+      :extensions="purpose === 'external-app-file' ? (allowedExtensions ?? []) : undefined"
       @imported="store.load()"
     />
   </v-dialog>

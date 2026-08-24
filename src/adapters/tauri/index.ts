@@ -21,6 +21,7 @@ import type {
   StagedMediaFile,
   MediaImportCommit,
   ExternalAppProfile,
+  ExternalAppImplementation,
   WindowPosition,
   CanvaStatus,
   CanvaDesign,
@@ -342,16 +343,26 @@ export function createTauriAdapter(): StudioAdapter {
     media: {
       list: () => invoke<MediaItem[]>('list_media'),
       save: (item) => invoke('save_media', { item }),
-      pickFilesToImport: async () => {
+      pickFilesToImport: async (extensions) => {
         const selection = await open({
           multiple: true,
           title: 'Import Media',
-          filters: [
-            {
-              name: 'Images & Videos',
-              extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'webm', 'm4v'],
-            },
-          ],
+          // `extensions` unset (the plain "Import Media" button): the usual image/video filter.
+          // `extensions` a non-empty array (a profile's own allowedExtensions, e.g. ['pptx']):
+          // restrict to those instead. `extensions` explicitly `[]` (a profile with no
+          // restriction configured, or the Media Library's own "Import File" button): no filter
+          // at all — otherwise a .pptx could never be selected here in the first place.
+          filters:
+            extensions === undefined
+              ? [
+                  {
+                    name: 'Images & Videos',
+                    extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'webm', 'm4v'],
+                  },
+                ]
+              : extensions.length > 0
+                ? [{ name: 'Allowed Files', extensions }]
+                : undefined,
         })
         if (!selection) return []
         const paths = Array.isArray(selection) ? selection : [selection]
@@ -521,6 +532,12 @@ export function createTauriAdapter(): StudioAdapter {
       saveProfile: (profile) => invoke('save_external_app_profile', { profile }),
       deleteProfile: (id) => invoke('delete_external_app_profile', { id }),
       importDefaultProfiles: () => invoke<number>('import_default_external_app_profiles'),
+      getImplementation: (profileId) =>
+        invoke<ExternalAppImplementation | undefined>('get_external_app_implementation', {
+          profileId,
+        }),
+      saveImplementation: (profileId, executablePath) =>
+        invoke('save_external_app_implementation', { profileId, executablePath }),
       pickExecutable: async () => {
         const selection = await open({
           title: 'Select Executable',
@@ -528,26 +545,44 @@ export function createTauriAdapter(): StudioAdapter {
         })
         return typeof selection === 'string' ? selection : undefined
       },
-      pickFile: async () => {
-        const selection = await open({ title: 'Select File' })
+      pickFile: async (extensions) => {
+        const selection = await open({
+          title: 'Select File',
+          filters: extensions?.length ? [{ name: 'Allowed Files', extensions }] : undefined,
+        })
         return typeof selection === 'string' ? selection : undefined
       },
       // Always fills the configured Audience display, full screen — computed fresh from the
       // current monitor layout on every launch. There's no per-profile position to fall back
       // to, so a missing Audience display is a hard error here rather than a silent no-op —
       // same reasoning as openPresentationWindow's identical check above.
-      launch: async (profileId, file) => {
+      launch: async (profileId, source) => {
         const audienceBounds = await computeAudienceMonitorPhysicalBounds()
         if (!audienceBounds) throw new Error('No configured audience display is available.')
-        return invoke('launch_external_app', { profileId, file, audienceBounds })
+        return invoke('launch_external_app', {
+          profileId,
+          file: source?.file,
+          mediaId: source?.mediaId,
+          audienceBounds,
+        })
       },
       // Deliberately doesn't need an audience-bounds check the way launch does — this never
       // positions or shows the window, just gets it running quietly in the background.
-      prelaunch: (profileId, file) => invoke('prelaunch_external_app', { profileId, file }),
+      prelaunch: (profileId, source) =>
+        invoke('prelaunch_external_app', {
+          profileId,
+          file: source?.file,
+          mediaId: source?.mediaId,
+        }),
       restoreSelf: () => invoke('restore_self'),
       closeCurrent: () => invoke('close_current_external_app'),
       closeAll: () => invoke('close_all_external_apps'),
-      verifyItem: (profileId, file) => invoke('verify_external_app_item', { profileId, file }),
+      verifyItem: (profileId, source) =>
+        invoke('verify_external_app_item', {
+          profileId,
+          file: source?.file,
+          mediaId: source?.mediaId,
+        }),
       sendKeystroke: (profileId, commandId) =>
         invoke('send_external_app_keystroke', { profileId, commandId }),
     },

@@ -41,6 +41,7 @@ import { createWebRoleGroupsPort } from '@/adapters/web/roleGroups'
 import { createWebRolesPort } from '@/adapters/web/roles'
 import { createWebServiceTemplatesPort } from '@/adapters/web/serviceTemplates'
 import { createWebSongCollectionsPort } from '@/adapters/web/songCollections'
+import { createWebExternalAppsPort } from '@/adapters/web/externalApps'
 import { createWebSongsPort } from '@/adapters/web/songs'
 import { createWebThemesPort } from '@/adapters/web/themes'
 import * as sync from '@/adapters/web/sync'
@@ -103,6 +104,7 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
   const media = createWebMediaPort(trackedRoot, settings, themes, createTabletLocalMediaRoot(rawRoot))
   const people = createWebPeoplePort(trackedRoot, settings)
   const announcements = createWebAnnouncementsPort(trackedRoot, settings)
+  const externalApps = createWebExternalAppsPort(trackedRoot, settings)
 
   const cloudSync = createCloudSync({
     provider: createProvider(config),
@@ -178,6 +180,9 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
     people,
     announcements,
     settings,
+    // Profile CRUD (shared/synced data) — same reasoning as adapters/web/index.ts: only the
+    // per-machine executable path and actual launching are genuinely Tauri/Win32-only.
+    externalApps,
     // Identical to adapters/web/index.ts's scripture port — storage-independent (KJV lookup and
     // reference parsing are pure; ESV/api.bible are plain network calls), so it's reused
     // unmodified rather than reimplemented, same dispatch rules as Rust's resolve_scripture.

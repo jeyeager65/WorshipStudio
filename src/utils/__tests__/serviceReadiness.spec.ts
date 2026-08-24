@@ -36,6 +36,7 @@ function context(overrides: Partial<ServiceReadinessContext> = {}): ServiceReadi
     themes: [],
     people: new Map(),
     externalApps: new Map(),
+    externalAppImplementations: new Map(),
     resolvedScriptureKeys: new Set(),
     scriptureErrorKeys: new Set(),
     resolvedMediaIds: new Set(),
@@ -44,6 +45,10 @@ function context(overrides: Partial<ServiceReadinessContext> = {}): ServiceReadi
     verifiedExternalAppItemIds: new Set(),
     externalAppErrors: new Map(),
     externalAppVerificationAvailable: false,
+    // Defaults to a Tauri-like device (can actually launch) so every pre-existing test below
+    // exercises the real blocker checks; the "can't launch here" warning path has its own
+    // dedicated test instead of being the default everything else has to opt out of.
+    externalAppLaunchAvailable: true,
     libraryConflictLabels: new Map(),
     audienceDisplayAvailable: true,
     roleNames: new Map(),
@@ -186,8 +191,8 @@ describe('evaluateServiceReadiness', () => {
         {
           id: 'powerpoint',
           name: 'PowerPoint',
+          kind: 'powerpoint' as const,
           launchMode: 'launch-automatically' as const,
-          executablePath: 'C:\\Program Files\\PowerPoint.exe',
           parameterFormat: '{file}',
           remoteControlsEnabled: false,
           keyCommands: [],
@@ -196,10 +201,11 @@ describe('evaluateServiceReadiness', () => {
         },
       ],
     ])
+    const externalAppImplementations = new Map([['powerpoint', 'C:\\Program Files\\PowerPoint.exe']])
 
     const pending = evaluateServiceReadiness(
       externalService,
-      context({ externalApps, externalAppVerificationAvailable: true }),
+      context({ externalApps, externalAppImplementations, externalAppVerificationAvailable: true }),
     )
     expect(pending.blockers[0]?.title).toBe('PowerPoint is still being checked')
 
@@ -207,11 +213,33 @@ describe('evaluateServiceReadiness', () => {
       externalService,
       context({
         externalApps,
+        externalAppImplementations,
         externalAppVerificationAvailable: true,
         verifiedExternalAppItemIds: new Set(['external-item']),
       }),
     )
     expect(verified.ready).toBe(true)
+  })
+
+  it('warns instead of blocking an external-app item on a device that can never launch it', () => {
+    // No profile, no implementation, and none of the usual verification signals set — on a
+    // Tauri machine (externalAppLaunchAvailable: true, the default) this would be four separate
+    // blockers. On a device that can never launch anything at all (web/tablet), none of that is
+    // this screen's problem to fix, so it collapses into one warning instead and doesn't block
+    // Start Presenting.
+    const externalService = service({
+      items: [{ id: 'external-item', type: 'external-app', profileId: 'powerpoint' }],
+    })
+
+    const result = evaluateServiceReadiness(
+      externalService,
+      context({ externalAppLaunchAvailable: false }),
+    )
+
+    expect(result.blockers).toEqual([])
+    expect(result.ready).toBe(true)
+    expect(result.warnings).toHaveLength(1)
+    expect(result.warnings[0]?.title).toContain("can't be launched from this device")
   })
 
   it('does not require a translation for reference-only scripture, and allows a sermon with no passages', () => {

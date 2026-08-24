@@ -113,11 +113,11 @@ const sections: { key: Section; label: string; group: string }[] = [
   { key: 'branding', label: 'Branding', group: 'Appearance & Displays' },
   { key: 'display', label: 'Display Setup', group: 'Appearance & Displays' },
   { key: 'font-sizes', label: 'Text Sizing', group: 'Appearance & Displays' },
-  // Windows-only (Win32 window hand-off) — the port is entirely absent on the macOS/demo
-  // build, unlike Display Setup which still has something to show (real monitors) in mock.
-  ...(getAdapter().externalApps
-    ? [{ key: 'external-apps' as const, label: 'External Apps', group: 'Appearance & Displays' }]
-    : []),
+  // Profile CRUD (name, launch mode, key commands, ...) is shared/synced data and works on
+  // every adapter — always shown, unlike Remote Control below, which needs a real Tauri-only
+  // capability to be worth showing at all. Only the per-machine executable path (this section's
+  // own editor page has an "On This Computer" sub-section for it) is Windows/Tauri-only.
+  { key: 'external-apps', label: 'External Apps', group: 'Appearance & Displays' },
   // Needs the bundled local HTTP server (see adapters/types.ts's RemotePort doc comment) —
   // not meaningful in the static/mock demo build even though the port itself exists there.
   ...(getAdapter().kind === 'tauri'
@@ -414,10 +414,7 @@ async function saveSettings() {
       <BrandingSection v-show="activeSection === 'branding'" />
       <DisplaySetupSection v-show="activeSection === 'display'" />
       <FontSizesSection v-show="activeSection === 'font-sizes'" />
-      <ExternalAppsSection
-        v-if="getAdapter().externalApps"
-        v-show="activeSection === 'external-apps'"
-      />
+      <ExternalAppsSection v-show="activeSection === 'external-apps'" />
       <RemoteControlSection
         v-if="getAdapter().kind === 'tauri'"
         v-show="activeSection === 'remote-control'"

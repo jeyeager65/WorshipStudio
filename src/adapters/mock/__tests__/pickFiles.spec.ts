@@ -29,4 +29,23 @@ describe('pickFilesInBrowser', () => {
     const result = await resultPromise
     expect(result.map((f) => f.name)).toEqual(['photo.jpg', 'clip.MP4'])
   })
+
+  it('restricts to a caller-supplied extension list instead, e.g. for an External App profile', () => {
+    void pickFilesInBrowser(['pptx', 'ppt'])
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    expect(input.accept).toBe('.pptx,.ppt')
+    input.remove()
+  })
+
+  it('imposes no restriction at all when given an explicitly empty extension list', async () => {
+    const resultPromise = pickFilesInBrowser([])
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    expect(input.accept).toBe('')
+    const files = [new File(['a'], 'deck.pptx'), new File(['b'], 'notes.pdf')]
+    Object.defineProperty(input, 'files', { value: makeFileList(files), configurable: true })
+    input.dispatchEvent(new Event('change'))
+
+    const result = await resultPromise
+    expect(result.map((f) => f.name)).toEqual(['deck.pptx', 'notes.pdf'])
+  })
 })
