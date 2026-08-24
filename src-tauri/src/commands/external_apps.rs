@@ -284,10 +284,7 @@ pub fn verify_external_app_item(
     let file = resolve_file(&app, file, media_id)?;
     let executable = find_implementation(&app, &profile_id)?;
     if profile.launch_mode == "already-running" {
-        if std::path::Path::new(&executable)
-            .file_name()
-            .is_none()
-        {
+        if std::path::Path::new(&executable).file_name().is_none() {
             return Err("This app's executable path has no file name.".to_string());
         }
         return Ok(());

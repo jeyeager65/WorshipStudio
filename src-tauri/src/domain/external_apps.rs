@@ -426,7 +426,10 @@ mod tests {
         let all = list_implementations(&path).unwrap();
         assert_eq!(all.len(), 2);
         assert_eq!(
-            get_implementation(&path, "app-1").unwrap().unwrap().executable_path,
+            get_implementation(&path, "app-1")
+                .unwrap()
+                .unwrap()
+                .executable_path,
             r"D:\Apps\PowerPoint.exe"
         );
     }
@@ -461,7 +464,10 @@ mod tests {
             import_defaults(&profiles_path, &implementations_path, "d", "now").unwrap();
 
         assert_eq!(added_second_time, 0);
-        assert_eq!(list(&profiles_path).unwrap().len(), default_profiles().len());
+        assert_eq!(
+            list(&profiles_path).unwrap().len(),
+            default_profiles().len()
+        );
     }
 
     #[test]
@@ -522,7 +528,10 @@ mod tests {
         migrate_if_needed(&implementations_path, &profiles_path, "d", "now").unwrap();
 
         assert!(list(&profiles_path).unwrap().is_empty());
-        assert_eq!(list_implementations(&implementations_path).unwrap().len(), 1);
+        assert_eq!(
+            list_implementations(&implementations_path).unwrap().len(),
+            1
+        );
     }
 
     #[test]
