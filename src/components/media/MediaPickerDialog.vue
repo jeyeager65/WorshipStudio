@@ -142,10 +142,16 @@ const itemNoun = computed(() => {
           mandatory
           density="compact"
           divided
-          class="mb-4"
+          class="picker-fit-toggle mb-4"
         >
-          <v-btn value="cover" size="small">Cover (crop to fill)</v-btn>
-          <v-btn value="contain" size="small">Contain (show in full)</v-btn>
+          <v-btn value="cover" size="small">
+            <span class="label-full">Cover (crop to fill)</span>
+            <span class="label-short">Cover</span>
+          </v-btn>
+          <v-btn value="contain" size="small">
+            <span class="label-full">Contain (show in full)</span>
+            <span class="label-short">Contain</span>
+          </v-btn>
         </v-btn-toggle>
         <div class="picker-toolbar">
           <v-text-field
@@ -302,12 +308,26 @@ const itemNoun = computed(() => {
 </template>
 
 <style scoped>
+/* A flex column, not just a fixed max-height box: .picker-header/.picker-fit-toggle/
+   .picker-toolbar below all get flex-shrink: 0 (kept at their natural size), and .picker-body
+   flex-grows to fill whatever's left. This is what actually guarantees the media grid's "Add to
+   Service" buttons stay reachable — previously the header/toolbar/tag row's natural height and
+   the grid's own independent max-height: 60vh were two uncoordinated numbers that could together
+   exceed this card's max-height, and the excess was silently clipped by overflow: hidden here
+   (below the grid's OWN last visible row, invisible regardless of how far you scrolled *inside*
+   the grid — the outer clip doesn't care about the inner scroll position at all). Once every
+   level in the chain can actually shrink (min-height: 0 on each flex/grid item that needs to),
+   the grid always gets exactly the space left over and scrolls internally for the rest, so
+   nothing above it can ever silently eat into what should be its own scrollable area. */
 .media-picker-card {
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   max-height: 88vh;
 }
 .picker-header {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
@@ -341,11 +361,24 @@ const itemNoun = computed(() => {
   font-size: 0.7rem;
 }
 .picker-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
   padding: 18px 20px 20px !important;
   overflow: hidden;
 }
+.picker-fit-toggle {
+  flex-shrink: 0;
+}
+/* Default (desktop): the full toggle labels always show; the short ones only take over under
+   the mobile media query below. */
+.label-short {
+  display: none;
+}
 .picker-toolbar {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -361,6 +394,8 @@ const itemNoun = computed(() => {
 }
 .media-browser {
   display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
   grid-template-columns: 180px minmax(0, 1fr);
   gap: 18px;
 }
@@ -380,6 +415,7 @@ const itemNoun = computed(() => {
 .media-grid {
   display: grid;
   min-width: 0;
+  min-height: 0;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   grid-auto-rows: max-content;
   align-items: start;
@@ -526,17 +562,56 @@ const itemNoun = computed(() => {
     align-items: flex-start;
     flex-direction: column;
   }
+  /* grid-template-rows needs to be explicit here — with the sidebar and grid stacked into two
+     separate rows instead of sharing one, an implicit "auto" row won't shrink below its content
+     size just because .media-browser itself is height-constrained (that's only true for a
+     *single* auto row, which is what the desktop 2-column layout has). Naming the second row
+     1fr is what makes it actually take "whatever's left" and hand any excess content to its own
+     internal scroll instead of overflowing past the tag row. */
   .media-browser {
     grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
   }
   .tag-sidebar {
     padding: 0 0 10px;
     border-right: 0;
     border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   }
+  /* Stays a horizontally-scrolling single row rather than wrapping — wrapping made every tag
+     visible without a gesture, but at the cost of real vertical space in an already-cramped
+     dialog, squeezing the one area that actually matters for browsing: the scrollable media
+     grid below. The fade at the right edge (mask-image) is what actually fixes the original
+     complaint instead: a row that's cut off with no hint it's scrollable now visibly trails
+     off, the same affordance a horizontally-scrolling carousel usually gives. */
   .tag-sidebar .v-list {
     display: flex;
+    gap: 4px;
     overflow-x: auto;
+    -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+    mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+  }
+  /* The full labels ("Cover (crop to fill)") don't fit two-up on a narrow phone width; an
+     earlier attempt stacked the toggle into two full-width rows instead, but that doubled its
+     own height, which is exactly the wrong tradeoff on a screen already this cramped for
+     vertical space. Swapping to short labels keeps it a single compact row instead. */
+  .label-full {
+    display: none;
+  }
+  .label-short {
+    display: inline;
+  }
+  /* The eyebrow label and description text are orientation copy a first-time user benefits
+     from, but pure overhead on every subsequent open — on a phone, that's vertical space taken
+     from the one area that actually matters here: the scrollable image grid below. */
+  .picker-header > div:first-child > span,
+  .picker-header p {
+    display: none;
+  }
+  .picker-header {
+    padding: 12px 16px;
+  }
+  .picker-body {
+    padding: 12px 16px 16px !important;
   }
 }
 </style>
