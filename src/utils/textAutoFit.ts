@@ -93,6 +93,12 @@ export function paginateTextUnits(
 // this function exists to avoid.
 const BREAK_CHARS = new Set([',', ';', ':', '.', '!', '?', '–', '—'])
 
+// A break character immediately followed by a closing quote/bracket ("vict'ry!"" — the sentence
+// ends at "!", but a quotation the whole line was inside closes right after it) must keep that
+// closer attached to the segment it belongs with — otherwise it's left as the entire *next*
+// segment's content, producing a line that's nothing but a lone closing quote mark.
+const TRAILING_CLOSER_CHARS = new Set(['"', '”', "'", '’', ')', ']'])
+
 // A break character sitting right near the start of the remaining text (e.g. "Oh, praise the
 // Lord...") produces a segment that reads as an orphaned scrap ("Oh," alone on its own line)
 // rather than a deliberate line break — skip a candidate that short and keep scanning for a
@@ -140,8 +146,10 @@ export function wrapLineAtPunctuation(
       remaining = ''
       break
     }
-    result.push(remaining.slice(0, punctuationBreak + 1).trimEnd())
-    remaining = remaining.slice(punctuationBreak + 1).trimStart()
+    let breakEnd = punctuationBreak + 1
+    while (breakEnd < remaining.length && TRAILING_CLOSER_CHARS.has(remaining[breakEnd]!)) breakEnd++
+    result.push(remaining.slice(0, breakEnd).trimEnd())
+    remaining = remaining.slice(breakEnd).trimStart()
   }
   if (remaining) result.push(remaining)
   return result

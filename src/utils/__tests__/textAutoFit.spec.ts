@@ -125,4 +125,20 @@ describe('wrapLineAtPunctuation', () => {
     const wrapped = wrapLineAtPunctuation('Supercalifragilisticexpialidocious', 10, charWidth)
     expect(wrapped).toEqual(['Supercalifragilisticexpialidocious'])
   })
+
+  it('keeps a closing quote attached to the break instead of orphaning it on its own line', () => {
+    // Reproduces a real reported bug: "Death is swallowed up in vict'ry!"" wrapped with the
+    // closing curly quote left alone as its own line, because the break at "!" left only the
+    // trailing "”" as the entire next segment.
+    const line = '“Death is swallowed up in vict’ry!”'
+    const wrapped = wrapLineAtPunctuation(line, 34, charWidth)
+    expect(wrapped).toEqual([line])
+  })
+
+  it('keeps a closing quote attached even when it forces a break mid-quote', () => {
+    const line = '“Great is Thy faithfulness!” he cried, and all the earth agreed'
+    const wrapped = wrapLineAtPunctuation(line, 30, charWidth)
+    expect(wrapped[0]).toBe('“Great is Thy faithfulness!”')
+    expect(wrapped.some((segment) => segment.trim() === '”')).toBe(false)
+  })
 })
