@@ -438,9 +438,16 @@ export function createCloudSync(config: CloudSyncConfig) {
     if (syncing) return
     syncing = true
     try {
+      // Checked (and the failure count cleared) up front, before pull()/push() run — not just
+      // once both finish with zero errors. Clearing it only on a fully clean pull+push meant a
+      // single unrelated transient error (a rate limit, a network blip) right after a genuine
+      // reconnect left the stale count sitting at/above the threshold, so the banner kept
+      // showing "needs reconnect" even though auth itself was already fine again. Cheap to call
+      // here specifically — see requireToken()'s own doc comment.
+      await requireToken()
+      await syncStore.setConsecutiveReauthFailures(0)
       await pull()
       await push()
-      await syncStore.setConsecutiveReauthFailures(0)
     } catch (error) {
       if (error instanceof ProviderReauthRequiredError) {
         const failures = (await syncStore.getConsecutiveReauthFailures()) + 1
@@ -529,6 +536,7 @@ export function createCloudSync(config: CloudSyncConfig) {
     lastSyncedAt?: string
     pendingPushCount: number
     needsReconnect: boolean
+    reauthFailurePending: boolean
   }> {
     const [lastSyncedAt, dirty, consecutiveReauthFailures] = await Promise.all([
       syncStore.getLastSyncedAt(),
@@ -539,6 +547,12 @@ export function createCloudSync(config: CloudSyncConfig) {
       lastSyncedAt,
       pendingPushCount: dirty.length,
       needsReconnect: consecutiveReauthFailures >= REAUTH_FAILURE_THRESHOLD,
+      // True for exactly the "one auth failure seen, not yet confirmed as a real problem" gap —
+      // lets useTabletSync.ts schedule a quick confirming retry instead of waiting on its normal
+      // multi-minute cadence, so a genuine reconnect need surfaces quickly without lowering
+      // REAUTH_FAILURE_THRESHOLD itself (still real protection against a single transient blip).
+      reauthFailurePending:
+        consecutiveReauthFailures > 0 && consecutiveReauthFailures < REAUTH_FAILURE_THRESHOLD,
     }
   }
 

@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <!-- Same source artwork as the Tauri desktop build's icon, generated alongside the PWA icon
          set (see scripts/generate-pwa-icons.mjs) rather than reused as a raw .ico — PNG is fully
          supported by every evergreen browser and needed the same solid-background/rounded-corner
@@ -27,6 +27,23 @@
       html,
       body {
         background: #151b23;
+        height: 100%;
+        /* The tablet build's whole layout scrolls inside <v-main scrollable> (see App.vue) —
+             the document itself must never become a second scrolling context, or iOS Safari's
+             elastic overscroll on it drags the (absolutely-positioned-within-the-document)
+             app-bar along for the ride, momentarily exposing page content above it into the
+             physical status-bar area. */
+        overflow: hidden;
+      }
+      /* iOS ignores manifest.webmanifest's display:"standalone" — apple-mobile-web-app-*
+           above are what actually go full-bleed under the status bar/home indicator in an
+           installed PWA, so viewport-fit=cover + this padding are both needed together to
+           actually clear those regions rather than just visually match them. */
+      #app {
+        box-sizing: border-box;
+        height: 100%;
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
       }
     </style>
   </head>

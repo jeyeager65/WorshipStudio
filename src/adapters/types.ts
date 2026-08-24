@@ -678,6 +678,11 @@ export interface SyncStatus {
    *  visible reconnect. Left undefined/false by every other adapter kind and by Dropbox, whose
    *  refresh tokens don't expire on their own. */
   needsReconnect?: boolean
+  /** Tablet-only — one auth failure has been seen but it hasn't reached the consecutive-failure
+   *  threshold that flips needsReconnect above, so this isn't shown as a reconnect prompt yet.
+   *  useTabletSync.ts uses this to schedule a quick confirming retry rather than waiting on its
+   *  normal multi-minute cadence, so a genuine reconnect need surfaces quickly. */
+  reauthFailurePending?: boolean
 }
 
 /** Whether a cloud sync client (OneDrive/Dropbox's own desktop app) appears to be running,

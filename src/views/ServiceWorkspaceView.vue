@@ -3306,14 +3306,15 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
 </template>
 
 <style scoped>
-/* Fills the space below the persistent app bar (49px, see App.vue) exactly, so the
-   sticky-feeling live-footer and the Add-to-Service button never depend on the page
-   itself scrolling — only the panels that actually need it (service list, center
-   content) scroll internally. */
+/* Fills the space below the persistent app bar exactly, so the sticky-feeling live-footer
+   and the Add-to-Service button never depend on the page itself scrolling — only the panels
+   that actually need it (service list, center content) scroll internally. 100% rather than a
+   hardcoded viewport-height offset — this renders inside <v-main scrollable> (App.vue), whose
+   own inner .v-main__scroller already excludes the app-bar's height from its box. */
 .workspace-root {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 49px);
+  height: 100%;
   overflow: hidden;
   background: rgb(var(--v-theme-background));
   color: rgba(var(--v-theme-on-background), 0.92);

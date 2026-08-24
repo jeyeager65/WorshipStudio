@@ -459,13 +459,23 @@ async function saveSettings() {
   display: grid;
   grid-template-columns: 252px minmax(0, 1fr);
   align-items: start;
-  min-height: calc(100vh - 49px);
+  /* 100% rather than a hardcoded viewport-height offset — this renders inside <v-main
+     scrollable> (App.vue), whose own inner .v-main__scroller already excludes the app-bar's
+     height from its box, so this only needs to reference that box's own size. */
+  min-height: 100%;
   background: rgba(var(--v-theme-background), 0.34);
 }
 .settings-nav {
   position: sticky;
-  top: 49px;
-  height: calc(100vh - 49px);
+  top: 0;
+  /* Not 100% — .settings-layout's row is auto-sized (align-items: start above, so this doesn't
+     stretch to it), which makes a percentage height here resolve against nothing definite and
+     collapse to the nav's own content height, defeating the whole point: independent scrolling
+     when the nav list itself is taller than the viewport. --app-bar-height (App.vue) is the
+     real, dynamically-measured app-bar height, so this is "one real viewport, minus the bar" —
+     the same fixed-height-sidebar approach as before <v-main scrollable> existed, just no longer
+     a hardcoded guess at either number. */
+  height: calc(100dvh - var(--app-bar-height, 49px));
   overflow-y: auto;
   padding: 18px 14px 28px;
   border-right: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
@@ -554,7 +564,7 @@ async function saveSettings() {
   .settings-nav-compact {
     display: block;
     position: sticky;
-    top: 49px;
+    top: 0;
     z-index: 1;
     padding: 8px 14px;
     background: rgba(var(--v-theme-surface), 0.92);

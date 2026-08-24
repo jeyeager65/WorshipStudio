@@ -372,7 +372,7 @@ async function exportPlanning(format: ReportFormat) {
 
 <style scoped>
 .report-page {
-  min-height: calc(100vh - 49px);
+  min-height: 100%;
   padding: 24px clamp(24px, 3vw, 48px) 56px;
   background: rgb(var(--v-theme-background));
 }

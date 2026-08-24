@@ -420,6 +420,40 @@ describe('runSync', () => {
 
     expect((await sync.getSyncStatus()).needsReconnect).toBe(false)
   })
+
+  it('resets the failure count as soon as auth succeeds, even if the rest of the cycle then fails', async () => {
+    // Reproduces a real reported bug: reconnecting cleared auth, but an unrelated transient
+    // error later in the same cycle (or the next one) left the reconnect banner stuck showing
+    // because the old code only reset the counter after a fully clean pull+push.
+    vi.mocked(provider.getValidAccessToken).mockRejectedValue(
+      new ProviderReauthRequiredError('reconnect please'),
+    )
+    const sync = makeSync(createFakeRoot())
+    await expect(sync.runSync()).rejects.toThrow('reconnect please')
+    await expect(sync.runSync()).rejects.toThrow('reconnect please')
+    expect((await sync.getSyncStatus()).needsReconnect).toBe(true)
+
+    vi.mocked(provider.getValidAccessToken).mockResolvedValue('token-1')
+    vi.mocked(provider.listChanges).mockRejectedValueOnce(new Error('network blip'))
+    await expect(sync.runSync()).rejects.toThrow('network blip')
+
+    expect((await sync.getSyncStatus()).needsReconnect).toBe(false)
+  })
+
+  it('reports reauthFailurePending after one failure but not two, and not once healthy', async () => {
+    vi.mocked(provider.getValidAccessToken).mockRejectedValue(
+      new ProviderReauthRequiredError('reconnect please'),
+    )
+    const sync = makeSync(createFakeRoot())
+
+    await expect(sync.runSync()).rejects.toThrow('reconnect please')
+    expect((await sync.getSyncStatus()).reauthFailurePending).toBe(true)
+
+    await expect(sync.runSync()).rejects.toThrow('reconnect please')
+    const status = await sync.getSyncStatus()
+    expect(status.needsReconnect).toBe(true)
+    expect(status.reauthFailurePending).toBe(false)
+  })
 })
 
 describe('push', () => {

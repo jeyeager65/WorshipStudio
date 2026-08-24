@@ -7,16 +7,18 @@ import { useTabletSync } from '../useTabletSync'
 const { getAdapter } = vi.hoisted(() => ({ getAdapter: vi.fn() }))
 vi.mock('@/adapters', () => ({ getAdapter }))
 
-function makeAdapter(kind: string, runSync = vi.fn()) {
+function makeAdapter(kind: string, runSync = vi.fn(), getStatus?: ReturnType<typeof vi.fn>) {
   return {
     kind,
     sync: {
       runSync,
-      getStatus: vi.fn().mockResolvedValue({
-        folderReadable: true,
-        conflictCount: 0,
-        recoveryCount: 0,
-      }),
+      getStatus:
+        getStatus ??
+        vi.fn().mockResolvedValue({
+          folderReadable: true,
+          conflictCount: 0,
+          recoveryCount: 0,
+        }),
       listConflicts: vi.fn().mockResolvedValue([]),
       listRecoveryIssues: vi.fn().mockResolvedValue([]),
     },
@@ -161,5 +163,41 @@ describe('useTabletSync', () => {
     resolveRunSync()
     await flush()
     expect(syncStore.syncing).toBe(false)
+  })
+
+  it('schedules a quick follow-up sync when reauthFailurePending, ahead of the normal interval', async () => {
+    const runSync = vi.fn()
+    const getStatus = vi
+      .fn()
+      .mockResolvedValue({ folderReadable: true, conflictCount: 0, recoveryCount: 0, reauthFailurePending: true })
+    getAdapter.mockReturnValue(makeAdapter('tablet', runSync, getStatus))
+
+    mountHost()
+    await flush()
+    expect(runSync).toHaveBeenCalledTimes(1)
+    runSync.mockClear()
+
+    await vi.advanceTimersByTimeAsync(20 * 1000)
+    expect(runSync).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops retrying quickly once reauthFailurePending clears', async () => {
+    const runSync = vi.fn()
+    const getStatus = vi
+      .fn()
+      .mockResolvedValueOnce({ folderReadable: true, conflictCount: 0, recoveryCount: 0, reauthFailurePending: true })
+      .mockResolvedValue({ folderReadable: true, conflictCount: 0, recoveryCount: 0, reauthFailurePending: false })
+    getAdapter.mockReturnValue(makeAdapter('tablet', runSync, getStatus))
+
+    mountHost()
+    await flush()
+    runSync.mockClear()
+
+    await vi.advanceTimersByTimeAsync(20 * 1000)
+    expect(runSync).toHaveBeenCalledTimes(1)
+    runSync.mockClear()
+
+    await vi.advanceTimersByTimeAsync(20 * 1000)
+    expect(runSync).not.toHaveBeenCalled()
   })
 })

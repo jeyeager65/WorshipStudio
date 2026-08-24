@@ -558,7 +558,7 @@ function stopDateLabel(a: Announcement): string {
 
 <style scoped>
 .announcements-page {
-  min-height: calc(100vh - 49px);
+  min-height: 100%;
   padding: 24px clamp(24px, 3vw, 48px) 56px;
   background:
     radial-gradient(circle at 24% 0, rgba(var(--v-theme-rose), 0.055), transparent 420px),

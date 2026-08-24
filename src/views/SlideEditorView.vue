@@ -1614,7 +1614,10 @@ function updateTextStyle<K extends keyof SlideTextElement['style']>(
   display: grid;
   grid-template-columns: 250px minmax(180px, 1fr) 320px;
   grid-template-rows: 78px minmax(0, 1fr);
-  height: calc(100vh - 48px);
+  /* 100% rather than a hardcoded viewport-height offset — this renders inside <v-main
+     scrollable> (App.vue), whose own inner .v-main__scroller already excludes the app-bar's
+     height from its box. */
+  height: 100%;
   /* The side columns are fixed width and the middle one has a real floor (see minmax above) —
      once a window gets too narrow for all three to fit, this scrolls horizontally instead of
      letting the middle column get squeezed to zero, which previously let its own content (the

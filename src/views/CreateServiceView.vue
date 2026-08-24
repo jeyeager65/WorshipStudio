@@ -355,7 +355,7 @@ async function createService(destination: 'plan' | 'service') {
 
 <style scoped>
 .create-service-page {
-  min-height: calc(100vh - 49px);
+  min-height: 100%;
   background:
     radial-gradient(circle at 76% 0, rgba(var(--v-theme-primary), 0.05), transparent 430px),
     rgb(var(--v-theme-background));

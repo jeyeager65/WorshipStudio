@@ -701,9 +701,12 @@ onUnmounted(() => {
             <v-icon v-bind="props" icon="mdi-cloud-alert-outline" color="warning" class="mr-3" />
           </template>
         </v-tooltip>
-        <v-tooltip v-else-if="isTabletBuild" :text="syncTooltipText">
+        <!-- A menu rather than a plain tooltip so "force a sync right now" is reachable from
+             every page, not just Settings > Library & Sync (LibrarySyncSection.vue's own "Sync
+             Now" button, which this reuses via the same syncStore.runSync()). -->
+        <v-menu v-else-if="isTabletBuild" location="bottom">
           <template #activator="{ props }">
-            <!-- Progress text is shown inline, not just in the tooltip — this runs on touchscreen
+            <!-- Progress text is shown inline, not just on open — this runs on touchscreen
                  tablets, where a hover-only tooltip is effectively invisible. -->
             <div v-bind="props" class="sync-indicator mr-3">
               <v-icon
@@ -715,7 +718,21 @@ onUnmounted(() => {
               }}</span>
             </div>
           </template>
-        </v-tooltip>
+          <v-card min-width="200" class="pa-3">
+            <div class="text-body-2 text-medium-emphasis mb-2">{{ syncTooltipText }}</div>
+            <v-btn
+              variant="tonal"
+              size="small"
+              block
+              :loading="syncStore.syncing"
+              :disabled="syncStore.syncing"
+              prepend-icon="mdi-sync"
+              @click="syncStore.runSync()"
+            >
+              Sync Now
+            </v-btn>
+          </v-card>
+        </v-menu>
         <v-tooltip
           v-if="syncStore.status && !syncStore.status.folderReadable"
           text="Library folder isn't readable — check the sync setup in Settings"
@@ -784,7 +801,14 @@ onUnmounted(() => {
         @click="toggleBrowserFullscreen"
       />
     </v-app-bar>
-    <v-main>
+    <!-- scrollable: keeps the outer document itself non-scrolling (see index.html's matching
+         `overflow: hidden` on html/body) so the app-bar/nav — position:absolute layout items
+         within that same document — stay visually pinned instead of getting dragged along by
+         the document's own scroll/rubber-band. Without this the whole page was one scrolling
+         region, so the native scrollbar ran the full page height through the app-bar, and iOS
+         Safari's elastic overscroll at the top could bounce page content above the app-bar into
+         the physical status-bar area. -->
+    <v-main scrollable>
       <router-view />
     </v-main>
 
@@ -857,6 +881,16 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* Vuetify measures the app-bar's real rendered height (safe-area padding included, density-
+   aware — never a hardcoded guess) into --v-layout-top on this element, .v-main--scrollable —
+   but resets that variable back to 0px on its own child .v-main__scroller (and thus every view
+   rendered inside it), so a genuinely *nested* layout wouldn't double-count the offset. A page
+   whose own sticky sidebar needs a real fixed height to independently scroll within (e.g.
+   SettingsView.vue's nav column) captures the real value here, under a name Vuetify's reset
+   doesn't touch, so it keeps working however tall the app-bar actually renders. */
+:global(.v-main--scrollable) {
+  --app-bar-height: var(--v-layout-top);
+}
 :global(.v-tooltip > .v-overlay__content) {
   border: 1px solid rgba(var(--v-theme-on-surface), 0.18);
   background: rgb(var(--v-theme-surface-variant));

@@ -21,19 +21,43 @@
  * path from being clobbered by a concurrent pull — so a save is never at risk between now and
  * the next visibility/focus/interval tick, just not pushed quite as instantly. The manual "Sync
  * Now" button (LibrarySyncSection.vue) already covers "I want this synced right now."
+ *
+ * Also schedules a short follow-up sync (FAST_RETRY_MS, capped at MAX_FAST_RETRIES) whenever a
+ * run comes back with status.reauthFailurePending — one auth failure seen, but
+ * cloudSync.ts's REAUTH_FAILURE_THRESHOLD needs a second consecutive one before it actually
+ * flips needsReconnect and shows the banner. Left to the normal triggers above, that second
+ * confirmation could otherwise wait up to a full SYNC_INTERVAL_MS if the operator isn't actively
+ * switching tabs/focus — a real, reported delay before the reconnect prompt appeared at all.
  */
 import { onMounted, onUnmounted } from 'vue'
 import { getAdapter } from '@/adapters'
 import { useSyncStore } from '@/stores/sync'
 
 const SYNC_INTERVAL_MS = 5 * 60 * 1000
+const FAST_RETRY_MS = 20 * 1000
+const MAX_FAST_RETRIES = 3
 
 export function useTabletSync(): void {
   const syncStore = useSyncStore()
   let intervalId: ReturnType<typeof setInterval> | undefined
+  let fastRetryId: ReturnType<typeof setTimeout> | undefined
+  let fastRetryCount = 0
+
+  function stopFastRetry() {
+    if (fastRetryId !== undefined) clearTimeout(fastRetryId)
+    fastRetryId = undefined
+  }
 
   function runSync() {
-    void syncStore.runSync()
+    stopFastRetry()
+    void syncStore.runSync().finally(() => {
+      if (syncStore.status?.reauthFailurePending && fastRetryCount < MAX_FAST_RETRIES) {
+        fastRetryCount++
+        fastRetryId = setTimeout(runSync, FAST_RETRY_MS)
+      } else {
+        fastRetryCount = 0
+      }
+    })
   }
 
   function stopInterval() {
@@ -69,6 +93,7 @@ export function useTabletSync(): void {
 
   onUnmounted(() => {
     stopInterval()
+    stopFastRetry()
     document.removeEventListener('visibilitychange', onVisibilityChange)
     window.removeEventListener('focus', onFocus)
   })
