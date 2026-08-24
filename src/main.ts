@@ -19,7 +19,18 @@ import { logger } from './utils/logger'
 // just vanished once devtools closed, on every platform including the Tauri desktop build. These
 // two cover anything outside Vue's own render/lifecycle functions (a plain event handler, a
 // timer callback, a fire-and-forget async call) -- Vue's own errorHandler below covers the rest.
+// Chromium fires this specific message as a benign global `error` event (no real Error object —
+// event.error is null) whenever a ResizeObserver callback itself triggers another layout change
+// within the same frame — not a bug, nothing to catch or retry, just a notice that a following
+// frame will finish the delivery. This app has several ResizeObservers (auto-fit text sizing,
+// toolbar/preview-panel width tracking), so it's trivially reproducible just by dragging a window
+// resize — not worth logging as an error every time that happens.
+const BENIGN_WINDOW_ERROR_MESSAGES = new Set([
+  'ResizeObserver loop completed with undelivered notifications.',
+  'ResizeObserver loop limit exceeded',
+])
 window.addEventListener('error', (event) => {
+  if (BENIGN_WINDOW_ERROR_MESSAGES.has(event.message)) return
   logger.error('window', event.message || 'Uncaught error', event.error)
 })
 window.addEventListener('unhandledrejection', (event) => {
