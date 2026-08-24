@@ -176,10 +176,6 @@ const fittedFontSizePx = ref<number>()
 const displayText = ref('')
 let resizeObserver: ResizeObserver | undefined
 
-// Matches .slide-text's line-height below — used to convert a wrapped line count into an
-// estimated pixel height for the song/lineWrap path's candidate-size search.
-const LINE_HEIGHT_RATIO = 1.3
-
 let measureCtx: CanvasRenderingContext2D | null | undefined
 function measureTextWidthPx(text: string, font: string): number {
   if (measureCtx === undefined) {
@@ -224,41 +220,75 @@ function fitAutoSizedText() {
     const computed = getComputedStyle(text)
     const rawLines = rawText.split('\n')
     const fontAt = (sizePx: number) => `${computed.fontWeight} ${sizePx}px ${computed.fontFamily}`
-    // Wrapping only ever helps a line that's too *wide* — it never helps the block fit
-    // vertically (a wrap adds a row, making the block taller, never shorter) — so a bigger
-    // size that "still fits" the height budget by wrapping a line is never actually preferred
-    // over a slightly smaller size that avoids wrapping altogether. This checks whether every
-    // line fits on its own row, unwrapped, at a given size.
-    const fitsUnwrapped = (sizePx: number): boolean => {
-      if (rawLines.length * sizePx * LINE_HEIGHT_RATIO > maxHeightPx) return false
+    // Wraps every authored line (preferring a comma/semicolon break over a word boundary — see
+    // wrapLineAtPunctuation) at the given size and returns the resulting rows. A line that
+    // already fits comes back unwrapped, so this covers "nothing needs to wrap" and "some lines
+    // do" uniformly — a size that requires one extra wrapped row can still beat a smaller size
+    // that avoids wrapping altogether, as long as the *total* rendered height still fits. Only
+    // ever called with lines already known non-empty by the '' guard below, since an empty
+    // string measures as fitting (width 0) and wrapLineAtPunctuation would just return `['']`
+    // anyway — the guard exists to skip a wasted measurement, not to change the result.
+    const wrapAtSize = (sizePx: number): string[] => {
       const font = fontAt(sizePx)
-      return rawLines.every((line) => measureTextWidthPx(line, font) <= maxWidthPx)
+      return rawLines.flatMap((line) =>
+        line ? wrapLineAtPunctuation(line, maxWidthPx, (t) => measureTextWidthPx(t, font)) : [''],
+      )
     }
-    if (fitsUnwrapped(lo)) {
-      // Maximize size within "no line needs to wrap at all".
+    // Wrapping a line only ever adds rows, never removes them, so a bigger size never produces
+    // *fewer* total rows than a smaller one — total rendered height is monotonic in size, so the
+    // largest fitting size can still be found with a plain binary search. Height is checked via
+    // the real rendered scrollHeight (same technique as the non-lineWrap path below), not an
+    // estimated rows × size × line-height — this now runs close to the actual height budget
+    // (deliberately using extra wrapped rows to grow the font, where the old algorithm always
+    // had slack from avoiding wrapping whenever possible), so a real font's actual line-height/
+    // text-shadow bleed no longer has room to drift from an estimate the way it used to. Width
+    // still has to be re-checked per *wrapped* row too: wrapLineAtPunctuation gives up and
+    // returns an oversized row intact when a line has no break character within budget, rather
+    // than ever breaking mid-word — a size where that happens must be rejected even if the
+    // height alone would otherwise fit, or that row would render past the slide's edge, clipped
+    // by .slide-content's overflow: hidden. As size grows, the pixel budget covers fewer
+    // characters, so a give-up that occurs at one size keeps occurring at every larger size too
+    // — this stays monotonic, just like the height check.
+    const fitsWrapped = (sizePx: number): boolean => {
+      const font = fontAt(sizePx)
+      const wrapped = wrapAtSize(sizePx)
+      if (!wrapped.every((row) => measureTextWidthPx(row, font) <= maxWidthPx)) return false
+      text.textContent = wrapped.join('\n')
+      text.style.fontSize = `${sizePx}px`
+      return text.scrollHeight <= maxHeightPx
+    }
+
+    if (fitsWrapped(lo)) {
       while (lo <= hi) {
         const mid = Math.floor((lo + hi) / 2)
-        if (fitsUnwrapped(mid)) {
+        if (fitsWrapped(mid)) {
           best = mid
           lo = mid + 1
         } else {
           hi = mid - 1
         }
       }
-      text.style.fontSize = `${best}px`
-      displayText.value = rawLines.join('\n')
     } else {
-      // Not even the minimum avoids wrapping every line — use the minimum and wrap only the
-      // line(s) that don't fit, preferring a comma/semicolon break (see wrapLineAtPunctuation;
-      // never a plain word boundary, even if that leaves an unbreakable line overflowing).
-      best = lo
-      const font = fontAt(best)
-      const wrapped = rawLines.flatMap((line) =>
-        line ? wrapLineAtPunctuation(line, maxWidthPx, (t) => measureTextWidthPx(t, font)) : [''],
-      )
-      text.style.fontSize = `${best}px`
-      displayText.value = wrapped.join('\n')
+      // Even the configured minimum doesn't fit once wrapped — shrink below it down to a hard
+      // floor instead of forcing range.minPx and overflowing (same reasoning as the non-lineWrap
+      // scripture path below: an overlapping, half-illegible slide is worse than a smaller one
+      // that's still fully legible and doesn't collide with anything).
+      const FLOOR_PX = 12
+      let shrinkHi = lo - 1
+      let shrinkLo = Math.min(FLOOR_PX, Math.max(1, shrinkHi))
+      best = shrinkLo
+      while (shrinkLo <= shrinkHi) {
+        const mid = Math.floor((shrinkLo + shrinkHi) / 2)
+        if (fitsWrapped(mid)) {
+          best = mid
+          shrinkLo = mid + 1
+        } else {
+          shrinkHi = mid - 1
+        }
+      }
     }
+    text.style.fontSize = `${best}px`
+    displayText.value = wrapAtSize(best).join('\n')
   } else {
     // Vue's reactive update to displayText only patches the DOM on its next tick, not
     // synchronously here — measuring scrollHeight immediately after just setting the ref would

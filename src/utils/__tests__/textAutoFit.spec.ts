@@ -63,6 +63,47 @@ describe('wrapLineAtPunctuation', () => {
     expect(wrapped[0]).toBe('Come now;')
   })
 
+  it('skips a break character too close to the start rather than orphaning a tiny first line', () => {
+    // "Oh," alone (3 chars) is well under 30% of a 20-char budget — the algorithm should keep
+    // scanning past it for the next comma instead of splitting there.
+    const line = 'Oh, praise the Lord, for He is good'
+    const wrapped = wrapLineAtPunctuation(line, 20, charWidth)
+    expect(wrapped[0]).toBe('Oh, praise the Lord,')
+  })
+
+  it('breaks a repeated-sentence line at the exclamation point', () => {
+    const line = 'Great is Thy faithfulness! Great is Thy faithfulness!'
+    const wrapped = wrapLineAtPunctuation(line, 30, charWidth)
+    expect(wrapped[0]).toBe('Great is Thy faithfulness!')
+    expect(wrapped.join(' ')).toBe(line)
+  })
+
+  it('breaks at a period and a question mark too', () => {
+    expect(wrapLineAtPunctuation('This is one. This is two', 15, charWidth)[0]).toBe(
+      'This is one.',
+    )
+    expect(wrapLineAtPunctuation('Who is this King? He is the Lord', 20, charWidth)[0]).toBe(
+      'Who is this King?',
+    )
+  })
+
+  it('breaks at a colon and an em/en dash', () => {
+    expect(wrapLineAtPunctuation('Remember this: God is faithful', 18, charWidth)[0]).toBe(
+      'Remember this:',
+    )
+    expect(wrapLineAtPunctuation('All I have needed— Thy hand hath provided', 22, charWidth)[0]).toBe(
+      'All I have needed—',
+    )
+  })
+
+  it('never breaks at a plain hyphen inside a compound word', () => {
+    // A bare "-" is excluded from the break set on purpose — unlike an em/en dash used as
+    // punctuation, a hyphen in lyrics is overwhelmingly a compound-word joiner, and breaking
+    // there would be exactly the mid-word wrap this function exists to avoid.
+    const line = 'Well-being and self-control are gifts of the Spirit'
+    expect(wrapLineAtPunctuation(line, 15, charWidth)).toEqual([line])
+  })
+
   it('leaves a line intact when there is no punctuation to break at, even if it overflows', () => {
     // Never falls back to a plain word boundary — an oversized single line is preferred over
     // a mid-phrase wrap; the auto-fit size search is what's supposed to avoid this by picking

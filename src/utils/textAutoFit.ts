@@ -83,18 +83,37 @@ export function paginateTextUnits(
   return pages
 }
 
+// Comma/semicolon/colon are mid-clause pause points; period/exclamation/question mark are full
+// sentence ends — a single authored line sometimes contains more than one complete sentence
+// (a repeated chorus line like "Great is Thy faithfulness! Great is Thy faithfulness!" is one
+// line in the source but reads naturally as two), so those belong in the same break set. En/em
+// dash (–/—) read the same way when used as punctuation ("...hath provided— Great is..."). A
+// plain ASCII hyphen (-) is deliberately excluded — in lyrics it's overwhelmingly a compound-word
+// joiner ("self-control", "well-being"), and breaking there would be exactly the mid-word wrap
+// this function exists to avoid.
+const BREAK_CHARS = new Set([',', ';', ':', '.', '!', '?', '–', '—'])
+
+// A break character sitting right near the start of the remaining text (e.g. "Oh, praise the
+// Lord...") produces a segment that reads as an orphaned scrap ("Oh," alone on its own line)
+// rather than a deliberate line break — skip a candidate that short and keep scanning for a
+// later one within budget instead. Expressed as a fraction of the width budget (not a fixed
+// character count) since it has to scale with maxWidthPx/font size the same way the rest of
+// this function's measurements do.
+const MIN_SEGMENT_WIDTH_FRACTION = 0.3
+
 /**
  * Wraps a single authored line (a song lyric line, never itself split by paginateTextUnits)
  * to fit within `maxWidthPx`, only if it actually needs to — an unchanged `[line]` is returned
- * whenever it already fits. When a break is unavoidable, it only ever breaks at the last comma
- * or semicolon that keeps the segment within width (a natural pause point) — never at a plain
- * word boundary, even if that means the line is left wider than `maxWidthPx`. That's
- * deliberate: a mid-phrase word-wrap reads worse on a lyric slide than an oversized line the
- * auto-fit size search (see PresentationView) can instead avoid by not picking that size in
- * the first place, now that songs have a configurable minimum font size to search down to.
+ * whenever it already fits. When a break is unavoidable, it only ever breaks at the last
+ * comma/semicolon/period/exclamation/question-mark that keeps the segment within width *and*
+ * isn't suspiciously short (see MIN_SEGMENT_WIDTH_FRACTION) — never at a plain word boundary,
+ * even if that means the line is left wider than `maxWidthPx`. That's deliberate: a mid-phrase
+ * word-wrap reads worse on a lyric slide than an oversized line the auto-fit size search (see
+ * SlideContentRenderer.vue) can instead avoid by not picking that size in the first place, now
+ * that songs have a configurable minimum font size to search down to.
  *
- * `measureWidth` is injected (real canvas text measurement in PresentationView; jsdom's canvas
- * has no real measurement backend, so tests pass a synthetic character-count-based one).
+ * `measureWidth` is injected (real canvas text measurement in SlideContentRenderer.vue; jsdom's
+ * canvas has no real measurement backend, so tests pass a synthetic character-count-based one).
  */
 export function wrapLineAtPunctuation(
   line: string,
@@ -107,13 +126,16 @@ export function wrapLineAtPunctuation(
   while (measureWidth(remaining) > maxWidthPx) {
     let punctuationBreak = -1
     for (let i = 0; i < remaining.length; i++) {
-      if (measureWidth(remaining.slice(0, i + 1)) > maxWidthPx) break
-      const ch = remaining[i]
-      if (ch === ',' || ch === ';') punctuationBreak = i
+      const widthSoFar = measureWidth(remaining.slice(0, i + 1))
+      if (widthSoFar > maxWidthPx) break
+      if (BREAK_CHARS.has(remaining[i]) && widthSoFar >= maxWidthPx * MIN_SEGMENT_WIDTH_FRACTION) {
+        punctuationBreak = i
+      }
     }
     if (punctuationBreak === -1) {
-      // No comma/semicolon within budget — leave the rest of the line intact rather than
-      // breaking mid-phrase at a word boundary.
+      // No break character within budget past the minimum segment length — leave the rest of
+      // the line intact rather than breaking mid-phrase at a word boundary or producing an
+      // orphaned scrap of a line.
       result.push(remaining)
       remaining = ''
       break
