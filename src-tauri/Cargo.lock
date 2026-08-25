@@ -5817,7 +5817,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "worship-studio"
-version = "0.8.53"
+version = "0.8.54"
 dependencies = [
  "axum",
  "base64 0.23.1",
