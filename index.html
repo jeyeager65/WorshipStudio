@@ -37,12 +37,15 @@
       }
       /* iOS ignores manifest.webmanifest's display:"standalone" — apple-mobile-web-app-*
            above are what actually go full-bleed under the status bar/home indicator in an
-           installed PWA, so viewport-fit=cover + this padding are both needed together to
-           actually clear those regions rather than just visually match them. */
+           installed PWA, so viewport-fit=cover is needed to even reach that area. Only
+           padding-bottom belongs here, though — the app-bar (App.vue's own .app-bar) is a
+           position:fixed Vuetify layout item, which completely ignores an ancestor's padding;
+           its own top inset has to live on the app-bar itself (see .app-bar's own comment) or
+           it renders flush against the true screen top, under the status bar, regardless of
+           what's set here. */
       #app {
         box-sizing: border-box;
         height: 100%;
-        padding-top: env(safe-area-inset-top);
         padding-bottom: env(safe-area-inset-bottom);
       }
     </style>

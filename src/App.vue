@@ -959,6 +959,16 @@ onUnmounted(() => {
 .app-bar {
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.09);
   background: rgba(var(--v-theme-surface), 0.97);
+  /* Vuetify renders a top-level app-bar as a real position:fixed element (see its own
+     layout.js — anchored to the true viewport, not any ancestor's padding box), and
+     viewport-fit=cover (index.html) extends the page to the true screen edges — so without
+     this, the bar renders flush against the top, under the iPad status bar, regardless of any
+     padding on an ancestor like #app. Padding here (rather than a top offset) also makes
+     Vuetify's own height-measurement, which pushes <v-main>'s content down by the app-bar's
+     real rendered height, pick up the inset automatically — no separate content offset needed.
+     Resolves to 0px anywhere without a safe area (desktop, the web demo), so this is harmless
+     there. */
+  padding-top: env(safe-area-inset-top);
 }
 .sync-indicator {
   display: flex;
