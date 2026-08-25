@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useFiltersPanel } from '@/composables/useFiltersPanel'
 import { useServicesStore } from '@/stores/services'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { usePeopleStore } from '@/stores/people'
@@ -68,6 +69,9 @@ const browseQuery = ref('')
 const browseType = ref<string | null>(null)
 const browsePreacher = ref<string | null>(null)
 const browseBibleBook = ref<string | null>(null)
+// Only meaningful below the shared 900px "compact" breakpoint (assets/base.css), where the
+// Browse filters sidebar becomes a slide-over panel.
+const { filtersOpen, toggleFilters, closeFilters } = useFiltersPanel()
 
 const todayIso = () => localCalendarDate()
 
@@ -256,6 +260,18 @@ const browseResults = computed(() => {
           </p>
         </div>
         <div class="toolbar-actions">
+          <!-- Browse tab only, and only below the shared 900px "compact" breakpoint, where the
+               filters move into a slide-over this opens (assets/base.css). -->
+          <v-btn
+            v-if="tab === 'browse'"
+            class="app-filters-toggle"
+            variant="tonal"
+            density="comfortable"
+            icon="mdi-filter-variant"
+            :aria-label="filtersOpen ? 'Hide filters' : 'Show filters'"
+            :aria-expanded="filtersOpen"
+            @click="toggleFilters"
+          />
           <v-text-field
             v-if="tab === 'browse'"
             v-model="browseQuery"
@@ -268,19 +284,28 @@ const browseResults = computed(() => {
             clearable
             class="service-search"
           />
-          <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" to="/create-service"
-            >Create Service</v-btn
+          <v-btn
+            color="primary"
+            variant="flat"
+            prepend-icon="mdi-plus"
+            class="app-icon-btn"
+            aria-label="Create Service"
+            to="/create-service"
+            ><span class="app-btn-label">Create Service</span></v-btn
           >
         </div>
       </div>
 
       <v-tabs v-model="tab" class="service-tabs">
         <v-tab value="home" prepend-icon="mdi-calendar-today-outline">Schedule</v-tab>
-        <v-tab value="planning" prepend-icon="mdi-calendar-clock-outline">Plan Ahead</v-tab>
+        <!-- "Plan", not "Plan Ahead": the three tabs together overflowed into a horizontal
+             scroller on a phone, and this is the only label with slack in it. The toolbar
+             heading below still says "Plan Ahead" in full, so the meaning isn't lost. -->
+        <v-tab value="planning" prepend-icon="mdi-calendar-clock-outline">Plan</v-tab>
         <v-tab value="browse" prepend-icon="mdi-archive-search-outline">Browse</v-tab>
       </v-tabs>
 
-      <div class="directory-content app-page-scroll">
+      <div class="directory-content app-page-body">
         <AsyncLoadState
           v-if="!store.loaded"
           :loading="store.loading"
@@ -297,7 +322,7 @@ const browseResults = computed(() => {
           class="mb-4"
           @retry="store.load"
         />
-        <div v-if="store.loaded && tab === 'home'">
+        <div v-if="store.loaded && tab === 'home'" class="app-page-scroll tab-panel">
           <section v-if="todayServices.length" class="service-group service-group--today">
             <div class="group-heading">
               <div>
@@ -371,7 +396,7 @@ const browseResults = computed(() => {
           </section>
         </div>
 
-        <div v-else-if="store.loaded && tab === 'planning'">
+        <div v-else-if="store.loaded && tab === 'planning'" class="app-page-scroll tab-panel">
           <template v-if="futureServiceGroups.length">
             <section v-for="group in futureServiceGroups" :key="group.key" class="service-group">
               <div class="group-heading">
@@ -410,7 +435,18 @@ const browseResults = computed(() => {
         </div>
 
         <div v-else-if="store.loaded && tab === 'browse'" class="browse-layout">
-          <aside class="browse-filters" aria-label="Filter services">
+          <!-- One <aside>, two presentations — permanent sidebar on wide screens, slide-over
+               below the shared 900px "compact" breakpoint. See assets/base.css. -->
+          <div
+            class="app-filters-scrim"
+            :class="{ 'app-filters-scrim--open': filtersOpen }"
+            @click="closeFilters"
+          />
+          <aside
+            class="browse-filters app-filters"
+            :class="{ 'app-filters--open': filtersOpen }"
+            aria-label="Filter services"
+          >
             <div class="filter-header">
               <div>
                 <span>Filters</span>
@@ -535,7 +571,7 @@ const browseResults = computed(() => {
             </div>
           </aside>
 
-          <section class="service-group browse-group">
+          <section class="service-group browse-group app-page-scroll">
             <div class="group-heading">
               <div>
                 <span class="group-kicker">{{
@@ -722,14 +758,27 @@ const browseResults = computed(() => {
 }
 /* No fixed min-height now that this is the page's scroll region (.app-page-scroll) — it takes
    whatever height is left under the hero/toolbar/tabs and scrolls within it. */
+/* Holds the tab panels; each panel scrolls itself rather than this scrolling them all. That's
+   what gives the Browse filters a non-scrolling parent to anchor their slide-over against —
+   otherwise the panel would scroll away with the results behind it. */
 .directory-content {
+  min-height: 0;
+  padding: 0;
+}
+.tab-panel {
   padding: 20px;
 }
+/* position: relative is the positioning context the slide-over panel is absolute against;
+   min-height: 0 lets the results column inside it own the scrolling. */
 .browse-layout {
   display: grid;
+  position: relative;
+  min-height: 0;
+  flex: 1;
   grid-template-columns: 238px minmax(0, 1fr);
   gap: 20px;
-  align-items: start;
+  padding: 20px;
+  align-items: stretch;
 }
 .browse-filters {
   overflow: hidden;
@@ -929,7 +978,10 @@ const browseResults = computed(() => {
 .services-empty--centered {
   grid-template-columns: 46px minmax(0, 1fr);
 }
-@media (max-width: 850px) {
+/* 900px = the shared "compact" breakpoint (see assets/base.css). The Browse filters sidebar
+   becomes a slide-over (defined there) and Create Service drops to its icon, so the toolbar
+   controls stay on one row instead of the button dropping to a full-width bar below the search. */
+@media (max-width: 900px) {
   .services-hero {
     align-items: flex-start;
     flex-direction: column;
@@ -939,16 +991,26 @@ const browseResults = computed(() => {
     justify-content: space-between;
   }
   .services-toolbar {
-    align-items: flex-start;
+    align-items: stretch;
     flex-direction: column;
     padding: 17px 18px;
   }
-  .toolbar-actions,
-  .service-search {
+  .toolbar-actions {
+    display: flex;
     width: 100%;
+    min-width: 0;
+    align-items: center;
+    flex-direction: row;
+    gap: 8px;
+  }
+  .service-search {
+    width: auto;
+    min-width: 0;
+    flex: 1;
   }
   .browse-layout {
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr);
   }
   .filter-fields {
     display: grid;
@@ -963,11 +1025,8 @@ const browseResults = computed(() => {
   .services-page {
     padding: 16px 12px 36px;
   }
-  .toolbar-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .directory-content {
+  .tab-panel,
+  .browse-layout {
     padding: 14px 10px;
   }
   .filter-fields {

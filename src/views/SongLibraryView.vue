@@ -1330,6 +1330,38 @@ function finishSelection() {
     display: none;
   }
 }
+/* Phone portrait (a 390px-wide window leaves this container around 310px). Everything here is
+   about fitting more rows on a screen that only shows a handful:
+   - The leading icon is the same music note on every row, so it identifies nothing and its column
+     is pure cost. Dropped from the grid entirely rather than hidden, so it takes no space.
+   - The credit line goes too. At this width it pushes each row to two lines for a value that's
+     often "Unknown artist", and the title alone is what the list is scanned by. It stays at every
+     other width — this is narrow-only.
+   - Card height, type size and gaps all come down: 86px rows sized for a desktop table are far
+     larger than they need to be here, and a title at 18px was set against a much wider column. */
+@container song-list (max-width: 430px) {
+  .song-card {
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) 34px;
+    gap: 8px;
+    padding: 8px 6px 8px 12px;
+  }
+  .song-icon,
+  .song-identity p {
+    display: none;
+  }
+  .song-identity h3 {
+    font-size: 0.88rem;
+  }
+  .song-list {
+    gap: 5px;
+  }
+  .song-list-heading {
+    padding-top: 6px;
+    padding-bottom: 3px;
+    font-size: 0.68rem;
+  }
+}
 /* 900px = the shared "compact" breakpoint (see assets/base.css). The slide-over panel itself is
    defined there too — all this page owns is collapsing the grid to one column and giving it the
    positioning context the panel is absolute against. */

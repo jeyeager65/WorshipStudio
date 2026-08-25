@@ -206,6 +206,10 @@ function categoryColor(groupId: string): string {
   return index === -1 ? 'slate' : CATEGORY_COLORS[index % CATEGORY_COLORS.length]
 }
 
+function personSubtitle(person: Person): string {
+  return [person.title, person.email || 'No email on file'].filter(Boolean).join(' · ')
+}
+
 function initials(person: Person): string {
   return `${person.firstName[0] ?? ''}${person.lastName[0] ?? ''}`.toUpperCase()
 }
@@ -474,13 +478,7 @@ async function remove(person: Person) {
                     <span class="person-avatar">{{ initials(person) }}</span>
                     <div class="person-identity">
                       <h3>{{ personDisplayName(person) }}</h3>
-                      <p>
-                        {{
-                          [person.title, person.email || 'No email on file']
-                            .filter(Boolean)
-                            .join(' · ')
-                        }}
-                      </p>
+                      <p>{{ personSubtitle(person) }}</p>
                     </div>
                     <span
                       v-if="availabilityDate && isUnavailableOnDate(person, availabilityDate)"
@@ -1167,6 +1165,34 @@ async function remove(person: Person) {
 @container people-grid (max-width: 520px) {
   .availability-state {
     display: none;
+  }
+}
+/* Phone portrait — everything here is about fitting more rows on a screen that shows only a
+   handful. The initials avatar is decoration rather than identification (the name it abbreviates
+   is right beside it), and the subtitle is frequently just "No email on file", so both go and the
+   row collapses to one line. Card height, type size and gaps come down with them: 78px rows and
+   19px names were sized against a much wider desktop column. All narrow-only — every other width
+   keeps the avatar and subtitle. */
+@container people-grid (max-width: 430px) {
+  .person-avatar,
+  .person-identity p {
+    display: none;
+  }
+  .person-card-header {
+    min-height: 0;
+    gap: 8px;
+    padding: 8px 6px 8px 12px;
+  }
+  .person-identity h3 {
+    font-size: 0.88rem;
+  }
+  .people-grid {
+    gap: 5px;
+  }
+  .people-grid-heading {
+    padding-top: 6px;
+    padding-bottom: 3px;
+    font-size: 0.68rem;
   }
 }
 @container people-grid (max-width: 380px) {

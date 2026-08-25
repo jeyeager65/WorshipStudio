@@ -30,9 +30,8 @@ const pwaUpdate = usePwaUpdate()
 const tauriUpdate = useTauriUpdate()
 
 const { blockedMessage, isPresenting } = storeToRefs(useLiveSessionStore())
-const { isDirty, saving, saveHandler, pageTitleOverride, navCollapseRequested } = storeToRefs(
-  useUnsavedChangesStore(),
-)
+const { isDirty, saving, saveHandler, pageTitleOverride, navCollapseRequested } =
+  storeToRefs(useUnsavedChangesStore())
 const syncStore = useSyncStore()
 const settingsStore = useSettingsStore()
 const servicesStore = useServicesStore()
@@ -63,7 +62,8 @@ const syncTooltipText = computed(() => {
 // via useSyncStore) rather than a second copy of the redirect logic.
 const reconnectBannerText = computed(() => {
   const count = syncStore.status?.pendingPushCount
-  const provider = settingsStore.machineSettings?.tabletCloudProvider === 'onedrive' ? 'OneDrive' : 'Dropbox'
+  const provider =
+    settingsStore.machineSettings?.tabletCloudProvider === 'onedrive' ? 'OneDrive' : 'Dropbox'
   const changesNote = count ? ` ${count} change${count === 1 ? '' : 's'} waiting to sync.` : ''
   return `This device needs to reconnect to ${provider}.${changesNote}`
 })
@@ -315,9 +315,14 @@ async function toggleBrowserFullscreen() {
     await document.exitFullscreen()
   } else {
     await document.documentElement.requestFullscreen()
-    // Orientation locking is intentionally best-effort: browsers that implement it generally
-    // require fullscreen first, while desktop browsers and iOS may reject or omit it entirely.
-    await orientation.lock?.('landscape').catch(() => undefined)
+    // Tablets only. Forcing landscape suits a tablet on a stand, but on a phone it turns the
+    // display sideways in the operator's hand for a screen they're holding upright — so the lock
+    // is gated on the device's own short edge rather than applied to every touch device.
+    // 600px is the conventional tablet floor (a 390x844 phone is 390; an iPad mini is 744).
+    // Still best-effort beyond that: browsers that implement it generally require fullscreen
+    // first, while desktop browsers and iOS may reject or omit it entirely.
+    const shortEdge = Math.min(screen.width, screen.height)
+    if (shortEdge >= 600) await orientation.lock?.('landscape').catch(() => undefined)
   }
 }
 
