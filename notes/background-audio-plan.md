@@ -1,5 +1,15 @@
 # Background Audio — Design Notes
 
+> **Post-1.0 — deferred as of 2026-08-25, and not committed work.** This was previously listed
+> as a prerequisite for the 0.9.0 church-ready milestone; it no longer is, and neither is Bible
+> import. 0.9.0 now waits on documentation alone. The wording that matters is the operator's own:
+> these features move to post-1.0 "if they ever get implemented" — so treat what follows as a
+> design exploration that may never be built, not as a plan awaiting a start date.
+>
+> Nothing below is stale in itself; the analysis of the existing `audio` stub still holds. Only
+> its priority changed. Re-read the "Why this exists" section against current code before acting
+> on it, since the stub may have shifted in the meantime.
+
 Status: as of 2026-08-13, early design — nothing built yet. This is a working document, not a
 final spec. Auto-advance/looping used to be covered here too but is now its own doc
 (`notes/slide-auto-advance-plan.md`) — it's a standalone capability, useful whether or not

@@ -195,6 +195,8 @@ Each item should be assigned to a named milestone such as **0.5 polish**, **befo
 
 ### Audio service items
 
+Status: post-1.0 by explicit decision (August 25, 2026) — "if they ever get implemented", in the operator's own words, so not a scheduled slice. This item had never been assigned a milestone despite the instruction above; it has one now. Design exploration lives in `notes/background-audio-plan.md`, which carries the same deferral notice.
+
 The data model recognizes audio, but live rendering remains a placeholder. A complete implementation needs file selection, playback, pause/seek/stop behavior, live-transition semantics, missing-file handling, remote behavior, and operator status.
 
 ### Sheet music / PDF region mapping
@@ -213,9 +215,9 @@ OpenSong import covers the immediate migration need, so these stay deferred and 
 
 ### Local Bible-file import
 
-Status: in scope for 1.0 (decided August 8, 2026).
+Status: post-1.0 by explicit decision (August 25, 2026), reversing the earlier "in scope for 1.0" call of August 8, 2026 — and post-1.0 here means "if it ever gets implemented", in the operator's own words, not a scheduled slice.
 
-KJV and API-backed translations are supported, but the general local Bible import workflow is not complete. Decide whether churches need OpenSong Bible files or another documented format, then implement it before 1.0.
+KJV and API-backed translations are supported, which covers the need in practice; the general local Bible import workflow is not complete. If it is ever revisited, the open question is unchanged: decide whether churches need OpenSong Bible files or another documented format, then implement against that.
 
 ### Email delivery
 
