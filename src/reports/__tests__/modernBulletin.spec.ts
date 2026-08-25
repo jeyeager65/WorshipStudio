@@ -43,6 +43,22 @@ const doc: OrderOfWorshipDoc = {
       separatorBefore: true,
     },
     { role: 'Something Unmapped:', text: 'A line with no matching keyword', separatorBefore: true },
+    { role: 'Offering Video:', text: '', kind: 'video', separatorBefore: true },
+    {
+      role: 'PowerPoint: Missions Update',
+      text: '',
+      kind: 'external-app',
+      externalAppKind: 'presentation',
+      separatorBefore: true,
+    },
+    {
+      role: 'Video Hand-off',
+      text: '',
+      kind: 'external-app',
+      externalAppKind: 'video',
+      separatorBefore: true,
+    },
+    { role: 'Custom Hand-off', text: '', kind: 'external-app', separatorBefore: true },
   ],
   footer: { title: 'Heart Preparation', text: 'Be still and know.' },
 }

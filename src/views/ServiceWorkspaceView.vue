@@ -1640,6 +1640,7 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
         :item-label="itemLabel"
         :item-color="itemColor"
         :item-has-live="itemHasLive"
+        :external-app-profiles="externalAppProfilesById"
         :class="{ 'order-drawer-open': isOrderCompact && openDrawer === 'order' }"
         @open-add-dialog="openAddDialog"
       />

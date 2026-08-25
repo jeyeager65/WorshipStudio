@@ -322,7 +322,7 @@ describe('flattenService', () => {
         {
           id: 'profile-1',
           name: 'PowerPoint',
-          kind: 'powerpoint' as const,
+          kind: 'presentation' as const,
           launchMode: 'launch-automatically' as const,
           remoteControlsEnabled: false,
           keyCommands: [],

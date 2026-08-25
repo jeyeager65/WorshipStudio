@@ -4,6 +4,7 @@ import { VueDraggable } from 'vue-draggable-plus'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { sermonMainReference } from '@/utils/sermonInfo'
 import type { Service, ServiceItem } from '@/models/service'
+import type { ExternalAppProfile } from '@/adapters/types'
 import type { AddItemType } from './AddServiceItemDialog.vue'
 
 const props = defineProps<{
@@ -12,6 +13,7 @@ const props = defineProps<{
   itemLabel: (item: ServiceItem) => string
   itemColor: (item: ServiceItem) => string
   itemHasLive: (index: number) => boolean
+  externalAppProfiles: Map<string, ExternalAppProfile>
 }>()
 const emit = defineEmits<{ 'open-add-dialog': [AddItemType] }>()
 
@@ -66,8 +68,12 @@ function itemIcon(item: ServiceItem): string {
       return 'mdi-movie-open'
     case 'audio':
       return 'mdi-volume-high'
-    case 'external-app':
+    case 'external-app': {
+      const kind = props.externalAppProfiles.get(item.profileId)?.kind
+      if (kind === 'presentation') return 'mdi-presentation'
+      if (kind === 'video') return 'mdi-movie-open-outline'
       return 'mdi-application'
+    }
     case 'sermon':
       return 'mdi-account-voice'
     case 'bulletin-note':

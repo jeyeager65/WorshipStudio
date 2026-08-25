@@ -24,7 +24,7 @@ const DEFAULT_EXTERNAL_APP_PROFILES: DefaultExternalAppProfileSeed[] = [
   {
     id: 'external-app-default-powerpoint',
     name: 'PowerPoint',
-    kind: 'powerpoint',
+    kind: 'presentation',
     launchMode: 'launch-automatically',
     // /S launches straight into slideshow mode for the given file, no editor chrome.
     parameterFormat: '/S "{file}"',

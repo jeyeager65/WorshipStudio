@@ -529,7 +529,7 @@ export interface ExternalAppProfile {
   name: string
   /** Drives the icon shown for this profile everywhere it's referenced (including on a device
    *  that can never launch it, e.g. web/tablet authoring a service item). */
-  kind: 'powerpoint' | 'video' | 'custom'
+  kind: 'presentation' | 'video' | 'custom'
   launchMode: 'already-running' | 'launch-automatically'
   parameterFormat?: string
   remoteControlsEnabled: boolean

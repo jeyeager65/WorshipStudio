@@ -2,6 +2,7 @@ import type { Service, ServiceItem, RoleAssignment } from '@/models/service'
 import type { Song } from '@/models/song'
 import type { SlideLibraryItem } from '@/models/library'
 import type { BulletinSettings, SongCollectionDefinition } from '@/models/settings'
+import type { ExternalAppProfile } from '@/adapters/types'
 import { buildBulletinDocument } from '@/reports/builders/bulletin'
 import { formatServiceTime } from '@/utils/serviceTime'
 
@@ -16,6 +17,10 @@ export interface OrderOfWorshipLine {
   /** The originating item's type — only used to decide spacing/separators (see
    *  `separatorBefore` below), so hand-built lines in tests are free to omit it. */
   kind?: ServiceItem['type']
+  /** External App Hand-off items only — the resolved profile's own kind (e.g. "presentation"),
+   *  used to pick a more specific icon than the generic fallback (see modernBulletin.ts's
+   *  iconForLine). Undefined when the profile no longer exists. */
+  externalAppKind?: ExternalAppProfile['kind']
   /** Whether a visual separator (and normal spacing) should precede this line when rendered.
    *  False only when this and the previous line are both songs, so a multi-song worship set
    *  reads as one flowing block instead of being chopped up by a divider/blank line between
@@ -104,6 +109,7 @@ function buildLines(
   slides: Map<string, SlideLibraryItem>,
   bulletinPersonNames: Map<string, string>,
   collectionDefinitions: SongCollectionDefinition[],
+  externalAppProfiles: Map<string, ExternalAppProfile>,
 ): OrderOfWorshipLine[] {
   const assignments = service.assignments
   // A media/video/slide/external-app item has nothing printable of its own (unlike a song or
@@ -133,6 +139,7 @@ function buildLines(
       assignments,
       bulletinPersonNames,
       collectionDefinitions,
+      externalAppProfiles,
     )
     return { ...line, kind: item.type }
   })
@@ -151,6 +158,7 @@ function lineFor(
   assignments: RoleAssignment[] | undefined,
   personNames: Map<string, string>,
   collectionDefinitions: SongCollectionDefinition[],
+  externalAppProfiles: Map<string, ExternalAppProfile>,
 ): OrderOfWorshipLine {
   switch (item.type) {
     case 'song':
@@ -205,6 +213,7 @@ function lineFor(
         text: '',
         person: resolveRolePerson(item.roleId, assignments, personNames),
         note: item.bulletinNote,
+        externalAppKind: externalAppProfiles.get(item.profileId)?.kind,
       }
     case 'sermon': {
       // The sermon's own title (when set) is normally the heading — a real bulletin names the
@@ -252,6 +261,7 @@ export function buildOrderOfWorship(
   // existing caller/test that predates Settings → Bulletin keeps working unchanged.
   bulletin?: BulletinSettings['page1'],
   collectionDefinitions: SongCollectionDefinition[] = [],
+  externalAppProfiles: Map<string, ExternalAppProfile> = new Map(),
 ): OrderOfWorshipDoc {
   const songs = new Map(songList.map((s) => [s.id, s]))
   const slides = new Map(slideList.map((s) => [s.id, s]))
@@ -271,7 +281,14 @@ export function buildOrderOfWorship(
     // A bulletin is a formal document, so titles apply to every participant—not only the
     // preacher. The ordinary-name map remains the fallback for older callers that do not yet
     // provide a distinct formal-name map.
-    lines: buildLines(service, songs, slides, formalPersonNames, collectionDefinitions),
+    lines: buildLines(
+      service,
+      songs,
+      slides,
+      formalPersonNames,
+      collectionDefinitions,
+      externalAppProfiles,
+    ),
     footer:
       footerEnabled && service.bulletinPage1Footer
         ? {

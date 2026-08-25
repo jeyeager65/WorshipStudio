@@ -218,6 +218,60 @@ describe('buildOrderOfWorship', () => {
     expect(doc.lines).toMatchObject([{ role: 'PowerPoint: Missions Update', text: '' }])
   })
 
+  it("resolves an external-app line's externalAppKind from its profile, for the Modern bulletin's icon", () => {
+    const service = baseService({
+      items: [
+        {
+          id: 'item-1',
+          type: 'external-app',
+          profileId: 'profile-1',
+          bulletinLabel: 'PowerPoint: Missions Update',
+        },
+      ],
+    })
+    const externalAppProfiles = new Map([
+      [
+        'profile-1',
+        {
+          id: 'profile-1',
+          name: 'PowerPoint',
+          kind: 'presentation' as const,
+          launchMode: 'launch-automatically' as const,
+          remoteControlsEnabled: false,
+          keyCommands: [],
+          updatedAt: '',
+          updatedByDevice: '',
+        },
+      ],
+    ])
+    const doc = buildOrderOfWorship(
+      service,
+      songs,
+      slides,
+      new Map(),
+      undefined,
+      undefined,
+      [],
+      externalAppProfiles,
+    )
+    expect(doc.lines).toMatchObject([{ externalAppKind: 'presentation' }])
+  })
+
+  it("leaves externalAppKind undefined when the item's profile no longer exists", () => {
+    const service = baseService({
+      items: [
+        {
+          id: 'item-1',
+          type: 'external-app',
+          profileId: 'missing-profile',
+          bulletinLabel: 'Missions Update',
+        },
+      ],
+    })
+    const doc = buildOrderOfWorship(service, songs, slides, new Map())
+    expect(doc.lines[0]?.externalAppKind).toBeUndefined()
+  })
+
   it('excludes a media/video item with no bulletinLabel rather than printing a "[Media]"/"[Video]" placeholder', () => {
     const service = baseService({
       items: [

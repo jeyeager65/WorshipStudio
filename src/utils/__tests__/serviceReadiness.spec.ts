@@ -191,7 +191,7 @@ describe('evaluateServiceReadiness', () => {
         {
           id: 'powerpoint',
           name: 'PowerPoint',
-          kind: 'powerpoint' as const,
+          kind: 'presentation' as const,
           launchMode: 'launch-automatically' as const,
           parameterFormat: '{file}',
           remoteControlsEnabled: false,

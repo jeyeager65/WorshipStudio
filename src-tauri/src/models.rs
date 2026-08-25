@@ -451,7 +451,7 @@ pub struct WindowPosition {
 pub struct ExternalAppProfile {
     pub id: String,
     pub name: String,
-    /// "powerpoint" | "video" | "custom" — drives the icon shown for this profile everywhere
+    /// "presentation" | "video" | "custom" — drives the icon shown for this profile everywhere
     /// it's referenced, including on a device that can never launch it (web/tablet authoring a
     /// service item). Defaults to "custom" for profiles saved before this field existed.
     #[serde(default = "default_external_app_kind")]

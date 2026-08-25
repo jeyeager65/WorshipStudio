@@ -14,6 +14,9 @@ import {
   iconThought,
   iconAnnounce,
   iconGeneric,
+  iconVideo,
+  iconPresentation,
+  iconApplication,
   plainIconCalendar,
   plainIconAnnounce,
   plainIconGreeting,
@@ -195,6 +198,12 @@ function iconForLine(line: OrderOfWorshipLine): string {
   const label = (line.role ?? '').toLowerCase()
   if (line.kind === 'song') return iconMusic
   if (line.kind === 'sermon') return iconCross
+  if (line.kind === 'video') return iconVideo
+  if (line.kind === 'external-app') {
+    if (line.externalAppKind === 'presentation') return iconPresentation
+    if (line.externalAppKind === 'video') return iconVideo
+    return iconApplication
+  }
   if (label.includes('announce')) return iconAnnounce
   if (label.includes('welcome')) return iconPeople
   if (label.includes('reflect')) return iconCandle

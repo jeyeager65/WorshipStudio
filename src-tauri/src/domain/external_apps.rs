@@ -197,7 +197,7 @@ pub fn migrate_if_needed(
 pub struct DefaultExternalAppProfile {
     pub id: &'static str,
     pub name: &'static str,
-    /// "powerpoint" | "video" | "custom" — see ExternalAppProfile::kind.
+    /// "presentation" | "video" | "custom" — see ExternalAppProfile::kind.
     pub kind: &'static str,
     pub launch_mode: &'static str,
     pub parameter_format: &'static str,
@@ -220,7 +220,7 @@ pub fn default_profiles() -> &'static [DefaultExternalAppProfile] {
         DefaultExternalAppProfile {
             id: "external-app-default-powerpoint",
             name: "PowerPoint",
-            kind: "powerpoint",
+            kind: "presentation",
             launch_mode: "launch-automatically",
             // /S launches straight into slideshow mode for the given file, no editor chrome.
             parameter_format: r#"/S "{file}""#,
@@ -360,7 +360,7 @@ mod tests {
         ExternalAppProfile {
             id: id.to_string(),
             name: name.to_string(),
-            kind: "powerpoint".to_string(),
+            kind: "presentation".to_string(),
             launch_mode: "launch-automatically".to_string(),
             parameter_format: Some(r#"/S "{file}""#.to_string()),
             remote_controls_enabled: false,

@@ -25,6 +25,18 @@ async function loadExternalApps() {
     externalAppProfiles.value = []
   }
 }
+// Matches this app's own convention for video content elsewhere (MediaLibraryView.vue,
+// ServiceWorkspaceView.vue, etc.) rather than inventing a separate icon just for this list.
+function externalAppKindIcon(kind: ExternalAppProfile['kind']): string {
+  switch (kind) {
+    case 'presentation':
+      return 'mdi-presentation'
+    case 'video':
+      return 'mdi-movie-open-outline'
+    default:
+      return 'mdi-application-outline'
+  }
+}
 function openNewExternalAppProfile() {
   void router.push({ name: 'external-app-profile-new' })
 }
@@ -105,7 +117,7 @@ onMounted(loadExternalApps)
           @click="openEditExternalAppProfile(profile)"
         >
           <template #prepend>
-            <span class="app-profile-icon"><v-icon icon="mdi-application-outline" /></span>
+            <span class="app-profile-icon"><v-icon :icon="externalAppKindIcon(profile.kind)" /></span>
           </template>
           <v-list-item-title class="font-weight-bold">{{
             profile.name || '(Unnamed)'

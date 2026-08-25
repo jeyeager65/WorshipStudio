@@ -21,6 +21,9 @@ import {
   mdiVolumeHigh,
   mdiCradleOutline,
   mdiAccount,
+  mdiPresentation,
+  mdiMovieOpenOutline,
+  mdiApplicationOutline,
 } from '@mdi/js'
 
 const SIZE = 40
@@ -64,6 +67,15 @@ export const iconThought = badge(mdiThoughtBubbleOutline)
 export const iconAnnounce = badge(mdiBullhornVariantOutline)
 /** A generic fallback for any content type without a more specific icon above. */
 export const iconGeneric = badge(mdiAsteriskCircleOutline)
+/** Video items, and External App Hand-off items whose profile kind is "video" — matches this
+ *  app's own convention for video content elsewhere (MediaLibraryView.vue, ServiceOrderList.vue). */
+export const iconVideo = badge(mdiMovieOpenOutline)
+/** External App Hand-off items whose profile kind is "presentation" (e.g. PowerPoint). */
+export const iconPresentation = badge(mdiPresentation)
+/** External App Hand-off items whose profile kind is "custom" (or whose profile no longer
+ *  exists) — matches this app's own default icon for external apps elsewhere (Settings' list,
+ *  ServiceOrderList.vue), rather than the fully generic asterisk fallback. */
+export const iconApplication = badge(mdiApplicationOutline)
 
 // Bare (un-badged) icons for page 2's right-side design — section subtitles and per-role
 // markers in the serving schedule table sit beside small text, not a 40x40 line-item row, so a

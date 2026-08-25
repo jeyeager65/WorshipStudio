@@ -62,7 +62,7 @@ const launchModeOptions: { title: string; value: ExternalAppProfile['launchMode'
 ]
 
 const kindOptions: { title: string; value: ExternalAppProfile['kind'] }[] = [
-  { title: 'PowerPoint', value: 'powerpoint' },
+  { title: 'Presentation', value: 'presentation' },
   { title: 'Video Player', value: 'video' },
   { title: 'Other', value: 'custom' },
 ]

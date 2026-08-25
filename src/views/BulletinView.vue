@@ -12,6 +12,7 @@ import { useServiceTypesStore } from '@/stores/serviceTypes'
 import { useSongCollectionsStore } from '@/stores/songCollections'
 import { useAnnouncementsStore } from '@/stores/announcements'
 import { useRolesStore } from '@/stores/roles'
+import { useExternalAppsStore } from '@/stores/externalApps'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import { personDisplayName, personFormalName } from '@/models/library'
@@ -43,6 +44,7 @@ const serviceTypesStore = useServiceTypesStore()
 const songCollectionsStore = useSongCollectionsStore()
 const announcementsStore = useAnnouncementsStore()
 const rolesStore = useRolesStore()
+const externalAppsStore = useExternalAppsStore()
 const { isDirty, saving, saveHandler, pageTitleOverride } = storeToRefs(useUnsavedChangesStore())
 
 type BulletinStyle = 'classic' | 'modern'
@@ -74,6 +76,7 @@ onMounted(async () => {
     songCollectionsStore.loaded ? Promise.resolve() : songCollectionsStore.load(),
     announcementsStore.loaded ? Promise.resolve() : announcementsStore.load(),
     rolesStore.loaded ? Promise.resolve() : rolesStore.load(),
+    externalAppsStore.loaded ? Promise.resolve() : externalAppsStore.load(),
   ])
   if (loaded) {
     service.value = loaded
@@ -138,6 +141,11 @@ const formalPersonNames = computed(
 // RoleDefinition id -> display name for the serving schedule table — without this,
 // buildBulletinPage2 falls back to printing the raw id (e.g. "role-nursery") for every row.
 const roleNames = computed(() => new Map(rolesStore.roles.map((role) => [role.id, role.name])))
+// For an External App Hand-off line's icon (see modernBulletin.ts's iconForLine) — the raw
+// service item only has a profileId, not the profile's own kind.
+const externalAppProfileById = computed(
+  () => new Map(externalAppsStore.profiles.map((profile) => [profile.id, profile])),
+)
 const bulletin = computed(() =>
   service.value
     ? buildOrderOfWorship(
@@ -148,6 +156,7 @@ const bulletin = computed(() =>
         formalPersonNames.value,
         settingsStore.librarySettings?.bulletin.page1,
         songCollectionsStore.collections,
+        externalAppProfileById.value,
       )
     : undefined,
 )
