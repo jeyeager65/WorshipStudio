@@ -452,7 +452,7 @@ onUnmounted(() => {
       :temporary="isNarrowWindow"
       :rail="navigationCollapsed"
       :width="224"
-      :rail-width="68"
+      :rail-width="56"
       class="app-nav app-nav-no-print"
       :class="{ 'app-nav--collapsed': navigationCollapsed }"
     >
@@ -577,7 +577,8 @@ onUnmounted(() => {
         v-if="!isSetupWizard"
         icon="mdi-menu"
         variant="text"
-        class="navigation-toggle ml-1"
+        density="compact"
+        class="navigation-toggle ml-3"
         :title="
           isNarrowWindow
             ? navDrawerOpenNarrow
@@ -938,9 +939,9 @@ onUnmounted(() => {
   letter-spacing: -0.012em;
 }
 .app-brand-icon {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
   flex-shrink: 0;
 }
 /* Same width isNarrowWindow already treats as "tight" (forces the nav to an overlay) — the
@@ -1067,6 +1068,9 @@ onUnmounted(() => {
      more room than these short nav labels need, and "Announcements" in particular doesn't fit
      without it. */
   --v-list-prepend-gap: 20px;
+  /* Same tight inline padding as the collapsed rail below, so expanding/collapsing the sidebar
+     doesn't also change how snug each row sits against the drawer's edges. */
+  padding-inline: 4px;
   transition:
     background-color 140ms ease,
     color 140ms ease;
@@ -1085,12 +1089,12 @@ onUnmounted(() => {
   content: '';
 }
 .app-nav--collapsed .sidebar-item {
-  width: 40px;
+  width: 48px;
   min-height: 40px;
   margin-right: auto !important;
   margin-bottom: 6px !important;
   margin-left: auto !important;
-  padding-inline: 8px !important;
+  padding-inline: 4px !important;
   border: 1px solid transparent;
   border-radius: 9px !important;
   grid-template-columns: 24px !important;
@@ -1123,12 +1127,12 @@ onUnmounted(() => {
   opacity: 1;
 }
 .app-nav--collapsed :deep(.v-list > .v-divider) {
-  width: 40px;
+  width: 48px;
   margin-right: auto !important;
   margin-left: auto !important;
 }
 .app-nav--collapsed :deep(.v-navigation-drawer__append > .v-divider) {
-  width: 40px;
+  width: 48px;
   margin-right: auto;
   margin-left: auto;
 }
