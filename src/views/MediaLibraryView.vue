@@ -3,15 +3,18 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useFiltersPanel } from '@/composables/useFiltersPanel'
 import { getAdapter } from '@/adapters'
 import { useMediaStore } from '@/stores/media'
+import { useExternalAppsStore } from '@/stores/externalApps'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import LibraryEmptyState from '@/components/LibraryEmptyState.vue'
 import ImportMediaDialog from '@/components/media/ImportMediaDialog.vue'
 import CanvaImportDialog from '@/components/canva/CanvaImportDialog.vue'
 import type { MediaItem } from '@/models/library'
+import { mediaFileIcon } from '@/utils/mediaFileIcon'
 
 const store = useMediaStore()
 const confirmDialog = useConfirmDialogStore()
+const externalAppsStore = useExternalAppsStore()
 
 // Tauri-only, same optional-port pattern as DiagnosticsPort.openLogsFolder — no browser/mock
 // equivalent, so the button simply doesn't render there rather than opening a dialog that can
@@ -54,6 +57,9 @@ const deleteError = ref('')
 
 onMounted(() => {
   if (!store.loaded) store.load()
+  // Only feeds iconFor's fallback for extensions the icon map doesn't know — deliberately not
+  // awaited, so icons simply refine once it arrives rather than holding up the grid.
+  if (!externalAppsStore.loaded) externalAppsStore.load()
 })
 
 // Resolved lazily and cached by MediaItem id. Missing/deleted files retain a clear type
@@ -120,6 +126,14 @@ function clearFilters() {
   query.value = ''
   typeFilter.value = 'all'
   activeTag.value = undefined
+}
+
+// A document's icon is derived from its own filename rather than its `kind`, which only ever says
+// "document" — so a PowerPoint deck, a PDF and a spreadsheet all rendered identically. External
+// App profiles are passed in as the fallback for extensions the icon map doesn't know (see
+// mediaFileIcon).
+function iconFor(item: MediaItem): string {
+  return mediaFileIcon(item.filename, item.kind, externalAppsStore.profiles)
 }
 
 function lastUsedLabel(item: MediaItem): string {
@@ -468,28 +482,10 @@ async function saveEdits() {
                   preload="metadata"
                 />
                 <span v-else class="media-placeholder">
-                  <v-icon
-                    :icon="
-                      item.kind === 'video'
-                        ? 'mdi-movie-open-outline'
-                        : item.kind === 'document'
-                          ? 'mdi-file-document-outline'
-                          : 'mdi-image-outline'
-                    "
-                    size="34"
-                  />
+                  <v-icon :icon="iconFor(item)" size="46" />
                 </span>
                 <span class="type-badge">
-                  <v-icon
-                    :icon="
-                      item.kind === 'video'
-                        ? 'mdi-movie-open-outline'
-                        : item.kind === 'document'
-                          ? 'mdi-file-document-outline'
-                          : 'mdi-image-outline'
-                    "
-                    size="14"
-                  />
+                  <v-icon :icon="iconFor(item)" size="14" />
                   {{
                     item.kind === 'video' ? 'Video' : item.kind === 'document' ? 'File' : 'Image'
                   }}
@@ -583,17 +579,7 @@ async function saveEdits() {
     >
       <v-card v-if="editingItem" class="media-editor-card">
         <div class="media-editor-header">
-          <span
-            ><v-icon
-              :icon="
-                editingItem.kind === 'video'
-                  ? 'mdi-movie-open-outline'
-                  : editingItem.kind === 'document'
-                    ? 'mdi-file-document-outline'
-                    : 'mdi-image-outline'
-              "
-              size="22"
-          /></span>
+          <span><v-icon :icon="iconFor(editingItem)" size="22" /></span>
           <div>
             <h2>Media Details</h2>
             <p>{{ editingItem.filename }}</p>
@@ -634,16 +620,7 @@ async function saveEdits() {
             @error="markEditorPreviewUnavailable"
           />
           <div v-else class="editor-preview-status editor-preview-status--unavailable">
-            <v-icon
-              :icon="
-                editingItem.kind === 'video'
-                  ? 'mdi-movie-open-outline'
-                  : editingItem.kind === 'document'
-                    ? 'mdi-file-document-outline'
-                    : 'mdi-image-outline'
-              "
-              size="34"
-            />
+            <v-icon :icon="iconFor(editingItem)" size="34" />
             <span>{{
               editingItem.kind === 'document' ? 'No Preview' : 'Preview Unavailable'
             }}</span>
@@ -1075,10 +1052,12 @@ async function saveEdits() {
 .media-card:hover .media-thumb-content {
   transform: scale(1.025);
 }
+/* Sized against the 16:9 thumb it sits in: for a document this badge is the only thing standing
+   in for the file, so it carries more weight than it would as a mere loading placeholder. */
 .media-placeholder {
   display: grid;
-  width: 58px;
-  height: 58px;
+  width: 82px;
+  height: 82px;
   place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 13px;
