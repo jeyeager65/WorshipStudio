@@ -501,6 +501,7 @@ function stopDateLabel(a: Announcement): string {
                 label="Event date"
                 variant="outlined"
                 density="compact"
+                clearable
                 hide-details
               />
               <v-text-field
@@ -509,6 +510,7 @@ function stopDateLabel(a: Announcement): string {
                 label="Through (optional)"
                 variant="outlined"
                 density="compact"
+                clearable
                 hide-details
               />
             </div>
@@ -529,6 +531,7 @@ function stopDateLabel(a: Announcement): string {
                 label="Start showing (optional)"
                 variant="outlined"
                 density="compact"
+                clearable
                 hide-details
               />
               <v-text-field
@@ -537,6 +540,7 @@ function stopDateLabel(a: Announcement): string {
                 label="Stop showing"
                 variant="outlined"
                 density="compact"
+                clearable
                 hide-details
               />
             </div>
