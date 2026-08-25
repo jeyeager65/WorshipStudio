@@ -903,6 +903,12 @@ onUnmounted(() => {
 .app-nav {
   background: rgb(var(--v-theme-surface));
   border-right-color: rgba(var(--v-theme-on-surface), 0.08);
+  /* Same reasoning as .app-bar's own comment — a top-level Vuetify layout item (this drawer
+     included) renders position:fixed against the true viewport, so viewport-fit=cover exposes
+     it to the status-bar area directly; without its own inset here, its content (and the
+     narrow-width temporary drawer's own scrim behind it) rendered flush under the status bar
+     even once the app-bar itself was correctly inset. */
+  padding-top: env(safe-area-inset-top);
 }
 /* worshipLight's own `surface` (near-white) sits only ~4% off the page `background` behind it —
  * barely perceptible, so nav/app-bar read as flat white rather than a distinct chrome region
