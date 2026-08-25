@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useFiltersPanel } from '@/composables/useFiltersPanel'
 import { useAnnouncementsStore } from '@/stores/announcements'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
@@ -38,6 +39,7 @@ function groupingDate(a: Announcement): string | undefined {
 }
 
 const searchQuery = ref('')
+const { filtersOpen, toggleFilters, closeFilters } = useFiltersPanel()
 const activeStatus = ref<'active' | 'past'>()
 const activeYear = ref<string>()
 const activeMonth = ref<string>()
@@ -242,8 +244,8 @@ function stopDateLabel(a: Announcement): string {
 </script>
 
 <template>
-  <main class="announcements-page">
-    <header class="announcements-hero">
+  <main class="announcements-page app-page">
+    <header class="announcements-hero app-page-hero">
       <div>
         <div class="page-eyebrow">Bulletin</div>
         <h1>Announcements</h1>
@@ -268,7 +270,7 @@ function stopDateLabel(a: Announcement): string {
       </div>
     </header>
 
-    <section class="announcements-directory">
+    <section class="announcements-directory app-page-body">
       <div class="announcements-toolbar">
         <div>
           <h2>All Announcements</h2>
@@ -283,6 +285,18 @@ function stopDateLabel(a: Announcement): string {
           </p>
         </div>
         <div class="announcements-actions">
+          <!-- Only rendered below the shared 900px "compact" breakpoint, where the filters move
+               into a slide-over panel this opens (assets/base.css). -->
+          <v-btn
+            v-if="announcementsStore.announcements.length > 0"
+            class="app-filters-toggle"
+            variant="tonal"
+            density="comfortable"
+            icon="mdi-filter-variant"
+            :aria-label="filtersOpen ? 'Hide filters' : 'Show filters'"
+            :aria-expanded="filtersOpen"
+            @click="toggleFilters"
+          />
           <v-text-field
             v-if="announcementsStore.announcements.length > 0"
             v-model="searchQuery"
@@ -299,9 +313,11 @@ function stopDateLabel(a: Announcement): string {
             variant="flat"
             color="primary"
             prepend-icon="mdi-bullhorn-outline"
+            class="app-icon-btn"
+            aria-label="Add Announcement"
             @click="openAdd"
           >
-            Add Announcement
+            <span class="app-btn-label">Add Announcement</span>
           </v-btn>
         </div>
       </div>
@@ -335,7 +351,21 @@ function stopDateLabel(a: Announcement): string {
         </LibraryEmptyState>
 
         <div v-else class="announcements-directory-body">
-          <aside class="announcement-filters" aria-label="Filter announcements">
+          <!-- One <aside>, two presentations: a permanent sidebar on wide screens, a slide-over panel
+
+               below the shared 900px "compact" breakpoint. See assets/base.css. -->
+
+          <div
+            class="app-filters-scrim"
+            :class="{ 'app-filters-scrim--open': filtersOpen }"
+            @click="closeFilters"
+          />
+
+          <aside
+            class="announcement-filters app-filters"
+            :class="{ 'app-filters--open': filtersOpen }"
+            aria-label="Filter announcements"
+          >
             <button
               type="button"
               class="announcement-filter announcement-filter--all"
@@ -418,7 +448,7 @@ function stopDateLabel(a: Announcement): string {
             </div>
           </aside>
 
-          <div class="announcement-results">
+          <div class="announcement-results app-page-body">
             <LibraryEmptyState
               v-if="filteredAnnouncements.length === 0"
               icon="mdi-bullhorn-outline"
@@ -428,7 +458,7 @@ function stopDateLabel(a: Announcement): string {
               <v-btn variant="text" color="primary" @click="clearAllFilters">Clear Filters</v-btn>
             </LibraryEmptyState>
 
-            <div v-else class="announcement-list">
+            <div v-else class="announcement-list app-page-scroll">
               <article v-for="a in filteredAnnouncements" :key="a.id" class="announcement-card">
                 <div class="announcement-body">
                   <span
@@ -562,14 +592,16 @@ function stopDateLabel(a: Announcement): string {
 
 <style scoped>
 .announcements-page {
-  min-height: 100%;
-  padding: 24px clamp(24px, 3vw, 48px) 56px;
+  padding: 24px clamp(24px, 3vw, 48px);
   background:
     radial-gradient(circle at 24% 0, rgba(var(--v-theme-rose), 0.055), transparent 420px),
     rgb(var(--v-theme-background));
 }
+/* width: 100% because the page is a flex column now (.app-page) — auto side margins on a flex
+   item shrink it to its content width instead of filling the line. */
 .announcements-hero,
 .announcements-directory {
+  width: 100%;
   max-width: 1240px;
   margin-right: auto;
   margin-left: auto;
@@ -678,12 +710,16 @@ function stopDateLabel(a: Announcement): string {
   background: rgba(var(--v-theme-background), 0.48);
   font-size: 0.82rem;
 }
+/* flex/min-height rather than a fixed min-height, so the grid takes the leftover page height and
+   hands it to the results column, which is what scrolls (see .app-page in assets/base.css). */
 .announcements-directory-body {
   display: grid;
+  min-height: 0;
+  flex: 1;
   grid-template-columns: 220px minmax(0, 1fr);
-  min-height: 420px;
 }
 .announcement-filters {
+  overflow-y: auto;
   padding: 14px 11px 18px;
   border-right: 1px solid rgba(var(--v-theme-on-surface), 0.07);
   background: rgba(var(--v-theme-background), 0.17);
@@ -791,6 +827,7 @@ function stopDateLabel(a: Announcement): string {
 }
 .announcement-results {
   min-width: 0;
+  overflow: hidden;
 }
 .announcement-list {
   display: flex;
@@ -852,17 +889,10 @@ function stopDateLabel(a: Announcement): string {
 .date-row > * {
   flex: 1;
 }
-@media (max-width: 980px) {
-  .announcements-toolbar,
-  .announcements-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .announcement-search {
-    width: min(520px, 100%);
-  }
-}
-@media (max-width: 880px) {
+/* 900px = the shared "compact" breakpoint (see assets/base.css). The filters sidebar used to
+   become a horizontal bar here; it's a slide-over now, defined centrally. Only the toolbar stacks
+   — the controls themselves stay a row so Add Announcement keeps sitting beside the search. */
+@media (max-width: 900px) {
   .announcements-hero {
     align-items: stretch;
     flex-direction: column;
@@ -871,44 +901,34 @@ function stopDateLabel(a: Announcement): string {
     align-self: flex-start;
   }
   .announcements-directory-body {
+    position: relative;
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr);
   }
-  .announcement-filters {
-    display: flex;
-    gap: 5px;
-    padding: 9px 11px;
-    overflow-x: auto;
-    border-right: 0;
-    border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+  .announcements-toolbar {
+    align-items: stretch;
+    flex-direction: column;
   }
-  .filter-section {
-    display: flex;
+  .announcements-actions {
     align-items: center;
-    gap: 5px;
-    margin: 0;
-    padding: 0 0 0 8px;
-    border-top: 0;
-    border-left: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+    flex-direction: row;
   }
-  .filter-heading,
-  .filter-empty {
-    display: none;
-  }
-  .announcement-filter {
+  .announcement-search {
     width: auto;
-    min-width: max-content;
-    grid-template-columns: 27px auto auto;
-    margin-bottom: 0;
+    min-width: 0;
+    flex: 1;
   }
 }
+/* 700px = the shared "phone" breakpoint (see assets/base.css). */
 @media (max-width: 700px) {
   .announcements-page {
-    padding: 14px 12px 40px;
+    padding: 10px;
   }
-  /* The whole hero card (eyebrow, title, description, stats) is nice-to-have context, not
-     essential, and it eats space that matters more on a narrow/short screen. */
-  .announcements-hero {
-    display: none;
+  .announcements-toolbar {
+    padding: 8px 10px;
+  }
+  .announcement-list {
+    padding: 10px;
   }
 }
 </style>

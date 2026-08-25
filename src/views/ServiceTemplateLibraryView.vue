@@ -89,8 +89,8 @@ async function deleteTemplate(template: ServiceTemplate) {
 </script>
 
 <template>
-  <main class="templates-page">
-    <header class="templates-hero">
+  <main class="templates-page app-page">
+    <header class="templates-hero app-page-hero">
       <div>
         <div class="page-eyebrow">Service Planning</div>
         <h1>Service Templates</h1>
@@ -106,7 +106,7 @@ async function deleteTemplate(template: ServiceTemplate) {
       </div>
     </header>
 
-    <section class="template-directory">
+    <section class="template-directory app-page-body">
       <div class="directory-toolbar">
         <div>
           <h2>Template Library</h2>
@@ -127,8 +127,14 @@ async function deleteTemplate(template: ServiceTemplate) {
             hide-details
             clearable
           />
-          <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="createTemplate"
-            >New Template</v-btn
+          <v-btn
+            color="primary"
+            variant="flat"
+            prepend-icon="mdi-plus"
+            class="app-icon-btn"
+            aria-label="New Template"
+            @click="createTemplate"
+            ><span class="app-btn-label">New Template</span></v-btn
           >
         </div>
       </div>
@@ -174,7 +180,7 @@ async function deleteTemplate(template: ServiceTemplate) {
         <h2>No Matching Templates</h2>
         <p>Try a different name, description, or service type.</p>
       </div>
-      <div v-else-if="serviceTemplatesStore.loaded" class="template-grid">
+      <div v-else-if="serviceTemplatesStore.loaded" class="template-grid app-page-scroll">
         <article
           v-for="template in filteredTemplates"
           :key="template.id"
@@ -244,14 +250,16 @@ async function deleteTemplate(template: ServiceTemplate) {
 
 <style scoped>
 .templates-page {
-  min-height: 100%;
-  padding: 24px clamp(24px, 3vw, 48px) 56px;
+  padding: 24px clamp(24px, 3vw, 48px);
   background:
     radial-gradient(circle at 24% 0, rgba(var(--v-theme-slate), 0.055), transparent 420px),
     rgb(var(--v-theme-background));
 }
+/* width: 100% because the page is a flex column now (.app-page) — auto side margins on a flex
+   item shrink it to its content width instead of filling the line. */
 .templates-hero,
 .template-directory {
+  width: 100%;
   max-width: 1240px;
   margin-right: auto;
   margin-left: auto;
@@ -349,9 +357,13 @@ async function deleteTemplate(template: ServiceTemplate) {
   color: rgba(var(--v-theme-on-surface), 0.48);
   font-size: 0.72rem;
 }
+/* align-items: center because a grid's default `stretch` can't stretch the button — Vuetify gives
+   v-btn a fixed height — so it fell back to the top of a row whose height came from the taller
+   search field, leaving the two visibly out of line. */
 .toolbar-actions {
   display: grid;
   min-width: min(470px, 50vw);
+  align-items: center;
   grid-template-columns: minmax(210px, 1fr) auto;
   gap: 10px;
 }
@@ -478,13 +490,21 @@ async function deleteTemplate(template: ServiceTemplate) {
   .templates-summary {
     align-self: flex-start;
   }
+  /* Only the toolbar stacks (heading above the controls) — the controls stay a row so New
+     Template keeps sitting beside the search rather than dropping to a full-width bar. */
   .directory-toolbar {
     align-items: stretch;
     flex-direction: column;
   }
   .toolbar-actions {
+    display: flex;
     min-width: 0;
-    grid-template-columns: 1fr;
+    align-items: center;
+    gap: 8px;
+  }
+  .toolbar-actions .v-input {
+    flex: 1;
+    min-width: 0;
   }
   .template-grid {
     grid-template-columns: 1fr;
@@ -492,9 +512,4 @@ async function deleteTemplate(template: ServiceTemplate) {
 }
 /* The whole hero card (eyebrow, title, description, stat) is nice-to-have context, not
    essential, and it eats space that matters more on a narrow/short screen. */
-@media (max-width: 700px) {
-  .templates-hero {
-    display: none;
-  }
-}
 </style>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useFiltersPanel } from '@/composables/useFiltersPanel'
 import { useRouter } from 'vue-router'
 import { usePeopleStore } from '@/stores/people'
 import { useRoleGroupsStore } from '@/stores/roleGroups'
@@ -7,8 +8,14 @@ import { useRolesStore } from '@/stores/roles'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import LibraryEmptyState from '@/components/LibraryEmptyState.vue'
+import AlphabetIndexRail from '@/components/AlphabetIndexRail.vue'
 import type { Person } from '@/models/library'
 import { isElder, personDisplayName } from '@/models/library'
+import {
+  ALPHABET_INDEX_LETTERS,
+  groupByIndexLetter,
+  scrollToIndexHeading,
+} from '@/utils/alphabetIndex'
 
 const router = useRouter()
 const peopleStore = usePeopleStore()
@@ -38,8 +45,13 @@ function categoryFor(roleId: string): string | undefined {
   return roleGroupsStore.roleGroups.find((g) => g.id === role.groupId)?.name
 }
 
+// Defaults to first name (how the directory has always sorted); "Last name" swaps the key so
+// both the list order and the A-Z rail jump by surname instead, like a phone book.
+const sortBy = ref<'first' | 'last'>('first')
 function sortKey(person: Person): string {
-  return `${person.firstName} ${person.lastName}`.toLowerCase()
+  return sortBy.value === 'last'
+    ? `${person.lastName} ${person.firstName}`.toLowerCase()
+    : `${person.firstName} ${person.lastName}`.toLowerCase()
 }
 
 // Match Assignments: category identity stays separate from warning/error colors. The common
@@ -57,6 +69,7 @@ const CATEGORY_COLORS = [
 
 const searchQuery = ref('')
 const activeFilter = ref('all')
+const { filtersOpen, toggleFilters, closeFilters } = useFiltersPanel()
 const availabilityDate = ref('')
 function isUnavailableOnDate(person: Person, date: string): boolean {
   return (
@@ -135,6 +148,19 @@ const filteredPeople = computed(() => {
   return [...matches].sort((a, b) => sortKey(a).localeCompare(sortKey(b)))
 })
 
+// filteredPeople is already sorted by sortKey, so groups come out in order for free.
+const groupedPeople = computed(() => groupByIndexLetter(filteredPeople.value, sortKey))
+const availablePeopleLetters = computed(
+  () => new Set(groupedPeople.value.map((group) => group.letter)),
+)
+// Only alongside an actual list — the empty/error states have nothing to index into.
+const showIndexRail = computed(() => peopleStore.loaded && filteredPeople.value.length > 0)
+const peopleGridEl = ref<HTMLElement>()
+function scrollToPersonLetter(letter: string) {
+  const heading = document.getElementById(`person-letter-${letter}`)
+  if (peopleGridEl.value && heading) scrollToIndexHeading(peopleGridEl.value, heading)
+}
+
 function clearDirectoryFilters() {
   searchQuery.value = ''
   activeFilter.value = 'all'
@@ -206,305 +232,380 @@ async function remove(person: Person) {
 
 <template>
   <main class="people-page">
-    <header class="people-hero">
-      <div>
-        <div class="page-eyebrow">Team Directory</div>
-        <h1>People</h1>
-        <p>
-          Add and organize everyone who serves in worship, ministry, hospitality, or production.
-        </p>
-      </div>
-      <div class="people-summary" aria-label="People directory summary">
-        <div class="summary-stat">
-          <strong>{{ peopleStore.people.length }}</strong>
-          <span>People</span>
-        </div>
-        <div class="summary-stat">
-          <strong>{{ peopleWithRolesCount }}</strong>
-          <span>With Roles</span>
-        </div>
-        <div class="summary-stat">
-          <strong>{{ peopleWithAvailabilityCount }}</strong>
-          <span>Availability Notes</span>
-        </div>
-      </div>
-    </header>
-
-    <section class="directory-panel">
-      <div class="directory-toolbar">
+    <div class="people-page-content">
+      <header class="people-hero app-page-hero">
         <div>
-          <h2>Directory</h2>
+          <div class="page-eyebrow">Team Directory</div>
+          <h1>People</h1>
           <p>
-            {{ filteredPeople.length }} {{ filteredPeople.length === 1 ? 'person' : 'people' }}
-            <template v-if="activeFilter !== 'all'"> in {{ activeFilterLabel }}</template>
-            <template v-if="searchQuery"> matching your search</template>
+            Add and organize everyone who serves in worship, ministry, hospitality, or production.
           </p>
         </div>
-        <div class="directory-actions">
-          <v-text-field
-            v-if="peopleStore.people.length > 0"
-            v-model="searchQuery"
-            prepend-inner-icon="mdi-magnify"
-            placeholder="Search name, category, or role"
-            aria-label="Search by name, category, or role"
-            variant="outlined"
-            density="compact"
-            hide-details
-            clearable
-            class="people-search"
-          />
-          <v-btn
-            variant="flat"
-            color="primary"
-            prepend-icon="mdi-account-plus-outline"
-            @click="openAdd"
-            >Add Person</v-btn
-          >
-        </div>
-      </div>
-
-      <div
-        class="directory-body"
-        :class="{ 'directory-body--empty': peopleStore.people.length === 0 }"
-      >
-        <aside
-          v-if="peopleStore.people.length"
-          class="people-filters"
-          aria-label="Filter people by category"
-        >
-          <div class="filter-heading">Categories</div>
-          <button
-            type="button"
-            class="filter-option filter-option--all"
-            :class="{ 'filter-option--active': activeFilter === 'all' }"
-            @click="activeFilter = 'all'"
-          >
-            <span class="filter-icon"
-              ><v-icon icon="mdi-account-multiple-outline" size="18"
-            /></span>
-            <span>All People</span>
+        <div class="people-summary" aria-label="People directory summary">
+          <div class="summary-stat">
             <strong>{{ peopleStore.people.length }}</strong>
-          </button>
-          <button
-            v-for="filter in categoryFilters"
-            :key="filter.value"
-            type="button"
-            class="filter-option"
-            :class="{ 'filter-option--active': activeFilter === filter.value }"
-            :style="{ '--filter-color': `rgb(var(--v-theme-${filter.color}))` }"
-            @click="activeFilter = filter.value"
-          >
-            <span class="filter-icon"><v-icon icon="mdi-shape-outline" size="17" /></span>
-            <span>{{ filter.label }}</span>
-            <strong>{{ filter.count }}</strong>
-          </button>
-          <button
-            type="button"
-            class="filter-option"
-            :class="{ 'filter-option--active': activeFilter === 'elder' }"
-            @click="activeFilter = 'elder'"
-          >
-            <span class="filter-icon"><v-icon icon="mdi-account-tie-outline" size="18" /></span>
-            <span>Elder</span>
-            <strong>{{ elderCount }}</strong>
-          </button>
-          <div class="filter-divider" />
-          <button
-            type="button"
-            class="filter-option filter-option--unassigned"
-            :class="{ 'filter-option--active': activeFilter === 'unassigned' }"
-            @click="activeFilter = 'unassigned'"
-          >
-            <span class="filter-icon"
-              ><v-icon icon="mdi-account-question-outline" size="18"
-            /></span>
-            <span>Unassigned</span>
-            <strong>{{ peopleStore.people.length - peopleWithRolesCount }}</strong>
-          </button>
-          <div class="availability-filter">
-            <label for="people-availability-date">Availability Date</label>
+            <span>People</span>
+          </div>
+          <div class="summary-stat">
+            <strong>{{ peopleWithRolesCount }}</strong>
+            <span>With Roles</span>
+          </div>
+          <div class="summary-stat">
+            <strong>{{ peopleWithAvailabilityCount }}</strong>
+            <span>Availability Notes</span>
+          </div>
+        </div>
+      </header>
+
+      <section class="directory-panel">
+        <div class="directory-toolbar">
+          <div class="directory-toolbar-heading">
+            <h2>Directory</h2>
+            <p>
+              {{ filteredPeople.length }} {{ filteredPeople.length === 1 ? 'person' : 'people' }}
+              <template v-if="activeFilter !== 'all'"> in {{ activeFilterLabel }}</template>
+              <template v-if="searchQuery"> matching your search</template>
+            </p>
+          </div>
+          <div class="directory-actions">
+            <!-- Only rendered once the filters collapse out of the sidebar (the shared 900px "compact" breakpoint
+               block) — below that they live in a slide-over panel this opens. -->
+            <v-btn
+              v-if="peopleStore.people.length"
+              class="app-filters-toggle"
+              variant="tonal"
+              density="comfortable"
+              icon="mdi-filter-variant"
+              :aria-label="filtersOpen ? 'Hide filters' : 'Show filters'"
+              :aria-expanded="filtersOpen"
+              @click="toggleFilters"
+            />
+            <v-btn-toggle
+              v-if="peopleStore.people.length > 0"
+              v-model="sortBy"
+              mandatory
+              density="compact"
+              divided
+              class="people-sort-toggle"
+            >
+              <v-btn value="first" size="small" aria-label="Sort by first name">First</v-btn>
+              <v-btn value="last" size="small" aria-label="Sort by last name">Last</v-btn>
+            </v-btn-toggle>
             <v-text-field
-              id="people-availability-date"
-              v-model="availabilityDate"
-              type="date"
+              v-if="peopleStore.people.length > 0"
+              v-model="searchQuery"
+              prepend-inner-icon="mdi-magnify"
+              placeholder="Search name, category, or role"
+              aria-label="Search by name, category, or role"
               variant="outlined"
               density="compact"
               hide-details
               clearable
-              aria-label="Check availability on date"
-              @click:clear="clearAvailabilityDate"
+              class="people-search"
             />
-            <button
-              v-if="availabilityDate"
-              type="button"
-              class="filter-option filter-option--unavailable"
-              :class="{ 'filter-option--active': activeFilter === 'unavailable' }"
-              @click="activeFilter = 'unavailable'"
-            >
-              <span class="filter-icon"
-                ><v-icon icon="mdi-calendar-remove-outline" size="18"
-              /></span>
-              <span>Unavailable</span>
-              <strong>{{ unavailableOnSelectedDateCount }}</strong>
-            </button>
-          </div>
-        </aside>
-
-        <div class="directory-results">
-          <AsyncLoadState
-            v-if="!peopleStore.loaded"
-            :loading="peopleStore.loading"
-            :error="peopleStore.loadError"
-            label="people"
-            @retry="peopleStore.load"
-          />
-          <AsyncLoadState
-            v-if="peopleStore.loaded && peopleStore.loadError"
-            :loading="false"
-            :error="peopleStore.loadError"
-            label="updated people"
-            compact
-            class="mb-3"
-            @retry="peopleStore.load"
-          />
-          <LibraryEmptyState
-            v-if="peopleStore.loaded && peopleStore.people.length === 0"
-            icon="mdi-account-multiple-plus-outline"
-            title="No People Yet"
-            message="Add the first person to begin building your service team."
-          >
             <v-btn
               variant="flat"
               color="primary"
               prepend-icon="mdi-account-plus-outline"
+              class="add-person-btn app-icon-btn"
               @click="openAdd"
-              >Add Person</v-btn
+              ><span class="app-btn-label">Add Person</span></v-btn
             >
-          </LibraryEmptyState>
-          <LibraryEmptyState
-            v-else-if="peopleStore.loaded && filteredPeople.length === 0"
-            icon="mdi-account-search-outline"
-            title="No Matches Found"
-            message="No people match the current category and search."
-          >
-            <v-btn variant="text" color="primary" @click="clearDirectoryFilters"
-              >Clear Filters</v-btn
-            >
-          </LibraryEmptyState>
-
-          <div v-else-if="peopleStore.loaded" class="people-grid">
-            <article
-              v-for="person in filteredPeople"
-              :key="person.id"
-              class="person-card"
-              tabindex="0"
-              @click="openEdit(person)"
-              @keydown.enter="openEdit(person)"
-              @keydown.space.prevent="openEdit(person)"
-            >
-              <header class="person-card-header">
-                <span class="person-avatar">{{ initials(person) }}</span>
-                <div class="person-identity">
-                  <h3>{{ personDisplayName(person) }}</h3>
-                  <p>
-                    {{
-                      [person.title, person.email || 'No email on file'].filter(Boolean).join(' · ')
-                    }}
-                  </p>
-                </div>
-                <span
-                  v-if="availabilityDate && isUnavailableOnDate(person, availabilityDate)"
-                  class="availability-state availability-state--unavailable"
-                >
-                  <v-icon icon="mdi-calendar-remove-outline" size="17" />
-                  Unavailable {{ availabilityDateLabel }}
-                </span>
-                <span
-                  v-else-if="availabilityDate"
-                  class="availability-state availability-state--available"
-                >
-                  <v-icon icon="mdi-calendar-check-outline" size="17" />
-                  Available {{ availabilityDateLabel }}
-                </span>
-                <span v-else-if="person.unavailableDateRanges.length" class="availability-state">
-                  <v-icon icon="mdi-calendar-alert-outline" size="17" />
-                  {{ person.unavailableDateRanges.length }} availability
-                  {{ person.unavailableDateRanges.length === 1 ? 'note' : 'notes' }}
-                </span>
-                <span v-else class="availability-state availability-state--clear">
-                  <v-icon icon="mdi-calendar-check-outline" size="17" />
-                  Available
-                </span>
-                <v-menu>
-                  <template #activator="{ props }">
-                    <v-btn
-                      v-bind="props"
-                      icon="mdi-dots-horizontal"
-                      variant="text"
-                      size="small"
-                      aria-label="Person actions"
-                      @click.stop
-                    />
-                  </template>
-                  <v-list density="compact">
-                    <v-list-item
-                      prepend-icon="mdi-pencil-outline"
-                      title="Edit Person"
-                      @click="openEdit(person)"
-                    />
-                    <v-list-item
-                      prepend-icon="mdi-delete-outline"
-                      title="Delete Person"
-                      class="text-error"
-                      @click="remove(person)"
-                    />
-                  </v-list>
-                </v-menu>
-              </header>
-
-              <div v-if="person.preferredRoleIds.length" class="person-roles">
-                <div
-                  v-for="group in roleGroupsFor(person)"
-                  :key="group.name"
-                  class="person-role-group"
-                  :style="{
-                    '--category-color': `rgb(var(--v-theme-${categoryColor(group.groupId)}))`,
-                  }"
-                >
-                  <div class="person-role-category">
-                    <span><v-icon icon="mdi-shape-outline" size="14" /></span>
-                    {{ group.name }}
-                  </div>
-                  <div class="person-role-chips">
-                    <span v-for="role in group.roles" :key="role">{{ role }}</span>
-                  </div>
-                </div>
-              </div>
-              <div v-else class="person-no-roles">
-                <v-icon icon="mdi-account-question-outline" size="18" />
-                No preferred roles configured
-              </div>
-            </article>
           </div>
         </div>
-      </div>
-    </section>
+
+        <div
+          class="directory-body"
+          :class="{ 'directory-body--empty': peopleStore.people.length === 0 }"
+        >
+          <!-- One <aside>, two presentations — permanent sidebar on wide screens, slide-over panel
+             below the shared 900px "compact" breakpoint (CSS only). Same reasoning as the Songs page. -->
+          <div
+            v-if="peopleStore.people.length"
+            class="app-filters-scrim"
+            :class="{ 'app-filters-scrim--open': filtersOpen }"
+            @click="closeFilters"
+          />
+          <aside
+            v-if="peopleStore.people.length"
+            class="people-filters app-filters"
+            :class="{ 'app-filters--open': filtersOpen }"
+            aria-label="Filter people by category"
+          >
+            <div class="filter-heading">Categories</div>
+            <button
+              type="button"
+              class="filter-option filter-option--all"
+              :class="{ 'filter-option--active': activeFilter === 'all' }"
+              @click="activeFilter = 'all'"
+            >
+              <span class="filter-icon"
+                ><v-icon icon="mdi-account-multiple-outline" size="18"
+              /></span>
+              <span>All People</span>
+              <strong>{{ peopleStore.people.length }}</strong>
+            </button>
+            <button
+              v-for="filter in categoryFilters"
+              :key="filter.value"
+              type="button"
+              class="filter-option"
+              :class="{ 'filter-option--active': activeFilter === filter.value }"
+              :style="{ '--filter-color': `rgb(var(--v-theme-${filter.color}))` }"
+              @click="activeFilter = filter.value"
+            >
+              <span class="filter-icon"><v-icon icon="mdi-shape-outline" size="17" /></span>
+              <span>{{ filter.label }}</span>
+              <strong>{{ filter.count }}</strong>
+            </button>
+            <button
+              type="button"
+              class="filter-option"
+              :class="{ 'filter-option--active': activeFilter === 'elder' }"
+              @click="activeFilter = 'elder'"
+            >
+              <span class="filter-icon"><v-icon icon="mdi-account-tie-outline" size="18" /></span>
+              <span>Elder</span>
+              <strong>{{ elderCount }}</strong>
+            </button>
+            <div class="filter-divider" />
+            <button
+              type="button"
+              class="filter-option filter-option--unassigned"
+              :class="{ 'filter-option--active': activeFilter === 'unassigned' }"
+              @click="activeFilter = 'unassigned'"
+            >
+              <span class="filter-icon"
+                ><v-icon icon="mdi-account-question-outline" size="18"
+              /></span>
+              <span>Unassigned</span>
+              <strong>{{ peopleStore.people.length - peopleWithRolesCount }}</strong>
+            </button>
+            <div class="availability-filter">
+              <label for="people-availability-date">Availability Date</label>
+              <v-text-field
+                id="people-availability-date"
+                v-model="availabilityDate"
+                type="date"
+                variant="outlined"
+                density="compact"
+                hide-details
+                clearable
+                aria-label="Check availability on date"
+                @click:clear="clearAvailabilityDate"
+              />
+              <button
+                v-if="availabilityDate"
+                type="button"
+                class="filter-option filter-option--unavailable"
+                :class="{ 'filter-option--active': activeFilter === 'unavailable' }"
+                @click="activeFilter = 'unavailable'"
+              >
+                <span class="filter-icon"
+                  ><v-icon icon="mdi-calendar-remove-outline" size="18"
+                /></span>
+                <span>Unavailable</span>
+                <strong>{{ unavailableOnSelectedDateCount }}</strong>
+              </button>
+            </div>
+          </aside>
+
+          <div class="directory-results">
+            <AsyncLoadState
+              v-if="!peopleStore.loaded"
+              :loading="peopleStore.loading"
+              :error="peopleStore.loadError"
+              label="people"
+              @retry="peopleStore.load"
+            />
+            <AsyncLoadState
+              v-if="peopleStore.loaded && peopleStore.loadError"
+              :loading="false"
+              :error="peopleStore.loadError"
+              label="updated people"
+              compact
+              class="mb-3"
+              @retry="peopleStore.load"
+            />
+            <LibraryEmptyState
+              v-if="peopleStore.loaded && peopleStore.people.length === 0"
+              icon="mdi-account-multiple-plus-outline"
+              title="No People Yet"
+              message="Add the first person to begin building your service team."
+            >
+              <v-btn
+                variant="flat"
+                color="primary"
+                prepend-icon="mdi-account-plus-outline"
+                @click="openAdd"
+                >Add Person</v-btn
+              >
+            </LibraryEmptyState>
+            <LibraryEmptyState
+              v-else-if="peopleStore.loaded && filteredPeople.length === 0"
+              icon="mdi-account-search-outline"
+              title="No Matches Found"
+              message="No people match the current category and search."
+            >
+              <v-btn variant="text" color="primary" @click="clearDirectoryFilters"
+                >Clear Filters</v-btn
+              >
+            </LibraryEmptyState>
+
+            <div
+              v-else-if="peopleStore.loaded"
+              ref="peopleGridEl"
+              class="people-grid app-page-scroll"
+            >
+              <template v-for="letterGroup in groupedPeople" :key="letterGroup.letter">
+                <div :id="`person-letter-${letterGroup.letter}`" class="people-grid-heading">
+                  {{ letterGroup.letter }}
+                </div>
+                <article
+                  v-for="person in letterGroup.items"
+                  :key="person.id"
+                  class="person-card"
+                  tabindex="0"
+                  @click="openEdit(person)"
+                  @keydown.enter="openEdit(person)"
+                  @keydown.space.prevent="openEdit(person)"
+                >
+                  <header class="person-card-header">
+                    <span class="person-avatar">{{ initials(person) }}</span>
+                    <div class="person-identity">
+                      <h3>{{ personDisplayName(person) }}</h3>
+                      <p>
+                        {{
+                          [person.title, person.email || 'No email on file']
+                            .filter(Boolean)
+                            .join(' · ')
+                        }}
+                      </p>
+                    </div>
+                    <span
+                      v-if="availabilityDate && isUnavailableOnDate(person, availabilityDate)"
+                      class="availability-state availability-state--unavailable"
+                    >
+                      <v-icon icon="mdi-calendar-remove-outline" size="17" />
+                      Unavailable {{ availabilityDateLabel }}
+                    </span>
+                    <span
+                      v-else-if="availabilityDate"
+                      class="availability-state availability-state--available"
+                    >
+                      <v-icon icon="mdi-calendar-check-outline" size="17" />
+                      Available {{ availabilityDateLabel }}
+                    </span>
+                    <span
+                      v-else-if="person.unavailableDateRanges.length"
+                      class="availability-state"
+                    >
+                      <v-icon icon="mdi-calendar-alert-outline" size="17" />
+                      {{ person.unavailableDateRanges.length }} availability
+                      {{ person.unavailableDateRanges.length === 1 ? 'note' : 'notes' }}
+                    </span>
+                    <span v-else class="availability-state availability-state--clear">
+                      <v-icon icon="mdi-calendar-check-outline" size="17" />
+                      Available
+                    </span>
+                    <v-menu>
+                      <template #activator="{ props }">
+                        <v-btn
+                          v-bind="props"
+                          icon="mdi-dots-horizontal"
+                          variant="text"
+                          size="small"
+                          aria-label="Person actions"
+                          @click.stop
+                        />
+                      </template>
+                      <v-list density="compact">
+                        <v-list-item
+                          prepend-icon="mdi-pencil-outline"
+                          title="Edit Person"
+                          @click="openEdit(person)"
+                        />
+                        <v-list-item
+                          prepend-icon="mdi-delete-outline"
+                          title="Delete Person"
+                          class="text-error"
+                          @click="remove(person)"
+                        />
+                      </v-list>
+                    </v-menu>
+                  </header>
+
+                  <div v-if="person.preferredRoleIds.length" class="person-roles">
+                    <div
+                      v-for="group in roleGroupsFor(person)"
+                      :key="group.name"
+                      class="person-role-group"
+                      :style="{
+                        '--category-color': `rgb(var(--v-theme-${categoryColor(group.groupId)}))`,
+                      }"
+                    >
+                      <div class="person-role-category">
+                        <span><v-icon icon="mdi-shape-outline" size="14" /></span>
+                        {{ group.name }}
+                      </div>
+                      <div class="person-role-chips">
+                        <span v-for="role in group.roles" :key="role">{{ role }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else class="person-no-roles">
+                    <v-icon icon="mdi-account-question-outline" size="18" />
+                    No preferred roles configured
+                  </div>
+                </article>
+              </template>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <!-- Page-level, not inside the list card — see SongLibraryView.vue's matching comment. -->
+    <AlphabetIndexRail
+      v-if="showIndexRail"
+      :letters="ALPHABET_INDEX_LETTERS"
+      :available-letters="availablePeopleLetters"
+      class="page-rail"
+      @select="scrollToPersonLetter"
+    />
   </main>
 </template>
 
 <style scoped>
+/* The directory list owns the scrolling, not the page — see SongLibraryView.vue's identical
+   rule for why (it's what lets the A-Z rail hold full height and stay put). */
 .people-page {
-  min-height: 100%;
-  padding: 24px clamp(24px, 3vw, 48px) 56px;
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px clamp(20px, 3vw, 48px);
   background:
     radial-gradient(circle at 24% 0, rgba(var(--v-theme-primary), 0.055), transparent 420px),
     rgb(var(--v-theme-background));
 }
+.people-page-content {
+  display: flex;
+  min-width: 0;
+  max-width: 1240px;
+  flex: 1;
+  flex-direction: column;
+}
+/* Stretches to the page's full height (the flex default) — the reason it hangs here rather than
+   inside the list card. */
+.page-rail {
+  flex-shrink: 0;
+}
+/* width: 100% because these sit in a flex column now — see SongLibraryView.vue's matching rule
+   for why auto side margins would otherwise shrink them to their content width. The 1240px cap
+   lives on .people-page-content. */
 .people-hero,
 .directory-panel {
-  max-width: 1240px;
-  margin-right: auto;
-  margin-left: auto;
+  width: 100%;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   border-radius: 11px;
   background: rgba(var(--v-theme-surface), 0.76);
@@ -576,6 +677,10 @@ async function remove(person: Person) {
   text-transform: uppercase;
 }
 .directory-panel {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
   overflow: hidden;
 }
 .directory-toolbar {
@@ -597,13 +702,49 @@ async function remove(person: Person) {
   color: rgba(var(--v-theme-on-surface), 0.5);
   font-size: 0.76rem;
 }
+/* min-width: 0 so the actions can actually give ground. A flex item defaults to min-width: auto,
+   which refuses to shrink below its contents — so between roughly 975px and 1125px (the band
+   where the nav rail is still permanent but the window is narrow) this whole cluster overflowed
+   the toolbar's padding and Add Person was clipped off the card edge. Measured before the fix:
+   99px past the toolbar at 975px wide. The search below is what absorbs the shrinking. */
+/* flex: 1 at every width, not just when compact: .directory-actions is otherwise sized by its
+   content, and a flex:1/min-width:0 search contributes almost nothing to that — so the whole
+   cluster collapses to its minimum, the search becomes a stub, and the free space sits unused
+   beside the heading. min-width: 0 is what lets it give ground in the other direction (between
+   ~975px and ~1125px, where the nav rail is still permanent, Add Person was pushed 99px past the
+   card edge without it). */
 .directory-actions {
   display: flex;
+  min-width: 0;
+  flex: 1;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
 }
+/* Flexible at every width, not just under the compact breakpoint — a fixed width here is what
+   left the cluster unable to shrink in that band. */
+/* Truncates as it shrinks — min-width: 0 alone narrows the box while the text keeps its own width
+   and spills out under the controls (see MediaLibraryView.vue's matching rule). */
+.directory-toolbar > .directory-toolbar-heading {
+  min-width: 0;
+  overflow: hidden;
+}
+.directory-toolbar-heading h2,
+.directory-toolbar-heading p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.people-sort-toggle {
+  flex-shrink: 0;
+}
+/* min-width keeps it usable: it is the element that absorbs the shrinking, so without a floor it
+   collapses to a stub before anything else gives. */
 .people-search {
-  width: min(360px, 32vw);
+  width: auto;
+  min-width: 150px;
+  max-width: 360px;
+  flex: 1;
 }
 .people-search :deep(.v-field) {
   border-radius: 7px;
@@ -612,14 +753,16 @@ async function remove(person: Person) {
 }
 .directory-body {
   display: grid;
+  min-height: 0;
+  flex: 1;
   grid-template-columns: 220px minmax(0, 1fr);
-  min-height: 420px;
 }
 .directory-body--empty {
   grid-template-columns: minmax(0, 1fr);
 }
 .people-filters {
   padding: 15px 11px;
+  overflow-y: auto;
   border-right: 1px solid rgba(var(--v-theme-on-surface), 0.07);
   background: rgba(var(--v-theme-background), 0.17);
 }
@@ -737,18 +880,46 @@ async function remove(person: Person) {
   font-size: 0.76rem;
 }
 .directory-results {
+  display: flex;
   min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
 }
+/* flex/min-height/overflow come from .app-page-scroll (assets/base.css) — this only adds what is
+   specific to the directory list. */
 .people-grid {
+  /* One source of truth for the list inset -- see SongLibraryView.vue's matching comment for why
+     the sticky heading's negative margin has to track it rather than repeat the number. */
+  --list-pad: 16px;
+
   container: people-grid / inline-size;
   display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: 9px;
-  padding: 16px;
+  padding: var(--list-pad);
 }
+.people-grid-heading {
+  position: sticky;
+  top: calc(var(--list-pad) * -1);
+  z-index: 1;
+  flex-shrink: 0;
+  margin: 0 calc(var(--list-pad) * -1);
+  padding: 8px calc(var(--list-pad) + 4px) 6px;
+  background: rgb(var(--v-theme-surface));
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+/* flex-shrink: 0 because .people-grid is now a height-constrained scrolling flex column — its
+   items would otherwise shrink below their own content to fit, collapsing every card into a
+   sliver instead of overflowing into a scroll. */
 .person-card {
   display: flex;
   min-width: 0;
+  flex-shrink: 0;
   flex-direction: column;
   overflow: hidden;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
@@ -935,7 +1106,10 @@ async function remove(person: Person) {
   margin: 0 0 15px;
   font-size: 0.82rem;
 }
-@media (max-width: 980px) {
+/* 900px = the shared "compact" breakpoint (see assets/base.css); the slide-over panel and the
+   icon-only button are defined there. This page owns collapsing the grid to one column, the
+   positioning context the panel is absolute against, and letting the search take the free space. */
+@media (max-width: 900px) {
   .people-hero {
     align-items: stretch;
     flex-direction: column;
@@ -944,82 +1118,74 @@ async function remove(person: Person) {
     align-self: flex-start;
   }
   .directory-body {
+    position: relative;
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr);
   }
-  .people-filters {
-    display: flex;
-    gap: 5px;
-    padding: 9px 11px;
-    overflow-x: auto;
-    border-right: 0;
-    border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-  }
-  .filter-heading {
-    display: none;
-  }
-  .filter-option {
+  .people-search {
     width: auto;
-    min-width: max-content;
-    grid-template-columns: 27px auto auto;
-    margin-bottom: 0;
-  }
-  .filter-divider {
-    width: 1px;
-    height: 34px;
-    flex: 0 0 1px;
-    margin: 4px 2px;
-  }
-  .availability-filter {
-    display: flex;
-    min-width: 340px;
-    align-items: center;
-    gap: 7px;
-    margin: 0 0 0 4px;
-    padding: 0 0 0 10px;
-    border-top: 0;
-    border-left: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-  }
-  .availability-filter > label {
-    min-width: max-content;
-    margin: 0;
-  }
-  .availability-filter :deep(.v-input) {
-    min-width: 170px;
-  }
-  .availability-filter .filter-option {
-    margin-top: 0;
+    min-width: 0;
+    max-width: 360px;
+    flex: 1;
   }
 }
 @media (max-width: 700px) {
   .people-page {
-    padding: 14px 12px 40px;
+    padding: 10px;
   }
-  /* The whole hero card (eyebrow, title, description, stats) is nice-to-have context, not
-     essential, and it eats space that matters more on a narrow/short screen. */
-  .people-hero {
+  /* Buys list height back on a phone, where the chrome above the list was eating more than half
+     the viewport — the toolbar's title/count block duplicates the app-bar title. Add Person is
+     already down to its icon by here (see the 900px "compact" breakpoint). */
+  .directory-toolbar {
+    padding: 8px 10px;
+  }
+  .directory-toolbar-heading {
     display: none;
   }
   .directory-toolbar,
   .directory-actions {
-    align-items: stretch;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
   }
-  .people-search {
+  .directory-actions {
     width: 100%;
+    gap: 6px;
+  }
+  .people-grid {
+    --list-pad: 10px;
   }
 }
 /* Tied to .people-grid's own rendered width (a container query), not the window's — the
-   filters sidebar (permanent ≥980px) and the nav eat fixed space out of the window before the
+   filters sidebar (permanent ≥900px) and the nav eat fixed space out of the window before the
    card list ever sees it, so a window-width breakpoint can't reliably predict when a card
    actually has room for its own content (same class of issue fixed on the Songs page). Hide,
    not wrap: a wrapped availability badge floating under the name read as more confusing than
    useful once it stopped being scannable at a glance. */
+/* The rail survives every width breakpoint below — a narrow screen is exactly where scrubbing a
+   long directory by hand is worst, and it sizes its own width/glyphs to fit (see
+   AlphabetIndexRail.vue). Same reasoning as the Songs page. */
 @container people-grid (max-width: 520px) {
   .availability-state {
     display: none;
   }
 }
 @container people-grid (max-width: 380px) {
+  .person-roles,
+  .person-no-roles {
+    display: none;
+  }
+}
+/* A window-height @media query, not a container query: .people-grid is a `container-type:
+   inline-size` container, so it can only be asked about width — and switching it to
+   `container-type: size` would require containing its block size too, which fights the flex
+   sizing that gives the list its height in the first place. Window height is the honest input
+   here anyway.
+   The roles block roughly doubles a card's height, so on a short window it's the difference
+   between about five people on screen and about ten. Identity (name, email, availability) is what
+   the directory is scanned for; roles are detail the person's own page still carries. 700px keeps
+   them on a normal laptop (768px tall and up) and drops them for short windows and phone
+   landscape — phone *portrait* is already covered by the width rule above. */
+@media (max-height: 700px) {
   .person-roles,
   .person-no-roles {
     display: none;

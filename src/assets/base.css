@@ -62,3 +62,207 @@ body {
 .v-selection-control .v-label {
   font-size: 0.77rem;
 }
+
+/* ---------------------------------------------------------------------------
+   Shared page layout: fixed chrome, one scrolling region
+   ---------------------------------------------------------------------------
+   Every main screen (Services, Songs, Slides, Media, People, Roles,
+   Announcements, Templates, Themes, Reports) scrolls the same way: the page
+   itself fills the area <v-main> gives it and never scrolls, while exactly one
+   region inside it does. That keeps the hero/toolbar on screen instead of
+   scrolling away, and is what lets a full-height element beside a list (the
+   Songs/People A-Z rail) hold its position.
+
+   Settings is deliberately excluded — it's a long single flow of unrelated
+   panels rather than a chrome-plus-list screen, so whole-page scrolling is the
+   right behaviour there.
+
+   These are global (not per-view scoped) so the ten screens can't drift apart
+   the way they would with the same flex chain copy-pasted into each file.
+
+   min-height: 0 appears at every level on purpose: a flex item defaults to
+   min-height: auto, which refuses to shrink below its content, and a single
+   missing one anywhere in the chain pushes the scrollbar back out to the page. */
+.app-page {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+}
+/* The stretch between the fixed chrome and the scrolling region. */
+.app-page-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+/* The one region that actually scrolls.
+   The two grid properties matter only when this region is a grid (they're inert on the
+   flex-column lists), and they exist because giving a grid a definite height changes how its
+   rows are sized:
+     - grid-auto-rows: max-content pins each row to its content. `auto` rows look equivalent but
+       are not: a grid item that sets `overflow: hidden` (every card here does, to clip its own
+       rounded corners) has an automatic minimum size of 0 rather than its content size, so auto
+       rows are free to shrink to nothing and simply split the container height between them.
+       Measured on Media: 380px of card content rendered in an 82px row, title clipped off, and
+       no scrollbar because the content had been squashed to fit rather than overflowing.
+     - align-content: start stops the opposite case — rows stretching to fill a container taller
+       than the content.
+   Together: rows size to content, pack at the top, and overflow into a scroll. */
+/* overflow-x: hidden is deliberate and load-bearing, not tidying. Setting only overflow-y makes
+   the other axis compute to `auto` rather than staying `visible` (CSS Overflow: `visible`
+   becomes `auto` when the opposite axis is not visible), so any few-pixel horizontal excess —
+   a card's fixed-width column between container-query breakpoints, a sticky heading that spans
+   the list's padding via negative side margins — produced a real horizontal scrollbar across the
+   bottom of the list. These regions scroll vertically by design; nothing in them should ever
+   scroll sideways. */
+.app-page-scroll {
+  min-height: 0;
+  flex: 1;
+  align-content: start;
+  grid-auto-rows: max-content;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+/* Direct children of a scrolling flex column must not be shrunk to fit it —
+   without this, cards compress toward their min-height instead of overflowing
+   into a scroll (which collapsed every People card into a sliver once). */
+.app-page-scroll > * {
+  flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   The two responsive breakpoints
+   ---------------------------------------------------------------------------
+   Every main screen uses these two and only these two. They previously differed
+   per page for no reason anyone could point at — the sidebar collapsed at 880px
+   on Songs, 980px on People and 820px on Media, and the toolbar stacked at
+   1120px on Songs but 700px on People — which is how the same layout bug
+   (a clipped primary button, a filter bar eating scarce height) kept reappearing
+   on one page after being fixed on another.
+
+     900px — "compact": the filters sidebar becomes a slide-over panel and
+             primary buttons drop to their icons. Chosen from the busiest
+             toolbar (People: heading + filters + First/Last + search + Add),
+             which is the first to run out of room.
+     700px — "phone": the hero and the toolbar's title/count block are hidden
+             and padding tightens. Already the hero's own threshold.
+
+   CSS media queries can't read custom properties, so the values are written
+   literally — but only ever these two, and always with a comment pointing here. */
+
+/* Hero cards are supplementary context (eyebrow, title, blurb, summary stats).
+   They're the first thing to give up when either dimension is short: by width
+   because a narrow screen needs the horizontal room, and by height because on a
+   short window the hero can eat half of what's left for the actual list. Both
+   thresholds live here so all ten screens agree on them. */
+@media (max-width: 700px), (max-height: 700px) {
+  /* !important because every hero sets its own `display` from inside a <style scoped> block,
+     which compiles to `.songs-hero[data-v-abc]` — specificity (0,2,0) against this rule's
+     (0,1,0), so without it the hero simply stays visible (measured: still shown at 640px tall).
+     Raising specificity by repeating the class would tie at best, and component styles are
+     injected after this file, so a tie still loses. A utility whose entire job is to override
+     the component is the case !important is actually for. */
+  .app-page-hero {
+    display: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Filters slide-over + compact toolbar buttons (the 900px "compact" breakpoint)
+   ---------------------------------------------------------------------------
+   Below 900px the filters sidebar stops being a permanent column. It used to
+   become a horizontal bar above the list, which cost ~60px of height on exactly
+   the screens with the least to spare; as a slide-over it costs nothing until
+   asked for, and keeps the sidebar's own vertical layout so no filter needs a
+   second set of styles.
+
+   Markup contract, per page:
+     .app-filters          on the existing <aside> (keeps its own page class too)
+     .app-filters--open    bound to the page's `filtersOpen` ref
+     .app-filters-scrim    a sibling <div> that closes it on click
+     .app-filters-toggle   the button that opens it
+   and the <aside>'s grid parent needs `position: relative` so the panel is
+   contained by the list pane rather than the viewport.
+
+   !important on background/border: every page styles its own filter class from
+   inside <style scoped>, which compiles to `.media-filters[data-v-abc]` —
+   specificity (0,2,0) against this rule's (0,1,0). Without it the panel keeps
+   the sidebar's translucent background and renders see-through over the list.
+   Same reasoning as .app-page-hero above. */
+.app-filters-scrim,
+.app-filters-toggle {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .app-filters {
+    position: absolute;
+    z-index: 5;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(290px, 84vw);
+    overflow-y: auto;
+    border-right: 0 !important;
+    background: rgb(var(--v-theme-surface)) !important;
+    box-shadow: 12px 0 28px rgba(0, 0, 0, 0.32);
+    transform: translateX(-102%);
+    transition: transform var(--ws-transition-fast);
+  }
+  .app-filters--open {
+    transform: translateX(0);
+  }
+  .app-filters-scrim {
+    display: block;
+    position: absolute;
+    z-index: 4;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--ws-transition-fast);
+  }
+  .app-filters-scrim--open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .app-filters-toggle {
+    display: inline-flex;
+  }
+  /* Reads as pressed while the panel is open, so the button visibly is a toggle rather than
+     looking identical in both states. */
+  .app-filters-toggle[aria-expanded='true'] {
+    background: rgba(var(--v-theme-primary), 0.22);
+    color: rgb(var(--v-theme-primary));
+  }
+
+  /* Primary toolbar buttons drop to their icon. The label is hidden rather than
+     the text swapped, so the accessible name still comes from the button's own
+     aria-label. prepend-icon carries a margin meant to separate it from that
+     label; with the label gone that margin survives as dead space on one side
+     and visibly pushes the icon off-centre, hence the reset. !important because
+     Vuetify's own .v-btn rules set min-width/padding at equal specificity and
+     are injected after this file. */
+  .app-btn-label {
+    display: none;
+  }
+  .app-icon-btn {
+    min-width: 0 !important;
+    padding: 0 10px !important;
+  }
+  .app-icon-btn .v-btn__prepend {
+    margin-inline: 0 !important;
+  }
+  .app-icon-btn .v-btn__content {
+    display: none;
+  }
+}
+
+/* Vuetify clamps list subtitles with `display: -webkit-box` + `overflow: hidden` at a line-height
+   tuned for its own 16px root. Against this app's 18px root (see the top of this file) the clamp
+   box lands just short of the glyphs and shears the descenders off g/y/p — first seen in Media's
+   Import menu ("Images and videos", "Any file, e.g. a slide deck"). A looser line-height gives the
+   tails room without changing the type size. */
+.v-list-item-subtitle {
+  line-height: 1.4;
+}

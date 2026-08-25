@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useFiltersPanel } from '@/composables/useFiltersPanel'
 import { getAdapter } from '@/adapters'
 import { useMediaStore } from '@/stores/media'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
@@ -20,6 +21,7 @@ const canvaAvailable = !!getAdapter().canva
 const query = ref('')
 const typeFilter = ref<'all' | 'image' | 'video' | 'document'>('all')
 const activeTag = ref<string>()
+const { filtersOpen, toggleFilters, closeFilters } = useFiltersPanel()
 const importDialogOpen = ref(false)
 // undefined = the plain "Import Media" button's usual image/video filter; [] = "Import File"'s
 // deliberately unrestricted filter, for a document like a PowerPoint deck meant for External App
@@ -200,8 +202,8 @@ async function saveEdits() {
 </script>
 
 <template>
-  <main class="media-page">
-    <header class="media-hero">
+  <main class="media-page app-page">
+    <header class="media-hero app-page-hero">
       <div>
         <div class="page-eyebrow">Content Library</div>
         <h1>Media</h1>
@@ -223,7 +225,7 @@ async function saveEdits() {
       </div>
     </header>
 
-    <section class="media-directory">
+    <section class="media-directory app-page-body">
       <v-alert
         v-if="deleteError"
         type="error"
@@ -247,6 +249,18 @@ async function saveEdits() {
           </p>
         </div>
         <div class="media-actions">
+          <!-- Only rendered below the shared 900px "compact" breakpoint, where the filters move
+               into a slide-over panel this opens (assets/base.css). -->
+          <v-btn
+            v-if="visibleItems.length"
+            class="app-filters-toggle"
+            variant="tonal"
+            density="comfortable"
+            icon="mdi-filter-variant"
+            :aria-label="filtersOpen ? 'Hide filters' : 'Show filters'"
+            :aria-expanded="filtersOpen"
+            @click="toggleFilters"
+          />
           <v-text-field
             v-if="visibleItems.length"
             v-model="query"
@@ -259,19 +273,47 @@ async function saveEdits() {
             clearable
             class="media-search"
           />
-          <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="openImportMedia"
-            >Import Media</v-btn
-          >
-          <v-btn
-            v-if="canvaAvailable"
-            variant="tonal"
-            prepend-icon="mdi-palette-outline"
-            @click="openCanvaImport"
-            >Import from Canva</v-btn
-          >
-          <v-btn variant="tonal" prepend-icon="mdi-file-plus-outline" @click="openImportFile"
-            >Import File</v-btn
-          >
+          <!-- One menu rather than three sibling buttons. They're three variants of a single
+               intent ("bring something into the library"), and as separate buttons they made this
+               the widest toolbar in the app — wide enough to clip its own card from 1300px all the
+               way down (measured at +281px past the edge at 975px). Collapsing them removes about
+               320px of permanent toolbar, which is the width pressure at its source rather than
+               another breakpoint. -->
+          <v-menu location="bottom end">
+            <template #activator="{ props: menuProps }">
+              <v-btn
+                v-bind="menuProps"
+                variant="flat"
+                color="primary"
+                prepend-icon="mdi-plus"
+                append-icon="mdi-menu-down"
+                class="app-icon-btn import-menu-btn"
+                aria-label="Import"
+                ><span class="app-btn-label">Import</span></v-btn
+              >
+            </template>
+            <v-list density="compact">
+              <v-list-item
+                prepend-icon="mdi-image-plus-outline"
+                title="Import Media"
+                subtitle="Images and videos"
+                @click="openImportMedia"
+              />
+              <v-list-item
+                v-if="canvaAvailable"
+                prepend-icon="mdi-palette-outline"
+                title="Import from Canva"
+                subtitle="Designs and videos"
+                @click="openCanvaImport"
+              />
+              <v-list-item
+                prepend-icon="mdi-file-plus-outline"
+                title="Import File"
+                subtitle="Any file, e.g. a slide deck"
+                @click="openImportFile"
+              />
+            </v-list>
+          </v-menu>
         </div>
       </div>
 
@@ -279,7 +321,23 @@ async function saveEdits() {
         class="media-directory-body"
         :class="{ 'media-directory-body--empty': visibleItems.length === 0 }"
       >
-        <aside v-if="visibleItems.length" class="media-filters" aria-label="Filter media">
+        <!-- One <aside>, two presentations: a permanent sidebar on wide screens, a slide-over panel
+
+             below the shared 900px "compact" breakpoint. See assets/base.css. -->
+
+        <div
+          v-if="visibleItems.length"
+          class="app-filters-scrim"
+          :class="{ 'app-filters-scrim--open': filtersOpen }"
+          @click="closeFilters"
+        />
+
+        <aside
+          v-if="visibleItems.length"
+          class="media-filters app-filters"
+          :class="{ 'app-filters--open': filtersOpen }"
+          aria-label="Filter media"
+        >
           <button
             type="button"
             class="media-filter media-filter--all"
@@ -348,7 +406,7 @@ async function saveEdits() {
           </div>
         </aside>
 
-        <div class="media-results">
+        <div class="media-results app-page-body">
           <AsyncLoadState
             v-if="!store.loaded"
             :loading="store.loading"
@@ -384,7 +442,7 @@ async function saveEdits() {
             <v-btn variant="text" color="primary" @click="clearFilters">Clear Filters</v-btn>
           </LibraryEmptyState>
 
-          <div v-else-if="store.loaded" class="media-grid">
+          <div v-else-if="store.loaded" class="media-grid app-page-scroll">
             <article
               v-for="item in filteredItems"
               :key="item.id"
@@ -432,7 +490,9 @@ async function saveEdits() {
                     "
                     size="14"
                   />
-                  {{ item.kind === 'video' ? 'Video' : item.kind === 'document' ? 'File' : 'Image' }}
+                  {{
+                    item.kind === 'video' ? 'Video' : item.kind === 'document' ? 'File' : 'Image'
+                  }}
                 </span>
                 <span v-if="item.duplicateOfId" class="duplicate-badge"
                   ><v-icon icon="mdi-content-duplicate" size="14" />Possible Duplicate</span
@@ -584,7 +644,9 @@ async function saveEdits() {
               "
               size="34"
             />
-            <span>{{ editingItem.kind === 'document' ? 'No Preview' : 'Preview Unavailable' }}</span>
+            <span>{{
+              editingItem.kind === 'document' ? 'No Preview' : 'Preview Unavailable'
+            }}</span>
             <small>{{
               editingItem.kind === 'document'
                 ? 'This file type has no visual preview.'
@@ -676,14 +738,16 @@ async function saveEdits() {
 
 <style scoped>
 .media-page {
-  min-height: 100%;
-  padding: 24px clamp(24px, 3vw, 48px) 56px;
+  padding: 24px clamp(24px, 3vw, 48px);
   background:
     radial-gradient(circle at 24% 0, rgba(var(--v-theme-violet), 0.05), transparent 430px),
     rgb(var(--v-theme-background));
 }
+/* width: 100% because the page is a flex column now (.app-page) — auto side margins on a flex
+   item shrink it to its content width instead of filling the line. */
 .media-hero,
 .media-directory {
+  width: 100%;
   max-width: 1240px;
   margin-right: auto;
   margin-left: auto;
@@ -779,29 +843,69 @@ async function saveEdits() {
   color: rgba(var(--v-theme-on-surface), 0.5);
   font-size: 0.76rem;
 }
+/* The dropdown caret sits in .v-btn__append, which .app-icon-btn does not hide — so at the
+   compact breakpoint this reads as a plus and a caret, still recognisably a menu. */
+.import-menu-btn .v-btn__append {
+  margin-inline-start: 2px;
+}
+/* Lets the title/count block give ground too — without it the heading holds its full width and
+   the buttons take the overflow. It has to truncate as it shrinks, though: min-width: 0 alone
+   lets the box narrow while the text keeps its own width and spills out visibly, which read as
+   the search field being drawn on top of "Media Library". */
+.media-toolbar > div:first-child {
+  min-width: 0;
+  overflow: hidden;
+}
+.media-toolbar > div:first-child h2,
+.media-toolbar > div:first-child p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* min-width: 0 so the cluster can give ground — a flex item defaults to min-width: auto and
+   refuses to shrink below its contents, which is what let these buttons overflow the card. */
 .media-actions {
   display: flex;
+  min-width: 0;
+  flex: 1;
   align-items: center;
+  justify-content: flex-end;
   gap: 9px;
 }
+/* min-width keeps it usable — it absorbs the shrinking, so without a floor it collapses first. */
 .media-search {
-  width: min(390px, 31vw);
+  width: auto;
+  min-width: 150px;
+  max-width: 390px;
+  flex: 1;
 }
 .media-search :deep(.v-field) {
   border-radius: 7px;
   background: rgba(var(--v-theme-background), 0.48);
   font-size: 0.82rem;
 }
+/* flex/min-height rather than a fixed min-height, so the grid takes the leftover page height and
+   hands it to the results column, which is what scrolls (see .app-page in assets/base.css). */
+/* grid-template-rows is explicit, not left implicit: this grid now has a definite height, and an
+   `auto` row only stretches to fill it while it's the *only* row. Below 820px the sidebar becomes
+   a filter bar stacked above the results, and with two auto rows the results row falls back to
+   its content height — overflowing the fixed-height page and getting clipped with no scrollbar
+   instead of scrolling. minmax(0, 1fr) lets that row shrink and bounds the scroller inside it. */
 .media-directory-body {
   display: grid;
-  min-height: 470px;
+  min-height: 0;
+  flex: 1;
   grid-template-columns: 230px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 .media-directory-body--empty {
   grid-template-columns: minmax(0, 1fr);
 }
+/* Scrolls on its own now that the page doesn't — a long filter list must not be able to push the
+   sidebar taller than the pane it sits in. */
 .media-filters {
   padding: 14px 11px 18px;
+  overflow-y: auto;
   border-right: 1px solid rgba(var(--v-theme-on-surface), 0.07);
   background: rgba(var(--v-theme-background), 0.17);
 }
@@ -908,6 +1012,7 @@ async function saveEdits() {
 }
 .media-results {
   min-width: 0;
+  overflow: hidden;
 }
 .media-grid {
   display: grid;
@@ -1246,17 +1351,27 @@ async function saveEdits() {
   flex-wrap: wrap;
   row-gap: 8px;
 }
+/* Only the toolbar stacks (heading above the controls) — the controls stay a row so the import
+   buttons keep sitting beside the search rather than each becoming a full-width bar. */
 @media (max-width: 960px) {
-  .media-toolbar,
-  .media-actions {
+  .media-toolbar {
     align-items: stretch;
     flex-direction: column;
   }
+  .media-actions {
+    align-items: center;
+    flex-direction: row;
+  }
   .media-search {
-    width: min(520px, 100%);
+    width: auto;
+    min-width: 0;
+    flex: 1;
   }
 }
-@media (max-width: 820px) {
+/* 900px = the shared "compact" breakpoint (see assets/base.css). The filters sidebar used to
+   become a horizontal bar here; it's a slide-over now, defined centrally. This page owns only the
+   single-column grid and the positioning context the panel is absolute against. */
+@media (max-width: 900px) {
   .media-hero {
     align-items: stretch;
     flex-direction: column;
@@ -1265,49 +1380,36 @@ async function saveEdits() {
     align-self: flex-start;
   }
   .media-directory-body {
+    position: relative;
     grid-template-columns: 1fr;
-  }
-  .media-filters {
-    display: flex;
-    gap: 5px;
-    padding: 9px 11px;
-    overflow-x: auto;
-    border-right: 0;
-    border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-  }
-  .filter-section {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    margin: 0;
-    padding: 0 0 0 8px;
-    border-top: 0;
-    border-left: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-  }
-  .filter-heading,
-  .filter-empty {
-    display: none;
-  }
-  .media-filter {
-    width: auto;
-    min-width: max-content;
-    grid-template-columns: 27px auto auto;
-    margin-bottom: 0;
+    grid-template-rows: minmax(0, 1fr);
   }
 }
-/* The whole hero card (eyebrow, title, description, stats) is nice-to-have context, not
-   essential, and it eats space that matters more on a narrow/short screen. */
+/* 700px = the shared "phone" breakpoint (see assets/base.css). */
 @media (max-width: 700px) {
-  .media-hero {
-    display: none;
-  }
-}
-@media (max-width: 620px) {
   .media-page {
-    padding: 14px 12px 40px;
+    padding: 10px;
+  }
+  .media-toolbar {
+    padding: 8px 10px;
+  }
+  .media-toolbar,
+  .media-actions {
+    align-items: center;
+    flex-direction: row;
+  }
+  .media-actions {
+    width: 100%;
+    gap: 6px;
+  }
+  .media-search {
+    width: auto;
+    min-width: 0;
+    flex: 1;
   }
   .media-grid {
     grid-template-columns: 1fr;
+    padding: 10px;
   }
   .editor-field-row {
     grid-template-columns: 1fr;

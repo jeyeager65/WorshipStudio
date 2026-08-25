@@ -27,7 +27,7 @@ const reports = [
 
 <template>
   <main class="reports-page">
-    <header class="reports-hero">
+    <header class="reports-hero app-page-hero">
       <div>
         <div class="page-eyebrow">Records &amp; Planning</div>
         <h1>Reports</h1>
@@ -79,6 +79,10 @@ const reports = [
 </template>
 
 <style scoped>
+/* Deliberately NOT on the shared .app-page scroll model (see assets/base.css): this is a
+   two-card menu, not a chrome-plus-list screen, so there's no list for a fixed-chrome layout to
+   hold still — whole-page scrolling is the right behaviour here, same reasoning as Settings.
+   It still shares .app-page-hero so the hero hides on short/narrow screens like everywhere else. */
 .reports-page {
   min-height: 100%;
   padding: 24px clamp(24px, 3vw, 48px) 56px;

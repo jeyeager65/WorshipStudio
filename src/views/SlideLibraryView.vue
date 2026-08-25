@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useFiltersPanel } from '@/composables/useFiltersPanel'
 import { useRouter } from 'vue-router'
 import SlideSceneRenderer from '@/components/slides/SlideSceneRenderer.vue'
 import { useSlidesStore } from '@/stores/slides'
@@ -14,6 +15,7 @@ const confirmDialog = useConfirmDialogStore()
 
 const query = ref('')
 const activeTag = ref<string>()
+const { filtersOpen, toggleFilters, closeFilters } = useFiltersPanel()
 
 onMounted(() => {
   if (!store.loaded) store.load()
@@ -78,8 +80,8 @@ function openSlide(item: SlideLibraryItem) {
 </script>
 
 <template>
-  <main class="slides-page">
-    <header class="slides-hero">
+  <main class="slides-page app-page">
+    <header class="slides-hero app-page-hero">
       <div>
         <div class="slides-page-eyebrow">Content Library</div>
         <h1>Slides</h1>
@@ -104,7 +106,7 @@ function openSlide(item: SlideLibraryItem) {
       </div>
     </header>
 
-    <section class="slides-directory">
+    <section class="slides-directory app-page-body">
       <div class="slides-toolbar">
         <div>
           <h2>Slide Library</h2>
@@ -116,6 +118,20 @@ function openSlide(item: SlideLibraryItem) {
           </p>
         </div>
         <div class="slides-actions">
+          <!-- Only rendered below the shared 900px "compact" breakpoint, where the filters move into
+
+               a slide-over panel this opens (assets/base.css). -->
+
+          <v-btn
+            v-if="visibleItems.length"
+            class="app-filters-toggle"
+            variant="tonal"
+            density="comfortable"
+            icon="mdi-filter-variant"
+            :aria-label="filtersOpen ? 'Hide filters' : 'Show filters'"
+            :aria-expanded="filtersOpen"
+            @click="toggleFilters"
+          />
           <v-text-field
             v-if="visibleItems.length"
             v-model="query"
@@ -128,8 +144,14 @@ function openSlide(item: SlideLibraryItem) {
             clearable
             class="slide-search"
           />
-          <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSlide"
-            >New Presentation</v-btn
+          <v-btn
+            variant="flat"
+            color="primary"
+            prepend-icon="mdi-plus"
+            class="app-icon-btn"
+            aria-label="New Presentation"
+            @click="createSlide"
+            ><span class="app-btn-label">New Presentation</span></v-btn
           >
         </div>
       </div>
@@ -138,7 +160,23 @@ function openSlide(item: SlideLibraryItem) {
         class="slides-directory-body"
         :class="{ 'slides-directory-body--empty': visibleItems.length === 0 }"
       >
-        <aside v-if="visibleItems.length" class="slide-filters" aria-label="Filter slides">
+        <!-- One <aside>, two presentations: a permanent sidebar on wide screens, a slide-over panel
+
+             below the shared 900px "compact" breakpoint. See assets/base.css. -->
+
+        <div
+          v-if="visibleItems.length"
+          class="app-filters-scrim"
+          :class="{ 'app-filters-scrim--open': filtersOpen }"
+          @click="closeFilters"
+        />
+
+        <aside
+          v-if="visibleItems.length"
+          class="slide-filters app-filters"
+          :class="{ 'app-filters--open': filtersOpen }"
+          aria-label="Filter slides"
+        >
           <button
             type="button"
             class="slide-filter slide-filter--all"
@@ -168,7 +206,7 @@ function openSlide(item: SlideLibraryItem) {
           </div>
         </aside>
 
-        <div class="slide-results">
+        <div class="slide-results app-page-body">
           <AsyncLoadState
             v-if="!store.loaded"
             :loading="store.loading"
@@ -204,7 +242,7 @@ function openSlide(item: SlideLibraryItem) {
             <v-btn variant="text" color="primary" @click="clearFilters">Clear Filters</v-btn>
           </LibraryEmptyState>
 
-          <div v-else-if="store.loaded" class="presentation-grid">
+          <div v-else-if="store.loaded" class="presentation-grid app-page-scroll">
             <article
               v-for="presentation in filteredSlides"
               :key="presentation.id"
@@ -291,14 +329,16 @@ function openSlide(item: SlideLibraryItem) {
 
 <style>
 .slides-page {
-  min-height: 100%;
-  padding: 24px clamp(24px, 3vw, 48px) 56px;
+  padding: 24px clamp(24px, 3vw, 48px);
   background:
     radial-gradient(circle at 24% 0, rgba(var(--v-theme-secondary), 0.05), transparent 430px),
     rgb(var(--v-theme-background));
 }
+/* width: 100% because the page is a flex column now (.app-page) — auto side margins on a flex
+   item shrink it to its content width instead of filling the line. */
 .slides-hero,
 .slides-directory {
+  width: 100%;
   max-width: 1240px;
   margin-right: auto;
   margin-left: auto;
@@ -407,16 +447,22 @@ function openSlide(item: SlideLibraryItem) {
   background: rgba(var(--v-theme-background), 0.48);
   font-size: 0.82rem;
 }
+/* flex/min-height rather than a fixed min-height, so the grid takes the leftover page height and
+   hands it to the results column, which is what scrolls (see .app-page in assets/base.css). */
 .slides-directory-body {
   display: grid;
-  min-height: 470px;
+  min-height: 0;
+  flex: 1;
   grid-template-columns: 230px minmax(0, 1fr);
 }
 .slides-directory-body--empty {
   grid-template-columns: minmax(0, 1fr);
 }
+/* Scrolls on its own now that the page doesn't — a long tag list must not be able to push the
+   sidebar taller than the pane it sits in. */
 .slide-filters {
   padding: 14px 11px 18px;
+  overflow-y: auto;
   border-right: 1px solid rgba(var(--v-theme-on-surface), 0.07);
   background: rgba(var(--v-theme-background), 0.17);
 }
@@ -515,6 +561,7 @@ function openSlide(item: SlideLibraryItem) {
 }
 .slide-results {
   min-width: 0;
+  overflow: hidden;
 }
 .presentation-grid {
   display: grid;
@@ -687,17 +734,28 @@ function openSlide(item: SlideLibraryItem) {
   margin: 0 0 15px;
   font-size: 0.82rem;
 }
+/* Only the toolbar stacks (heading above the controls) — the controls stay a row so New
+   Presentation keeps sitting beside the search rather than dropping to a full-width bar. */
 @media (max-width: 960px) {
-  .slides-toolbar,
-  .slides-actions {
+  .slides-toolbar {
     align-items: stretch;
     flex-direction: column;
   }
+  .slides-actions {
+    align-items: center;
+    flex-direction: row;
+  }
   .slide-search {
-    width: min(520px, 100%);
+    width: auto;
+    min-width: 0;
+    flex: 1;
   }
 }
-@media (max-width: 820px) {
+/* 900px = the shared "compact" breakpoint (see assets/base.css). The filters sidebar used to
+   become a horizontal bar here, costing ~60px of height on the screens with the least of it; it's
+   a slide-over now, defined centrally. This page owns only the single-column grid and the
+   positioning context the panel is absolute against. */
+@media (max-width: 900px) {
   .slides-hero {
     align-items: stretch;
     flex-direction: column;
@@ -706,49 +764,35 @@ function openSlide(item: SlideLibraryItem) {
     align-self: flex-start;
   }
   .slides-directory-body {
+    position: relative;
     grid-template-columns: 1fr;
-  }
-  .slide-filters {
-    display: flex;
-    gap: 5px;
-    padding: 9px 11px;
-    overflow-x: auto;
-    border-right: 0;
-    border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-  }
-  .slide-filter-section {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    margin: 0;
-    padding: 0 0 0 8px;
-    border-top: 0;
-    border-left: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-  }
-  .slide-filter-heading,
-  .slide-filter-empty {
-    display: none;
-  }
-  .slide-filter {
-    width: auto;
-    min-width: max-content;
-    grid-template-columns: 27px auto auto;
-    margin-bottom: 0;
+    grid-template-rows: minmax(0, 1fr);
   }
 }
-/* The whole hero card (eyebrow, title, description, stats) is nice-to-have context, not
-   essential, and it eats space that matters more on a narrow/short screen. */
+/* 700px = the shared "phone" breakpoint (see assets/base.css). */
 @media (max-width: 700px) {
-  .slides-hero {
-    display: none;
-  }
-}
-@media (max-width: 620px) {
   .slides-page {
-    padding: 14px 12px 40px;
+    padding: 10px;
+  }
+  .slides-toolbar {
+    padding: 8px 10px;
+  }
+  .slides-toolbar,
+  .slides-actions {
+    align-items: center;
+    flex-direction: row;
+  }
+  .slides-actions {
+    width: 100%;
+    gap: 6px;
+  }
+  .slide-search {
+    width: auto;
+    flex: 1;
   }
   .presentation-grid {
     grid-template-columns: 1fr;
+    padding: 10px;
   }
 }
 </style>

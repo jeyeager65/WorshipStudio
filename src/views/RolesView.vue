@@ -21,7 +21,7 @@ function initialize() {
 
 <template>
   <main class="roles-page">
-    <header class="roles-hero">
+    <header class="roles-hero app-page-hero">
       <div>
         <div class="page-eyebrow">Service Planning</div>
         <h1>Roles</h1>
@@ -70,6 +70,10 @@ function initialize() {
 </template>
 
 <style scoped>
+/* Deliberately NOT on the shared .app-page scroll model (see assets/base.css): this is a single
+   embedded editor, not a chrome-plus-list screen, so there is no list for fixed chrome to hold
+   still -- whole-page scrolling is right here, same as Reports and Settings. It still shares
+   .app-page-hero so the hero hides on short/narrow screens like everywhere else. */
 .roles-page {
   min-height: 100%;
   padding: 24px clamp(24px, 3vw, 48px) 56px;
@@ -164,11 +168,6 @@ function initialize() {
 @media (max-width: 700px) {
   .roles-page {
     padding: 14px 12px 40px;
-  }
-  /* The whole hero card (eyebrow, title, description, stats) is nice-to-have context, not
-     essential, and it eats space that matters more on a narrow/short screen. */
-  .roles-hero {
-    display: none;
   }
 }
 </style>

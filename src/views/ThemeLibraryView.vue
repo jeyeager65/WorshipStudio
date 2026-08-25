@@ -126,8 +126,8 @@ async function duplicateTheme(theme: Theme) {
 </script>
 
 <template>
-  <main class="themes-library-page">
-    <header class="library-hero">
+  <main class="themes-library-page app-page">
+    <header class="library-hero app-page-hero">
       <div>
         <div class="page-eyebrow">Audience Presentation</div>
         <h1>Presentation Themes</h1>
@@ -141,14 +141,21 @@ async function duplicateTheme(theme: Theme) {
       </div>
     </header>
 
-    <section class="theme-directory">
+    <section class="theme-directory app-page-body">
       <header class="directory-toolbar">
         <div>
           <h2>Theme Library</h2>
           <p>Preview each theme before opening the full editor.</p>
         </div>
-        <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="createTheme">
-          New Theme
+        <v-btn
+          color="primary"
+          variant="flat"
+          prepend-icon="mdi-plus"
+          class="app-icon-btn"
+          aria-label="New Theme"
+          @click="createTheme"
+        >
+          <span class="app-btn-label">New Theme</span>
         </v-btn>
       </header>
 
@@ -186,7 +193,7 @@ async function duplicateTheme(theme: Theme) {
         @retry="store.load"
       />
 
-      <div v-if="store.loaded && filteredThemes.length" class="theme-grid">
+      <div v-if="store.loaded && filteredThemes.length" class="theme-grid app-page-scroll">
         <article
           v-for="theme in filteredThemes"
           :key="theme.id"
@@ -279,14 +286,16 @@ async function duplicateTheme(theme: Theme) {
 
 <style scoped>
 .themes-library-page {
-  min-height: 100%;
-  padding: 24px clamp(24px, 3vw, 48px) 56px;
+  padding: 24px clamp(24px, 3vw, 48px);
   background:
     radial-gradient(circle at 24% 0, rgba(var(--v-theme-amber), 0.055), transparent 420px),
     rgb(var(--v-theme-background));
 }
+/* width: 100% because the page is a flex column now (.app-page) — auto side margins on a flex
+   item shrink it to its content width instead of filling the line. */
 .library-hero,
 .theme-directory {
+  width: 100%;
   max-width: 1240px;
   margin-right: auto;
   margin-left: auto;
@@ -538,9 +547,4 @@ async function duplicateTheme(theme: Theme) {
 }
 /* The whole hero card (eyebrow, title, description, stat) is nice-to-have context, not
    essential, and it eats space that matters more on a narrow/short screen. */
-@media (max-width: 700px) {
-  .library-hero {
-    display: none;
-  }
-}
 </style>

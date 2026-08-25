@@ -209,8 +209,8 @@ const browseResults = computed(() => {
 </script>
 
 <template>
-  <main class="services-page">
-    <header class="services-hero">
+  <main class="services-page app-page">
+    <header class="services-hero app-page-hero">
       <div>
         <div class="page-eyebrow">Service Planning</div>
         <h1>Services</h1>
@@ -233,7 +233,7 @@ const browseResults = computed(() => {
       </div>
     </header>
 
-    <section class="services-directory">
+    <section class="services-directory app-page-body">
       <div class="services-toolbar">
         <div class="directory-title">
           <h2>
@@ -280,7 +280,7 @@ const browseResults = computed(() => {
         <v-tab value="browse" prepend-icon="mdi-archive-search-outline">Browse</v-tab>
       </v-tabs>
 
-      <div class="directory-content">
+      <div class="directory-content app-page-scroll">
         <AsyncLoadState
           v-if="!store.loaded"
           :loading="store.loading"
@@ -390,8 +390,8 @@ const browseResults = computed(() => {
                   :key="service.id"
                   :service="service"
                   :preacher-name="preacherName(service)"
-                :service-type-name="serviceTypeName(service.serviceTypeId)"
-                :service-template-name="serviceTemplateName(service.serviceTemplateId)"
+                  :service-type-name="serviceTypeName(service.serviceTypeId)"
+                  :service-template-name="serviceTemplateName(service.serviceTemplateId)"
                   @delete="deleteService(service)"
                 />
               </div>
@@ -587,14 +587,16 @@ const browseResults = computed(() => {
 
 <style scoped>
 .services-page {
-  min-height: 100%;
-  padding: 24px clamp(24px, 3vw, 48px) 56px;
+  padding: 24px clamp(24px, 3vw, 48px);
   background:
     radial-gradient(circle at 24% 0, rgba(var(--v-theme-amber), 0.045), transparent 420px),
     rgb(var(--v-theme-background));
 }
+/* width: 100% because the page is a flex column now (.app-page) — auto side margins on a flex
+   item shrink it to its content width instead of filling the line. */
 .services-hero,
 .services-directory {
+  width: 100%;
   max-width: 1240px;
   margin-right: auto;
   margin-left: auto;
@@ -718,8 +720,9 @@ const browseResults = computed(() => {
   letter-spacing: 0;
   text-transform: none;
 }
+/* No fixed min-height now that this is the page's scroll region (.app-page-scroll) — it takes
+   whatever height is left under the hero/toolbar/tabs and scrolls within it. */
 .directory-content {
-  min-height: 420px;
   padding: 20px;
 }
 .browse-layout {
@@ -956,11 +959,6 @@ const browseResults = computed(() => {
    — nice-to-have context, not essential, and it eats space that matters more on a narrow/short
    screen. Create Service already lives permanently in .services-toolbar now (see the template),
    so nothing is lost by hiding it here. */
-@media (max-width: 700px) {
-  .services-hero {
-    display: none;
-  }
-}
 @media (max-width: 560px) {
   .services-page {
     padding: 16px 12px 36px;

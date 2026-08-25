@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useFiltersPanel } from '@/composables/useFiltersPanel'
 import { useRoute, useRouter } from 'vue-router'
 import { VueDraggable } from 'vue-draggable-plus'
 import { useSongsStore } from '@/stores/songs'
@@ -9,6 +10,7 @@ import { useServicesStore } from '@/stores/services'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import AsyncLoadState from '@/components/AsyncLoadState.vue'
 import LibraryEmptyState from '@/components/LibraryEmptyState.vue'
+import AlphabetIndexRail from '@/components/AlphabetIndexRail.vue'
 import type { Song } from '@/models/song'
 import type { ServiceItem } from '@/models/service'
 import {
@@ -23,6 +25,12 @@ import {
   todayLocal,
   isArchiveCandidate as isSongArchiveCandidate,
 } from '@/utils/songUsage'
+import { sortTitle } from '@/utils/songSort'
+import {
+  ALPHABET_INDEX_LETTERS,
+  groupByIndexLetter,
+  scrollToIndexHeading,
+} from '@/utils/alphabetIndex'
 
 const router = useRouter()
 const route = useRoute()
@@ -37,6 +45,7 @@ const activeCollection = ref<string>()
 const activeTag = ref<string>()
 const showArchived = ref(false)
 const selectingSongId = ref<string>()
+const { filtersOpen, toggleFilters, closeFilters } = useFiltersPanel()
 
 const selectionServiceId = computed(() =>
   typeof route.query.selectFor === 'string' ? route.query.selectFor : undefined,
@@ -123,7 +132,9 @@ const filteredSongs = computed(() => {
   // Vuetify's clearable button sets the model to null, not '' — clearing without this guard
   // throws mid-computed (.trim() on null), which silently breaks the clear button.
   const q = (query.value ?? '').trim().toLowerCase()
-  const sorted = [...visibleSongs.value].sort((a, b) => a.title.localeCompare(b.title))
+  const sorted = [...visibleSongs.value].sort((a, b) =>
+    sortTitle(a.title).localeCompare(sortTitle(b.title)),
+  )
   return sorted.filter((song) => {
     if (
       activeCollection.value &&
@@ -141,6 +152,21 @@ const filteredSongs = computed(() => {
 const activeFilterCount = computed(
   () => Number(!!activeCollection.value) + Number(!!activeTag.value) + Number(showArchived.value),
 )
+
+// filteredSongs is already sorted by sortTitle, so groups come out in order for free.
+const groupedSongs = computed(() =>
+  groupByIndexLetter(filteredSongs.value, (song) => sortTitle(song.title)),
+)
+const availableSongLetters = computed(
+  () => new Set(groupedSongs.value.map((group) => group.letter)),
+)
+// Only alongside an actual list — the empty/error states have nothing to index into.
+const showIndexRail = computed(() => store.loaded && filteredSongs.value.length > 0)
+const songListEl = ref<HTMLElement>()
+function scrollToSongLetter(letter: string) {
+  const heading = document.getElementById(`song-letter-${letter}`)
+  if (songListEl.value && heading) scrollToIndexHeading(songListEl.value, heading)
+}
 
 function clearFilters() {
   activeCollection.value = undefined
@@ -321,342 +347,429 @@ function finishSelection() {
 
 <template>
   <main class="songs-page">
-    <header class="songs-hero">
-      <div>
-        <div class="page-eyebrow">Content Library</div>
-        <h1>{{ selectionMode ? 'Choose Songs' : 'Songs' }}</h1>
-        <p>
-          {{
-            selectionMode
-              ? 'Browse the full library and select songs for this service plan.'
-              : 'Organize lyrics, arrangements, collections, and service usage in one searchable library.'
-          }}
-        </p>
-      </div>
-      <div class="songs-summary" aria-label="Song library summary">
-        <div class="summary-stat">
-          <strong>{{ visibleSongs.length }}</strong>
-          <span>Songs</span>
-        </div>
-        <div class="summary-stat">
-          <strong>{{ collectionFilters.length }}</strong>
-          <span>Collections</span>
-        </div>
-        <div class="summary-stat">
-          <strong>{{ tagFilters.length }}</strong>
-          <span>Tags</span>
-        </div>
-      </div>
-    </header>
-
-    <section
-      v-if="selectionMode"
-      class="selected-set-panel"
-      aria-label="Songs selected for this plan"
-    >
-      <header class="selected-set-heading">
-        <span
-          ><v-icon icon="mdi-playlist-music" size="20" /><strong>{{ selectedSongs.length }}</strong>
-          selected for this plan</span
-        >
-        <v-btn color="primary" variant="flat" size="small" @click="finishSelection">Done</v-btn>
-      </header>
-      <VueDraggable
-        v-if="selectedSongs.length"
-        v-model="selectedSongs"
-        class="selected-set-list"
-        handle=".selected-set-drag"
-        :animation="150"
-        @end="saveSelectedSongOrder"
-      >
-        <div v-for="song in selectedSongs" :key="song.id" class="selected-set-row">
-          <v-icon icon="mdi-drag-vertical" size="18" class="selected-set-drag" />
-          <span
-            ><strong>{{ song.title }}</strong
-            ><small v-if="firstCollectionLabel(song)">{{ firstCollectionLabel(song) }}</small></span
-          >
-          <v-btn
-            icon="mdi-close"
-            size="x-small"
-            variant="text"
-            aria-label="Remove from plan"
-            @click="togglePlanSong(song)"
-          />
-        </div>
-      </VueDraggable>
-      <p v-else class="selected-set-empty">Select songs from the library below.</p>
-    </section>
-
-    <section class="songs-directory">
-      <div class="songs-toolbar">
+    <div class="songs-page-content">
+      <header class="songs-hero app-page-hero">
         <div>
-          <h2>Song Library</h2>
+          <div class="page-eyebrow">Content Library</div>
+          <h1>{{ selectionMode ? 'Choose Songs' : 'Songs' }}</h1>
           <p>
-            {{ filteredSongs.length }} {{ filteredSongs.length === 1 ? 'song' : 'songs' }}
-            <template v-if="activeFilterCount">
-              with {{ activeFilterCount }} active
-              {{ activeFilterCount === 1 ? 'filter' : 'filters' }}</template
-            >
-            <template v-if="query"> matching your search</template>
+            {{
+              selectionMode
+                ? 'Browse the full library and select songs for this service plan.'
+                : 'Organize lyrics, arrangements, collections, and service usage in one searchable library.'
+            }}
           </p>
         </div>
-        <div class="songs-actions">
-          <v-text-field
-            v-if="visibleSongs.length"
-            v-model="query"
-            prepend-inner-icon="mdi-magnify"
-            placeholder="Search title, author, collection, or tag"
-            aria-label="Search songs"
-            variant="outlined"
-            density="compact"
-            hide-details
-            clearable
-            class="song-search"
-          />
-          <v-btn
-            v-if="!selectionMode && !showArchived"
-            variant="flat"
-            color="primary"
-            prepend-icon="mdi-plus"
-            @click="createSong"
-            >New Song</v-btn
-          >
+        <div class="songs-summary" aria-label="Song library summary">
+          <div class="summary-stat">
+            <strong>{{ visibleSongs.length }}</strong>
+            <span>Songs</span>
+          </div>
+          <div class="summary-stat">
+            <strong>{{ collectionFilters.length }}</strong>
+            <span>Collections</span>
+          </div>
+          <div class="summary-stat">
+            <strong>{{ tagFilters.length }}</strong>
+            <span>Tags</span>
+          </div>
         </div>
-      </div>
+      </header>
 
-      <div
-        class="songs-directory-body"
-        :class="{ 'songs-directory-body--empty': allSongs.length === 0 }"
+      <section
+        v-if="selectionMode"
+        class="selected-set-panel"
+        aria-label="Songs selected for this plan"
       >
-        <!-- Gated on allSongs, not visibleSongs — a library that's all-archived (or, before any
+        <header class="selected-set-heading">
+          <span
+            ><v-icon icon="mdi-playlist-music" size="20" /><strong>{{
+              selectedSongs.length
+            }}</strong>
+            selected for this plan</span
+          >
+          <v-btn color="primary" variant="flat" size="small" @click="finishSelection">Done</v-btn>
+        </header>
+        <VueDraggable
+          v-if="selectedSongs.length"
+          v-model="selectedSongs"
+          class="selected-set-list"
+          handle=".selected-set-drag"
+          :animation="150"
+          @end="saveSelectedSongOrder"
+        >
+          <div v-for="song in selectedSongs" :key="song.id" class="selected-set-row">
+            <v-icon icon="mdi-drag-vertical" size="18" class="selected-set-drag" />
+            <span
+              ><strong>{{ song.title }}</strong
+              ><small v-if="firstCollectionLabel(song)">{{
+                firstCollectionLabel(song)
+              }}</small></span
+            >
+            <v-btn
+              icon="mdi-close"
+              size="x-small"
+              variant="text"
+              aria-label="Remove from plan"
+              @click="togglePlanSong(song)"
+            />
+          </div>
+        </VueDraggable>
+        <p v-else class="selected-set-empty">Select songs from the library below.</p>
+      </section>
+
+      <section class="songs-directory">
+        <div class="songs-toolbar">
+          <div class="songs-toolbar-heading">
+            <h2>Song Library</h2>
+            <p>
+              {{ filteredSongs.length }} {{ filteredSongs.length === 1 ? 'song' : 'songs' }}
+              <template v-if="activeFilterCount">
+                with {{ activeFilterCount }} active
+                {{ activeFilterCount === 1 ? 'filter' : 'filters' }}</template
+              >
+              <template v-if="query"> matching your search</template>
+            </p>
+          </div>
+          <div class="songs-actions">
+            <!-- Only rendered once the filters collapse out of the sidebar (see the 900px "compact"
+               block) — below that they live in a slide-over panel this opens. -->
+            <v-btn
+              v-if="allSongs.length"
+              class="app-filters-toggle"
+              variant="tonal"
+              density="comfortable"
+              icon="mdi-filter-variant"
+              :aria-label="filtersOpen ? 'Hide filters' : 'Show filters'"
+              :aria-expanded="filtersOpen"
+              @click="toggleFilters"
+            />
+            <v-text-field
+              v-if="visibleSongs.length"
+              v-model="query"
+              prepend-inner-icon="mdi-magnify"
+              placeholder="Search title, author, collection, or tag"
+              aria-label="Search songs"
+              variant="outlined"
+              density="compact"
+              hide-details
+              clearable
+              class="song-search"
+            />
+            <v-btn
+              v-if="!selectionMode && !showArchived"
+              variant="flat"
+              color="primary"
+              prepend-icon="mdi-plus"
+              class="new-song-btn app-icon-btn"
+              @click="createSong"
+              ><span class="app-btn-label">New Song</span></v-btn
+            >
+          </div>
+        </div>
+
+        <div
+          class="songs-directory-body"
+          :class="{ 'songs-directory-body--empty': allSongs.length === 0 }"
+        >
+          <!-- Gated on allSongs, not visibleSongs — a library that's all-archived (or, before any
              songs exist yet, all-active-and-empty) still needs the Archived filter reachable,
              not hidden along with the rest of the sidebar just because the *current* mode has
              nothing to show. -->
-        <aside v-if="allSongs.length" class="song-filters" aria-label="Filter songs">
-          <button
-            type="button"
-            class="song-filter song-filter--all"
-            :class="{ 'song-filter--active': !activeCollection && !activeTag && !showArchived }"
-            @click="clearFilters"
-          >
-            <span class="song-filter-icon"><v-icon icon="mdi-music-note" size="18" /></span>
-            <span>All Songs</span>
-            <strong>{{ activeSongsCount }}</strong>
-          </button>
-          <button
-            type="button"
-            class="song-filter song-filter--archived"
-            :class="{ 'song-filter--active': showArchived }"
-            @click="toggleArchivedFilter"
-          >
-            <span class="song-filter-icon"><v-icon icon="mdi-archive-outline" size="17" /></span>
-            <span>Archived</span>
-            <strong>{{ archivedCount }}</strong>
-          </button>
-
-          <div class="filter-section">
-            <div class="filter-heading">Collections</div>
-            <button
-              v-for="filter in collectionFilters"
-              :key="filter.id"
-              type="button"
-              class="song-filter song-filter--collection"
-              :class="{ 'song-filter--active': activeCollection === filter.id }"
-              @click="activeCollection = activeCollection === filter.id ? undefined : filter.id"
-            >
-              <span class="song-filter-icon"><v-icon icon="mdi-bookshelf" size="17" /></span>
-              <span>{{ filter.name }}</span>
-              <strong>{{ filter.count }}</strong>
-            </button>
-            <p v-if="collectionFilters.length === 0" class="filter-empty">
-              No collections configured
-            </p>
-          </div>
-
-          <div class="filter-section">
-            <div class="filter-heading">Tags</div>
-            <button
-              v-for="filter in tagFilters"
-              :key="filter.name"
-              type="button"
-              class="song-filter song-filter--tag"
-              :class="{ 'song-filter--active': activeTag === filter.name }"
-              @click="activeTag = activeTag === filter.name ? undefined : filter.name"
-            >
-              <span class="song-filter-icon"><v-icon icon="mdi-tag-outline" size="17" /></span>
-              <span>{{ filter.name }}</span>
-              <strong>{{ filter.count }}</strong>
-            </button>
-            <p v-if="tagFilters.length === 0" class="filter-empty">No tags added</p>
-          </div>
-        </aside>
-
-        <div class="song-results">
-          <AsyncLoadState
-            v-if="!store.loaded"
-            :loading="store.loading"
-            :error="store.loadError"
-            label="songs"
-            @retry="store.load"
+          <!-- One <aside>, two presentations: a permanent sidebar on wide screens, and below the shared
+             900px "compact" breakpoint a slide-over panel over the list (CSS only) — same
+             markup either way rather than a second copy of every filter for small screens. -->
+          <div
+            v-if="allSongs.length"
+            class="app-filters-scrim"
+            :class="{ 'app-filters-scrim--open': filtersOpen }"
+            @click="closeFilters"
           />
-          <AsyncLoadState
-            v-if="store.loaded && store.loadError"
-            :loading="false"
-            :error="store.loadError"
-            label="updated songs"
-            compact
-            class="mb-3"
-            @retry="store.load"
-          />
-          <LibraryEmptyState
-            v-if="store.loaded && allSongs.length === 0"
-            icon="mdi-music-note-plus"
-            title="No Songs Yet"
-            message="Create a song, or import an existing OpenSong library from Settings → Library & Sync."
+          <aside
+            v-if="allSongs.length"
+            class="song-filters app-filters"
+            :class="{ 'app-filters--open': filtersOpen }"
+            aria-label="Filter songs"
           >
-            <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSong"
-              >New Song</v-btn
+            <button
+              type="button"
+              class="song-filter song-filter--all"
+              :class="{ 'song-filter--active': !activeCollection && !activeTag && !showArchived }"
+              @click="clearFilters"
             >
-          </LibraryEmptyState>
-          <LibraryEmptyState
-            v-else-if="store.loaded && showArchived && visibleSongs.length === 0"
-            icon="mdi-archive-off-outline"
-            title="No Archived Songs"
-            message="Songs you archive from the active library will show up here."
-          >
-            <v-btn variant="text" color="primary" @click="showArchived = false"
-              >Back to Active Songs</v-btn
+              <span class="song-filter-icon"><v-icon icon="mdi-music-note" size="18" /></span>
+              <span>All Songs</span>
+              <strong>{{ activeSongsCount }}</strong>
+            </button>
+            <button
+              type="button"
+              class="song-filter song-filter--archived"
+              :class="{ 'song-filter--active': showArchived }"
+              @click="toggleArchivedFilter"
             >
-          </LibraryEmptyState>
-          <LibraryEmptyState
-            v-else-if="store.loaded && filteredSongs.length === 0"
-            icon="mdi-music-note-off"
-            title="No Songs Found"
-            message="No songs match the selected collection, tag, and search."
-          >
-            <v-btn variant="text" color="primary" @click="clearFilters">Clear Filters</v-btn>
-          </LibraryEmptyState>
+              <span class="song-filter-icon"><v-icon icon="mdi-archive-outline" size="17" /></span>
+              <span>Archived</span>
+              <strong>{{ archivedCount }}</strong>
+            </button>
 
-          <div v-else-if="store.loaded" class="song-list">
-            <article
-              v-for="song in filteredSongs"
-              :key="song.id"
-              class="song-card"
-              :class="{ 'song-card--selected': selectionMode && selectedSongIds.has(song.id) }"
-              tabindex="0"
-              @click="handleSongCard(song)"
-              @keydown.enter="handleSongCard(song)"
-              @keydown.space.prevent="handleSongCard(song)"
+            <div class="filter-section">
+              <div class="filter-heading">Collections</div>
+              <button
+                v-for="filter in collectionFilters"
+                :key="filter.id"
+                type="button"
+                class="song-filter song-filter--collection"
+                :class="{ 'song-filter--active': activeCollection === filter.id }"
+                @click="activeCollection = activeCollection === filter.id ? undefined : filter.id"
+              >
+                <span class="song-filter-icon"><v-icon icon="mdi-bookshelf" size="17" /></span>
+                <span>{{ filter.name }}</span>
+                <strong>{{ filter.count }}</strong>
+              </button>
+              <p v-if="collectionFilters.length === 0" class="filter-empty">
+                No collections configured
+              </p>
+            </div>
+
+            <div class="filter-section">
+              <div class="filter-heading">Tags</div>
+              <button
+                v-for="filter in tagFilters"
+                :key="filter.name"
+                type="button"
+                class="song-filter song-filter--tag"
+                :class="{ 'song-filter--active': activeTag === filter.name }"
+                @click="activeTag = activeTag === filter.name ? undefined : filter.name"
+              >
+                <span class="song-filter-icon"><v-icon icon="mdi-tag-outline" size="17" /></span>
+                <span>{{ filter.name }}</span>
+                <strong>{{ filter.count }}</strong>
+              </button>
+              <p v-if="tagFilters.length === 0" class="filter-empty">No tags added</p>
+            </div>
+          </aside>
+
+          <div class="song-results">
+            <AsyncLoadState
+              v-if="!store.loaded"
+              :loading="store.loading"
+              :error="store.loadError"
+              label="songs"
+              @retry="store.load"
+            />
+            <AsyncLoadState
+              v-if="store.loaded && store.loadError"
+              :loading="false"
+              :error="store.loadError"
+              label="updated songs"
+              compact
+              class="mb-3"
+              @retry="store.load"
+            />
+            <LibraryEmptyState
+              v-if="store.loaded && allSongs.length === 0"
+              icon="mdi-music-note-plus"
+              title="No Songs Yet"
+              message="Create a song, or import an existing OpenSong library from Settings → Library & Sync."
             >
-              <span class="song-icon"><v-icon icon="mdi-music-note" size="22" /></span>
-              <div class="song-identity">
-                <h3>{{ song.title }}</h3>
-                <p>{{ creditLabel(song) }}</p>
-              </div>
-              <div class="song-metadata">
-                <div v-if="song.collections.length" class="song-collections">
-                  <span class="metadata-label"
-                    ><v-icon icon="mdi-bookshelf" size="15" />Collections</span
-                  >
-                  <strong>{{ collectionsLabel(song) }}</strong>
+              <v-btn variant="flat" color="primary" prepend-icon="mdi-plus" @click="createSong"
+                >New Song</v-btn
+              >
+            </LibraryEmptyState>
+            <LibraryEmptyState
+              v-else-if="store.loaded && showArchived && visibleSongs.length === 0"
+              icon="mdi-archive-off-outline"
+              title="No Archived Songs"
+              message="Songs you archive from the active library will show up here."
+            >
+              <v-btn variant="text" color="primary" @click="showArchived = false"
+                >Back to Active Songs</v-btn
+              >
+            </LibraryEmptyState>
+            <LibraryEmptyState
+              v-else-if="store.loaded && filteredSongs.length === 0"
+              icon="mdi-music-note-off"
+              title="No Songs Found"
+              message="No songs match the selected collection, tag, and search."
+            >
+              <v-btn variant="text" color="primary" @click="clearFilters">Clear Filters</v-btn>
+            </LibraryEmptyState>
+
+            <div v-else-if="store.loaded" ref="songListEl" class="song-list app-page-scroll">
+              <template v-for="group in groupedSongs" :key="group.letter">
+                <div :id="`song-letter-${group.letter}`" class="song-list-heading">
+                  {{ group.letter }}
                 </div>
-                <div v-if="song.tags.length" class="song-tags">
-                  <span v-for="tag in song.tags" :key="tag">{{ tag }}</span>
-                </div>
-                <span v-if="!song.collections.length && !song.tags.length" class="song-no-metadata"
-                  >No collections or tags</span
+                <article
+                  v-for="song in group.items"
+                  :key="song.id"
+                  class="song-card"
+                  :class="{ 'song-card--selected': selectionMode && selectedSongIds.has(song.id) }"
+                  tabindex="0"
+                  @click="handleSongCard(song)"
+                  @keydown.enter="handleSongCard(song)"
+                  @keydown.space.prevent="handleSongCard(song)"
                 >
-              </div>
-              <span class="song-usage">
-                <v-icon icon="mdi-history" size="17" />
-                <span>
-                  <strong>{{ lastUsedLabel(song) }}</strong>
-                  <small>{{ yearlyUsageLabel(song) }}</small>
-                </span>
-                <v-chip
-                  v-if="!showArchived && isArchiveCandidate(song)"
-                  size="x-small"
-                  color="amber"
-                  variant="tonal"
-                  class="archive-hint"
-                >
-                  Not used in a while
-                </v-chip>
-              </span>
-              <v-btn
-                v-if="selectionMode"
-                :icon="selectedSongIds.has(song.id) ? 'mdi-check' : 'mdi-plus'"
-                :color="selectedSongIds.has(song.id) ? 'primary' : undefined"
-                :loading="selectingSongId === song.id"
-                variant="text"
-                size="small"
-                :aria-label="selectedSongIds.has(song.id) ? 'Remove from plan' : 'Add to plan'"
-                @click.stop="togglePlanSong(song)"
-              />
-              <v-menu v-else>
-                <template #activator="{ props }">
+                  <span class="song-icon"><v-icon icon="mdi-music-note" size="22" /></span>
+                  <div class="song-identity">
+                    <h3>{{ song.title }}</h3>
+                    <p>{{ creditLabel(song) }}</p>
+                  </div>
+                  <div class="song-metadata">
+                    <div v-if="song.collections.length" class="song-collections">
+                      <span class="metadata-label"
+                        ><v-icon icon="mdi-bookshelf" size="15" />Collections</span
+                      >
+                      <strong>{{ collectionsLabel(song) }}</strong>
+                    </div>
+                    <div v-if="song.tags.length" class="song-tags">
+                      <span v-for="tag in song.tags" :key="tag">{{ tag }}</span>
+                    </div>
+                    <span
+                      v-if="!song.collections.length && !song.tags.length"
+                      class="song-no-metadata"
+                      >No collections or tags</span
+                    >
+                  </div>
+                  <span class="song-usage">
+                    <v-icon icon="mdi-history" size="17" />
+                    <span>
+                      <strong>{{ lastUsedLabel(song) }}</strong>
+                      <small>{{ yearlyUsageLabel(song) }}</small>
+                    </span>
+                    <v-chip
+                      v-if="!showArchived && isArchiveCandidate(song)"
+                      size="x-small"
+                      color="amber"
+                      variant="tonal"
+                      class="archive-hint"
+                    >
+                      Not used in a while
+                    </v-chip>
+                  </span>
                   <v-btn
-                    v-bind="props"
-                    icon="mdi-dots-horizontal"
+                    v-if="selectionMode"
+                    :icon="selectedSongIds.has(song.id) ? 'mdi-check' : 'mdi-plus'"
+                    :color="selectedSongIds.has(song.id) ? 'primary' : undefined"
+                    :loading="selectingSongId === song.id"
                     variant="text"
                     size="small"
-                    aria-label="Song actions"
-                    @click.stop
+                    :aria-label="selectedSongIds.has(song.id) ? 'Remove from plan' : 'Add to plan'"
+                    @click.stop="togglePlanSong(song)"
                   />
-                </template>
-                <v-list density="compact">
-                  <v-list-item
-                    prepend-icon="mdi-pencil-outline"
-                    title="Edit Song"
-                    @click="openSong(song)"
-                  />
-                  <v-list-item
-                    v-if="!showArchived"
-                    prepend-icon="mdi-archive-outline"
-                    title="Archive Song"
-                    @click="archiveSong(song)"
-                  />
-                  <v-list-item
-                    v-else
-                    prepend-icon="mdi-archive-arrow-up-outline"
-                    title="Unarchive Song"
-                    @click="unarchiveSong(song)"
-                  />
-                  <v-list-item
-                    prepend-icon="mdi-trash-can-outline"
-                    title="Delete Song"
-                    class="text-error"
-                    @click="deleteSong(song)"
-                  />
-                </v-list>
-              </v-menu>
-            </article>
+                  <v-menu v-else>
+                    <template #activator="{ props }">
+                      <v-btn
+                        v-bind="props"
+                        icon="mdi-dots-horizontal"
+                        variant="text"
+                        size="small"
+                        aria-label="Song actions"
+                        @click.stop
+                      />
+                    </template>
+                    <v-list density="compact">
+                      <v-list-item
+                        prepend-icon="mdi-pencil-outline"
+                        title="Edit Song"
+                        @click="openSong(song)"
+                      />
+                      <v-list-item
+                        v-if="!showArchived"
+                        prepend-icon="mdi-archive-outline"
+                        title="Archive Song"
+                        @click="archiveSong(song)"
+                      />
+                      <v-list-item
+                        v-else
+                        prepend-icon="mdi-archive-arrow-up-outline"
+                        title="Unarchive Song"
+                        @click="unarchiveSong(song)"
+                      />
+                      <v-list-item
+                        prepend-icon="mdi-trash-can-outline"
+                        title="Delete Song"
+                        class="text-error"
+                        @click="deleteSong(song)"
+                      />
+                    </v-list>
+                  </v-menu>
+                </article>
+              </template>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
+    <!-- Page-level, not inside the list card: anchored here it spans everything under the app-bar
+         rather than only the list pane, which on a tall window left it stranded across less than
+         half the height. Same placement as a phone contacts index — at the edge of the screen,
+         not inside the content it indexes. -->
+    <AlphabetIndexRail
+      v-if="showIndexRail"
+      :letters="ALPHABET_INDEX_LETTERS"
+      :available-letters="availableSongLetters"
+      class="page-rail"
+      @select="scrollToSongLetter"
+    />
   </main>
 </template>
 
 <style scoped>
+/* The song list owns the scrolling here, not the page — the hero/toolbar stay put and only the
+   list moves, so the A-Z rail can hold a fixed position instead of scrolling away with the list
+   exactly when the list is long enough to need one. Same structure as a phone contacts screen:
+   fixed chrome, one scrolling list.
+   height: 100% (not a 100dvh-minus-app-bar calc) because the parent <v-main scrollable> renders
+   a .v-main__scroller that is already inset to exactly the area below the app-bar — filling it
+   is exact and needs no app-bar arithmetic, which measured wrong anyway: --v-layout-top reads as
+   0px down here, so subtracting it silently left the page a full app-bar too tall.
+   A row, so the rail sits beside the whole page and inherits its full height. */
 .songs-page {
-  min-height: 100%;
-  padding: 24px clamp(24px, 3vw, 48px) 56px;
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px clamp(20px, 3vw, 48px);
   background:
     radial-gradient(circle at 24% 0, rgba(var(--v-theme-teal), 0.055), transparent 420px),
     rgb(var(--v-theme-background));
 }
+.songs-page-content {
+  display: flex;
+  min-width: 0;
+  max-width: 1240px;
+  flex: 1;
+  flex-direction: column;
+}
+/* Stretches to the page's full height (the flex default), which is the whole point of hanging it
+   here rather than inside the list card. */
+.page-rail {
+  flex-shrink: 0;
+}
+/* width: 100% matters now that these sit in a flex column — auto side margins on a flex item
+   shrink it to its content width instead of filling the line the way they did under block
+   layout, which left both cards floating narrow in the middle of the page. The 1240px cap now
+   lives on .songs-page-content, so these just fill it. */
 .songs-hero,
 .songs-directory {
-  max-width: 1240px;
-  margin-right: auto;
-  margin-left: auto;
+  width: 100%;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   border-radius: 11px;
   background: rgba(var(--v-theme-surface), 0.76);
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.08);
 }
+/* Takes the leftover height under the hero and passes it down to the list pane. min-height: 0
+   at every level because a flex item's default min-height: auto refuses to shrink below its
+   content, which would push the list's own scrollbar back out to the page. */
+.songs-directory {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
 .selected-set-panel {
+  width: 100%;
   max-width: 1240px;
   margin: 0 auto 18px;
   border: 1px solid rgba(var(--v-theme-primary), 0.24);
@@ -836,14 +949,16 @@ function finishSelection() {
 }
 .songs-directory-body {
   display: grid;
+  min-height: 0;
+  flex: 1;
   grid-template-columns: 230px minmax(0, 1fr);
-  min-height: 440px;
 }
 .songs-directory-body--empty {
   grid-template-columns: minmax(0, 1fr);
 }
 .song-filters {
   padding: 14px 11px 18px;
+  overflow-y: auto;
   border-right: 1px solid rgba(var(--v-theme-on-surface), 0.07);
   background: rgba(var(--v-theme-background), 0.17);
 }
@@ -946,18 +1061,49 @@ function finishSelection() {
   font-size: 0.7rem;
 }
 .song-results {
+  display: flex;
   min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
 }
+/* flex/min-height/overflow come from .app-page-scroll (assets/base.css) — this only adds what is
+   specific to the song list. */
 .song-list {
+  /* One source of truth for the list inset: the sticky headings below cancel it with a negative
+     margin so their background spans the full width, and the two silently stopped cancelling when
+     the phone breakpoint changed the padding alone -- leaving the heading hanging 4px over each
+     edge and giving the list a horizontal scrollbar. */
+  --list-pad: 14px;
+
   container: song-list / inline-size;
   display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: 8px;
-  padding: 14px;
+  padding: var(--list-pad);
 }
+/* Sticky within the scrolling list, so the letter you're inside stays named while you scroll
+   through it — the opaque background is what keeps cards from showing through as they pass. */
+.song-list-heading {
+  position: sticky;
+  top: calc(var(--list-pad) * -1);
+  z-index: 1;
+  flex-shrink: 0;
+  margin: 0 calc(var(--list-pad) * -1);
+  padding: 8px calc(var(--list-pad) + 4px) 6px;
+  background: rgb(var(--v-theme-surface));
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+/* flex-shrink: 0 because .song-list is now a height-constrained scrolling flex column — without
+   it these compress toward min-height to fit rather than overflowing into a scroll. */
 .song-card {
   display: grid;
   min-height: 86px;
+  flex-shrink: 0;
   grid-template-columns: 44px minmax(220px, 1fr) 280px 175px 36px;
   align-items: center;
   gap: 13px;
@@ -1135,20 +1281,27 @@ function finishSelection() {
   gap: 8px;
 }
 @media (max-width: 1120px) {
-  .songs-toolbar,
-  .songs-actions {
+  /* Only the toolbar stacks (heading above the controls) — the controls themselves stay a row so
+     New Song keeps sitting beside the search field rather than dropping to a full-width bar of
+     its own underneath it. */
+  .songs-toolbar {
     align-items: stretch;
     flex-direction: column;
   }
+  .songs-actions {
+    align-items: center;
+    flex-direction: row;
+  }
   .song-search {
-    width: min(520px, 100%);
+    width: auto;
+    flex: 1;
   }
 }
 /* .song-card's own responsive columns are keyed to .song-list's actual rendered width (a
    container query), not the window's — the window can be well above any of the @media
    breakpoints elsewhere on this page while the list column itself is still narrow, since the
    nav (224px, permanent ≥960px window width) and the filters sidebar (230px, permanent
-   ≥880px window width — see .songs-directory-body below) both eat fixed space out of the
+   ≥900px window width — see .songs-directory-body below) both eat fixed space out of the
    window before the list ever sees it. A plain window-width @media query can't represent that:
    it would need to know whether the nav is a rail or overlay and whether the filters are a
    sidebar or a bar, not just the raw window width. Thresholds below are picked from the card's
@@ -1164,6 +1317,10 @@ function finishSelection() {
     display: none;
   }
 }
+/* The rail deliberately survives every width breakpoint below — a narrow screen is where a long
+   list is hardest to scrub through by hand, so it's the case the rail exists for. It sizes its
+   own width and glyphs to the space available (see AlphabetIndexRail.vue) rather than needing a
+   breakpoint here. */
 @container song-list (max-width: 600px) {
   /* Below the space needed for even the reduced 4-column layout above. */
   .song-card {
@@ -1173,7 +1330,10 @@ function finishSelection() {
     display: none;
   }
 }
-@media (max-width: 880px) {
+/* 900px = the shared "compact" breakpoint (see assets/base.css). The slide-over panel itself is
+   defined there too — all this page owns is collapsing the grid to one column and giving it the
+   positioning context the panel is absolute against. */
+@media (max-width: 900px) {
   .songs-hero {
     align-items: stretch;
     flex-direction: column;
@@ -1182,44 +1342,39 @@ function finishSelection() {
     align-self: flex-start;
   }
   .songs-directory-body {
+    position: relative;
     grid-template-columns: 1fr;
-  }
-  .song-filters {
-    display: flex;
-    gap: 5px;
-    padding: 9px 11px;
-    overflow-x: auto;
-    border-right: 0;
-    border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-  }
-  .filter-section {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    margin: 0;
-    padding: 0 0 0 8px;
-    border-top: 0;
-    border-left: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-  }
-  .filter-heading,
-  .filter-empty {
-    display: none;
-  }
-  .song-filter {
-    width: auto;
-    min-width: max-content;
-    grid-template-columns: 27px auto auto;
-    margin-bottom: 0;
+    grid-template-rows: minmax(0, 1fr);
   }
 }
 @media (max-width: 700px) {
   .songs-page {
-    padding: 14px 12px 40px;
+    padding: 10px;
   }
-  /* The whole hero card (eyebrow, title, description, stats) is nice-to-have context, not
-     essential, and it eats a lot of vertical space that matters more on a narrow/short screen. */
-  .songs-hero {
+  /* Everything here buys list height back on a phone, where the chrome above the list was
+     eating more than half the viewport: the toolbar's title/count block duplicates the app-bar
+     title, and search + filters + New Song fit on one row once the button drops to its icon. */
+  .songs-toolbar {
+    padding: 8px 10px;
+  }
+  .songs-toolbar-heading {
     display: none;
+  }
+  .songs-toolbar,
+  .songs-actions {
+    align-items: center;
+    flex-direction: row;
+  }
+  .songs-actions {
+    width: 100%;
+    gap: 6px;
+  }
+  .song-search {
+    width: auto;
+    flex: 1;
+  }
+  .song-list {
+    --list-pad: 10px;
   }
 }
 </style>
