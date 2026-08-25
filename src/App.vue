@@ -803,13 +803,13 @@ onUnmounted(() => {
       />
     </v-app-bar>
     <!-- scrollable: keeps the outer document itself non-scrolling (see index.html's matching
-         `overflow: hidden` on html/body) so the app-bar/nav — position:absolute layout items
-         within that same document — stay visually pinned instead of getting dragged along by
-         the document's own scroll/rubber-band. Without this the whole page was one scrolling
-         region, so the native scrollbar ran the full page height through the app-bar, and iOS
-         Safari's elastic overscroll at the top could bounce page content above the app-bar into
-         the physical status-bar area. -->
-    <v-main scrollable>
+         `overflow: hidden` on html/body) so the app-bar/nav — position:fixed layout items,
+         anchored to the true viewport regardless of this document's own scroll position — stay
+         visually pinned instead of getting dragged along by the document's own scroll/rubber-
+         band. Without this the whole page was one scrolling region, so the native scrollbar ran
+         the full page height through the app-bar, and iOS Safari's elastic overscroll at the top
+         could bounce page content above the app-bar into the physical status-bar area. -->
+    <v-main scrollable class="app-main">
       <router-view />
     </v-main>
 
@@ -969,12 +969,22 @@ onUnmounted(() => {
      layout.js — anchored to the true viewport, not any ancestor's padding box), and
      viewport-fit=cover (index.html) extends the page to the true screen edges — so without
      this, the bar renders flush against the top, under the iPad status bar, regardless of any
-     padding on an ancestor like #app. Padding here (rather than a top offset) also makes
-     Vuetify's own height-measurement, which pushes <v-main>'s content down by the app-bar's
-     real rendered height, pick up the inset automatically — no separate content offset needed.
-     Resolves to 0px anywhere without a safe area (desktop, the web demo), so this is harmless
-     there. */
+     padding on an ancestor like #app. This only fixes the bar's own visual position, though —
+     confirmed against Vuetify's own source that --v-layout-top (which pushes <v-main>'s content
+     down below the bar) is calculated purely from the height/density props, never a live
+     measurement of the bar's actual rendered box, so it has no way to notice this padding on its
+     own. .app-main below corrects <v-main>'s own offset to match. Resolves to 0px anywhere
+     without a safe area (desktop, the web demo), so this is harmless there. */
   padding-top: env(safe-area-inset-top);
+}
+/* --v-layout-top itself doesn't know about .app-bar's own padding-top above (see that rule's
+   own comment) — added directly here instead, on top of Vuetify's own calculation, so <v-main>'s
+   content starts right below the now-taller app-bar rather than under it by that same amount.
+   !important since Vuetify's own `.v-main { padding-top: var(--v-layout-top) }` (VMain.css) is
+   the exact same specificity as this class selector — without it, which one wins would come
+   down to stylesheet load order rather than being guaranteed. */
+.app-main {
+  padding-top: calc(var(--v-layout-top) + env(safe-area-inset-top)) !important;
 }
 .sync-indicator {
   display: flex;
