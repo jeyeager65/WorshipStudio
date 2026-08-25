@@ -101,6 +101,7 @@ async function removeSelectedGroup() {
           color="primary"
           variant="flat"
           icon="mdi-plus"
+          density="comfortable"
           aria-label="Add role category"
           :disabled="!newGroupName.trim()"
           @click="addGroup"
