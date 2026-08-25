@@ -119,10 +119,7 @@ async function exportDiagnosticBundle() {
     <div class="about-card">
       <img :src="aboutLogo" alt="Worship Studio" class="about-logo" />
       <div class="about-version">Version {{ appVersion || '…' }}</div>
-      <p class="about-description">
-        Worship planning and presentation software built for calm, confident operation during a
-        service.
-      </p>
+      <p class="about-description">Worship planning and presentation software for church services.</p>
 
       <div class="about-links">
         <button
@@ -273,7 +270,7 @@ async function exportDiagnosticBundle() {
 }
 .about-version {
   color: rgba(var(--v-theme-on-surface), 0.58);
-  font-size: 0.72rem;
+  font-size: 0.88rem;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-align: center;
