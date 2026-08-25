@@ -10,8 +10,11 @@ import {
   findSermonItem,
   sermonMainReference,
   sermonPreacherId,
+  sermonRoleId,
 } from '@/utils/sermonInfo'
-import { personFormalName, sortByPreferredRole } from '@/models/library'
+import { personFormalName } from '@/models/library'
+import { personOptionsForRole } from '@/utils/personOptions'
+
 import type { Service } from '@/models/service'
 import FiveMinuteTimePicker from '@/components/FiveMinuteTimePicker.vue'
 
@@ -49,11 +52,14 @@ watch(
   },
 )
 
+// Same role-grouped list as the Create Service screen — keyed off this service's own template
+// (see sermonRole.ts), so an existing service groups by whatever it was created from.
 const preacherOptions = computed(() =>
-  sortByPreferredRole(peopleStore.people, 'Preacher').map((p) => ({
-    title: personFormalName(p),
-    value: p.id,
-  })),
+  personOptionsForRole(
+    peopleStore.people,
+    sermonRoleId(serviceTemplatesStore.serviceTemplates, props.service.serviceTemplateId),
+    personFormalName,
+  ),
 )
 
 function save() {

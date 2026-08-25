@@ -7,7 +7,10 @@ import { usePeopleStore } from '@/stores/people'
 import { useServiceTypesStore } from '@/stores/serviceTypes'
 import { useServiceTemplatesStore } from '@/stores/serviceTemplates'
 import type { Service } from '@/models/service'
-import { personFormalName, sortByPreferredRole } from '@/models/library'
+import { personFormalName } from '@/models/library'
+import { personOptionsForRole } from '@/utils/personOptions'
+import { sermonRoleId } from '@/utils/sermonInfo'
+
 import { applyServiceTemplate, defaultServiceTemplate } from '@/utils/serviceTemplate'
 import { applySermonEdit } from '@/utils/sermonInfo'
 import { formatServiceTime } from '@/utils/serviceTime'
@@ -52,11 +55,15 @@ const selectedTypeName = computed(
   () => serviceTypesStore.serviceTypes.find((t) => t.id === serviceTypeId.value)?.name,
 )
 
+// Grouped by the sermon role the chosen template configures (see sermonRole.ts), so the likely
+// preachers surface first exactly the way every other role-based picker in the app behaves.
+// Reactive on templateId: picking a template regroups the list.
 const preacherOptions = computed(() =>
-  sortByPreferredRole(peopleStore.people, 'Preacher').map((p) => ({
-    title: personFormalName(p),
-    value: p.id,
-  })),
+  personOptionsForRole(
+    peopleStore.people,
+    sermonRoleId(serviceTemplatesStore.serviceTemplates, templateId.value ?? undefined),
+    personFormalName,
+  ),
 )
 
 const templateOptions = computed(() => {

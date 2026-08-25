@@ -17,11 +17,14 @@ export interface PersonOption {
 export function personOptionsForRole(
   people: Person[],
   roleId: string | undefined,
+  /** Overrides the label, for pickers that name people differently — the Preacher fields use
+   *  personFormalName ("Pastor Jim Smith") rather than the everyday display name. */
+  nameFor: (person: Person) => string = personDisplayName,
 ): PersonOption[] {
   const preferred: PersonOption[] = []
   const rest: PersonOption[] = []
   for (const person of people) {
-    const option: PersonOption = { title: personDisplayName(person), value: person.id }
+    const option: PersonOption = { title: nameFor(person), value: person.id }
     ;(roleId && person.preferredRoleIds.includes(roleId) ? preferred : rest).push(option)
   }
   const byTitle = (a: PersonOption, b: PersonOption) => a.title.localeCompare(b.title)

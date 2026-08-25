@@ -37,6 +37,46 @@ export function defaultSermonRole(
   )?.roleId
 }
 
+/** The role to group a Preacher picker by — a near neighbour of defaultSermonRole above, but
+ *  answering a different question. That one asks "which role should this sermon's *assignment*
+ *  use", keyed on the service type's default template. This one asks "which role are the likely
+ *  preachers preferred for", keyed on the template actually selected — so overriding the default
+ *  template on the Create Service screen regroups the list, which the service-type lookup would
+ *  ignore.
+ *
+ *  A preacher has no direct tie to a role: the sermon ServiceItem carries a title and passages,
+ *  not a roleId. A template's own `kind: 'sermon'` item is the closest configured answer, and is
+ *  already what applySermonEdit records the assignment against.
+ *
+ *  Falls back to the sermon role used across all templates when the selected one can't answer
+ *  (nothing selected yet, or its sermon item never had a role set) — but only when the templates
+ *  agree on a single role. Disagreement means there's no one right answer, and guessing would put
+ *  the wrong people under "Preferred", which is worse than leaving the list flat.
+ *
+ *  Returns undefined when nothing can be determined; personOptionsForRole then renders one plain
+ *  alphabetical list. Deliberately not a hardcoded role name — the previous implementation looked
+ *  up the literal id 'Preacher', which stopped matching anything once roles moved to generated
+ *  ids (and named a role this library no longer configures), silently leaving the picker in raw
+ *  file order with neither sorting nor grouping. */
+export function sermonRoleId(
+  serviceTemplates: ServiceTemplate[],
+  selectedTemplateId?: string,
+): string | undefined {
+  if (selectedTemplateId) {
+    const selected = serviceTemplates.find((template) => template.id === selectedTemplateId)
+    const roleId = selected?.items.find((item) => item.kind === 'sermon' && item.roleId)?.roleId
+    if (roleId) return roleId
+  }
+
+  const distinct = new Set<string>()
+  for (const template of serviceTemplates) {
+    for (const item of template.items) {
+      if (item.kind === 'sermon' && item.roleId) distinct.add(item.roleId)
+    }
+  }
+  return distinct.size === 1 ? [...distinct][0] : undefined
+}
+
 export interface SermonEditInput {
   title: string
   /** Sets/updates (or, if blank, removes) only the *main* passage — never touches any other

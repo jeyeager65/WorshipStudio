@@ -254,13 +254,3 @@ export function isElder(person: Person): boolean {
   const title = person.title?.trim().toLocaleLowerCase()
   return title === 'elder' || title === 'pastor'
 }
-
-/** Sorts people with `roleId` in their preferredRoleIds first — a hint for filling pickers
- *  faster, never a restriction on who can be picked (anyone remains selectable, just further
- *  down). */
-export function sortByPreferredRole<T extends Person>(people: T[], roleId: string): T[] {
-  return [...people].sort(
-    (a, b) =>
-      Number(b.preferredRoleIds.includes(roleId)) - Number(a.preferredRoleIds.includes(roleId)),
-  )
-}
