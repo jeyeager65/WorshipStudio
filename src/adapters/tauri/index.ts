@@ -17,7 +17,6 @@ import type {
   CloudSyncClientStatus,
   RecoveryIssue,
   ConflictedItem,
-  ImportSetsSummary,
   StagedMediaFile,
   MediaImportCommit,
   ExternalAppProfile,
@@ -330,15 +329,6 @@ export function createTauriAdapter(): StudioAdapter {
       delete: (id) => invoke('delete_service', { id }),
       listUpcoming: (fromDate, toDate) =>
         invoke<Service[]>('list_upcoming_services', { fromDate, toDate }),
-      importOpenSongSets: async (year, defaultServiceTypeId) => {
-        const folder = await open({ directory: true, title: 'Select OpenSong Sets Folder' })
-        if (!folder || Array.isArray(folder)) return undefined
-        return invoke<ImportSetsSummary>('import_opensong_sets', {
-          setsFolder: folder,
-          year,
-          defaultServiceTypeId,
-        })
-      },
     },
     slides: {
       list: () => invoke<SlideLibraryItem[]>('list_slides'),
@@ -426,8 +416,7 @@ export function createTauriAdapter(): StudioAdapter {
     },
     serviceTypes: {
       list: () => invoke<ServiceTypeDefinition[]>('list_service_types'),
-      save: (serviceType) =>
-        invoke<ServiceTypeDefinition>('save_service_type', { serviceType }),
+      save: (serviceType) => invoke<ServiceTypeDefinition>('save_service_type', { serviceType }),
       delete: (id) => invoke('delete_service_type', { id }),
     },
     roleGroups: {
@@ -460,8 +449,7 @@ export function createTauriAdapter(): StudioAdapter {
       getLibrarySettings: () => invoke<LibrarySettings>('get_library_settings'),
       saveLibrarySettings: (settings) => invoke('save_library_settings', { settings }),
       getLibraryCredentials: () => invoke<LibraryCredentials>('get_library_credentials'),
-      saveLibraryCredentials: (credentials) =>
-        invoke('save_library_credentials', { credentials }),
+      saveLibraryCredentials: (credentials) => invoke('save_library_credentials', { credentials }),
       getMachineSettings: () => invoke<MachineSettings>('get_machine_settings'),
       saveMachineSettings: (settings) => invoke('save_machine_settings', { settings }),
       pickLibraryFolder: async () => {
@@ -630,8 +618,7 @@ export function createTauriAdapter(): StudioAdapter {
     },
     sync: {
       getStatus: () => invoke<SyncStatus>('get_sync_status'),
-      getCloudSyncClientStatus: () =>
-        invoke<CloudSyncClientStatus>('get_cloud_sync_client_status'),
+      getCloudSyncClientStatus: () => invoke<CloudSyncClientStatus>('get_cloud_sync_client_status'),
       listRecoveryIssues: () => invoke<RecoveryIssue[]>('list_recovery_issues'),
       recoverFile: (filePath) => invoke('recover_library_file', { filePath }),
       quarantineFile: (filePath) => invoke<string>('quarantine_library_file', { filePath }),

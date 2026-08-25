@@ -7,7 +7,7 @@
  */
 
 import type { Service } from '@/models/service'
-import type { ImportSetsSummary, ServicePort, SettingsPort, SongPort } from '@/adapters/types'
+import type { ServicePort, SettingsPort, SongPort } from '@/adapters/types'
 import { affectedSongIds, applyServiceUsageChange, songIdsInService } from '@/utils/songUsage'
 import { joinPath, listEntries, readJsonFile, removeFile, writeJsonFile } from './fsaStorage'
 
@@ -128,8 +128,5 @@ export function createWebServicesPort(
       const all = await listServices(root)
       return all.filter((s) => s.date >= fromDate && s.date <= toDate)
     },
-    // No folder picker equivalent in a browser — same documented "no browser equivalent, always
-    // undefined" contract the mock adapter already uses for this method.
-    importOpenSongSets: async (): Promise<ImportSetsSummary | undefined> => undefined,
   }
 }

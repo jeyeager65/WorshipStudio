@@ -212,7 +212,9 @@ describe('createWebServicesPort', () => {
       updatedAt: '',
       updatedByDevice: '',
     })
-    const items = [{ id: 'item-1', type: 'song' as const, songId: 'song-1', arrangement: { sequence: [] } }]
+    const items = [
+      { id: 'item-1', type: 'song' as const, songId: 'song-1', arrangement: { sequence: [] } },
+    ]
     await port.save(sampleService({ date: '2026-01-15', items }))
     await port.save(sampleService({ date: '2026-01-22', items }))
 
@@ -284,13 +286,5 @@ describe('createWebServicesPort', () => {
     )
 
     expect((await songs.get('song-1'))?.usageDates).toHaveLength(1)
-  })
-
-  it('importOpenSongSets has no browser equivalent — matches the documented always-undefined contract', async () => {
-    const root = createFakeRoot()
-    const settings = createWebSettingsPort(root)
-    const songs = createWebSongsPort(root, settings)
-    const port = createWebServicesPort(root, settings, songs)
-    expect(await port.importOpenSongSets(2026, 'Sunday Morning')).toBeUndefined()
   })
 })

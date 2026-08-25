@@ -3,7 +3,6 @@ pub mod external_apps;
 pub mod manifest;
 pub mod media;
 pub mod opensong;
-pub mod opensong_sets;
 pub mod people;
 pub mod remote;
 pub mod role_groups;

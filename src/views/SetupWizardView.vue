@@ -10,12 +10,7 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { needsSingleMonitorFallback } from '@/utils/displaySetup'
 import logoDark from '@/assets/logo-dark.png'
 import logoLight from '@/assets/logo-light.png'
-import type {
-  DisplayInfo,
-  DisplayRole,
-  ImportSetsSummary,
-  ScriptureTranslation,
-} from '@/adapters/types'
+import type { DisplayInfo, DisplayRole, ScriptureTranslation } from '@/adapters/types'
 
 const router = useRouter()
 const store = useSettingsStore()
@@ -138,15 +133,9 @@ async function identifyDisplay(displayId: string) {
 // Optional library import. Source selectors deliberately expose only formats that exist today,
 // while leaving the interaction ready for additional sources without promising them.
 const songImportSource = ref('opensong')
-const serviceImportSource = ref('opensong-sets')
 const importingSongs = ref(false)
 const importedSongsCount = ref(0)
-const setsYear = ref(new Date().getFullYear())
-const setsImporting = ref(false)
-const setsSummary = ref<ImportSetsSummary>()
-const setsUnavailable = ref(false)
 const pickingLibraryFolder = ref(false)
-const defaultServiceTypeForSets = computed(() => serviceTypesStore.serviceTypes[0]?.id ?? '')
 const importingStockBackgrounds = ref(false)
 const stockBackgroundsSummary = ref<{ mediaAdded: number; themesAdded: number }>()
 
@@ -173,25 +162,6 @@ async function importSongs() {
     operationError.value = error instanceof Error ? error.message : 'Songs could not be imported.'
   } finally {
     importingSongs.value = false
-  }
-}
-
-async function importSets() {
-  setsImporting.value = true
-  setsUnavailable.value = false
-  operationError.value = ''
-  try {
-    const summary = await adapter.services.importOpenSongSets(
-      setsYear.value,
-      defaultServiceTypeForSets.value,
-    )
-    if (summary) setsSummary.value = summary
-    else if (!isDesktop) setsUnavailable.value = true
-  } catch (error) {
-    operationError.value =
-      error instanceof Error ? error.message : 'Past services could not be imported.'
-  } finally {
-    setsImporting.value = false
   }
 }
 
@@ -610,50 +580,6 @@ async function skipSetup() {
                 >
               </article>
 
-              <article class="import-card" :class="{ 'import-card--disabled': !isDesktop }">
-                <span class="import-icon"
-                  ><v-icon icon="mdi-calendar-import-outline" size="23"
-                /></span>
-                <div class="import-copy">
-                  <strong>Past services</strong>
-                  <p>Import dated OpenSong Sets and match their songs by title.</p>
-                  <span v-if="setsSummary" class="success-note"
-                    ><v-icon icon="mdi-check-circle" size="16" />{{
-                      setsSummary.servicesCreated
-                    }}
-                    services imported</span
-                  >
-                </div>
-                <div class="import-selects">
-                  <v-select
-                    v-model="serviceImportSource"
-                    :items="[{ title: 'OpenSong Sets', value: 'opensong-sets' }]"
-                    label="Source"
-                    variant="outlined"
-                    density="compact"
-                    hide-details
-                  /><v-text-field
-                    v-model.number="setsYear"
-                    type="number"
-                    label="Year"
-                    variant="outlined"
-                    density="compact"
-                    hide-details
-                  />
-                </div>
-                <v-btn
-                  variant="outlined"
-                  prepend-icon="mdi-folder-open-outline"
-                  :loading="setsImporting"
-                  :disabled="!isDesktop"
-                  @click="importSets"
-                  >Choose Folder</v-btn
-                >
-              </article>
-              <v-alert v-if="setsUnavailable" type="info" variant="tonal" density="compact"
-                >Past-service folder import is available in the desktop app.</v-alert
-              >
-
               <article
                 class="import-card"
                 :class="{
@@ -722,15 +648,6 @@ async function skipSetup() {
                 >
               </article>
             </div>
-            <v-alert
-              v-if="setsSummary?.unmatchedSongTitles.length"
-              type="warning"
-              variant="tonal"
-              density="compact"
-              class="mt-3"
-              >{{ setsSummary.unmatchedSongTitles.length }} song titles could not be matched. You
-              can review them after setup.</v-alert
-            >
           </section>
 
           <section v-else-if="currentStep === 'preferences'" class="step-panel">

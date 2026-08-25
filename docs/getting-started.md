@@ -13,10 +13,9 @@ before you plan your first service. You can skip any step and finish it later fr
   running a service) and which is the **Audience Display** (what the congregation sees). You can
   flash a screen with **Identify** to confirm which is which. With only one monitor connected,
   presenting live stays unavailable until a second display is added.
-- **Library & Import** — all optional: import songs from OpenSong XML files, import past
-  services from OpenSong Sets, choose where your shared library folder lives (a Dropbox/OneDrive
-  folder, or a portable folder for a single machine), and add a starter set of royalty-free stock
-  background images and themes.
+- **Library & Import** — all optional: import songs from OpenSong XML files, choose where your
+  shared library folder lives (a Dropbox/OneDrive folder, or a portable folder for a single
+  machine), and add a starter set of royalty-free stock background images and themes.
 - **Planning Defaults** — your default Bible translation, your primary service type (e.g. Sunday
   Worship — you can add your own), and whether the operator interface starts in dark mode.
 - **Ready to Begin** — a summary, plus shortcuts to build your first [Service Template](/service-templates)

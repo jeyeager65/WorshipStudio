@@ -286,7 +286,6 @@ pub fn run() {
             commands::scripture::get_scripture_book_list,
             commands::scripture::list_scripture_translations,
             commands::scripture::list_api_bible_catalog,
-            commands::opensong::import_opensong_sets,
             commands::media::list_media,
             commands::media::save_media,
             commands::media::delete_media,

@@ -93,10 +93,7 @@ export function createMockAdapter(): StudioAdapter {
     'song-collections',
     seedSongCollections,
   )
-  const serviceTypes = new MockCollection<ServiceTypeDefinition>(
-    'service-types',
-    seedServiceTypes,
-  )
+  const serviceTypes = new MockCollection<ServiceTypeDefinition>('service-types', seedServiceTypes)
   const roleGroups = new MockCollection<RoleGroupDefinition>('role-groups', seedRoleGroups)
   const roles = new MockCollection<RoleDefinition>('roles', seedRoles)
   const serviceTemplates = new MockCollection<ServiceTemplate>(
@@ -247,8 +244,6 @@ export function createMockAdapter(): StudioAdapter {
         const all = (await services.list()) as Service[]
         return all.filter((s) => s.date >= fromDate && s.date <= toDate)
       },
-      // No real filesystem to pick an OpenSong Sets folder from in the browser demo.
-      importOpenSongSets: async () => undefined,
     },
     slides: {
       list: () => slides.list(),

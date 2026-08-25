@@ -5,7 +5,6 @@ pub mod external_apps;
 pub mod files;
 pub mod help;
 pub mod media;
-pub mod opensong;
 pub mod people;
 pub mod remote;
 pub mod roles;
