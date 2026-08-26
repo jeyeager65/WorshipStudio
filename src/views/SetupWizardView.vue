@@ -22,7 +22,7 @@ const adapter = getAdapter()
 const isDesktop = adapter.kind === 'tauri'
 const welcomeLogo = computed(() => (theme.global.current.value.dark ? logoDark : logoLight))
 
-type StepKey = 'welcome' | 'church' | 'displays' | 'library' | 'preferences' | 'finish'
+type StepKey = 'welcome' | 'church' | 'device' | 'displays' | 'library' | 'preferences' | 'finish'
 interface WizardStep {
   key: StepKey
   label: string
@@ -30,28 +30,84 @@ interface WizardStep {
   icon: string
 }
 
-const steps: WizardStep[] = [
-  { key: 'welcome', label: 'Welcome', shortLabel: 'Welcome', icon: 'mdi-hand-wave-outline' },
-  { key: 'church', label: 'Church Identity', shortLabel: 'Church', icon: 'mdi-church-outline' },
-  { key: 'displays', label: 'Display Setup', shortLabel: 'Displays', icon: 'mdi-monitor-multiple' },
-  { key: 'library', label: 'Library & Import', shortLabel: 'Library', icon: 'mdi-bookshelf' },
-  {
+/** Which of the two genuinely different first runs this is. The distinction matters because
+ *  LibrarySettings is *shared* — a device joining an existing library already has the church name,
+ *  brand colours, translation and service types, and must not overwrite them with a blank slate.
+ *  See notes/setup-wizard-join-plan.md for the data loss this prevents. */
+type SetupMode = 'new' | 'join'
+const setupMode = ref<SetupMode>()
+
+const STEP_DEFS: Record<StepKey, WizardStep> = {
+  welcome: {
+    key: 'welcome',
+    label: 'Welcome',
+    shortLabel: 'Welcome',
+    icon: 'mdi-hand-wave-outline',
+  },
+  church: {
+    key: 'church',
+    label: 'Church Identity',
+    shortLabel: 'Church',
+    icon: 'mdi-church-outline',
+  },
+  device: { key: 'device', label: 'This Device', shortLabel: 'Device', icon: 'mdi-laptop' },
+  displays: {
+    key: 'displays',
+    label: 'Display Setup',
+    shortLabel: 'Displays',
+    icon: 'mdi-monitor-multiple',
+  },
+  library: {
+    key: 'library',
+    label: 'Library & Import',
+    shortLabel: 'Library',
+    icon: 'mdi-bookshelf',
+  },
+  preferences: {
     key: 'preferences',
     label: 'Planning Defaults',
     shortLabel: 'Defaults',
     icon: 'mdi-tune-variant',
   },
-  {
+  finish: {
     key: 'finish',
     label: 'Ready to Begin',
     shortLabel: 'Finish',
     icon: 'mdi-check-circle-outline',
   },
-]
+}
+
+// Join puts the library first so every later step is decided against the real, loaded library
+// rather than a guess — and drops Church/Defaults entirely, since those live *in* that library.
+// Displays are machine-scoped, so a joining desktop still needs them; the platforms without a
+// displays port (web/tablet) drop that step in both modes.
+const stepKeys = computed<StepKey[]>(() => {
+  const hasDisplays = Boolean(adapter.displays)
+  if (setupMode.value === 'join') {
+    return [
+      'welcome',
+      'library',
+      ...(hasDisplays ? (['displays'] as const) : []),
+      'device',
+      'finish',
+    ]
+  }
+  return [
+    'welcome',
+    'church',
+    'device',
+    ...(hasDisplays ? (['displays'] as const) : []),
+    'library',
+    'preferences',
+    'finish',
+  ]
+})
+const steps = computed(() => stepKeys.value.map((key) => STEP_DEFS[key]))
 const stepIndex = ref(0)
-const currentStep = computed(() => steps[stepIndex.value]!.key)
-const currentStepInfo = computed(() => steps[stepIndex.value]!)
-const progress = computed(() => ((stepIndex.value + 1) / steps.length) * 100)
+const currentStep = computed(() => steps.value[stepIndex.value]?.key ?? 'welcome')
+const currentStepInfo = computed(() => steps.value[stepIndex.value] ?? STEP_DEFS.welcome)
+const progress = computed(() => ((stepIndex.value + 1) / steps.value.length) * 100)
+const isJoining = computed(() => setupMode.value === 'join')
 const loading = ref(true)
 const saving = ref(false)
 const operationError = ref('')
@@ -61,6 +117,11 @@ onMounted(async () => {
   try {
     await Promise.all([store.load(), serviceTypesStore.load()])
     firstServiceType.value = serviceTypesStore.serviceTypes[0]?.name ?? ''
+    // The configured folder may *already* be the church's library — the common case when setup is
+    // re-run on a machine that was pointed at it long ago. Detecting that here rather than only on
+    // pick is what lets Join accept it without making the operator re-choose a folder that is
+    // already right, and what makes the wrong-mode warning correct on first render too.
+    refreshExistingLibraryInfo()
     await Promise.all([loadDisplays(), loadTranslations()])
   } catch (error) {
     operationError.value = error instanceof Error ? error.message : 'Setup could not be loaded.'
@@ -165,12 +226,45 @@ async function importSongs() {
   }
 }
 
+/** The church name found in the currently configured library folder, when it already holds a real
+ *  one. Drives the Join confirmation, the "you may have meant Join" warning in New mode, and
+ *  whether Join considers the folder settled. */
+const existingLibraryChurchName = ref('')
+
+/** Whether the operator explicitly chose a folder on this run — an intentional act that settles
+ *  the question even when the folder turns out to be empty (starting a library somewhere new). */
+const libraryFolderChosen = ref(false)
+
+function refreshExistingLibraryInfo() {
+  existingLibraryChurchName.value = store.librarySettings?.branding.churchName.trim() ?? ''
+}
+
+/** Join needs the folder question settled, but must not demand a *re-pick* of a folder that is
+ *  already correct — the usual case when setup is re-run on a machine that has pointed at the
+ *  church's library for ages. Plain `libraryPath` cannot answer this: the desktop backend defaults
+ *  it to an app-data folder, so it is never empty and "has a path" would wave someone into a blank
+ *  local library believing they had joined. A library that already knows its church name is the
+ *  signal that the configured folder is the real thing. */
+const joinTargetSettled = computed(
+  () => libraryFolderChosen.value || Boolean(existingLibraryChurchName.value),
+)
+
 async function pickLibraryFolder() {
   pickingLibraryFolder.value = true
   operationError.value = ''
   try {
     const folder = await adapter.settings.pickLibraryFolder()
-    if (folder && store.machineSettings) store.machineSettings.libraryPath = folder
+    if (!folder || !store.machineSettings) return
+    store.machineSettings.libraryPath = folder
+    libraryFolderChosen.value = true
+    // Persist before reloading: the desktop backend resolves library_root() by re-reading machine
+    // settings from disk (src-tauri/src/paths.rs), so an in-memory path change alone would reload
+    // the *old* library and leave us none the wiser about what the chosen folder actually holds.
+    await store.saveMachineOnly()
+    await Promise.all([store.load(), serviceTypesStore.load()])
+    // Both now describe the newly chosen library rather than whatever the previous root held.
+    refreshExistingLibraryInfo()
+    firstServiceType.value = serviceTypesStore.serviceTypes[0]?.name ?? ''
   } catch (error) {
     operationError.value =
       error instanceof Error ? error.message : 'The library folder could not be selected.'
@@ -181,7 +275,27 @@ async function pickLibraryFolder() {
 
 function usePortableLibraryFolder() {
   if (store.machineSettings) store.machineSettings.libraryPath = './Library'
+  existingLibraryChurchName.value = ''
+  libraryFolderChosen.value = true
 }
+
+function switchToJoining() {
+  setupMode.value = 'join'
+  // Library is step 2 in Join; the folder is already chosen, so land on what comes after it.
+  stepIndex.value = stepKeys.value.indexOf('library')
+  validationMessage.value = ''
+}
+
+// Machine-scoped, and the `updatedByDevice` stamp on every record this device saves — which is
+// what SyncConflictsView shows when two devices disagree. Desktop defaults it to the OS hostname
+// (paths.rs), but web and tablet default it to '' (adapters/web/settings.ts), so the devices most
+// likely to be *joining* were the ones stamping every edit with nothing.
+const computerName = computed({
+  get: () => store.machineSettings?.thisComputerName ?? '',
+  set: (value: string) => {
+    if (store.machineSettings) store.machineSettings.thisComputerName = value
+  },
+})
 
 // Planning and operator defaults.
 const availableTranslations = ref<ScriptureTranslation[]>([])
@@ -232,8 +346,23 @@ async function applyFirstServiceType() {
 
 function validateCurrentStep(): boolean {
   validationMessage.value = ''
+  if (currentStep.value === 'welcome' && !setupMode.value) {
+    validationMessage.value = 'Choose whether this device starts a new library or joins one.'
+    return false
+  }
   if (currentStep.value === 'church' && !churchName.value.trim()) {
     validationMessage.value = 'Enter the church or ministry name that should appear on reports.'
+    return false
+  }
+  if (currentStep.value === 'device' && !computerName.value.trim()) {
+    validationMessage.value = 'Name this device so its edits can be told apart from other devices.'
+    return false
+  }
+  // Only desktop picks a folder here — the web build already opened one in BootGate, and tablets
+  // arrive with a cloud connection rather than a path.
+  if (isJoining.value && currentStep.value === 'library' && isDesktop && !joinTargetSettled.value) {
+    validationMessage.value =
+      'Choose the shared library folder this device should join — the current folder does not contain a library yet.'
     return false
   }
   if (currentStep.value === 'preferences' && !firstServiceType.value.trim()) {
@@ -245,8 +374,9 @@ function validateCurrentStep(): boolean {
 
 async function goNext() {
   if (!validateCurrentStep()) return
-  if (currentStep.value === 'preferences') await applyFirstServiceType()
-  if (stepIndex.value < steps.length - 1) stepIndex.value++
+  // Join never touches service types — they live in the library this device is joining.
+  if (currentStep.value === 'preferences' && !isJoining.value) await applyFirstServiceType()
+  if (stepIndex.value < steps.value.length - 1) stepIndex.value++
 }
 
 function goBack() {
@@ -265,9 +395,19 @@ async function completeSetup(destination = '/') {
   saving.value = true
   operationError.value = ''
   try {
-    await applyFirstServiceType()
     store.machineSettings.hasCompletedSetup = true
-    await store.save()
+    // No mode chosen means Skip, which declined to configure anything — treated like Join, since
+    // "write nothing shared" is the safe reading of an explicit refusal to answer.
+    if (isJoining.value || !setupMode.value) {
+      // The whole point of Join: persist only what belongs to this device. Writing library
+      // settings here would overwrite the joined library's real branding, translation, bulletin
+      // and font sizes with whatever this device happened to have in memory — the data loss
+      // notes/setup-wizard-join-plan.md describes.
+      await store.saveMachineOnly()
+    } else {
+      await applyFirstServiceType()
+      await store.save()
+    }
     // Wizard completion is an explicit save boundary. Clear the shared editor flag only after
     // persistence succeeds so the route guard never asks to save the settings we just saved.
     unsavedChanges.isDirty = false
@@ -362,36 +502,43 @@ async function skipSetup() {
             <div class="step-eyebrow">Welcome</div>
             <h1>Set up Worship Studio</h1>
             <p class="step-intro">
-              We’ll configure the basics for planning and presenting your first service. This
-              usually takes about three minutes.
+              Is this the first computer to use Worship Studio at your church, or is it joining a
+              library another device already set up?
             </p>
-            <div class="welcome-grid">
-              <article>
-                <span><v-icon icon="mdi-calendar-check-outline" size="21" /></span>
-                <div>
-                  <strong>Plan consistently</strong>
-                  <p>Choose the service and scripture defaults your team uses most.</p>
-                </div>
-              </article>
-              <article>
-                <span><v-icon icon="mdi-presentation-play" size="21" /></span>
-                <div>
-                  <strong>Present confidently</strong>
-                  <p>Confirm which display belongs to the operator and audience.</p>
-                </div>
-              </article>
-              <article>
-                <span><v-icon icon="mdi-folder-sync-outline" size="21" /></span>
-                <div>
-                  <strong>Keep your library</strong>
-                  <p>Import existing OpenSong content and choose where files live.</p>
-                </div>
-              </article>
+            <div class="mode-grid">
+              <button
+                type="button"
+                class="mode-card"
+                :class="{ 'mode-card--active': setupMode === 'new' }"
+                :aria-pressed="setupMode === 'new'"
+                @click="setupMode = 'new'"
+              >
+                <span class="mode-icon"><v-icon icon="mdi-star-outline" size="26" /></span>
+                <strong>Set up a new library</strong>
+                <p>
+                  Nobody has set up Worship Studio yet. You’ll name your church, choose defaults,
+                  and pick where the library lives.
+                </p>
+              </button>
+              <button
+                type="button"
+                class="mode-card"
+                :class="{ 'mode-card--active': setupMode === 'join' }"
+                :aria-pressed="setupMode === 'join'"
+                @click="setupMode = 'join'"
+              >
+                <span class="mode-icon"><v-icon icon="mdi-folder-sync-outline" size="26" /></span>
+                <strong>Join an existing library</strong>
+                <p>
+                  Another computer already has your songs and services. This device just needs to
+                  point at the shared folder and name itself.
+                </p>
+              </button>
             </div>
             <div class="optional-note">
               <v-icon icon="mdi-information-outline" size="19" /><span
-                >Imports are optional. Roles, people, templates, Canva, and other integrations can
-                be configured when you need them.</span
+                >Joining keeps the church details, defaults and service types already in that
+                library — this device never overwrites them.</span
               >
             </div>
           </section>
@@ -467,6 +614,55 @@ async function skipSetup() {
                 ><strong>{{ churchName.trim() || 'Your Church Name' }}</strong
                 ><span>Sunday Worship · Order of Service</span>
               </div>
+            </div>
+          </section>
+
+          <section v-else-if="currentStep === 'device'" class="step-panel">
+            <div class="step-heading">
+              <span class="step-icon"><v-icon icon="mdi-laptop" size="24" /></span>
+              <div>
+                <div class="step-eyebrow">This Device</div>
+                <h1>Name this device</h1>
+                <p>
+                  Settings on this page belong to this device alone — they are never shared with the
+                  rest of your church.
+                </p>
+              </div>
+            </div>
+            <div class="preference-list">
+              <article class="preference-card">
+                <span class="preference-icon"><v-icon icon="mdi-tag-outline" size="22" /></span>
+                <div>
+                  <strong>Device name</strong>
+                  <p>
+                    Stamped on everything you save here, so you can tell which device made a change
+                    when two of them edit the same song or service.
+                  </p>
+                </div>
+                <v-text-field
+                  v-model="computerName"
+                  label="Device name"
+                  placeholder="Booth Laptop"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </article>
+              <article class="preference-card">
+                <span class="preference-icon"
+                  ><v-icon icon="mdi-theme-light-dark" size="22"
+                /></span>
+                <div>
+                  <strong>Dark operator interface</strong>
+                  <p>Recommended for reducing glare in a dim booth.</p>
+                </div>
+                <v-switch
+                  v-model="darkMode"
+                  color="primary"
+                  hide-details
+                  aria-label="Use dark operator interface"
+                />
+              </article>
             </div>
           </section>
 
@@ -546,13 +742,68 @@ async function skipSetup() {
             <div class="step-heading">
               <span class="step-icon"><v-icon icon="mdi-bookshelf" size="24" /></span>
               <div>
-                <div class="step-eyebrow">Library & Import</div>
-                <h1>Bring your existing work with you</h1>
-                <p>Every option on this page is optional and remains available after setup.</p>
+                <div class="step-eyebrow">
+                  {{ isJoining ? 'Shared Library' : 'Library & Import' }}
+                </div>
+                <h1>
+                  {{
+                    isJoining
+                      ? 'Point at your church’s library'
+                      : 'Bring your existing work with you'
+                  }}
+                </h1>
+                <p>
+                  {{
+                    isJoining
+                      ? 'Choose the synced folder the first computer set up. Everything in it stays exactly as it is.'
+                      : 'Every option on this page is optional and remains available after setup.'
+                  }}
+                </p>
               </div>
             </div>
+
+            <v-alert
+              v-if="isJoining && existingLibraryChurchName"
+              type="success"
+              variant="tonal"
+              class="mb-4"
+            >
+              Found the library for <strong>{{ existingLibraryChurchName }}</strong
+              >. Its church details, defaults and service types will be used as-is.
+            </v-alert>
+            <!-- Chosen deliberately, but nothing there to join. Allowed to continue — an operator
+                 may be pointing at a folder the cloud client has not finished pulling yet — but
+                 never silently, since the likelier cause is the wrong folder. -->
+            <v-alert
+              v-else-if="isJoining && libraryFolderChosen"
+              type="warning"
+              variant="tonal"
+              class="mb-4"
+            >
+              This folder does not contain a library yet. If your church's library lives elsewhere,
+              choose that folder — otherwise this device will start out empty.
+            </v-alert>
+            <!-- The safety net for picking the wrong mode: an existing library in what was meant
+                 to be a fresh folder. Deliberately a backstop, not the mechanism — a part-pulled
+                 cloud folder is ambiguous mid-sync, so the explicit choice still decides. -->
+            <v-alert
+              v-else-if="!isJoining && existingLibraryChurchName"
+              type="warning"
+              variant="tonal"
+              class="mb-4"
+            >
+              <p class="mb-2">
+                This folder already holds a library for
+                <strong>{{ existingLibraryChurchName }}</strong
+                >. Finishing as a new library would overwrite its church details and defaults.
+              </p>
+              <v-btn size="small" color="warning" variant="flat" @click="switchToJoining"
+                >Join this library instead</v-btn
+              >
+            </v-alert>
+
             <div class="import-list">
-              <article class="import-card">
+              <article v-if="!isJoining" class="import-card">
                 <span class="import-icon"><v-icon icon="mdi-music-note-outline" size="23" /></span>
                 <div class="import-copy">
                   <strong>Song library</strong>
@@ -624,7 +875,7 @@ async function skipSetup() {
                 </div>
               </article>
 
-              <article class="import-card">
+              <article v-if="!isJoining" class="import-card">
                 <span class="import-icon"
                   ><v-icon icon="mdi-image-multiple-outline" size="23"
                 /></span>
@@ -693,31 +944,22 @@ async function skipSetup() {
                   hide-details
                 />
               </article>
-              <article class="preference-card">
-                <span class="preference-icon"
-                  ><v-icon icon="mdi-theme-light-dark" size="22"
-                /></span>
-                <div>
-                  <strong>Dark operator interface</strong>
-                  <p>Recommended for reducing glare in a dim booth.</p>
-                </div>
-                <v-switch
-                  v-model="darkMode"
-                  color="primary"
-                  hide-details
-                  aria-label="Use dark operator interface"
-                />
-              </article>
             </div>
           </section>
 
           <section v-else class="step-panel finish-panel">
             <span class="step-icon step-icon--success"><v-icon icon="mdi-check" size="30" /></span>
             <div class="step-eyebrow">Setup Complete</div>
-            <h1>{{ churchName.trim() || 'Your church' }} is ready</h1>
+            <h1>
+              {{ churchName.trim() || 'Your church' }} is
+              {{ isJoining ? 'connected' : 'ready' }}
+            </h1>
             <p class="step-intro">
-              The essentials are configured. You can create a service now or continue shaping the
-              planning library.
+              {{
+                isJoining
+                  ? 'This device is pointed at the shared library. Songs, services and settings come from there — nothing on this device changed them.'
+                  : 'The essentials are configured. You can create a service now or continue shaping the planning library.'
+              }}
             </p>
             <div class="finish-summary">
               <article>
@@ -727,12 +969,18 @@ async function skipSetup() {
                 </div>
               </article>
               <article>
+                <v-icon icon="mdi-laptop" size="19" />
+                <div>
+                  <small>This device</small><strong>{{ computerName.trim() }}</strong>
+                </div>
+              </article>
+              <article v-if="!isJoining">
                 <v-icon icon="mdi-book-cross" size="19" />
                 <div>
                   <small>Scripture</small><strong>{{ defaultTranslation }}</strong>
                 </div>
               </article>
-              <article>
+              <article v-if="!isJoining">
                 <v-icon icon="mdi-calendar-star" size="19" />
                 <div>
                   <small>Primary service</small><strong>{{ firstServiceType }}</strong>
@@ -1041,35 +1289,47 @@ async function skipSetup() {
   max-width: 650px;
   font-size: 0.84rem;
 }
-.welcome-grid {
+.mode-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
   margin-top: 27px;
 }
-.welcome-grid article {
-  padding: 15px;
+.mode-card {
+  padding: 19px;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.09);
   border-radius: 11px;
   background: rgba(var(--v-theme-background), 0.25);
+  text-align: left;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
-.welcome-grid article > span {
+.mode-card:hover {
+  border-color: rgba(var(--v-theme-primary), 0.45);
+}
+.mode-card--active {
+  border-color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.08);
+}
+.mode-icon {
   display: grid;
-  width: 36px;
-  height: 36px;
-  margin-bottom: 11px;
+  width: 42px;
+  height: 42px;
+  margin-bottom: 12px;
   place-items: center;
-  border-radius: 9px;
-  background: rgba(var(--v-theme-primary), 0.09);
+  border-radius: 10px;
+  background: rgba(var(--v-theme-primary), 0.11);
   color: rgb(var(--v-theme-primary));
 }
-.welcome-grid strong {
-  font-size: 0.78rem;
+.mode-card strong {
+  display: block;
+  font-size: 0.85rem;
 }
-.welcome-grid p {
-  margin: 4px 0 0;
-  color: rgba(var(--v-theme-on-surface), 0.49);
-  font-size: 0.72rem;
+.mode-card p {
+  margin: 5px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  font-size: 0.74rem;
   line-height: 1.45;
 }
 .optional-note {
@@ -1480,7 +1740,7 @@ async function skipSetup() {
     border: 0;
     border-radius: 0;
   }
-  .welcome-grid,
+  .mode-grid,
   .brand-color-grid,
   .finish-summary {
     grid-template-columns: 1fr;

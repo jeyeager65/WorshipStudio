@@ -64,5 +64,28 @@ export const useSettingsStore = defineStore('settings', () => {
     })
   }
 
-  return { librarySettings, libraryCredentials, machineSettings, ...asyncState, load, save }
+  /** Persists only the per-device settings, leaving the shared library file untouched.
+   *
+   *  For callers that changed `libraryPath` without ever loading that library's settings — the
+   *  Setup Wizard joining an existing library being the case this exists for. `save()` above
+   *  deliberately writes shared settings into the *newly* selected folder, which is right on the
+   *  Settings page (the values there were edited on purpose and should follow the move) and
+   *  destructive in the wizard, where the in-memory copy is whatever the previous root happened to
+   *  hold. See notes/setup-wizard-join-plan.md. */
+  async function saveMachineOnly() {
+    if (!machineSettings.value) return
+    await asyncState.runMutation(async () => {
+      await getAdapter().settings.saveMachineSettings(machineSettings.value!)
+    })
+  }
+
+  return {
+    librarySettings,
+    libraryCredentials,
+    machineSettings,
+    ...asyncState,
+    load,
+    save,
+    saveMachineOnly,
+  }
 })
