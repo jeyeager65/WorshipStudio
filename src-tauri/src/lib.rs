@@ -1,5 +1,6 @@
 mod commands;
 mod domain;
+mod library_watch;
 mod models;
 mod paths;
 mod remote_server;
@@ -155,6 +156,11 @@ pub fn run() {
             // marked `"create": false` in tauri.conf.json specifically so it isn't auto-built,
             // and is instead built by hand a few lines down, after the cache is cleared.
             clear_stale_webview_cache(app.handle());
+
+            // Notices library files changed underneath this app — a tablet's edit arriving via the
+            // cloud client, a second desktop, or a hand edit. Best-effort: a failure here leaves the
+            // app exactly as it behaved before, needing a restart to see them.
+            library_watch::start(app.handle().clone());
 
             log::info!(
                 "Worship Studio v{} starting ({}/{}, {})",

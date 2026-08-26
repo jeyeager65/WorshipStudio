@@ -19,6 +19,7 @@ import { useServicesStore } from '@/stores/services'
 import { useHistoryStore } from '@/stores/history'
 import { useRemoteServiceSelection } from '@/composables/useRemoteServiceSelection'
 import { useTabletSync } from '@/composables/useTabletSync'
+import { useLibraryChangeWatch } from '@/composables/useLibraryChangeWatch'
 import { usePwaUpdate } from '@/composables/usePwaUpdate'
 import { useTauriUpdate } from '@/composables/useTauriUpdate'
 import { formatSyncProgressLabel } from '@/utils/syncProgress'
@@ -27,6 +28,10 @@ import { logger } from '@/utils/logger'
 import appIcon from '@/assets/app-icon.png'
 
 useTabletSync()
+// Desktop-only: notices library files changed underneath this app (a tablet's edit arriving via
+// the cloud client, a second desktop, a hand edit) — which it otherwise could not see at all,
+// since stores load once per session. See notes/desktop-library-change-detection.md.
+const libraryChanges = useLibraryChangeWatch()
 const pwaUpdate = usePwaUpdate()
 const tauriUpdate = useTauriUpdate()
 
@@ -874,6 +879,23 @@ onUnmounted(() => {
       @update:model-value="(open: boolean) => !open && (blockedMessage = undefined)"
     >
       {{ blockedMessage }}
+    </v-snackbar>
+
+    <!-- Held back entirely while presenting (hasChanges is false then, not merely hidden), so a
+         change arriving mid-service is still offered once presenting stops rather than lost.
+         Never reloads on its own: refreshing underneath an operator mid-edit is worse than the
+         staleness it fixes, which is also why Reload skips any store behind unsaved work. -->
+    <v-snackbar
+      :model-value="libraryChanges.hasChanges.value"
+      color="info"
+      timeout="-1"
+      location="bottom"
+    >
+      {{ libraryChanges.summary.value }} changed on another device.
+      <template #actions>
+        <v-btn variant="text" @click="libraryChanges.reload">Reload</v-btn>
+        <v-btn variant="text" @click="libraryChanges.dismiss">Dismiss</v-btn>
+      </template>
     </v-snackbar>
 
     <!-- Never auto-applies (timeout="-1", no dismiss-on-click-away) — an update reloads the page,

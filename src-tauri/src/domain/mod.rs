@@ -124,6 +124,10 @@ pub fn atomic_write_bytes(path: &Path, bytes: &[u8]) -> io::Result<()> {
         temp.sync_all()?;
         drop(temp);
         replace_file(&temp_path, path)?;
+        // Lets the library watcher recognise this as our own write and stay quiet about it — by
+        // content, so a remote change landing on the same file moments later is still reported.
+        // See library_watch's own doc comment.
+        crate::library_watch::record_write(path, bytes);
         sync_parent_directory(path)
     })();
     if result.is_err() {

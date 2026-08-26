@@ -1,6 +1,7 @@
 # Desktop: noticing library changes made elsewhere
 
-Status: design agreed 2026-08-26, not built. Follows on from
+Status: **BUILT 2026-08-26.** Design agreed and implemented the same day; kept as the record of
+why it works this way, and of the two arguments that changed along the way. Follows on from
 [notes/tablet-push-latency-plan.md](tablet-push-latency-plan.md), which fixed the tablet end of the
 same chain.
 
@@ -164,3 +165,29 @@ Rather than one all-or-nothing Reload: refresh the stores that are _not_ backing
 editor, and leave the banner up for the rest. Staleness confined to the one thing the operator is
 actively editing is the safest available failure, and it stops the prompt being a trap when there is
 half-finished work open.
+
+## What was built
+
+- `src-tauri/src/library_watch.rs` — a `notify` watcher on the library root, `*.json` only,
+  debounced 800ms, emitting `library:changed` with library-relative paths. Filters this app's own
+  `.tmp` atomic-write artifacts, `.backup` files, and the never-synced Local media folder.
+- `record_write` is called from `domain::atomic_write_bytes`, recording a hash of what the app
+  wrote. The watcher drops an event whose file still matches — content, not a time window, so a
+  remote change landing while the app writes the same file is still reported. A test pins exactly
+  that case.
+- `src/utils/libraryChanges.ts` maps changed paths to the stores that own them, and names them for
+  the operator ("Songs and services") rather than counting files. Its spec pins every port's
+  directory, so renaming one without updating the map fails loudly instead of silently refreshing
+  nothing.
+- `src/composables/useLibraryChangeWatch.ts` holds pending changes, suppresses them entirely while
+  presenting (held, not dropped), and reloads only the affected stores.
+- A bottom snackbar in `App.vue`, matching the update/reconnect banners: never auto-applies, offers
+  Reload or Dismiss.
+
+### Still worth doing on a real library
+
+- **Measure the noise.** The debounce is a starting guess; only a real OneDrive sync of a real
+  library will say whether 800ms is right.
+- **Confirm the dirty-editor path by hand.** Unit tests cover the mapping and the self-write
+  detection, but "edit a song on the desktop, change it from a tablet, watch what the banner does"
+  is the behaviour that matters and it has not been exercised end to end.
