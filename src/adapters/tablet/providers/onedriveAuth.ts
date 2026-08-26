@@ -35,7 +35,18 @@ const TOKEN_URL = `https://login.microsoftonline.com/${TENANT}/oauth2/v2.0/token
 // Read+write to whatever the signed-in account can already reach (not just an app-created
 // folder) is required to reach the church's *existing* synced library — same reasoning as
 // Dropbox's Full Dropbox access scope. offline_access is what makes a refresh_token come back.
-const SCOPE = 'Files.ReadWrite offline_access'
+//
+// `.All` rather than plain `Files.ReadWrite`, which covers only files in the signed-in user's *own*
+// drive. A library shared from another account — the normal arrangement once more than one person
+// uses it — lives in the owner's drive and is reached through /me/drive/sharedWithMe and
+// /drives/{driveId}/…, neither of which plain Files.ReadWrite can touch. Confirmed the hard way:
+// path addressing into a shared folder returned 404 on the narrower scope (see
+// notes/tablet-onboarding-and-account-model.md).
+//
+// The cost is a broader consent prompt — "all files you have access to" rather than just your own.
+// Unavoidable for shared-folder support, and still user-consentable on personal accounts; a
+// work/school tenant may require an administrator to approve it.
+const SCOPE = 'Files.ReadWrite.All offline_access'
 
 // RFC 7636 requires the verifier be 43-128 characters from the unreserved character set
 // [A-Za-z0-9-._~]. 32 random bytes, base64url-encoded, lands at 43 characters exactly. Deliberate
@@ -105,14 +116,13 @@ async function requestTokens(body: URLSearchParams): Promise<TokenResponse> {
 
 const REFRESH_TOKEN_LIFETIME_MS = 24 * 60 * 60 * 1000
 
-async function fetchAccountId(accessToken: string): Promise<string> {
-  const response = await fetch('https://graph.microsoft.com/v1.0/me?$select=id', {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  })
-  if (!response.ok) return 'unknown'
-  const body = (await response.json()) as { id?: string }
-  return body.id ?? 'unknown'
-}
+/** Dropbox's token response carries `account_id` for free; Microsoft's does not, and the obvious
+ *  substitute — `GET /me` — needs the `User.Read` scope this app deliberately never requests. So
+ *  that call could only ever 401, silently returning 'unknown' while emitting an alarming console
+ *  error on every single connection. It has been removed rather than fixed: nothing reads
+ *  `accountId` for any decision, and adding `User.Read` would widen consent for a field no code
+ *  consumes. The property stays for storage-shape symmetry with Dropbox. */
+const ACCOUNT_ID_UNAVAILABLE = 'unknown'
 
 export async function exchangeCodeForTokens(params: {
   clientId: string
@@ -133,7 +143,6 @@ export async function exchangeCodeForTokens(params: {
   if (!body.refresh_token) {
     throw new Error('Microsoft did not return a refresh token — cannot stay connected long-term.')
   }
-  const accountId = await fetchAccountId(body.access_token)
   const tokens: OneDriveTokens = {
     accessToken: body.access_token,
     refreshToken: body.refresh_token,
@@ -141,13 +150,16 @@ export async function exchangeCodeForTokens(params: {
     // The 24h cap starts from this first interactive sign-in and carries over through every
     // later silent refresh — see this module's own doc comment.
     refreshTokenExpiresAt: Date.now() + REFRESH_TOKEN_LIFETIME_MS,
-    accountId,
+    accountId: ACCOUNT_ID_UNAVAILABLE,
   }
   await saveOneDriveTokens(tokens)
   return tokens
 }
 
-async function refreshAccessToken(clientId: string, current: OneDriveTokens): Promise<OneDriveTokens> {
+async function refreshAccessToken(
+  clientId: string,
+  current: OneDriveTokens,
+): Promise<OneDriveTokens> {
   const body = await requestTokens(
     new URLSearchParams({
       grant_type: 'refresh_token',
@@ -181,7 +193,13 @@ export async function attemptSilentReauth(clientId: string): Promise<OneDriveTok
   const codeChallenge = await codeChallengeFromVerifier(codeVerifier)
   const state = generateState()
   const redirectUri = `${window.location.origin}${window.location.pathname}`
-  const authorizeUrl = buildAuthorizeUrl({ clientId, redirectUri, state, codeChallenge, prompt: 'none' })
+  const authorizeUrl = buildAuthorizeUrl({
+    clientId,
+    redirectUri,
+    state,
+    codeChallenge,
+    prompt: 'none',
+  })
 
   return new Promise((resolve) => {
     const iframe = document.createElement('iframe')

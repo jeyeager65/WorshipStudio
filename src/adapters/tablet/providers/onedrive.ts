@@ -12,12 +12,24 @@ import type { CloudSyncProvider, ProviderEntry, ProviderWriteMode } from './type
 import { ProviderApiError, ProviderReauthRequiredError } from './types'
 import * as auth from './onedriveAuth'
 import * as idMap from './onedriveIdMap'
+import {
+  resolveLibraryRoot,
+  resolvePickedLibraryRoot,
+  type OneDriveLibraryRoot,
+} from './onedriveLibraryRoot'
 
 export interface OneDriveProviderConfig {
   clientId: string
-  /** Path (relative to the connected account's OneDrive root) where the library lives — "" for
-   *  the root itself. */
+  /** Where the library lives, as the connected account sees it. Only used when the ids below are
+   *  absent — connections made before folders were picked from a list. A library at the drive root
+   *  cannot be shared with anyone, so an empty path is rejected rather than silently accepted (see
+   *  onedriveLibraryRoot.ts). */
   libraryFolderPath: string
+  /** The folder the operator picked, when they picked one. Preferred over the path: ids survive a
+   *  rename or a move, cannot be misspelled, and identify a shared folder unambiguously where a
+   *  path cannot (the same folder sits at a different path for every person it is shared with). */
+  libraryDriveId?: string
+  libraryItemId?: string
 }
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0'
@@ -71,8 +83,10 @@ async function throwForErrorResponse(response: Response): Promise<never> {
 
 function toProviderError(error: unknown): never {
   if (error instanceof GraphApiError) {
-    if (error.status === 429) throw new ProviderApiError(error.message, 'rate-limit', error.retryAfterSeconds)
-    if (error.status === 412 || error.status === 409) throw new ProviderApiError(error.message, 'conflict')
+    if (error.status === 429)
+      throw new ProviderApiError(error.message, 'rate-limit', error.retryAfterSeconds)
+    if (error.status === 412 || error.status === 409)
+      throw new ProviderApiError(error.message, 'conflict')
     throw new ProviderApiError(error.message, 'other')
   }
   throw error instanceof Error ? error : new Error(String(error))
@@ -91,39 +105,49 @@ async function graphFetch(token: string, url: string, init?: RequestInit): Promi
   return response
 }
 
-/** Graph's colon-path addressing, e.g. "Library/songs/song-1.json" -> "/me/drive/root:/Library/songs/song-1.json:". */
-function itemPath(relativePath: string): string {
-  const encoded = relativePath
-    .split('/')
-    .filter(Boolean)
-    .map(encodeURIComponent)
-    .join('/')
-  return encoded ? `/me/drive/root:/${encoded}:` : '/me/drive/root'
+/** Graph's colon-path addressing, relative to the resolved library folder — e.g. root
+ *  `/drives/b!abc/items/01XYZ` plus "songs/song-1.json" ->
+ *  "/drives/b!abc/items/01XYZ:/songs/song-1.json:".
+ *
+ *  Anchored on the folder's drive+item rather than `/me/drive/root:/…` because path addressing
+ *  resolves within one drive only, and a shared library lives in its owner's. See
+ *  onedriveLibraryRoot.ts. A happy side effect: paths arrive here already relative to the library
+ *  (the ProviderEntry.path contract), so nothing needs to prefix the library folder any more. */
+function itemPath(root: OneDriveLibraryRoot, relativePath: string): string {
+  const encoded = relativePath.split('/').filter(Boolean).map(encodeURIComponent).join('/')
+  return encoded ? `${root.base}:/${encoded}:` : root.base
 }
 
 export function createOneDriveProvider(config: OneDriveProviderConfig): CloudSyncProvider {
-  const libraryFolderPath = config.libraryFolderPath.trim().replace(/^\/+|\/+$/g, '')
-  const libraryFolderSegments = libraryFolderPath.split('/').filter(Boolean)
-
-  /** Prefixes the configured library folder onto a path relative to it — every download/upload/
-   *  delete call receives a library-relative path (matching the ProviderEntry.path contract),
-   *  but Graph's own addressing needs the full path from the drive root. */
-  function fullPath(relativePath: string): string {
-    return libraryFolderPath ? `${libraryFolderPath}/${relativePath}` : relativePath
+  /** Resolved once per provider instance and reused. Memoised as the promise rather than the value
+   *  so concurrent first calls share one round trip; cleared on failure so a transient error (or a
+   *  folder that was still being shared) doesn't poison the instance for its whole lifetime. */
+  let rootPromise: Promise<OneDriveLibraryRoot> | undefined
+  function libraryRoot(token: string): Promise<OneDriveLibraryRoot> {
+    const { libraryDriveId, libraryItemId } = config
+    rootPromise ??= (
+      libraryDriveId && libraryItemId
+        ? resolvePickedLibraryRoot(token, libraryDriveId, libraryItemId)
+        : resolveLibraryRoot(token, config.libraryFolderPath)
+    ).catch((error: unknown) => {
+      rootPromise = undefined
+      throw error
+    })
+    return rootPromise
   }
 
-  function relativePathFromItem(item: GraphItem): string | undefined {
+  /** Delta entries describe their parent in the *owning* drive's terms, which for a shared library
+   *  is not the path the signed-in user sees. Stripping the resolved owner-side prefix is what
+   *  turns that back into a library-relative path. Anything outside the library folder returns
+   *  undefined and is ignored. */
+  function relativePathFromItem(root: OneDriveLibraryRoot, item: GraphItem): string | undefined {
     if (!item.name) return undefined
     const parentPath = item.parentReference?.path ?? ''
-    const marker = '/root:'
-    const markerIndex = parentPath.indexOf(marker)
-    const afterRoot = markerIndex === -1 ? '' : parentPath.slice(markerIndex + marker.length)
-    const parentSegments = afterRoot.split('/').filter(Boolean)
-    for (let i = 0; i < libraryFolderSegments.length; i++) {
-      if (parentSegments[i] !== libraryFolderSegments[i]) return undefined
+    if (parentPath !== root.ownerPathPrefix && !parentPath.startsWith(`${root.ownerPathPrefix}/`)) {
+      return undefined
     }
-    const relativeParentSegments = parentSegments.slice(libraryFolderSegments.length)
-    const segments = [...relativeParentSegments, item.name]
+    const relativeParent = parentPath.slice(root.ownerPathPrefix.length)
+    const segments = [...relativeParent.split('/').filter(Boolean), item.name]
     const path = segments.join('/')
     return path || undefined
   }
@@ -137,15 +161,20 @@ export function createOneDriveProvider(config: OneDriveProviderConfig): CloudSyn
    *  different, id-independent mechanism, see cloudSync.ts's reconcileOrphans doc comment).
    *  onedriveIdMap.ts's id -> path record (kept up to date below, every time a live item resolves
    *  a path) lets an otherwise-unresolvable deletion still be traced back to the real path. */
-  async function toProviderEntry(item: GraphItem): Promise<ProviderEntry | undefined> {
+  async function toProviderEntry(
+    root: OneDriveLibraryRoot,
+    item: GraphItem,
+  ): Promise<ProviderEntry | undefined> {
     if (item.deleted?.state) {
-      const path = relativePathFromItem(item) ?? (item.id ? await idMap.getPathForId(item.id) : undefined)
+      const path =
+        relativePathFromItem(root, item) ??
+        (item.id ? await idMap.getPathForId(item.id) : undefined)
       if (!path) return undefined
       if (item.id) await idMap.deletePathForId(item.id)
       return { tag: 'deleted', path }
     }
     if (item.folder) return undefined
-    const path = relativePathFromItem(item)
+    const path = relativePathFromItem(root, item)
     if (!path) return undefined
     if (item.id) await idMap.setPathForId(item.id, path)
     return {
@@ -157,11 +186,15 @@ export function createOneDriveProvider(config: OneDriveProviderConfig): CloudSyn
     }
   }
 
-  async function fetchAllDeltaPages(token: string, startUrl: string): Promise<{ entries: ProviderEntry[]; cursor: string }> {
+  async function fetchAllDeltaPages(
+    token: string,
+    root: OneDriveLibraryRoot,
+    startUrl: string,
+  ): Promise<{ entries: ProviderEntry[]; cursor: string }> {
     const entries: ProviderEntry[] = []
     let url = startUrl
     let cursor = startUrl
-     
+
     while (true) {
       const response = await graphFetch(token, url)
       const body = (await response.json()) as {
@@ -170,7 +203,7 @@ export function createOneDriveProvider(config: OneDriveProviderConfig): CloudSyn
         '@odata.deltaLink'?: string
       }
       for (const item of body.value) {
-        const entry = await toProviderEntry(item)
+        const entry = await toProviderEntry(root, item)
         if (entry) entries.push(entry)
       }
       if (body['@odata.deltaLink']) {
@@ -183,26 +216,30 @@ export function createOneDriveProvider(config: OneDriveProviderConfig): CloudSyn
     return { entries, cursor }
   }
 
-  function initialDeltaUrl(): string {
-    const base = libraryFolderPath ? `${GRAPH_BASE}${itemPath(libraryFolderPath)}` : `${GRAPH_BASE}/me/drive/root`
-    return `${base}/delta`
+  function initialDeltaUrl(root: OneDriveLibraryRoot): string {
+    return `${GRAPH_BASE}${root.base}/delta`
   }
 
   async function uploadLarge(
     token: string,
+    root: OneDriveLibraryRoot,
     path: string,
     bytes: ArrayBuffer,
     mode: ProviderWriteMode,
   ): Promise<GraphItem> {
-    const sessionResponse = await graphFetch(token, `${GRAPH_BASE}${itemPath(fullPath(path))}/createUploadSession`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        item: {
-          '@microsoft.graph.conflictBehavior': mode === 'add' ? 'fail' : 'replace',
-        },
-      }),
-    })
+    const sessionResponse = await graphFetch(
+      token,
+      `${GRAPH_BASE}${itemPath(root, path)}/createUploadSession`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          item: {
+            '@microsoft.graph.conflictBehavior': mode === 'add' ? 'fail' : 'replace',
+          },
+        }),
+      },
+    )
     const session = (await sessionResponse.json()) as { uploadUrl: string }
 
     let offset = 0
@@ -250,8 +287,9 @@ export function createOneDriveProvider(config: OneDriveProviderConfig): CloudSyn
 
     async listChanges(token, cursor) {
       try {
+        const root = await libraryRoot(token)
         try {
-          const page = await fetchAllDeltaPages(token, cursor ?? initialDeltaUrl())
+          const page = await fetchAllDeltaPages(token, root, cursor ?? initialDeltaUrl(root))
           return { ...page, isFromScratchListing: !cursor }
         } catch (error) {
           if (!cursor || !isResyncRequiredError(error)) throw error
@@ -259,7 +297,7 @@ export function createOneDriveProvider(config: OneDriveProviderConfig): CloudSyn
           // only the delta baseline resets, so this just costs one full re-listing. Reported as
           // from-scratch too (see this interface's own doc comment) so cloudSync.ts's orphan
           // reconciliation still runs even though the *caller's* cursor argument wasn't undefined.
-          const page = await fetchAllDeltaPages(token, initialDeltaUrl())
+          const page = await fetchAllDeltaPages(token, root, initialDeltaUrl(root))
           return { ...page, isFromScratchListing: true }
         }
       } catch (error) {
@@ -269,14 +307,15 @@ export function createOneDriveProvider(config: OneDriveProviderConfig): CloudSyn
 
     async download(token, path) {
       try {
-        const response = await graphFetch(token, `${GRAPH_BASE}${itemPath(fullPath(path))}/content`)
+        const root = await libraryRoot(token)
+        const response = await graphFetch(token, `${GRAPH_BASE}${itemPath(root, path)}/content`)
         const bytes = await response.arrayBuffer()
         // Graph's /content response doesn't carry the item metadata (eTag/hash/size) in its own
         // headers the way Dropbox's download endpoint does — a cheap follow-up metadata read gets
         // the values applyEntry()/push() need to record.
         const metaResponse = await graphFetch(
           token,
-          `${GRAPH_BASE}${itemPath(fullPath(path))}?$select=eTag,size,file`,
+          `${GRAPH_BASE}${itemPath(root, path)}?$select=eTag,size,file`,
         )
         const item = (await metaResponse.json()) as GraphItem
         return {
@@ -292,18 +331,19 @@ export function createOneDriveProvider(config: OneDriveProviderConfig): CloudSyn
 
     async upload(token, path, bytes, mode) {
       try {
+        const root = await libraryRoot(token)
         const conditionalHeaders: Record<string, string> =
           mode === 'add' ? { 'If-None-Match': '*' } : { 'If-Match': mode.updateRev }
         let item: GraphItem
         if (bytes.byteLength <= SIMPLE_UPLOAD_LIMIT_BYTES) {
-          const response = await graphFetch(token, `${GRAPH_BASE}${itemPath(fullPath(path))}/content`, {
+          const response = await graphFetch(token, `${GRAPH_BASE}${itemPath(root, path)}/content`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/octet-stream', ...conditionalHeaders },
             body: bytes,
           })
           item = await response.json()
         } else {
-          item = await uploadLarge(token, path, bytes, mode)
+          item = await uploadLarge(token, root, path, bytes, mode)
         }
         return {
           rev: item.eTag ?? '',
@@ -317,7 +357,8 @@ export function createOneDriveProvider(config: OneDriveProviderConfig): CloudSyn
 
     async deleteFile(token, path) {
       try {
-        const response = await fetch(`${GRAPH_BASE}${itemPath(fullPath(path))}`, {
+        const root = await libraryRoot(token)
+        const response = await fetch(`${GRAPH_BASE}${itemPath(root, path)}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         })

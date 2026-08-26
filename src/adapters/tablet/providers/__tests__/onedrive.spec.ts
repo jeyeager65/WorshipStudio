@@ -32,7 +32,23 @@ beforeEach(() => {
   fetchMock.mockReset()
   idMapEntries.clear()
   vi.stubGlobal('fetch', fetchMock)
+  // Every provider operation first resolves the library folder to a drive/item anchor (see
+  // onedriveLibraryRoot.ts), so that lookup is always the first fetch. Queued here rather than in
+  // each test because mockResolvedValueOnce is FIFO and beforeEach runs before any test body —
+  // which keeps every test below queuing only the responses it actually cares about.
+  fetchMock.mockResolvedValueOnce(
+    jsonResponse({
+      id: 'lib-item',
+      name: 'Library',
+      parentReference: { driveId: 'drive-1', path: '/drives/drive-1/root:' },
+    }),
+  )
 })
+
+/** What the anchor above addresses: `{driveId}/items/{itemId}` for the library folder itself. */
+const LIB = 'https://graph.microsoft.com/v1.0/drives/drive-1/items/lib-item'
+/** How the *owning* drive describes paths inside it — what delta entries carry. */
+const OWNER_PATH = '/drives/drive-1/root:/Library'
 
 function jsonResponse(body: unknown, init?: { status?: number; headers?: Record<string, string> }) {
   return {
@@ -52,7 +68,9 @@ function makeProvider(libraryFolderPath = 'Library') {
 describe('getValidAccessToken', () => {
   it('throws ProviderReauthRequiredError when this device has no tokens', async () => {
     getValidAccessToken.mockResolvedValueOnce(undefined)
-    await expect(makeProvider().getValidAccessToken()).rejects.toBeInstanceOf(ProviderReauthRequiredError)
+    await expect(makeProvider().getValidAccessToken()).rejects.toBeInstanceOf(
+      ProviderReauthRequiredError,
+    )
   })
 
   it('returns the token from onedriveAuth otherwise', async () => {
@@ -68,7 +86,7 @@ describe('listChanges', () => {
         value: [
           {
             name: 'song-1.json',
-            parentReference: { path: '/drive/root:/Library/songs' },
+            parentReference: { path: OWNER_PATH + '/songs' },
             file: { hashes: { quickXorHash: 'hash-1' } },
             eTag: 'etag-1',
             size: 10,
@@ -81,12 +99,20 @@ describe('listChanges', () => {
     const result = await makeProvider().listChanges('token-1', undefined)
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://graph.microsoft.com/v1.0/me/drive/root:/Library:/delta',
-      expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer token-1' }) }),
+      LIB + '/delta',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer token-1' }),
+      }),
     )
     expect(result).toEqual({
       entries: [
-        { tag: 'file', path: 'songs/song-1.json', rev: 'etag-1', contentHash: 'hash-1', sizeBytes: 10 },
+        {
+          tag: 'file',
+          path: 'songs/song-1.json',
+          rev: 'etag-1',
+          contentHash: 'hash-1',
+          sizeBytes: 10,
+        },
       ],
       cursor: 'https://graph.microsoft.com/v1.0/delta?token=final',
       isFromScratchListing: true,
@@ -95,10 +121,16 @@ describe('listChanges', () => {
 
   it('GETs the given cursor URL directly on a later sync, reporting it as an incremental (not from-scratch) listing', async () => {
     fetchMock.mockResolvedValueOnce(
-      jsonResponse({ value: [], '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/delta?token=next' }),
+      jsonResponse({
+        value: [],
+        '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/delta?token=next',
+      }),
     )
 
-    const result = await makeProvider().listChanges('token-1', 'https://graph.microsoft.com/v1.0/delta?token=prev')
+    const result = await makeProvider().listChanges(
+      'token-1',
+      'https://graph.microsoft.com/v1.0/delta?token=prev',
+    )
 
     expect(fetchMock).toHaveBeenCalledWith(
       'https://graph.microsoft.com/v1.0/delta?token=prev',
@@ -111,20 +143,24 @@ describe('listChanges', () => {
     fetchMock
       .mockResolvedValueOnce(
         jsonResponse({
-          value: [{ name: 'a.json', parentReference: { path: '/drive/root:/Library' }, eTag: 'a', size: 1 }],
+          value: [{ name: 'a.json', parentReference: { path: OWNER_PATH }, eTag: 'a', size: 1 }],
           '@odata.nextLink': 'https://graph.microsoft.com/v1.0/page2',
         }),
       )
       .mockResolvedValueOnce(
         jsonResponse({
-          value: [{ name: 'b.json', parentReference: { path: '/drive/root:/Library' }, eTag: 'b', size: 1 }],
+          value: [{ name: 'b.json', parentReference: { path: OWNER_PATH }, eTag: 'b', size: 1 }],
           '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/delta?token=final',
         }),
       )
 
     const result = await makeProvider().listChanges('token-1', undefined)
 
-    expect(fetchMock).toHaveBeenNthCalledWith(2, 'https://graph.microsoft.com/v1.0/page2', expect.anything())
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      'https://graph.microsoft.com/v1.0/page2',
+      expect.anything(),
+    )
     expect(result.entries.map((e) => e.path)).toEqual(['a.json', 'b.json'])
     expect(result.cursor).toBe('https://graph.microsoft.com/v1.0/delta?token=final')
   })
@@ -137,16 +173,18 @@ describe('listChanges', () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ error: { code: 'resyncRequired' } }, { status: 410 }))
       .mockResolvedValueOnce(
-        jsonResponse({ value: [], '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/delta?token=fresh' }),
+        jsonResponse({
+          value: [],
+          '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/delta?token=fresh',
+        }),
       )
 
-    const result = await makeProvider().listChanges('token-1', 'https://graph.microsoft.com/v1.0/delta?token=stale')
-
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      'https://graph.microsoft.com/v1.0/me/drive/root:/Library:/delta',
-      expect.anything(),
+    const result = await makeProvider().listChanges(
+      'token-1',
+      'https://graph.microsoft.com/v1.0/delta?token=stale',
     )
+
+    expect(fetchMock).toHaveBeenNthCalledWith(3, LIB + '/delta', expect.anything())
     expect(result.cursor).toBe('https://graph.microsoft.com/v1.0/delta?token=fresh')
     expect(result.isFromScratchListing).toBe(true)
   })
@@ -155,9 +193,14 @@ describe('listChanges', () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
         value: [
-          { name: 'songs', parentReference: { path: '/drive/root:/Library' }, folder: {} },
-          { name: 'Library', parentReference: { path: '/drive/root:' }, folder: {} },
-          { name: 'other.json', parentReference: { path: '/drive/root:/SomewhereElse' }, eTag: 'x', size: 1 },
+          { name: 'songs', parentReference: { path: OWNER_PATH }, folder: {} },
+          { name: 'Library', parentReference: { path: '/drives/drive-1/root:' }, folder: {} },
+          {
+            name: 'other.json',
+            parentReference: { path: '/drives/drive-1/root:/SomewhereElse' },
+            eTag: 'x',
+            size: 1,
+          },
         ],
         '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/delta?token=final',
       }),
@@ -171,7 +214,9 @@ describe('listChanges', () => {
   it('maps a deleted item to a ProviderEntry with tag "deleted"', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
-        value: [{ name: 'a.json', parentReference: { path: '/drive/root:/Library' }, deleted: { state: 'deleted' } }],
+        value: [
+          { name: 'a.json', parentReference: { path: OWNER_PATH }, deleted: { state: 'deleted' } },
+        ],
         '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/delta?token=final',
       }),
     )
@@ -181,7 +226,7 @@ describe('listChanges', () => {
     expect(result.entries).toEqual([{ tag: 'deleted', path: 'a.json' }])
   })
 
-  it('records a live item\'s id -> path, then resolves a later deletion that reports only that id', async () => {
+  it("records a live item's id -> path, then resolves a later deletion that reports only that id", async () => {
     const provider = makeProvider()
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
@@ -189,7 +234,7 @@ describe('listChanges', () => {
           {
             id: 'item-1',
             name: 'a.json',
-            parentReference: { path: '/drive/root:/Library/songs' },
+            parentReference: { path: OWNER_PATH + '/songs' },
             eTag: 'etag-1',
             size: 5,
           },
@@ -230,7 +275,10 @@ describe('listChanges', () => {
 
   it('normalizes a 429 as ProviderApiError kind "rate-limit"', async () => {
     fetchMock.mockResolvedValueOnce(
-      jsonResponse({ error: { message: 'slow down' } }, { status: 429, headers: { 'Retry-After': '30' } }),
+      jsonResponse(
+        { error: { message: 'slow down' } },
+        { status: 429, headers: { 'Retry-After': '30' } },
+      ),
     )
 
     const error: unknown = await makeProvider()
@@ -252,15 +300,13 @@ describe('download', () => {
         headers: new Headers(),
         arrayBuffer: async () => new TextEncoder().encode('abc').buffer,
       })
-      .mockResolvedValueOnce(jsonResponse({ eTag: 'etag-1', size: 3, file: { hashes: { quickXorHash: 'h1' } } }))
+      .mockResolvedValueOnce(
+        jsonResponse({ eTag: 'etag-1', size: 3, file: { hashes: { quickXorHash: 'h1' } } }),
+      )
 
     const result = await makeProvider().download('token-1', 'songs/a.json')
 
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      'https://graph.microsoft.com/v1.0/me/drive/root:/Library/songs/a.json:/content',
-      expect.anything(),
-    )
+    expect(fetchMock).toHaveBeenNthCalledWith(2, LIB + ':/songs/a.json:/content', expect.anything())
     expect(result).toEqual({
       bytes: expect.anything(),
       rev: 'etag-1',
@@ -277,7 +323,7 @@ describe('upload', () => {
     await makeProvider().upload('token-1', 'songs/a.json', new ArrayBuffer(5), 'add')
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://graph.microsoft.com/v1.0/me/drive/root:/Library/songs/a.json:/content',
+      LIB + ':/songs/a.json:/content',
       expect.objectContaining({
         method: 'PUT',
         headers: expect.objectContaining({ 'If-None-Match': '*' }),
@@ -288,7 +334,9 @@ describe('upload', () => {
   it('uses If-Match with the given rev for a conditional update', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ eTag: 'etag-new', size: 5 }))
 
-    await makeProvider().upload('token-1', 'songs/a.json', new ArrayBuffer(5), { updateRev: 'etag-old' })
+    await makeProvider().upload('token-1', 'songs/a.json', new ArrayBuffer(5), {
+      updateRev: 'etag-old',
+    })
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.anything(),
@@ -297,10 +345,14 @@ describe('upload', () => {
   })
 
   it('normalizes a 412 conditional-check failure as ProviderApiError kind "conflict"', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ error: { message: 'etag mismatch' } }, { status: 412 }))
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ error: { message: 'etag mismatch' } }, { status: 412 }),
+    )
 
     await expect(
-      makeProvider().upload('token-1', 'songs/a.json', new ArrayBuffer(5), { updateRev: 'etag-old' }),
+      makeProvider().upload('token-1', 'songs/a.json', new ArrayBuffer(5), {
+        updateRev: 'etag-old',
+      }),
     ).rejects.toMatchObject({ kind: 'conflict' })
   })
 
@@ -315,7 +367,7 @@ describe('upload', () => {
     const result = await makeProvider().upload('token-1', 'media/big.mp4', bigBytes, 'add')
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://graph.microsoft.com/v1.0/me/drive/root:/Library/media/big.mp4:/createUploadSession',
+      LIB + ':/media/big.mp4:/createUploadSession',
       expect.objectContaining({ method: 'POST' }),
     )
     expect(fetchMock).toHaveBeenLastCalledWith(
@@ -333,7 +385,7 @@ describe('deleteFile', () => {
     await makeProvider().deleteFile('token-1', 'songs/gone.json')
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://graph.microsoft.com/v1.0/me/drive/root:/Library/songs/gone.json:',
+      LIB + ':/songs/gone.json:',
       expect.objectContaining({ method: 'DELETE' }),
     )
   })
