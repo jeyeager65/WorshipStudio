@@ -138,8 +138,11 @@ describe('useTabletSync', () => {
     await flush()
     runSync.mockClear()
 
-    await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+    // One cycle per SYNC_INTERVAL_MS (90s) while the app is on screen.
+    await vi.advanceTimersByTimeAsync(90 * 1000)
     expect(runSync).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(90 * 1000)
+    expect(runSync).toHaveBeenCalledTimes(2)
 
     setVisibility('hidden')
     document.dispatchEvent(new Event('visibilitychange'))
@@ -183,14 +186,12 @@ describe('useTabletSync', () => {
 
   it('schedules a quick follow-up sync when reauthFailurePending, ahead of the normal interval', async () => {
     const runSync = vi.fn()
-    const getStatus = vi
-      .fn()
-      .mockResolvedValue({
-        folderReadable: true,
-        conflictCount: 0,
-        recoveryCount: 0,
-        reauthFailurePending: true,
-      })
+    const getStatus = vi.fn().mockResolvedValue({
+      folderReadable: true,
+      conflictCount: 0,
+      recoveryCount: 0,
+      reauthFailurePending: true,
+    })
     getAdapter.mockReturnValue(makeAdapter('tablet', runSync, getStatus))
 
     mountHost()

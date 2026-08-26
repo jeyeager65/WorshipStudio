@@ -41,7 +41,13 @@ import { onMounted, onUnmounted } from 'vue'
 import { getAdapter } from '@/adapters'
 import { useSyncStore } from '@/stores/sync'
 
-const SYNC_INTERVAL_MS = 5 * 60 * 1000
+/** How often a visible tablet runs a full cycle. Shortened from 5 minutes once pushes became
+ *  near-immediate: leaving pulls at 5 made the two directions badly lopsided, so a device propped
+ *  up during a service could show a service order five minutes out of date while its own edits left
+ *  in seconds. A pull with nothing to fetch is one delta request that comes back empty — downloads
+ *  only happen when something actually changed — so the extra ticks cost little beyond a radio
+ *  wake-up, and the timer is paused entirely while the app is off screen. */
+const SYNC_INTERVAL_MS = 90 * 1000
 const FAST_RETRY_MS = 20 * 1000
 const MAX_FAST_RETRIES = 3
 /** How long after the *last* local write to push. Long enough that a burst of edits collapses into
