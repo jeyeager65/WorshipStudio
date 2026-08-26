@@ -13,7 +13,7 @@
 
 import type { LibraryCredentials, LibrarySettings, MachineSettings } from '@/models/settings'
 import type { SettingsPort } from '@/adapters/types'
-import { suggestDeviceName } from '@/utils/deviceName'
+import { suggestDeviceNameForThisBrowser } from '@/utils/deviceName'
 import { backupPath, readJsonFile, removeFile, writeJsonFile } from './fsaStorage'
 import { storeLibraryHandle } from './handlePersistence'
 
@@ -76,8 +76,7 @@ function defaultMachineSettings(): MachineSettings {
     // makes two devices indistinguishable in SyncConflictsView. The Tauri build borrows the OS
     // hostname (paths.rs); a browser has no equivalent, so this is the closest honest guess.
     // BootGate and the Setup Wizard both put it in front of a human to replace.
-    thisComputerName:
-      typeof navigator === 'undefined' ? 'Tablet' : suggestDeviceName(navigator.userAgent),
+    thisComputerName: suggestDeviceNameForThisBrowser(),
     darkMode: true,
     libraryPath: '',
     hasCompletedSetup: false,

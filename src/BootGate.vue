@@ -59,7 +59,7 @@ import {
   looksLikeLibrary,
   type OneDriveFolderEntry,
 } from '@/adapters/tablet/providers/onedriveLibraryRoot'
-import { suggestDeviceName } from '@/utils/deviceName'
+import { suggestDeviceNameForThisBrowser } from '@/utils/deviceName'
 import logoDark from '@/assets/logo-dark.png'
 
 const pwaInstall = usePwaInstall()
@@ -113,7 +113,7 @@ const connectingCloud = ref(false)
  *  redirect returns to this same origin, and the scanned-QR path skips this form entirely and so
  *  has no name to carry anyway. */
 const PENDING_DEVICE_NAME_KEY = 'worship-studio.pending-device-name'
-const deviceNameInput = ref(suggestDeviceName(navigator.userAgent))
+const deviceNameInput = ref(suggestDeviceNameForThisBrowser())
 
 function stashPendingDeviceName(name: string) {
   try {
@@ -154,12 +154,15 @@ async function finishTabletBoot(
     tabletMediaMaxCachedFileSizeMb,
   })
   const machineSettings = await adapter.settings.getMachineSettings()
-  // Only ever fills a blank: a device that has connected before (or was named in Settings) keeps
-  // the name it already has, so a reconnect never silently renames it.
+  // A name typed on the connect form wins. It used to come *after* the stored value, which was
+  // harmless while the stored default was blank — but the web adapter now seeds it with a
+  // suggestion, so the stored value is never empty and the typed name was silently discarded.
+  // The form is prefilled with the stored name (see onMounted), so "whatever the field says" is
+  // always the operator's own answer, and a plain reload with no form still keeps what it had.
   const thisComputerName =
-    machineSettings.thisComputerName.trim() ||
     takePendingDeviceName() ||
-    suggestDeviceName(navigator.userAgent)
+    machineSettings.thisComputerName.trim() ||
+    suggestDeviceNameForThisBrowser()
   await adapter.settings.saveMachineSettings({
     ...machineSettings,
     thisComputerName,
@@ -412,6 +415,8 @@ onMounted(async () => {
   const cachedMachineSettings = await (opfsRoot
     ? createWebSettingsPort(opfsRoot).getMachineSettings()
     : undefined)
+  const cachedName = cachedMachineSettings?.thisComputerName?.trim()
+  if (cachedName) deviceNameInput.value = cachedName
   const cachedProvider = cachedMachineSettings?.tabletCloudProvider
   const cachedClientId = cachedMachineSettings?.tabletCloudClientId
   if (cachedProvider && cachedClientId) {
