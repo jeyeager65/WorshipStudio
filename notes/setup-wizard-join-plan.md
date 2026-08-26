@@ -15,14 +15,14 @@ and `LibrarySettings` (inside the library folder, **shared with every device**).
 
 Of the wizard's four substantive steps, three wrote shared data:
 
-| Step | What it writes | Scope |
-| --- | --- | --- |
-| Church Identity | `branding.churchName`, brand colours | **library** |
-| Display Setup | `displayRoles` | machine |
-| Library & Import | `libraryPath` | machine |
-| | song import, stock backgrounds | **library content** |
-| Planning Defaults | `defaultTranslationCode`, first service type | **library** |
-| | `darkMode` | machine |
+| Step              | What it writes                               | Scope               |
+| ----------------- | -------------------------------------------- | ------------------- |
+| Church Identity   | `branding.churchName`, brand colours         | **library**         |
+| Display Setup     | `displayRoles`                               | machine             |
+| Library & Import  | `libraryPath`                                | machine             |
+|                   | song import, stock backgrounds               | **library content** |
+| Planning Defaults | `defaultTranslationCode`, first service type | **library**         |
+|                   | `darkMode`                                   | machine             |
 
 A device joining an existing library already has all of the library-scoped values. Asking for them
 is at best redundant, and at worst destructive — which it was.
@@ -31,14 +31,14 @@ is at best redundant, and at worst destructive — which it was.
 
 Ordering in `SetupWizardView.vue` was exactly wrong:
 
-1. `onMounted` runs `store.load()`, reading `LibrarySettings` from the *currently configured* root.
+1. `onMounted` runs `store.load()`, reading `LibrarySettings` from the _currently configured_ root.
    On a new machine that is app-data's empty default, so the in-memory copy is all defaults.
 2. The Church step **requires** a church name before it will advance (`validateCurrentStep`).
 3. The Library step points `libraryPath` at the existing synced folder. `pickLibraryFolder` only
    assigned the path — nothing reloaded.
 4. Finish called `store.save()`, which writes machine settings **first** (committing the new path),
    then `saveLibrarySettings`. The Rust side resolves `library_root()` by re-reading machine
-   settings *from disk* (`src-tauri/src/paths.rs`), so it now resolved to the **new** folder and
+   settings _from disk_ (`src-tauri/src/paths.rs`), so it now resolved to the **new** folder and
    wrote the stale defaults over the real `library-settings.json`.
 
 Net effect: setting up a second machine against an existing library overwrote that library's
@@ -78,7 +78,7 @@ and skips `applyFirstServiceType`. This is the actual fix for the bug above.
 
 **Choosing the folder now persists and reloads.** `pickLibraryFolder` saves machine settings before
 reloading, because the desktop backend resolves `library_root()` from what is on disk — an
-in-memory path change alone would reload the *old* library. After the reload the wizard knows the
+in-memory path change alone would reload the _old_ library. After the reload the wizard knows the
 real church name, which powers both the Join confirmation and the safety net below.
 
 **A safety net for the wrong choice.** If someone picks "new library" but the chosen folder already
@@ -99,9 +99,28 @@ The gap is platform-specific, and narrower than first assumed:
 - **Web and tablet** default it to `''` (`adapters/web/settings.ts`) and only Settings → General
   ever sets it — a page a new user has no reason to open.
 
-Since tablets are precisely the devices that *join*, they were the ones stamping every edit with
+Since tablets are precisely the devices that _join_, they were the ones stamping every edit with
 nothing. Both the wizard's This Device step and the tablet's connect flow now collect it, prefilled
 with a platform-appropriate suggestion rather than left empty.
+
+## Decided against: making the device name mandatory
+
+Considered and rejected on 2026-08-26. The wizard's This Device step does require a name to
+advance, but "Skip for Now" sits in the footer on every step and bypasses all validation, and
+neither BootGate nor the adapter defaults force the question. That is deliberate.
+
+Once the defaults above landed, a blank name became impossible — so compulsion would not prevent
+blanks, only _unconfirmed defaults_. The risk that remains is collision (two iPads both named
+"iPad"), which a required text field does not solve either, since the same name can simply be typed
+twice. Meanwhile a required field on a screen nobody cares about reliably produces garbage, and
+garbage is worse than a good default because it looks deliberate and never gets revisited. On
+desktop it would be strictly negative: `gethostname()` is already unique and meaningful, so forcing
+a retype buys nothing.
+
+The robust version is collision detection, not compulsion — warn when the chosen name already
+appears in the library's `updatedByDevice` stamps. That needs a scan of existing records (there is
+no device registry) and cannot work on a tablet's first connect, since the library has not been
+pulled yet. Separate work, and not a 0.9.0 gate.
 
 ## Documentation
 
@@ -109,14 +128,17 @@ Recommending "set up on the main Windows machine first, then add devices" is rig
 writing — Display Setup is Windows-only, OpenSong import is desktop-only, and somebody has to
 create the library before anything can sync to it.
 
-But documentation was explicitly *not* accepted as the fix. It makes the good path likely; it does
+But documentation was explicitly _not_ accepted as the fix. It makes the good path likely; it does
 not make the bad path safe, and the wizard could not tell which case it was in. Docs land on top of
 the structural fix, not instead of it.
+
+Not written yet: as of 2026-08-26 this is folded into a larger docs refresh the operator plans to
+tackle as its own effort, rather than added here as a one-off page.
 
 ## Deliberately out of scope
 
 - **Merging the tablet connect flow into the wizard.** Tempting — a joining tablet's needs are now
   almost exactly the Join flow — but `BootGate.vue` carefully blocks on the initial pull to stop
   pages racing a half-populated library, and unifying them risks that for no user-visible gain.
-- **Making Join detect and offer *cloud* connections on desktop.** Desktop joins by pointing at a
+- **Making Join detect and offer _cloud_ connections on desktop.** Desktop joins by pointing at a
   synced folder, which is what the existing picker does.
