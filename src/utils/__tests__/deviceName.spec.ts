@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { suggestDeviceName } from '@/utils/deviceName'
+import { isMobileDevice, suggestDeviceName } from '@/utils/deviceName'
 
 describe('suggestDeviceName', () => {
   it('names the common tablets and phones', () => {
@@ -55,5 +55,28 @@ describe('suggestDeviceName', () => {
 
   it('is case-insensitive', () => {
     expect(suggestDeviceName('MOZILLA/5.0 (IPAD; CPU OS 17_0)')).toBe('iPad')
+  })
+})
+
+describe('isMobileDevice', () => {
+  const iPadOS = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15'
+
+  it('recognises phones and tablets', () => {
+    expect(isMobileDevice('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)')).toBe(true)
+    expect(isMobileDevice('Mozilla/5.0 (Linux; Android 14; Pixel Tablet)')).toBe(true)
+    expect(isMobileDevice('Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile Safari')).toBe(true)
+    expect(isMobileDevice(iPadOS, 5)).toBe(true)
+  })
+
+  it('does not mistake a desktop for one', () => {
+    expect(isMobileDevice('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')).toBe(false)
+    expect(isMobileDevice('Mozilla/5.0 (X11; Linux x86_64)')).toBe(false)
+    expect(isMobileDevice(iPadOS, 0)).toBe(false)
+  })
+
+  it('is about the device, not whether the browser can pick a folder', () => {
+    // Chrome on Android supports showDirectoryPicker, which is why this question cannot be
+    // answered by feature detection: a folder picked there syncs nowhere.
+    expect(isMobileDevice('Mozilla/5.0 (Linux; Android 14; Pixel Tablet)')).toBe(true)
   })
 })

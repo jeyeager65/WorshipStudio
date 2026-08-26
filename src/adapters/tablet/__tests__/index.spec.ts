@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFakeRoot } from '@/adapters/web/__tests__/fakeFsa'
 
-const { getOpfsRoot } = vi.hoisted(() => ({ getOpfsRoot: vi.fn() }))
-vi.mock('../opfs', () => ({ getOpfsRoot }))
+const { getOpfsRoot, requestPersistentStorage } = vi.hoisted(() => ({
+  getOpfsRoot: vi.fn(),
+  // Adapter creation asks for persistent storage without waiting on the answer; a refusal changes
+  // nothing, so these tests only need it to exist and resolve.
+  requestPersistentStorage: vi.fn().mockResolvedValue(true),
+}))
+vi.mock('../opfs', () => ({ getOpfsRoot, requestPersistentStorage }))
 
 vi.mock('@/adapters/mock/pickFiles', () => ({ pickFilesInBrowser: vi.fn() }))
 import { pickFilesInBrowser } from '@/adapters/mock/pickFiles'
@@ -54,12 +59,20 @@ beforeEach(() => {
 
 describe('createTabletAdapter', () => {
   it('reports kind "tablet"', async () => {
-    const adapter = await createTabletAdapter({ provider: 'dropbox', clientId: 'k', libraryFolderPath: '/Library' })
+    const adapter = await createTabletAdapter({
+      provider: 'dropbox',
+      clientId: 'k',
+      libraryFolderPath: '/Library',
+    })
     expect(adapter.kind).toBe('tablet')
   })
 
   it('settings is real and works against the OPFS root', async () => {
-    const adapter = await createTabletAdapter({ provider: 'dropbox', clientId: 'k', libraryFolderPath: '/Library' })
+    const adapter = await createTabletAdapter({
+      provider: 'dropbox',
+      clientId: 'k',
+      libraryFolderPath: '/Library',
+    })
     const settings = await adapter.settings.getLibrarySettings()
     expect(settings.defaultTranslationCode).toBe('KJV')
 
@@ -70,7 +83,11 @@ describe('createTabletAdapter', () => {
   })
 
   it('every storage-shaped port is real and works against the OPFS root', async () => {
-    const adapter = await createTabletAdapter({ provider: 'dropbox', clientId: 'k', libraryFolderPath: '/Library' })
+    const adapter = await createTabletAdapter({
+      provider: 'dropbox',
+      clientId: 'k',
+      libraryFolderPath: '/Library',
+    })
 
     await adapter.songs.save({
       id: 'song-1',
@@ -89,14 +106,22 @@ describe('createTabletAdapter', () => {
   })
 
   it('diagnostics.getSummary reports real library counts and installationMode "tablet"', async () => {
-    const adapter = await createTabletAdapter({ provider: 'dropbox', clientId: 'k', libraryFolderPath: '/Library' })
+    const adapter = await createTabletAdapter({
+      provider: 'dropbox',
+      clientId: 'k',
+      libraryFolderPath: '/Library',
+    })
     const summary = await adapter.diagnostics.getSummary()
     expect(summary.installationMode).toBe('tablet')
     expect(summary.libraryItems.songs).toBe(0)
   })
 
   it("media's local-only items land in a separate OPFS subfolder never marked dirty for push", async () => {
-    const adapter = await createTabletAdapter({ provider: 'dropbox', clientId: 'k', libraryFolderPath: '/Library' })
+    const adapter = await createTabletAdapter({
+      provider: 'dropbox',
+      clientId: 'k',
+      libraryFolderPath: '/Library',
+    })
     vi.mocked(pickFilesInBrowser).mockResolvedValueOnce([new File(['bytes'], 'clip.mp4')])
     const [staged] = await adapter.media.pickFilesToImport()
 
@@ -109,7 +134,11 @@ describe('createTabletAdapter', () => {
   })
 
   it('writing through the settings port marks the path dirty for the sync engine', async () => {
-    const adapter = await createTabletAdapter({ provider: 'dropbox', clientId: 'k', libraryFolderPath: '/Library' })
+    const adapter = await createTabletAdapter({
+      provider: 'dropbox',
+      clientId: 'k',
+      libraryFolderPath: '/Library',
+    })
     const settings = await adapter.settings.getLibrarySettings()
 
     await adapter.settings.saveLibrarySettings(settings)
@@ -118,7 +147,11 @@ describe('createTabletAdapter', () => {
   })
 
   it('never marks a .backup file dirty — a local recovery artifact, never pushed', async () => {
-    const adapter = await createTabletAdapter({ provider: 'dropbox', clientId: 'k', libraryFolderPath: '/Library' })
+    const adapter = await createTabletAdapter({
+      provider: 'dropbox',
+      clientId: 'k',
+      libraryFolderPath: '/Library',
+    })
     const settings = await adapter.settings.getLibrarySettings()
     await adapter.settings.saveLibrarySettings(settings)
     // The *second* write is what actually creates library-settings.json.backup
@@ -130,7 +163,11 @@ describe('createTabletAdapter', () => {
   })
 
   it('sync.getStatus reflects a clean, freshly-created cache', async () => {
-    const adapter = await createTabletAdapter({ provider: 'dropbox', clientId: 'k', libraryFolderPath: '/Library' })
+    const adapter = await createTabletAdapter({
+      provider: 'dropbox',
+      clientId: 'k',
+      libraryFolderPath: '/Library',
+    })
     const status = await adapter.sync.getStatus()
     expect(status.conflictCount).toBe(0)
     expect(status.recoveryCount).toBe(0)
@@ -138,7 +175,11 @@ describe('createTabletAdapter', () => {
   })
 
   it('sync.runSync is present (tablet-only SyncPort extension)', async () => {
-    const adapter = await createTabletAdapter({ provider: 'dropbox', clientId: 'k', libraryFolderPath: '/Library' })
+    const adapter = await createTabletAdapter({
+      provider: 'dropbox',
+      clientId: 'k',
+      libraryFolderPath: '/Library',
+    })
     expect(adapter.sync.runSync).toBeTypeOf('function')
   })
 })

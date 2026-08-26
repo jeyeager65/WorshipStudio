@@ -46,3 +46,21 @@ export function suggestDeviceNameForThisBrowser(): string {
   if (typeof navigator === 'undefined') return 'Device'
   return suggestDeviceName(navigator.userAgent, navigator.maxTouchPoints)
 }
+
+/** Phones and tablets, as opposed to desktops and laptops.
+ *
+ *  Shares the detection above rather than adding a second scheme, so the two can never disagree —
+ *  a device named "iPad" is a device that counts as mobile.
+ *
+ *  Not the same question as "does this browser support showDirectoryPicker": Chrome on Android
+ *  does, but a folder picked there is local storage that no cloud client keeps in step, so a
+ *  library put in it would silently sync nowhere. What matters is the device, not the API. */
+export function isMobileDevice(userAgent: string, maxTouchPoints = 0): boolean {
+  const name = suggestDeviceName(userAgent, maxTouchPoints)
+  return name === 'iPad' || name === 'iPhone' || name.startsWith('Android')
+}
+
+export function isMobileBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false
+  return isMobileDevice(navigator.userAgent, navigator.maxTouchPoints)
+}

@@ -48,7 +48,7 @@ import * as sync from '@/adapters/web/sync'
 import { createCloudSync } from './cloudSync'
 import { wrapWithDirtyTracking } from './dirtyTrackingRoot'
 import { createTabletLocalMediaRoot } from './localMediaRoot'
-import { getOpfsRoot } from './opfs'
+import { getOpfsRoot, requestPersistentStorage } from './opfs'
 import { createDropboxProvider } from './providers/dropbox'
 import { createOneDriveProvider } from './providers/onedrive'
 import type { CloudSyncProvider } from './providers/types'
@@ -88,6 +88,18 @@ function createProvider(config: TabletAdapterConfig): CloudSyncProvider {
 
 export async function createTabletAdapter(config: TabletAdapterConfig): Promise<StudioAdapter> {
   const rawRoot = await getOpfsRoot()
+  // Asked once per launch, before anything is cached, so the library this device is about to
+  // download is not sitting in storage the browser considers disposable. Deliberately not awaited
+  // for its answer beyond logging: a refusal changes nothing about how the adapter works, and
+  // blocking startup on it would trade a certain delay for a possible benefit.
+  void requestPersistentStorage().then((granted) => {
+    if (!granted) {
+      logger.warn(
+        'sync',
+        'Browser would not mark this library as persistent storage; it may be evicted if the device runs low on space',
+      )
+    }
+  })
   // Notified on every local write, so useTabletSync can push shortly after an edit instead of
   // leaving it to the next timed cycle. The dirty-tracking callback below is already the one place
   // every port's writes funnel through, which is what makes this trigger a few lines rather than a

@@ -59,7 +59,7 @@ import {
   looksLikeLibrary,
   type OneDriveFolderEntry,
 } from '@/adapters/tablet/providers/onedriveLibraryRoot'
-import { suggestDeviceNameForThisBrowser } from '@/utils/deviceName'
+import { isMobileBrowser, suggestDeviceNameForThisBrowser } from '@/utils/deviceName'
 import logoDark from '@/assets/logo-dark.png'
 
 const pwaInstall = usePwaInstall()
@@ -78,6 +78,12 @@ const phase = ref<Phase>('resolving')
 const errorText = ref('')
 const pendingHandle = ref<FileSystemDirectoryHandle>()
 const fsaSupported = typeof window !== 'undefined' && 'showDirectoryPicker' in window
+/** Whether opening a local folder is a *useful* answer here, which is not the same as whether the
+ *  browser can do it. Chrome on Android supports showDirectoryPicker, but a folder picked on a
+ *  phone or tablet is local storage no cloud client keeps in step — a library put there would
+ *  silently sync nowhere. So the offer is withheld by device, not by feature detection. */
+const isMobile = isMobileBrowser()
+const showFolderOption = fsaSupported && !isMobile
 const initialSyncLabel = ref('')
 // The raw progress, not just its label: the batch total is known upfront (see SyncProgress), so the
 // first pull can show real progress rather than an indeterminate spinner that says nothing about
@@ -98,6 +104,11 @@ const initialSyncRemaining = computed(() => {
   )
   return seconds === undefined ? '' : formatSecondsRemaining(seconds)
 })
+
+/** Whether installing is the step being recommended right now. Drives the visual hierarchy: while
+ *  this is true, Install is the filled button and the connect buttons step back to outlined, so the
+ *  screen actually says "do this first" rather than offering two equally-weighted primaries. */
+const showInstallFirst = computed(() => isMobile && !pwaInstall.isStandalone.value)
 
 const connectProvider = ref<CloudProviderId>('dropbox')
 const cloudClientIdInput = ref('')
@@ -503,7 +514,7 @@ function showCloudConnectForm(provider: CloudProviderId) {
              route is hidden and connecting to the church's cloud library becomes the main event.
              A desktop browser gets the folder first, with cloud connect alongside it. -->
         <template v-else-if="phase === 'chooser'">
-          <template v-if="fsaSupported">
+          <template v-if="showFolderOption">
             <p class="boot-lead">
               Open your church's library folder to prepare services, or connect to it in the cloud.
             </p>
@@ -530,10 +541,13 @@ function showCloudConnectForm(provider: CloudProviderId) {
           <template v-else>
             <p class="boot-lead">Connect this device to your church's library.</p>
 
-            <!-- Install first, and say so before offering the connection: on iOS a browser tab and
-                 the installed app are separate storage, so connecting here and then installing
-                 means doing it twice. -->
-            <div v-if="!pwaInstall.isStandalone.value" class="boot-install-first">
+            <!-- Install first, and say so before offering the connection — but for different
+                 reasons per platform, so the copy differs. On iOS a browser tab and the installed
+                 app are genuinely separate storage, so connecting here and then installing means
+                 doing it twice. Android shares one storage for the origin, so nothing is lost by
+                 connecting first; installing is still the right order simply because the app is
+                 how it gets used. Claiming separate data there would be untrue. -->
+            <div v-if="showInstallFirst" class="boot-install-first">
               <div class="boot-install-heading">
                 <v-icon icon="mdi-cellphone-arrow-down" size="20" />
                 <strong>Install the app first</strong>
@@ -544,15 +558,17 @@ function showCloudConnectForm(provider: CloudProviderId) {
                 separate data, so connecting here would only have to be done again.
               </p>
               <p v-else>
-                Install Worship Studio to your home screen, then open it from there and connect —
-                the installed app keeps its own data.
+                Install Worship Studio, then open it from your home screen and connect there. It is
+                the same data either way here, but the app is how you will actually use it — full
+                screen, with no browser bar in the way.
               </p>
               <v-btn
                 v-if="pwaInstall.canInstall.value"
                 variant="flat"
                 color="primary"
-                size="small"
-                class="mt-1"
+                size="large"
+                block
+                class="mt-3"
                 prepend-icon="mdi-cellphone-arrow-down"
                 @click="pwaInstall.promptInstall"
               >
@@ -565,7 +581,8 @@ function showCloudConnectForm(provider: CloudProviderId) {
               &gt; Library &amp; Sync &gt; Add Another Device.
             </p>
             <v-btn
-              color="primary"
+              :variant="showInstallFirst ? 'outlined' : 'flat'"
+              :color="showInstallFirst ? undefined : 'primary'"
               size="large"
               block
               class="mt-2"
@@ -591,9 +608,9 @@ function showCloudConnectForm(provider: CloudProviderId) {
           <!-- Already installed, or a desktop browser: the install affordance is either irrelevant
                or a small convenience, so it sits at the bottom rather than leading. -->
           <v-btn
-            v-if="pwaInstall.canInstall.value && fsaSupported"
-            variant="tonal"
-            size="small"
+            v-if="pwaInstall.canInstall.value && !isMobile"
+            variant="outlined"
+            size="large"
             block
             class="mt-3"
             prepend-icon="mdi-cellphone-arrow-down"
