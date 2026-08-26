@@ -66,6 +66,15 @@ const syncIsStale = computed(
   () => isTabletBuild && isSyncStale(syncStore.status?.lastSyncedAt, now.value),
 )
 
+// Edits are uploaded a few seconds after the last one, not on save (useTabletSync.ts), so there is
+// a real window where this device holds changes the rest of the church cannot see yet. Showing the
+// same "all synced" check through it made the app look like it had not saved at all — the same
+// shape of wrong reassurance as the staleness case above.
+const pendingPushCount = computed(() =>
+  isTabletBuild ? (syncStore.status?.pendingPushCount ?? 0) : 0,
+)
+const syncIsPending = computed(() => !syncStore.syncing && pendingPushCount.value > 0)
+
 const syncTooltipText = computed(() => {
   if (syncStore.syncing) return syncProgressLabel.value || 'Syncing…'
   const age = formatSyncAge(syncStore.status?.lastSyncedAt, now.value)
@@ -73,6 +82,10 @@ const syncTooltipText = computed(() => {
     return syncStore.status?.lastSyncedAt
       ? `Last synced ${age} — sync now to confirm this device is still connected.`
       : 'This device has never finished a sync.'
+  }
+  if (syncIsPending.value) {
+    const count = pendingPushCount.value
+    return `${count} change${count === 1 ? '' : 's'} waiting to upload — last synced ${age}.`
   }
   return `Last synced ${age}`
 })
@@ -748,7 +761,9 @@ onUnmounted(() => {
                     ? 'mdi-cloud-sync-outline'
                     : syncIsStale
                       ? 'mdi-cloud-alert-outline'
-                      : 'mdi-cloud-check-outline'
+                      : syncIsPending
+                        ? 'mdi-cloud-upload-outline'
+                        : 'mdi-cloud-check-outline'
                 "
                 :color="!syncStore.syncing && syncIsStale ? 'warning' : undefined"
                 :class="{ 'sync-spin': syncStore.syncing }"

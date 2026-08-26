@@ -40,7 +40,14 @@ import { logger } from '@/utils/logger'
  *  folders are ever scanned by detectConflicts(), so only pushes to these are worth
  *  materializing a conflict artifact for; anything else falls back to last-write-wins (see
  *  handlePushConflict below). */
-const CONFLICT_SCANNED_TOP_DIRS = new Set(['songs', 'slides', 'media-items', 'themes', 'people', 'services'])
+const CONFLICT_SCANNED_TOP_DIRS = new Set([
+  'songs',
+  'slides',
+  'media-items',
+  'themes',
+  'people',
+  'services',
+])
 
 function isInConflictScannedScope(relativePath: string): boolean {
   const top = relativePath.split('/')[0]
@@ -263,9 +270,7 @@ export function createCloudSync(config: CloudSyncConfig) {
         completed++
       }
     }
-    await Promise.all(
-      Array.from({ length: Math.min(PULL_CONCURRENCY, total) }, () => runWorker()),
-    )
+    await Promise.all(Array.from({ length: Math.min(PULL_CONCURRENCY, total) }, () => runWorker()))
 
     progress = undefined
     // A rate limit mid-batch leaves the cursor unadvanced on purpose — the next pull (the
@@ -294,7 +299,11 @@ export function createCloudSync(config: CloudSyncConfig) {
     if (isInConflictScannedScope(relativePath)) {
       const artifactPath = conflictArtifactPath(relativePath)
       if (artifactPath.endsWith('.json')) {
-        await writeJsonFile(config.root, artifactPath, JSON.parse(new TextDecoder().decode(remote.bytes)))
+        await writeJsonFile(
+          config.root,
+          artifactPath,
+          JSON.parse(new TextDecoder().decode(remote.bytes)),
+        )
       } else {
         await writeBytes(config.root, artifactPath, remote.bytes)
       }
@@ -323,7 +332,9 @@ export function createCloudSync(config: CloudSyncConfig) {
       await syncStore.clearDirty(relativePath)
       return
     }
-    const retried = await provider.upload(token, relativePath, freshBytes, { updateRev: remote.rev })
+    const retried = await provider.upload(token, relativePath, freshBytes, {
+      updateRev: remote.rev,
+    })
     await syncStore.setRev(relativePath, {
       rev: retried.rev,
       contentHash: retried.contentHash,
@@ -401,7 +412,11 @@ export function createCloudSync(config: CloudSyncConfig) {
           break
         }
         const attempts = entry.attempts + 1
-        const retried: DirtyEntry = { ...entry, attempts, nextRetryAt: Date.now() + backoffMs(attempts) }
+        const retried: DirtyEntry = {
+          ...entry,
+          attempts,
+          nextRetryAt: Date.now() + backoffMs(attempts),
+        }
         await syncStore.setDirty(relativePath, retried)
       }
       completed++
@@ -434,7 +449,12 @@ export function createCloudSync(config: CloudSyncConfig) {
     if (keep === 'theirs') await syncStore.clearDirty(relativePath)
   }
 
-  async function runSync(): Promise<void> {
+  /** The guard, auth bookkeeping and logging every automatic cycle shares, whether it pulls or
+   *  not. Factored out when push-only runs were added so a push triggered by a local edit gets
+   *  exactly the same treatment as a full cycle — the same overlap guard, the same
+   *  consecutive-reauth-failure accounting, the same logging — rather than a parallel path that
+   *  drifts from it. */
+  async function runCycle(work: () => Promise<void>): Promise<void> {
     if (syncing) return
     syncing = true
     try {
@@ -446,8 +466,7 @@ export function createCloudSync(config: CloudSyncConfig) {
       // here specifically — see requireToken()'s own doc comment.
       await requireToken()
       await syncStore.setConsecutiveReauthFailures(0)
-      await pull()
-      await push()
+      await work()
     } catch (error) {
       if (error instanceof ProviderReauthRequiredError) {
         const failures = (await syncStore.getConsecutiveReauthFailures()) + 1
@@ -469,6 +488,25 @@ export function createCloudSync(config: CloudSyncConfig) {
     } finally {
       syncing = false
     }
+  }
+
+  async function runSync(): Promise<void> {
+    return runCycle(async () => {
+      await pull()
+      await push()
+    })
+  }
+
+  /** Uploads what this device has changed, without the delta pull a full cycle does.
+   *
+   *  For the debounced push after a local edit (useTabletSync.ts): that fires seconds after
+   *  typing stops, and pulling the whole delta feed each time would be wasteful for something
+   *  that only ever needs to send. The ordinary interval/focus/visibility triggers still run full
+   *  cycles, so nothing stops arriving from other devices. */
+  async function runPush(): Promise<void> {
+    return runCycle(async () => {
+      await push()
+    })
   }
 
   /** Clears this device's sync bookkeeping (cursor/dirty/rev/conflict) and re-pulls the whole
@@ -564,6 +602,7 @@ export function createCloudSync(config: CloudSyncConfig) {
     pull,
     push,
     runSync,
+    runPush,
     resetAndResync,
     reconcile,
     getSyncStatus,

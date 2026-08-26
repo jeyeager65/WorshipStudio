@@ -117,6 +117,16 @@ export const useSyncStore = defineStore('sync', () => {
     })
   }
 
+  /** Tablet-only — uploads local changes without the delta pull runSync does. The debounced
+   *  after-an-edit trigger (useTabletSync.ts) uses this: nothing needs fetching a few seconds
+   *  after typing stops, and a full cycle that often would be waste. Shares runWithProgress with
+   *  every other trigger, so the app-bar indicator and status refresh behave identically. */
+  async function runPush() {
+    await runWithProgress(async () => {
+      await getAdapter().sync.runPush?.()
+    })
+  }
+
   /** Tablet-only — clears this device's sync bookkeeping and re-pulls the whole library, fresh
    *  from the cloud, overwriting whatever's already cached (see cloudSync.ts's resetAndResync for
    *  why this deliberately doesn't delete local files first or push afterward). Discards any
@@ -175,6 +185,7 @@ export const useSyncStore = defineStore('sync', () => {
     recover,
     quarantine,
     runSync,
+    runPush,
     resetAndResync,
     reconcile,
     reconnectingCloud,

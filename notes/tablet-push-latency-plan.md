@@ -1,7 +1,8 @@
 # Tablet sync: pushing local edits sooner
 
-Status: plan, nothing built. Opened 2026-08-26 after a real observation while verifying writes
-against a shared OneDrive folder.
+Status: **BUILT 2026-08-26.** Opened the same day after a real observation while verifying writes
+against a shared OneDrive folder; implemented as described below. Kept as the record of why the
+cadence changed, since the reasoning it overturns was itself written down in the code.
 
 ## The symptom
 
@@ -76,3 +77,35 @@ the indicator was reassuring exactly when it should not have been. A distinct pe
 
 Worth doing even if the debounce work is deferred — arguably _more_ worth doing in that case, since
 the wait would remain.
+
+## What was built
+
+Exactly the shape proposed above.
+
+- `cloudSync.ts` gained `runPush()`, and the guard/auth/logging that `runSync()` used to hold inline
+  moved into a shared `runCycle()` — so a push-only run gets the same overlap guard and the same
+  consecutive-reauth-failure accounting rather than a parallel path that drifts from it. A test
+  covers that specifically: two failed `runPush()` calls flip `needsReconnect` exactly as two failed
+  `runSync()` calls do.
+- `SyncPort` gained `runPush()` and `onLocalChange(listener)`. The latter is a notification rather
+  than a push, so debouncing and the decision to sync at all stay with `useTabletSync`, which
+  already owns every other trigger.
+- The tablet adapter feeds that from the existing `wrapWithDirtyTracking` callback — the single
+  place every port's writes already funnel through. Listener errors are swallowed there: a
+  subscriber must never break the write that triggered it.
+- `useTabletSync` debounces **4 seconds from the last write**, then calls `runPush()` through
+  `useSyncStore`, so the app-bar indicator and status refresh behave identically to every other
+  trigger. The interval, focus and visibility triggers are untouched and still run full cycles, so
+  changes from other devices arrive on the same schedule as before.
+- The app-bar indicator gained a pending state: `mdi-cloud-upload-outline` with a tooltip naming the
+  count, instead of the reassuring check it used to show while changes sat queued.
+
+`useTabletSync`'s doc comment now explains the reversal, since the old one stated the opposite
+conclusion as settled and would otherwise mislead the next reader.
+
+### Deliberately unchanged
+
+- **Editor saves are still not synchronous.** A save marks dirty and returns; the upload follows a
+  few seconds later. That is the right trade — blocking a save on a network round trip is worse than
+  a short delay — and the pending indicator is what makes the delay legible.
+- **The 5-minute interval stays.** It is now the safety net rather than the primary path.

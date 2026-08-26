@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCloudSync } from '../cloudSync'
-import { ProviderApiError, ProviderReauthRequiredError, type CloudSyncProvider } from '../providers/types'
+import {
+  ProviderApiError,
+  ProviderReauthRequiredError,
+  type CloudSyncProvider,
+} from '../providers/types'
 import { createFakeRoot } from '@/adapters/web/__tests__/fakeFsa'
 import { readBytes, readFileText, readJsonFile, writeJsonFile } from '@/adapters/web/fsaStorage'
 
@@ -29,7 +33,12 @@ function makeFakeSyncStore() {
   const revs = new Map<string, { rev: string; contentHash?: string; sizeBytes: number }>()
   const conflicts = new Map<
     string,
-    { conflictFilePath: string; remoteRev: string; remoteContentHash?: string; remoteSizeBytes: number }
+    {
+      conflictFilePath: string
+      remoteRev: string
+      remoteContentHash?: string
+      remoteSizeBytes: number
+    }
   >()
   let cursor: string | undefined
   let lastSyncedAt: string | undefined
@@ -51,7 +60,10 @@ function makeFakeSyncStore() {
       consecutiveReauthFailures = count
     },
     getDirty: async (path: string) => dirty.get(path),
-    setDirty: async (path: string, entry: { deleted: boolean; attempts: number; nextRetryAt: number }) => {
+    setDirty: async (
+      path: string,
+      entry: { deleted: boolean; attempts: number; nextRetryAt: number },
+    ) => {
       dirty.set(path, entry)
     },
     clearDirty: async (path: string) => {
@@ -59,7 +71,10 @@ function makeFakeSyncStore() {
     },
     getAllDirty: async () => [...dirty.entries()],
     getRev: async (path: string) => revs.get(path),
-    setRev: async (path: string, entry: { rev: string; contentHash?: string; sizeBytes: number }) => {
+    setRev: async (
+      path: string,
+      entry: { rev: string; contentHash?: string; sizeBytes: number },
+    ) => {
       revs.set(path, entry)
     },
     clearRev: async (path: string) => {
@@ -68,7 +83,12 @@ function makeFakeSyncStore() {
     getConflict: async (path: string) => conflicts.get(path),
     setConflict: async (
       path: string,
-      entry: { conflictFilePath: string; remoteRev: string; remoteContentHash?: string; remoteSizeBytes: number },
+      entry: {
+        conflictFilePath: string
+        remoteRev: string
+        remoteContentHash?: string
+        remoteSizeBytes: number
+      },
     ) => {
       conflicts.set(path, entry)
     },
@@ -365,11 +385,13 @@ describe('pull', () => {
 
     // A later pull re-fetches the same (unadvanced) cursor. The already-applied path is
     // rev-matched and skipped; only the one that failed gets retried.
-    vi.mocked(provider.download).mockReset().mockResolvedValue({
-      bytes: jsonBytes({ id: 'b' }),
-      rev: 'rev-b-retry',
-      sizeBytes: 10,
-    })
+    vi.mocked(provider.download)
+      .mockReset()
+      .mockResolvedValue({
+        bytes: jsonBytes({ id: 'b' }),
+        rev: 'rev-b-retry',
+        sizeBytes: 10,
+      })
     await makeSync(root).pull()
 
     expect(provider.download).toHaveBeenCalledTimes(1)
@@ -461,11 +483,20 @@ describe('push', () => {
     const root = createFakeRoot()
     await writeJsonFile(root, 'songs/a.json', { id: 'a', title: 'A' })
     await syncStore.setDirty('songs/a.json', { deleted: false, attempts: 0, nextRetryAt: 0 })
-    vi.mocked(provider.upload).mockResolvedValueOnce({ rev: 'rev-new', contentHash: 'hash-1', sizeBytes: 20 })
+    vi.mocked(provider.upload).mockResolvedValueOnce({
+      rev: 'rev-new',
+      contentHash: 'hash-1',
+      sizeBytes: 20,
+    })
 
     await makeSync(root).push()
 
-    expect(provider.upload).toHaveBeenCalledWith('token-1', 'songs/a.json', expect.anything(), 'add')
+    expect(provider.upload).toHaveBeenCalledWith(
+      'token-1',
+      'songs/a.json',
+      expect.anything(),
+      'add',
+    )
     expect(await syncStore.getRev('songs/a.json')).toEqual({
       rev: 'rev-new',
       contentHash: 'hash-1',
@@ -539,7 +570,11 @@ describe('push', () => {
   it('on a conflict for an out-of-scope path, adopts the remote rev and retries once instead of materializing an artifact', async () => {
     const root = createFakeRoot()
     await writeJsonFile(root, 'library-settings.json', { churchName: 'mine' })
-    await syncStore.setDirty('library-settings.json', { deleted: false, attempts: 0, nextRetryAt: 0 })
+    await syncStore.setDirty('library-settings.json', {
+      deleted: false,
+      attempts: 0,
+      nextRetryAt: 0,
+    })
     vi.mocked(provider.upload).mockRejectedValueOnce(new ProviderApiError('conflict', 'conflict'))
     vi.mocked(provider.download).mockResolvedValueOnce({
       bytes: jsonBytes({ churchName: 'theirs' }),
@@ -569,7 +604,9 @@ describe('push', () => {
     const root = createFakeRoot()
     await writeJsonFile(root, 'songs/a.json', { id: 'a' })
     await syncStore.setDirty('songs/a.json', { deleted: false, attempts: 0, nextRetryAt: 0 })
-    vi.mocked(provider.upload).mockRejectedValueOnce(new ProviderApiError('rate limited', 'rate-limit', 30))
+    vi.mocked(provider.upload).mockRejectedValueOnce(
+      new ProviderApiError('rate limited', 'rate-limit', 30),
+    )
     // The same sync instance is reused for both calls below — the cooldown is in-memory state on
     // the engine itself, not something persisted to syncStore.
     const engine = makeSync(root)
@@ -598,6 +635,40 @@ describe('push', () => {
     const entry = await syncStore.getDirty('songs/a.json')
     expect(entry?.attempts).toBe(1)
     expect(entry?.nextRetryAt).toBeGreaterThan(Date.now())
+  })
+})
+
+describe('runPush', () => {
+  // The debounced after-an-edit trigger (useTabletSync.ts) uses this: seconds after this device
+  // typed something, nothing needs fetching, and a full delta pull that often would be waste.
+  it('uploads without listing remote changes', async () => {
+    const root = createFakeRoot()
+    await writeJsonFile(root, 'songs/a.json', { id: 'a', title: 'A' })
+    await syncStore.setDirty('songs/a.json', { deleted: false, attempts: 0, nextRetryAt: 0 })
+    vi.mocked(provider.upload).mockResolvedValueOnce({
+      rev: 'rev-new',
+      contentHash: 'hash-1',
+      sizeBytes: 20,
+    })
+
+    await makeSync(root).runPush()
+
+    expect(provider.upload).toHaveBeenCalled()
+    expect(provider.listChanges).not.toHaveBeenCalled()
+  })
+
+  // Shares runCycle with runSync, so a push-only run must not be a hole in the reconnect
+  // accounting that decides when the operator is told to sign in again.
+  it('counts a reauth failure toward needsReconnect the same way a full cycle does', async () => {
+    vi.mocked(provider.getValidAccessToken).mockRejectedValue(
+      new ProviderReauthRequiredError('reconnect please'),
+    )
+    const sync = makeSync(createFakeRoot())
+
+    await expect(sync.runPush()).rejects.toThrow('reconnect please')
+    expect((await sync.getSyncStatus()).needsReconnect).toBe(false)
+    await expect(sync.runPush()).rejects.toThrow('reconnect please')
+    expect((await sync.getSyncStatus()).needsReconnect).toBe(true)
   })
 })
 
@@ -634,7 +705,11 @@ describe('resetAndResync', () => {
     // Simulates the exact failure mode this is guarding against: something (a still-mounted
     // settings page, in the real bug) wrote a dirty change during the reset.
     await writeJsonFile(root, 'library-settings.json', { serviceTypes: [] })
-    await syncStore.setDirty('library-settings.json', { deleted: false, attempts: 0, nextRetryAt: 0 })
+    await syncStore.setDirty('library-settings.json', {
+      deleted: false,
+      attempts: 0,
+      nextRetryAt: 0,
+    })
     vi.mocked(provider.listChanges).mockResolvedValueOnce({
       entries: [],
       cursor: 'cursor-new',
@@ -727,9 +802,7 @@ describe('resetAndResync', () => {
     await makeSync(root).resetAndResync()
 
     expect(await readJsonFile(root, 'library-settings.json.backup')).not.toBeNull()
-    expect(
-      await readJsonFile(root, 'songs/a (conflicted copy 20260101-0000).json'),
-    ).not.toBeNull()
+    expect(await readJsonFile(root, 'songs/a (conflicted copy 20260101-0000).json')).not.toBeNull()
   })
 
   it('does not reconcile orphans on an ordinary incremental pull, only a from-scratch one', async () => {
@@ -785,7 +858,7 @@ describe('resetAndResync', () => {
 })
 
 describe('reconcile', () => {
-  it('clears only the cursor, forcing a from-scratch listing that cleans up a file deleted upstream — without resetAndResync\'s clearAll', async () => {
+  it("clears only the cursor, forcing a from-scratch listing that cleans up a file deleted upstream — without resetAndResync's clearAll", async () => {
     const root = createFakeRoot()
     await writeJsonFile(root, 'songs/deleted-elsewhere.json', { id: 'deleted-elsewhere' })
     await syncStore.setRev('songs/deleted-elsewhere.json', { rev: 'rev-old', sizeBytes: 10 })
@@ -892,7 +965,10 @@ describe('resolveConflict', () => {
     await syncStore.setDirty('songs/a.json', { deleted: false, attempts: 0, nextRetryAt: 0 })
 
     await expect(
-      makeSync(createFakeRoot()).resolveConflict('songs/unrelated (conflicted copy x).json', 'mine'),
+      makeSync(createFakeRoot()).resolveConflict(
+        'songs/unrelated (conflicted copy x).json',
+        'mine',
+      ),
     ).resolves.toBeUndefined()
 
     expect(await syncStore.getDirty('songs/a.json')).toBeDefined()
@@ -914,7 +990,11 @@ describe('provider independence', () => {
       sizeBytes: 10,
     })
 
-    await createCloudSync({ provider: secondProvider, root, maxCachedFileSizeBytes: 50 * 1024 * 1024 }).pull()
+    await createCloudSync({
+      provider: secondProvider,
+      root,
+      maxCachedFileSizeBytes: 50 * 1024 * 1024,
+    }).pull()
 
     const record = await readJsonFile<{ title: string }>(root, 'songs/song-1.json')
     expect(record?.title).toBe('A')

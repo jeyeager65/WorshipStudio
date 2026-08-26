@@ -757,6 +757,18 @@ export interface SyncPort {
    *  desktop/web builds' "sync" is just Dropbox's own desktop client, running outside this app
    *  entirely). */
   runSync?(): Promise<void>
+  /** Tablet-only — uploads local changes without the delta pull `runSync` does. For the debounced
+   *  push after a local edit (useTabletSync.ts), where nothing needs fetching and a full cycle
+   *  every few seconds would be waste. Absent on every other adapter kind. */
+  runPush?(): Promise<void>
+  /** Tablet-only — fires whenever this device writes to the library, so a caller can push shortly
+   *  after an edit rather than waiting for the next timed cycle. Returns an unsubscribe function.
+   *
+   *  Deliberately a notification and not a push: debouncing, and the decision to sync at all,
+   *  belong to the caller (useTabletSync.ts), which already owns every other trigger. Absent on
+   *  every other adapter kind — their "sync" is the provider's own desktop client, outside this
+   *  app entirely. */
+  onLocalChange?(listener: () => void): () => void
   /** Tablet-only — a snapshot of the currently in-flight pull/push cycle, or undefined when none
    *  is running. Absent on every other adapter kind. */
   getProgress?(): Promise<SyncProgress | undefined>

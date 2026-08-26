@@ -7,11 +7,26 @@ import { useTabletSync } from '../useTabletSync'
 const { getAdapter } = vi.hoisted(() => ({ getAdapter: vi.fn() }))
 vi.mock('@/adapters', () => ({ getAdapter }))
 
-function makeAdapter(kind: string, runSync = vi.fn(), getStatus?: ReturnType<typeof vi.fn>) {
+/** Captures the listener useTabletSync subscribes with, so tests can fire a "local write". */
+let emitLocalChange: (() => void) | undefined
+
+function makeAdapter(
+  kind: string,
+  runSync = vi.fn(),
+  getStatus?: ReturnType<typeof vi.fn>,
+  runPush = vi.fn(),
+) {
   return {
     kind,
     sync: {
       runSync,
+      runPush,
+      onLocalChange: (listener: () => void) => {
+        emitLocalChange = listener
+        return () => {
+          emitLocalChange = undefined
+        }
+      },
       getStatus:
         getStatus ??
         vi.fn().mockResolvedValue({
@@ -54,6 +69,7 @@ async function flush() {
 beforeEach(() => {
   setActivePinia(createPinia())
   getAdapter.mockReset()
+  emitLocalChange = undefined
   vi.useFakeTimers()
   setVisibility('visible')
 })
@@ -169,7 +185,12 @@ describe('useTabletSync', () => {
     const runSync = vi.fn()
     const getStatus = vi
       .fn()
-      .mockResolvedValue({ folderReadable: true, conflictCount: 0, recoveryCount: 0, reauthFailurePending: true })
+      .mockResolvedValue({
+        folderReadable: true,
+        conflictCount: 0,
+        recoveryCount: 0,
+        reauthFailurePending: true,
+      })
     getAdapter.mockReturnValue(makeAdapter('tablet', runSync, getStatus))
 
     mountHost()
@@ -185,8 +206,18 @@ describe('useTabletSync', () => {
     const runSync = vi.fn()
     const getStatus = vi
       .fn()
-      .mockResolvedValueOnce({ folderReadable: true, conflictCount: 0, recoveryCount: 0, reauthFailurePending: true })
-      .mockResolvedValue({ folderReadable: true, conflictCount: 0, recoveryCount: 0, reauthFailurePending: false })
+      .mockResolvedValueOnce({
+        folderReadable: true,
+        conflictCount: 0,
+        recoveryCount: 0,
+        reauthFailurePending: true,
+      })
+      .mockResolvedValue({
+        folderReadable: true,
+        conflictCount: 0,
+        recoveryCount: 0,
+        reauthFailurePending: false,
+      })
     getAdapter.mockReturnValue(makeAdapter('tablet', runSync, getStatus))
 
     mountHost()
@@ -199,5 +230,66 @@ describe('useTabletSync', () => {
 
     await vi.advanceTimersByTimeAsync(20 * 1000)
     expect(runSync).not.toHaveBeenCalled()
+  })
+})
+
+describe('pushing after a local edit', () => {
+  // Before this, an edit made while sitting on the page waited for the next visibility/focus/
+  // interval tick — up to five minutes — which read as the app simply not saving. See
+  // notes/tablet-push-latency-plan.md.
+  it('pushes a few seconds after a local write, without a full sync cycle', async () => {
+    const runSync = vi.fn()
+    const runPush = vi.fn()
+    getAdapter.mockReturnValue(makeAdapter('tablet', runSync, undefined, runPush))
+    mountHost()
+    await flush()
+    runSync.mockClear() // the mount-time cycle
+
+    emitLocalChange!()
+    expect(runPush).not.toHaveBeenCalled() // debounced, not immediate
+
+    await vi.advanceTimersByTimeAsync(4_000)
+    await flush()
+
+    expect(runPush).toHaveBeenCalledTimes(1)
+    expect(runSync).not.toHaveBeenCalled()
+  })
+
+  it('collapses a burst of writes into one push, timed from the last of them', async () => {
+    const runPush = vi.fn()
+    getAdapter.mockReturnValue(makeAdapter('tablet', vi.fn(), undefined, runPush))
+    mountHost()
+    await flush()
+
+    emitLocalChange!()
+    await vi.advanceTimersByTimeAsync(3_000)
+    emitLocalChange!() // restarts the timer
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(runPush).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1_500)
+    await flush()
+    expect(runPush).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not push after unmount, when a write landed just before it', async () => {
+    const runPush = vi.fn()
+    getAdapter.mockReturnValue(makeAdapter('tablet', vi.fn(), undefined, runPush))
+    const wrapper = mountHost()
+    await flush()
+
+    emitLocalChange!()
+    wrapper.unmount()
+    await vi.advanceTimersByTimeAsync(10_000)
+    await flush()
+
+    expect(runPush).not.toHaveBeenCalled()
+  })
+
+  it('never subscribes on a non-tablet adapter', async () => {
+    getAdapter.mockReturnValue(makeAdapter('web'))
+    mountHost()
+    await flush()
+    expect(emitLocalChange).toBeUndefined()
   })
 })

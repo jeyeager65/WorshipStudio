@@ -88,6 +88,12 @@ function createProvider(config: TabletAdapterConfig): CloudSyncProvider {
 
 export async function createTabletAdapter(config: TabletAdapterConfig): Promise<StudioAdapter> {
   const rawRoot = await getOpfsRoot()
+  // Notified on every local write, so useTabletSync can push shortly after an edit instead of
+  // leaving it to the next timed cycle. The dirty-tracking callback below is already the one place
+  // every port's writes funnel through, which is what makes this trigger a few lines rather than a
+  // change threaded through every store's save and delete — see notes/tablet-push-latency-plan.md.
+  const localChangeListeners = new Set<() => void>()
+
   // Every operator-facing port below is built against this wrapped root, not rawRoot directly —
   // that's what lets cloudSync.ts find out what changed locally since the last push without
   // any of those ports needing to know sync exists at all. cloudSync.ts itself is handed
@@ -102,6 +108,14 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
     // extra synced file per edited record ever could.
     if (path.endsWith('.backup')) return
     void syncStore.setDirty(path, { deleted: kind === 'remove', attempts: 0, nextRetryAt: 0 })
+    // A listener throwing must never break the write that triggered it.
+    for (const listener of localChangeListeners) {
+      try {
+        listener()
+      } catch {
+        // ignored on purpose
+      }
+    }
   })
 
   const settings = createWebSettingsPort(trackedRoot)
@@ -300,6 +314,11 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
         await cloudSync.resolveConflict(conflictFilePath, keep)
       },
       runSync: () => cloudSync.runSync(),
+      runPush: () => cloudSync.runPush(),
+      onLocalChange: (listener) => {
+        localChangeListeners.add(listener)
+        return () => localChangeListeners.delete(listener)
+      },
       getProgress: () => cloudSync.getProgress(),
       resetAndResync: () => cloudSync.resetAndResync(),
       reconcile: () => cloudSync.reconcile(),
