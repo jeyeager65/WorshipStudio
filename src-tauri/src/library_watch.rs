@@ -144,13 +144,9 @@ pub fn start(app: AppHandle) {
         log::info!("Watching {} for changes made elsewhere", root.display());
 
         let mut pending: HashSet<PathBuf> = HashSet::new();
-        loop {
-            // Block for the next event, then keep draining for DEBOUNCE so a burst of writes
-            // becomes one notification rather than one per file.
-            let first = match rx.recv() {
-                Ok(event) => event,
-                Err(_) => break, // sender dropped; app is shutting down
-            };
+        // Blocks for the next event, then keeps draining for DEBOUNCE so a burst of writes becomes
+        // one notification rather than one per file. Ends when the sender drops, at shutdown.
+        while let Ok(first) = rx.recv() {
             collect(first, &mut pending, &local_media_root);
             while let Ok(event) = rx.recv_timeout(DEBOUNCE) {
                 collect(event, &mut pending, &local_media_root);
