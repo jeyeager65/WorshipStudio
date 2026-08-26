@@ -22,6 +22,7 @@ import { useTabletSync } from '@/composables/useTabletSync'
 import { usePwaUpdate } from '@/composables/usePwaUpdate'
 import { useTauriUpdate } from '@/composables/useTauriUpdate'
 import { formatSyncProgressLabel } from '@/utils/syncProgress'
+import { formatSyncAge, isSyncStale } from '@/utils/syncStaleness'
 import { logger } from '@/utils/logger'
 import appIcon from '@/assets/app-icon.png'
 
@@ -46,11 +47,34 @@ const hasDesktopBackend = getAdapter().kind === 'tauri'
 // is in flight.
 const syncProgressLabel = computed(() => formatSyncProgressLabel(syncStore.progress))
 
+// Ticks so the staleness check below re-evaluates while the app simply sits open — otherwise the
+// indicator would keep whatever verdict it reached at mount and never go stale in place. A minute
+// is comfortably finer than the 30-minute threshold; it's also the coarsest interval that still
+// updates the "x minutes ago" text believably.
+const now = ref(Date.now())
+let clockId: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  clockId = setInterval(() => (now.value = Date.now()), 60_000)
+})
+onUnmounted(() => clearInterval(clockId))
+
+// A *predictor* of a connection that can no longer be renewed silently, as opposed to
+// needsReconnect, which only ever appears after a sync has actually run and failed twice (see
+// syncStaleness.ts). Without it an iPad left overnight shows a reassuring "all synced" check,
+// because iOS suspended the sync timer and nothing has tried since.
+const syncIsStale = computed(
+  () => isTabletBuild && isSyncStale(syncStore.status?.lastSyncedAt, now.value),
+)
+
 const syncTooltipText = computed(() => {
   if (syncStore.syncing) return syncProgressLabel.value || 'Syncing…'
-  if (syncStore.status?.lastSyncedAt)
-    return `Last synced ${new Date(syncStore.status.lastSyncedAt).toLocaleTimeString()}`
-  return 'Not synced yet'
+  const age = formatSyncAge(syncStore.status?.lastSyncedAt, now.value)
+  if (syncIsStale.value) {
+    return syncStore.status?.lastSyncedAt
+      ? `Last synced ${age} — sync now to confirm this device is still connected.`
+      : 'This device has never finished a sync.'
+  }
+  return `Last synced ${age}`
 })
 
 // App-wide banner for syncStore.status.needsReconnect, below — the app-bar icon above is easy to
@@ -715,8 +739,18 @@ onUnmounted(() => {
             <!-- Progress text is shown inline, not just on open — this runs on touchscreen
                  tablets, where a hover-only tooltip is effectively invisible. -->
             <div v-bind="props" class="sync-indicator mr-3">
+              <!-- Stale gets the alert cloud in warning colour, but keeps this menu rather than
+                   the bare tooltip needsReconnect uses: here "Sync Now" is the right next action,
+                   and it either clears the staleness or surfaces the real reconnect need. -->
               <v-icon
-                :icon="syncStore.syncing ? 'mdi-cloud-sync-outline' : 'mdi-cloud-check-outline'"
+                :icon="
+                  syncStore.syncing
+                    ? 'mdi-cloud-sync-outline'
+                    : syncIsStale
+                      ? 'mdi-cloud-alert-outline'
+                      : 'mdi-cloud-check-outline'
+                "
+                :color="!syncStore.syncing && syncIsStale ? 'warning' : undefined"
                 :class="{ 'sync-spin': syncStore.syncing }"
               />
               <span v-if="syncStore.syncing && syncProgressLabel" class="sync-progress-text">{{
