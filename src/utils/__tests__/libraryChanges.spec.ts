@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   describeLibraryChanges,
+  recordKey,
+  recordKeyForLibraryPath,
   storeForLibraryPath,
   storesForLibraryPaths,
 } from '@/utils/libraryChanges'
@@ -82,5 +84,31 @@ describe('describeLibraryChanges', () => {
 
   it('falls back to something sensible when nothing is named', () => {
     expect(describeLibraryChanges([])).toBe('The library')
+  })
+})
+
+describe('recordKeyForLibraryPath', () => {
+  it('identifies a record in a directory-per-record store', () => {
+    expect(recordKeyForLibraryPath('people/person-1.json')).toBe('people:person-1')
+    expect(recordKeyForLibraryPath('songs/song-1.json')).toBe('songs:song-1')
+  })
+
+  it('handles services nesting under a year', () => {
+    // Taking the filename rather than the segment after the directory is what makes this work.
+    expect(recordKeyForLibraryPath('services/2026/service-1.json')).toBe('services:service-1')
+  })
+
+  it('returns undefined for whole-list files, which name no individual record', () => {
+    expect(recordKeyForLibraryPath('roles.json')).toBeUndefined()
+    expect(recordKeyForLibraryPath('service-types.json')).toBeUndefined()
+  })
+
+  it('returns undefined for anything it cannot place', () => {
+    expect(recordKeyForLibraryPath('media/clip.mp4')).toBeUndefined()
+    expect(recordKeyForLibraryPath('unknown/x.json')).toBeUndefined()
+  })
+
+  it('matches the key an editor builds for the same record', () => {
+    expect(recordKeyForLibraryPath('people/person-1.json')).toBe(recordKey('people', 'person-1'))
   })
 })

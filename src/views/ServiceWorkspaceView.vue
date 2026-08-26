@@ -54,6 +54,8 @@ import type { Song, SongBlock } from '@/models/song'
 import type { LibrarySlide, PresentationThemeTarget } from '@/models/library'
 import { personFormalName } from '@/models/library'
 import { scenePlainText } from '@/utils/slideScene'
+import { useLibraryChangesStore } from '@/stores/libraryChanges'
+import ChangedElsewhereNotice from '@/components/ChangedElsewhereNotice.vue'
 import {
   isPresentationThemeAvailableFor,
   isPresentationThemeDefaultFor,
@@ -79,9 +81,7 @@ const songCollectionsStore = useSongCollectionsStore()
 const peopleStore = usePeopleStore()
 const syncStore = useSyncStore()
 const { isPresenting } = storeToRefs(useLiveSessionStore())
-const { isDirty, saving, saveHandler, navCollapseRequested } = storeToRefs(
-  useUnsavedChangesStore(),
-)
+const { isDirty, saving, saveHandler, navCollapseRequested } = storeToRefs(useUnsavedChangesStore())
 const confirmDialog = useConfirmDialogStore()
 
 // Responsive breakpoints for this view's own toolbar/layout, chosen against real device CSS
@@ -322,6 +322,33 @@ async function resolveMediaItem(mediaId: string) {
   } catch (e) {
     mediaErrors.set(mediaId, errorMessage(e, 'Failed to load media file.'))
   }
+}
+
+const libraryChanges = useLibraryChangesStore()
+
+// `service` below is fetched straight from the adapter into a private ref, so reloading the
+// services store never reaches it. Saving overwrites whatever another device saved meanwhile —
+// which for a service being edited on the presenting machine is the *right* outcome, but the
+// operator should still be told rather than find out later. See stores/libraryChanges.ts.
+const serviceId = computed(() => route.params.id as string | undefined)
+const changedElsewhere = computed(() =>
+  libraryChanges.wasChangedElsewhere('services', serviceId.value),
+)
+
+/** Throws away this workspace's unsaved edits and reopens on the version another device saved. */
+async function loadTheirVersion() {
+  libraryChanges.acknowledge('services', serviceId.value)
+  const id = serviceId.value
+  if (!id) return
+  try {
+    service.value = await getAdapter().services.get(id)
+  } catch (error) {
+    workspaceLoadError.value = asyncErrorMessage(error)
+  }
+}
+
+function keepMine() {
+  libraryChanges.acknowledge('services', serviceId.value)
 }
 
 onMounted(async () => {
@@ -1453,6 +1480,13 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
     class="workspace-root"
     :class="{ 'workspace-root--short': isShortViewport }"
   >
+    <ChangedElsewhereNotice
+      v-if="changedElsewhere"
+      noun="service"
+      :has-unsaved-changes="isDirty"
+      @reload="loadTheirVersion"
+      @keep="keepMine"
+    />
     <v-alert
       v-if="servicesStore.mutationError"
       type="error"
@@ -1526,7 +1560,9 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
             variant="text"
             size="small"
             :color="openDrawer === 'preview' ? 'primary' : undefined"
-            :title="openDrawer === 'preview' ? 'Close presentation preview' : 'Open presentation preview'"
+            :title="
+              openDrawer === 'preview' ? 'Close presentation preview' : 'Open presentation preview'
+            "
             :aria-label="
               openDrawer === 'preview' ? 'Close presentation preview' : 'Open presentation preview'
             "
@@ -3063,7 +3099,11 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
               <div class="text-body-2">Click to make this item live.</div>
             </div>
 
-            <div v-if="!externalAppLaunchAvailable" class="text-caption text-medium-emphasis mt-2" style="max-width: 460px">
+            <div
+              v-if="!externalAppLaunchAvailable"
+              class="text-caption text-medium-emphasis mt-2"
+              style="max-width: 460px"
+            >
               External apps aren't available on this device — launch this item from the computer
               that actually presents.
             </div>
@@ -3074,7 +3114,11 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
                  delay (spawning, waiting for its window) live. Hidden entirely (rather than shown
                  disabled) once !externalAppLaunchAvailable — on that device they'd just be dead
                  buttons, the note above already explains why. -->
-            <div v-if="externalAppLaunchAvailable" class="d-flex align-center ga-2 mt-3" style="max-width: 460px">
+            <div
+              v-if="externalAppLaunchAvailable"
+              class="d-flex align-center ga-2 mt-3"
+              style="max-width: 460px"
+            >
               <template v-if="isPresenting && itemHasLive(selectedItemIndex)">
                 <v-btn
                   variant="tonal"
@@ -3628,7 +3672,8 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
   transition: transform 0.22s ease;
   transform: translateX(-100%);
 }
-.workspace-layout--order-drawer.workspace-layout--preview-drawer :deep(.service-panel.order-drawer-open) {
+.workspace-layout--order-drawer.workspace-layout--preview-drawer
+  :deep(.service-panel.order-drawer-open) {
   transform: translateX(0);
 }
 .drawer-backdrop {

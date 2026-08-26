@@ -211,3 +211,33 @@ Removed. Reload now refreshes everything that changed, unconditionally.
 Worth being clear about what this does _not_ change: if two people edit the same record and both
 save, the later save wins. That is pre-existing last-write-wins behaviour, unaffected by whether the
 list was refreshed, and out of scope here.
+
+## Follow-up: warn an open editor whose record moved (2026-08-26)
+
+Found by using it. Desktop: person editor open with an unsaved change. Phone: same person edited and
+saved. The banner appeared, Reload was pressed, and nothing visible happened.
+
+Reload had in fact worked — it refreshed the people _store_. But editors hold a private copy
+(`PersonEditorView` `structuredClone`s out of the store at load; `SongEditorView` and
+`ServiceWorkspaceView` fetch straight from the adapter), so the open editor kept showing the version
+it started from. Worse than looking broken: there is no version check anywhere in the save path, so
+saving would have silently overwritten the phone's change with no artifact and no warning.
+
+Note the earlier correction only established that reloading _cannot destroy_ unsaved work, which is
+why removing the dirty-skip was right. It did not make Reload reach editors, and the editor is where
+the risk actually lives.
+
+**Built:** `stores/libraryChanges.ts` tracks changed records as `store:id` (fed from the same watcher
+event), `utils/libraryChanges.ts` gained `recordKeyForLibraryPath`, and
+`components/ChangedElsewhereNotice.vue` renders an inline warning wired into the person, song and
+service editors. It offers taking the newer version or keeping the local draft, and says plainly
+that saving will overwrite.
+
+**Deliberately a warning, not a resolution flow.** The provider's conflicted-copy machinery handles
+two _saved_ versions it could not merge; here the other save landed cleanly and only this editor's
+draft is stale. Last-write-wins stays the behaviour — for a service edited on the presenting machine
+mid-service, that machine _should_ win, and the banner is already suppressed there, so the notice is
+purely informational once presenting stops. What was missing was telling anyone.
+
+Not done, and not currently planned: a save-time version check, which would also catch a change
+arriving while a save is in flight. Judged not worth it for how rare this is.

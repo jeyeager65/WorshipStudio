@@ -14,12 +14,35 @@ import { errorMessage } from '@/composables/useAsyncStoreState'
 import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import type { RemoteDevice } from '@/adapters/types'
 import type { Person, UnavailableDateRange } from '@/models/library'
+import { useLibraryChangesStore } from '@/stores/libraryChanges'
+import ChangedElsewhereNotice from '@/components/ChangedElsewhereNotice.vue'
 
 const titleSuggestions = ['Pastor', 'Elder', 'Mr.', 'Mrs.', 'Ms.', 'Dr.']
 
 const route = useRoute()
 const router = useRouter()
 const peopleStore = usePeopleStore()
+const libraryChanges = useLibraryChangesStore()
+
+// Reloading the people store cannot reach `person` below — it is a structuredClone taken at load —
+// so without this an edit made here silently overwrites whatever another device saved meanwhile.
+// See stores/libraryChanges.ts.
+const personId = computed(() =>
+  route.params.id === 'new' ? undefined : (route.params.id as string),
+)
+const changedElsewhere = computed(() =>
+  libraryChanges.wasChangedElsewhere('people', personId.value),
+)
+
+/** Throws away this editor's draft and reopens on the version another device saved. */
+async function loadTheirVersion() {
+  libraryChanges.acknowledge('people', personId.value)
+  await loadEditor()
+}
+
+function keepMine() {
+  libraryChanges.acknowledge('people', personId.value)
+}
 const roleGroupsStore = useRoleGroupsStore()
 const rolesStore = useRolesStore()
 const confirmDialog = useConfirmDialogStore()
@@ -272,6 +295,14 @@ function formatDateRange(range: UnavailableDateRange): string {
     back-label="Back to People"
   />
   <main v-else-if="person" class="person-editor-page">
+    <ChangedElsewhereNotice
+      v-if="changedElsewhere"
+      noun="person"
+      :has-unsaved-changes="isDirty"
+      :loading="editorLoading"
+      @reload="loadTheirVersion"
+      @keep="keepMine"
+    />
     <header class="editor-header">
       <div class="header-content">
         <v-btn to="/people" variant="text" prepend-icon="mdi-arrow-left" class="back-button"
@@ -397,10 +428,7 @@ function formatDateRange(range: UnavailableDateRange): string {
                 </p>
               </div>
             </div>
-            <div
-              v-if="rolesStore.roles.some((r) => r.groupId === group.id)"
-              class="role-options"
-            >
+            <div v-if="rolesStore.roles.some((r) => r.groupId === group.id)" class="role-options">
               <button
                 v-for="role in rolesStore.roles.filter((r) => r.groupId === group.id)"
                 :key="role.id"

@@ -15,6 +15,8 @@ import { useDocumentHistory } from '@/composables/useDocumentHistory'
 import type { Song, SongBlock } from '@/models/song'
 import type { SongCollectionDefinition } from '@/models/settings'
 import { getLastUsedDate, getUsesInPastYear, todayLocal } from '@/utils/songUsage'
+import { useLibraryChangesStore } from '@/stores/libraryChanges'
+import ChangedElsewhereNotice from '@/components/ChangedElsewhereNotice.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -49,6 +51,24 @@ function blankSong(): Song {
 // `watch` called after an `await` (inside onMounted's async callback) runs outside Vue's
 // synchronous component-setup tracking, so it isn't auto-stopped on unmount — stopping it
 // explicitly is what actually scopes it to this view's lifetime rather than leaking forever.
+const libraryChanges = useLibraryChangesStore()
+
+// `song` below is fetched straight from the adapter into a private ref, so reloading the songs
+// store never reaches it — and saving would silently overwrite whatever another device saved
+// meanwhile. See stores/libraryChanges.ts.
+const songId = computed(() => (route.params.id === 'new' ? undefined : (route.params.id as string)))
+const changedElsewhere = computed(() => libraryChanges.wasChangedElsewhere('songs', songId.value))
+
+/** Throws away this editor's draft and reopens on the version another device saved. */
+async function loadTheirVersion() {
+  libraryChanges.acknowledge('songs', songId.value)
+  await loadEditor()
+}
+
+function keepMine() {
+  libraryChanges.acknowledge('songs', songId.value)
+}
+
 onMounted(loadEditor)
 
 async function loadEditor() {
@@ -182,6 +202,14 @@ function removeFromArrangement(index: number) {
     back-label="Back to Songs"
   />
   <main v-else-if="song" class="song-editor-page">
+    <ChangedElsewhereNotice
+      v-if="changedElsewhere"
+      noun="song"
+      :has-unsaved-changes="isDirty"
+      :loading="editorLoading"
+      @reload="loadTheirVersion"
+      @keep="keepMine"
+    />
     <header class="editor-header">
       <div class="header-content">
         <v-btn to="/library/songs" variant="text" prepend-icon="mdi-arrow-left" class="back-button"

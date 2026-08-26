@@ -41,6 +41,7 @@ import { useRoleGroupsStore } from '@/stores/roleGroups'
 import { useServiceTemplatesStore } from '@/stores/serviceTemplates'
 import { useExternalAppsStore } from '@/stores/externalApps'
 import { useSettingsStore } from '@/stores/settings'
+import { useLibraryChangesStore } from '@/stores/libraryChanges'
 import {
   describeLibraryChanges,
   storesForLibraryPaths,
@@ -123,7 +124,12 @@ export function useLibraryChangeWatch(): LibraryChangeWatch {
     if (getAdapter().kind !== 'tauri') return
     try {
       unlisten = await listen<string[]>(LIBRARY_CHANGED_EVENT, (event) => {
-        const stores = storesForLibraryPaths(event.payload ?? [])
+        const paths = event.payload ?? []
+        // Per-record, for open editors: reloading a store cannot reach an editor's private copy of
+        // the record it is editing, and saving over someone else's change unwarned is the real harm
+        // here. See stores/libraryChanges.ts.
+        useLibraryChangesStore().note(paths)
+        const stores = storesForLibraryPaths(paths)
         if (stores.length === 0) return
         pending.value = [...new Set([...pending.value, ...stores])].sort() as LibraryStoreName[]
       })

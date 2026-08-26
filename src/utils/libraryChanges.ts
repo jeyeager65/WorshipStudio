@@ -57,8 +57,13 @@ const FILE_STORES: ReadonlyArray<readonly [string, LibraryStoreName]> = [
 
 /** The store one changed path belongs to, or undefined for anything unrecognised — a file this
  *  version does not know about must never be mistaken for one it does. */
+/** Paths can arrive with Windows separators or a leading slash depending on the reporter. */
+function normalize(path: string): string {
+  return path.replace(/\\/g, '/').replace(/^\/+/, '')
+}
+
 export function storeForLibraryPath(path: string): LibraryStoreName | undefined {
-  const normalized = path.replace(/\\/g, '/').replace(/^\/+/, '')
+  const normalized = normalize(path)
   for (const [file, store] of FILE_STORES) {
     if (normalized === file) return store
   }
@@ -109,4 +114,27 @@ export function describeLibraryChanges(stores: readonly LibraryStoreName[]): str
 
 function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+/** Identifies one changed record as `store:id`, for an editor asking "did the thing I have open
+ *  change underneath me?".
+ *
+ *  Only the directory-per-record stores have records to identify — a change to `roles.json` is a
+ *  change to the whole list, with no individual id to speak of, so those return undefined. Services
+ *  nest under a year (`services/2026/service-1.json`); taking the filename rather than the segment
+ *  after the directory is what makes that work without special-casing it. */
+export function recordKeyForLibraryPath(path: string): string | undefined {
+  const normalized = normalize(path)
+  const store = storeForLibraryPath(normalized)
+  if (!store) return undefined
+  if (!DIRECTORY_STORES.some(([dir]) => normalized.startsWith(dir))) return undefined
+  const fileName = normalized.split('/').pop() ?? ''
+  if (!fileName.endsWith('.json')) return undefined
+  const id = fileName.slice(0, -'.json'.length)
+  return id ? `${store}:${id}` : undefined
+}
+
+/** The key an editor compares against. */
+export function recordKey(store: LibraryStoreName, id: string): string {
+  return `${store}:${id}`
 }
