@@ -28,8 +28,6 @@ import {
   disconnect as disconnectOneDrive,
   isConnected as isOneDriveConnected,
 } from '@/adapters/tablet/providers/onedriveAuth'
-import { generateQrCodeDataUrl } from '@/utils/qrCode'
-import { buildConnectCode } from '@/utils/connectCode'
 import { formatSyncProgressLabel } from '@/utils/syncProgress'
 import {
   buildSampleServices,
@@ -45,7 +43,7 @@ import {
 import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 
 const store = useSettingsStore()
-const { machineSettings } = storeToRefs(store)
+const { machineSettings, libraryCredentials } = storeToRefs(store)
 const syncStore = useSyncStore()
 const songsStore = useSongsStore()
 const servicesStore = useServicesStore()
@@ -147,7 +145,7 @@ async function switchConnectionMethod() {
 
 // A one-tap recovery for ProviderReauthRequiredError (syncStore.status.needsReconnect) that
 // doesn't require Disconnect first — reuses this device's already-stored client ID/library path
-// (machineSettings, the same values "Add Another Device" QR-codes for a second device) rather
+// (machineSettings, this device's own cached copy of what it connected with) rather
 // than making the operator re-enter anything. On a real device, confirmed this alone is often
 // enough to clear a false "needs reconnect" (the underlying browser session was still signed in
 // the whole time; only OneDrive's own silent hidden-iframe reauth attempt had failed, not the
@@ -273,55 +271,51 @@ async function clearAndResync() {
   }
 }
 
-// A short block of plain text (see connectCode.ts's own doc comment for why it's deliberately not
-// a link) that pre-fills and immediately starts BootGate.vue's connect flow on another device once
-// pasted there. The app key/client ID isn't a secret (see LibraryCredentials.dropboxIntegration's own
-// doc comment — PKCE public clients don't have one), so carrying it in plain text is the same
-// reasoning Remote Control's own pairing link/QR already relies on. This is what turns "type in a
-// raw app key" from a per-device chore into a one-time setup task done only for the very first
-// device.
-const addDeviceCode = computed(() => {
-  const clientId = machineSettings.value?.tabletCloudClientId
-  if (!isCloudConnected || !clientId) return ''
-  return buildConnectCode({
-    provider: cloudProvider.value,
-    clientId,
-    libraryFolderPath: machineSettings.value?.tabletCloudLibraryFolderPath ?? '',
-  })
-})
-// The QR image encodes a real URL wrapping the same code, not the plain text directly — confirmed
-// on a real device that scanning plain text just prompts "Search the web for ...", with no copy
-// option at all. A real https:// link, by contrast, gets iOS's camera to reliably offer "Open in
-// Safari" (its one genuinely solid QR heuristic). BootGate.vue's own `connectCode` param handling
-// deliberately doesn't auto-connect anything from that Safari tab — it just re-displays this exact
-// code with a Copy button under our own control, sidestepping Apple's flaky text-recognition UI
-// entirely. The text field below still shows the plain code directly for copying without a camera.
-const addDeviceQrUrl = computed(() => {
-  if (!addDeviceCode.value) return ''
-  const params = new URLSearchParams()
-  params.set('connectCode', addDeviceCode.value)
-  return `${window.location.origin}${window.location.pathname}?${params.toString()}`
-})
-const addDeviceQr = ref('')
-watch(
-  addDeviceQrUrl,
-  async (url) => {
-    addDeviceQr.value = url ? await generateQrCodeDataUrl(url) : ''
+/**
+ * The church's cloud app registration id — a Microsoft Entra client ID, or a Dropbox app key. Every
+ * device needs it before it can talk to the provider's API at all, and it is the *only* value that
+ * still has to be transferred by hand: a OneDrive library folder is now picked from a list rather
+ * than typed (see BootGate.vue), and it is not a secret (PKCE public clients have none — see
+ * LibraryCredentials.dropboxIntegration's own doc comment), so it is fine to email.
+ *
+ * Stored church-wide in LibraryCredentials rather than read from this device's own connection, so
+ * a *desktop* can show it too. That matters: the desktop is where someone is most likely to be
+ * sitting when they need to send it, and it reaches the library as a plain synced folder without
+ * needing any app id itself. Those fields had been defined but never read or written by anything
+ * until now — see notes/tablet-onboarding-and-account-model.md.
+ */
+const oneDriveClientId = computed({
+  get: () => libraryCredentials.value?.oneDriveIntegration.clientId ?? '',
+  set: (value: string) => {
+    if (libraryCredentials.value) libraryCredentials.value.oneDriveIntegration.clientId = value
   },
-  { immediate: true },
-)
-// The inline QR is sized to sit next to the code field, too small to scan reliably at a glance —
-// clicking/tapping it shows the same image full-size in a dialog instead of needing a second,
-// separately-generated large rendering.
-const addDeviceQrDialog = ref(false)
-const addDeviceCodeCopied = ref(false)
-async function copyAddDeviceCode() {
-  await navigator.clipboard.writeText(addDeviceCode.value)
-  addDeviceCodeCopied.value = true
-  setTimeout(() => (addDeviceCodeCopied.value = false), 2000)
+})
+const dropboxAppKey = computed({
+  get: () => libraryCredentials.value?.dropboxIntegration.appKey ?? '',
+  set: (value: string) => {
+    if (libraryCredentials.value) libraryCredentials.value.dropboxIntegration.appKey = value
+  },
+})
+
+/** This tablet connected with an app id that was never recorded church-wide — offer to adopt it
+ *  rather than making someone dig it out of the provider's console to type back in. */
+const localAppIdToAdopt = computed(() => {
+  const local = machineSettings.value?.tabletCloudClientId
+  if (!isCloudConnected || !local) return ''
+  const stored = cloudProvider.value === 'onedrive' ? oneDriveClientId.value : dropboxAppKey.value
+  return stored.trim() ? '' : local
+})
+function adoptLocalAppId() {
+  if (!localAppIdToAdopt.value) return
+  if (cloudProvider.value === 'onedrive') oneDriveClientId.value = localAppIdToAdopt.value
+  else dropboxAppKey.value = localAppIdToAdopt.value
 }
-function selectAddDeviceCode(event: FocusEvent) {
-  ;(event.target as HTMLInputElement)?.select()
+
+const copiedAppId = ref('')
+async function copyAppId(value: string) {
+  await navigator.clipboard.writeText(value)
+  copiedAppId.value = value
+  setTimeout(() => (copiedAppId.value = ''), 2000)
 }
 
 const tabletMediaMaxCachedFileSizeMb = computed<number | null>({
@@ -790,67 +784,76 @@ async function saveDataLocationPath() {
 
       <v-divider class="my-4" />
 
-      <div class="mb-2">
-        <strong class="text-body-2">Add Another Device</strong>
-        <p class="text-caption text-medium-emphasis mb-2">
-          On the new device, scan this QR code with its regular camera app — it opens a page with a
-          Copy Code button (or just copy the code below directly) — then paste it into Worship
-          Studio's setup screen there. It's the same {{ cloudProviderLabel }} connection as this
-          device, no typing required.
-        </p>
-        <div class="add-device-row">
-          <button
-            v-if="addDeviceQr"
-            type="button"
-            class="add-device-qr-button"
-            @click="addDeviceQrDialog = true"
-          >
-            <img :src="addDeviceQr" alt="Connect a new device QR code" class="add-device-qr" />
-            <span class="text-caption text-medium-emphasis">Tap to enlarge</span>
-          </button>
-          <div class="add-device-link">
-            <v-textarea
-              :model-value="addDeviceCode"
-              label="Connect code"
-              variant="outlined"
-              density="compact"
-              rows="3"
-              readonly
-              hide-details
-              @focus="selectAddDeviceCode"
-            />
-            <v-btn variant="tonal" prepend-icon="mdi-content-copy" @click="copyAddDeviceCode">
-              {{ addDeviceCodeCopied ? 'Copied' : 'Copy Code' }}
-            </v-btn>
-          </div>
-        </div>
-      </div>
-
-      <v-dialog v-model="addDeviceQrDialog" max-width="420">
-        <v-card>
-          <v-card-title>Connect a New Device</v-card-title>
-          <v-card-text class="add-device-qr-dialog-body">
-            <img
-              v-if="addDeviceQr"
-              :src="addDeviceQr"
-              alt="Connect a new device QR code"
-              class="add-device-qr-large"
-            />
-            <p class="text-body-2 text-medium-emphasis">
-              Scan this with the new device's regular camera app — it opens a page with a Copy Code
-              button — then paste it into Worship Studio's setup screen there. No typing required.
-            </p>
-          </v-card-text>
-          <v-card-actions>
-            <v-spacer />
-            <v-btn variant="text" @click="addDeviceQrDialog = false">Close</v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-dialog>
-
       <v-alert v-if="cloudActionError" type="error" variant="tonal" density="compact" class="mt-3">
         {{ cloudActionError }}
       </v-alert>
+    </SettingsPanel>
+
+    <SettingsPanel
+      title="Add Another Device"
+      description="What a phone or tablet needs before it can join this library."
+      icon="mdi-cellphone-link"
+    >
+      <p class="text-caption text-medium-emphasis mb-3">
+        On the new device, open Worship Studio, choose your cloud provider, and paste the matching
+        ID below. It then signs in and picks the library folder from a list — nothing else has to be
+        typed. The ID isn't a secret, so it's fine to email or text.
+      </p>
+
+      <v-alert v-if="localAppIdToAdopt" type="info" variant="tonal" density="compact" class="mb-3">
+        <div class="d-flex align-center ga-3 flex-wrap">
+          <span
+            >This device connected with an ID that isn't recorded here yet. Save it so other devices
+            (and this church's computers) can see it.</span
+          >
+          <v-btn size="small" variant="flat" color="primary" @click="adoptLocalAppId">
+            Use This Device's ID
+          </v-btn>
+        </div>
+      </v-alert>
+
+      <div class="app-id-row">
+        <v-text-field
+          v-model="oneDriveClientId"
+          label="Microsoft app client ID (OneDrive)"
+          variant="outlined"
+          density="compact"
+          autocomplete="off"
+          hide-details
+        />
+        <v-btn
+          variant="tonal"
+          prepend-icon="mdi-content-copy"
+          :disabled="!oneDriveClientId.trim()"
+          @click="copyAppId(oneDriveClientId)"
+        >
+          {{ copiedAppId === oneDriveClientId ? 'Copied' : 'Copy' }}
+        </v-btn>
+      </div>
+
+      <div class="app-id-row mt-3">
+        <v-text-field
+          v-model="dropboxAppKey"
+          label="Dropbox app key"
+          variant="outlined"
+          density="compact"
+          autocomplete="off"
+          hide-details
+        />
+        <v-btn
+          variant="tonal"
+          prepend-icon="mdi-content-copy"
+          :disabled="!dropboxAppKey.trim()"
+          @click="copyAppId(dropboxAppKey)"
+        >
+          {{ copiedAppId === dropboxAppKey ? 'Copied' : 'Copy' }}
+        </v-btn>
+      </div>
+
+      <p class="text-caption text-medium-emphasis mt-3">
+        These come from your church's own app registration with Microsoft or Dropbox — one per
+        church, not one per device.
+      </p>
     </SettingsPanel>
 
     <SettingsPanel
@@ -1152,58 +1155,14 @@ async function saveDataLocationPath() {
   color: rgba(var(--v-theme-on-surface), 0.62);
   font-size: 0.78rem;
 }
-.add-device-row {
-  display: grid;
-  grid-template-columns: auto minmax(280px, 1fr);
-  align-items: start;
-  gap: 16px;
-  max-width: 760px;
-}
-.add-device-qr-button {
+.app-id-row {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 8px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
-  border-radius: 10px;
-  background: none;
-  cursor: pointer;
-  transition: border-color 0.15s ease;
-}
-.add-device-qr-button:hover,
-.add-device-qr-button:focus-visible {
-  border-color: rgb(var(--v-theme-primary));
-}
-.add-device-qr {
-  width: 128px;
-  height: 128px;
-  border-radius: 6px;
-  background: #fff;
-  padding: 6px;
-}
-.add-device-link {
-  display: flex;
-  align-items: flex-start;
   gap: 8px;
-  padding-top: 8px;
+  max-width: 640px;
 }
-.add-device-link .v-textarea {
+.app-id-row .v-text-field {
   flex: 1;
-}
-.add-device-qr-dialog-body {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  text-align: center;
-}
-.add-device-qr-large {
-  width: min(320px, 100%);
-  height: min(320px, 100%);
-  border-radius: 8px;
-  background: #fff;
-  padding: 12px;
 }
 @media (max-width: 700px) {
   .path-setting {
@@ -1219,9 +1178,9 @@ async function saveDataLocationPath() {
   .cloud-connection-status .v-btn {
     grid-column: 1 / -1;
   }
-  .add-device-row {
-    grid-template-columns: 1fr;
-    justify-items: center;
+  .app-id-row {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 </style>

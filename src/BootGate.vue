@@ -20,16 +20,13 @@
  * below via authFor()). This is also where the OAuth redirect lands on its way back for either
  * provider (a full top-level redirect, not a popup — see beginCloudConnect's own comment for
  * why), handled before anything else in onMounted so it takes priority over every other
- * resolution path — and where a scanned `?connectCode=` link lands (see the `connectCode` param
- * handling below and connectCode.ts's own doc comment for why the QR still carries a real URL —
- * reliable for both iOS's and Android's camera to open). What happens next differs by platform:
- * iOS always opens that link in a plain Safari tab (no way to route it into an already-installed
- * PWA), a separate storage partition from the installed app, so it only shows a copy-code landing
- * page rather than risk auto-connecting into storage the installed app will never see; Android's
- * link capturing often routes it straight into the already-installed PWA instead (confirmed on a
- * real device), where there's no such risk, so it connects directly with no copy/paste needed.
- * "Add Another Device" (LibrarySyncSection.vue) is this flow's other end: the connect code a
- * second device pastes here, or scans as that URL, to skip typing its app key/client ID by hand.
+ * resolution path.
+ *
+ * A device joins by choosing its provider, pasting the church's app key/client ID, signing in, and
+ * (on OneDrive) picking the library folder from a list. An earlier QR/connect-code flow was removed
+ * once the folder picker made it a way to transfer a single GUID — see
+ * notes/tablet-onboarding-and-account-model.md for that decision and the iOS/WebKit findings behind
+ * it, which are worth reading before anyone proposes scanning a QR again.
  */
 import { computed, onMounted, ref } from 'vue'
 import App from '@/App.vue'
@@ -46,7 +43,6 @@ import { getOpfsRoot } from '@/adapters/tablet/opfs'
 import { createWebSettingsPort } from '@/adapters/web/settings'
 import { usePwaInstall } from '@/composables/usePwaInstall'
 import { formatSyncProgressLabel } from '@/utils/syncProgress'
-import { parseConnectCode, type ConnectCode } from '@/utils/connectCode'
 import {
   authFor,
   beginCloudOAuthRedirect,
@@ -70,7 +66,6 @@ type Phase =
   | 'resolving'
   | 'chooser'
   | 'resuming'
-  | 'show-connect-code'
   | 'cloud-connect'
   | 'connecting-cloud'
   | 'choose-folder'
@@ -352,76 +347,10 @@ async function handleCloudRedirect(params: URLSearchParams) {
   }
 }
 
-// A connect code pasted from another already-connected device's Settings page ("Add Another
-// Device") — pre-fills and immediately starts the connect flow so this device never needs the
-// app key/client ID typed in by hand.
-async function applyConnectCode(code: ConnectCode): Promise<void> {
-  connectProvider.value = code.provider
-  cloudClientIdInput.value = code.clientId
-  cloudLibraryFolderPathInput.value = code.libraryFolderPath
-  phase.value = 'cloud-connect'
-  if (cloudClientIdInput.value) await beginCloudConnect()
-}
-
-const connectCodeInput = ref('')
-
-/** parseConnectCode rejects anything that isn't actually one of this app's own connect codes (a
- *  Remote Control pairing code pasted by mistake, random text) — surfaced right here rather than
- *  deeper in the connect flow, and the operator can just fix the paste and try again. */
-async function submitConnectCode(): Promise<void> {
-  const code = parseConnectCode(connectCodeInput.value)
-  if (!code) {
-    errorText.value =
-      "That doesn't look like a Worship Studio connect code. Check the paste and try again."
-    return
-  }
-  errorText.value = ''
-  await applyConnectCode(code)
-}
-
-// Reached via a scanned `?connectCode=` URL. iOS can't route a tapped/scanned link into an
-// already-installed PWA at all — it's always a plain Safari tab there, with a completely separate
-// storage partition from the installed app, so auto-connecting from that tab would just complete
-// the OAuth+sync flow into storage the installed app will never see (the exact double-sync problem
-// the connect-code approach exists to avoid). Android is different — its OS-level link capturing
-// often DOES route the link straight into the already-installed PWA, confirmed on a real device —
-// so in that case there's no separate-storage risk at all, and making the operator copy a code
-// only to paste it right back into the very same app they're already standing in is pure friction
-// with no safety benefit. pwaInstall.isStandalone (set in that composable's own onMounted, which
-// runs before this one — see usePwaInstall.ts) is what tells the two cases apart: apply directly
-// when already standalone, otherwise fall back to the copy-code landing page below for whatever
-// browser tab this turned out to be.
-const connectCodeToShow = ref('')
-const connectCodeToShowCopied = ref(false)
-async function copyConnectCodeToShow() {
-  await navigator.clipboard.writeText(connectCodeToShow.value)
-  connectCodeToShowCopied.value = true
-  setTimeout(() => (connectCodeToShowCopied.value = false), 2000)
-}
-function selectConnectCodeToShow(event: FocusEvent) {
-  ;(event.target as HTMLInputElement)?.select()
-}
-
 onMounted(async () => {
   const params = new URLSearchParams(window.location.search)
   if (params.has('code') && params.has('state')) {
     await handleCloudRedirect(params)
-    return
-  }
-
-  if (params.has('connectCode')) {
-    window.history.replaceState({}, '', window.location.pathname)
-    const raw = params.get('connectCode') ?? ''
-    const code = parseConnectCode(raw)
-    if (!code) {
-      errorText.value = 'That connect code looks invalid. Ask the other device to show it again.'
-      phase.value = 'chooser'
-    } else if (pwaInstall.isStandalone.value) {
-      await applyConnectCode(code)
-    } else {
-      connectCodeToShow.value = raw
-      phase.value = 'show-connect-code'
-    }
     return
   }
 
@@ -562,32 +491,12 @@ const showAdvancedConnect = ref(false)
             On a tablet or phone — join your church's library, already synced on another device.
           </p>
           <p class="boot-note">
-            On the already-connected device, go to Settings &gt; Library &amp; Sync &gt; Add Another
-            Device. Scan that QR code with your camera app (not this one) — it opens a page with a
-            Copy Code button — or just copy the code shown there directly.
+            Choose your cloud provider below and paste your church's app ID. Anyone already set up
+            can find it under Settings &gt; Library &amp; Sync &gt; Add Another Device.
           </p>
-          <v-textarea
-            v-model="connectCodeInput"
-            label="Paste connect code"
-            variant="outlined"
-            density="compact"
-            rows="3"
-            auto-grow
-            hide-details
-            class="mb-2"
-          />
-          <v-btn
-            color="primary"
-            size="large"
-            block
-            :disabled="!connectCodeInput.trim()"
-            @click="submitConnectCode"
-          >
-            Connect
-          </v-btn>
           <p v-if="!pwaInstall.isStandalone.value" class="boot-note">
             For the smoothest experience, install this as an app first (below), then come back and
-            paste the code.
+            connect.
           </p>
 
           <v-btn variant="text" size="large" block class="mt-2" @click="chooseDemo">
@@ -649,34 +558,6 @@ const showAdvancedConnect = ref(false)
           <v-btn color="primary" size="large" block @click="resumeAccess">Resume Access</v-btn>
           <v-btn variant="text" size="large" block class="mt-2" @click="pickDifferentFolder">
             Pick a Different Folder
-          </v-btn>
-        </template>
-
-        <template v-else-if="phase === 'show-connect-code'">
-          <p class="boot-lead">
-            Copy this connect code, then open Worship Studio — install it as an app first if you
-            haven't (Share &gt; Add to Home Screen) — and paste the code there to finish connecting
-            this device.
-          </p>
-          <v-textarea
-            :model-value="connectCodeToShow"
-            label="Connect code"
-            variant="outlined"
-            density="compact"
-            rows="3"
-            readonly
-            hide-details
-            class="mb-2"
-            @focus="selectConnectCodeToShow"
-          />
-          <v-btn
-            color="primary"
-            size="large"
-            block
-            prepend-icon="mdi-content-copy"
-            @click="copyConnectCodeToShow"
-          >
-            {{ connectCodeToShowCopied ? 'Copied' : 'Copy Code' }}
           </v-btn>
         </template>
 

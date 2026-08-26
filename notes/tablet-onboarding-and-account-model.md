@@ -459,6 +459,80 @@ the permission grant. Three reasons it is not the first move:
 Cheap to settle whenever it comes up: the scope is one constant in `providers/onedriveAuth.ts`.
 Register `Files.ReadWrite.Selected`, connect, and see whether the delta call returns or 403s.
 
+## 4d. Removed: the QR connect-code flow (2026-08-26)
+
+Deleted, along with `utils/connectCode.ts`, BootGate's `show-connect-code` phase and
+`?connectCode=` handling, and the QR image in Add Another Device. Recorded here because the
+platform findings behind it were expensive and would otherwise be rediscovered by whoever next asks
+"why not just scan a QR?"
+
+### Why it went
+
+The connect code carried provider, client ID and library folder path. Once the folder picker landed
+the path became meaningless — a shared folder has no path worth transferring — leaving the whole
+apparatus (QR image, `?connectCode=` URL, Safari landing page, `isStandalone` branching, code
+format, parser, paste field) in service of moving **one GUID**.
+
+Emailing the client ID beats it on every axis that matters: it reaches the device directly, works
+remotely so nobody has to stand next to a configured tablet, needs no camera or second screen, and
+skips the Safari-to-PWA detour entirely — which is what made iPad onboarding feel broken. Its one
+remaining advantage was in-person onboarding with no email, where the fallback is pasting into the
+client ID field that already exists.
+
+### The platform findings, worth keeping
+
+These are why the flow was as convoluted as it was. None of them has stopped being true:
+
+- **iOS cannot route a scanned link into an installed PWA.** It always opens a plain Safari tab,
+  which is a _separate storage partition_ from the installed app. Anything authenticated or cached
+  there is invisible to the PWA, so auto-connecting from that tab completed the whole OAuth + sync
+  flow into storage the app would never see. That is why the landing page only ever displayed a code
+  to copy.
+- **Android is different**, and its link capturing often opens the installed PWA directly, where
+  there is no partition problem — which is why the flow branched on `isStandalone` rather than
+  behaving uniformly.
+- **In-app camera scanning is not an option on iOS.** Scanning a live video feed inside an installed
+  PWA hits an unresolved WebKit bug where the video element never renders a frame
+  (bugs.webkit.org #252465). This is why the OS camera app plus copy/paste was the only workable
+  route.
+- **A plain-text QR is useless on iOS.** Confirmed on a real device: the camera offers only "Search
+  the web for …", with no copy affordance. Only a real `https://` link reliably gets "Open in
+  Safari", which is why the QR wrapped the code in a URL despite the code itself being plain text.
+
+### What replaced it
+
+Devices now connect by choosing OneDrive, pasting a client ID (emailed, or copied from Settings on
+any device that has it), signing in, and picking the folder from a list. Add Another Device is
+reduced to showing that client ID with a Copy button — and now reads the church-wide value from
+`LibraryCredentials`, so a _desktop_ can show it too, which is where the value is most likely to be
+fetched from. That also finally puts the previously-dead credential fields (section 2) to use.
+
+`utils/qrCode.ts` is untouched — it belongs to the QR **slides** feature and has nothing to do with
+device onboarding.
+
+## 4e. Documentation this creates a need for (flagged 2026-08-26)
+
+To be folded into the larger docs refresh rather than written piecemeal — see
+[notes/setup-wizard-join-plan.md](setup-wizard-join-plan.md)'s own documentation note. Recording it
+here so the requirement is not lost between now and then. None of the following is currently
+documented anywhere, and none of it is guessable by a church setting this up fresh:
+
+- **Registering the cloud app.** A Microsoft Entra app registration is a hard prerequisite and
+  nothing in the product explains it. It must be the **SPA** platform type — not Web, which expects
+  a client secret and fails CORS from a browser — needs `Files.ReadWrite.All` as a _delegated_
+  permission, and its redirect URI must match the app's `origin + pathname` exactly, trailing slash
+  included. The Dropbox equivalent needs the same treatment, including its development-mode cap of
+  roughly 50 linked users and what production approval involves.
+- **Adding a device**, in its current shape: open the app, choose the provider, paste the church's
+  app ID (from Settings → Library & Sync → Add Another Device, or emailed), sign in, pick the
+  library folder from the list. Any QR/connect-code instructions are obsolete — see 4d.
+- **The sharing model.** The library must be a _folder_, never the drive root, since a root cannot
+  be shared. Each person gets access by having that folder shared with them and signs in as
+  themselves; there is no shared password.
+- **Installing the PWA first on iOS**, still a real prerequisite and still not obvious.
+- **That every existing device must sign in again** after the scope widened to
+  `Files.ReadWrite.All`.
+
 ## 5. Adjacent finding: "Clear Existing Data" is more dangerous than it reads
 
 Found while working out a safe way to run the section 1 test, and not really an onboarding concern —
