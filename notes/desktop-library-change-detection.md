@@ -45,12 +45,12 @@ Noise to filter, since a cloud client's writes are messy:
 
 - `.backup` files — this device's own local artifacts, never shared content (same exclusion
   `adapters/tablet/index.ts`'s dirty tracking already makes).
-- OneDrive/Dropbox temp and partial files (`*.tmp`, `~$*`, `*.partial`, and the provider's own
-  hidden state folders).
+- Anything that is not `*.json` — see "Watch `*.json` only" below, which makes this the primary
+  filter rather than an optimisation.
+- Temp and partial files (`*.tmp`, `~$*`, `*.partial`, and the provider's own hidden state folders).
 - The Local media folder, which is deliberately never synced.
 - Writes the app itself just made — otherwise saving a song prompts the operator to reload the song
-  they just saved. Simplest defence is a short ignore-window keyed by path, set when the backend
-  writes; worth confirming against how the write commands are structured before committing to it.
+  they just saved. Handled by comparing content rather than by suppressing writes; see below.
 
 **Frontend side.** Map changed paths to the stores that own them (`songs/` → songs, `services/` →
 services, and so on — each web port already knows its own directory, so the mapping exists
@@ -93,24 +93,40 @@ mentioned at all.
 
 ## Open questions, worked through 2026-08-26
 
-### Self-writes: abandon the ignore-window, compare content instead
+### Watch `*.json` only — media binaries are out of scope
 
-There is no single write funnel. JSON goes through `domain/mod.rs`'s `write_json_file` →
-`atomic_write_bytes`, but **media imports bypass both and use `fs::copy` directly**
-(`domain/media.rs`). So an ignore-window would have to be threaded through at least two unrelated
-call sites, and stay threaded as new ones appear.
+Operator's observation, and the code confirms it: `domain/media.rs`'s `replace_from_file` copies the
+binary and then calls `save(...)`, rewriting the JSON with a fresh `content_hash`, `updatedAt` and
+`updatedByDevice`. `delete`'s own comment calls the metadata "the library's authoritative record."
 
-Worse, it is _racy in the direction that matters_: a genuine remote change landing inside the same
-window is silently swallowed, and the operator is never told. Failing toward "say nothing" is the
-wrong bias for the exact problem this feature exists to solve.
+**So no meaningful media change can occur without its JSON changing** — the hash lives there. A
+binary-file event tells us nothing its metadata event does not.
 
-**Better: decide by content, not by provenance.** When the watcher fires, re-read the changed file
-and compare against what the store already holds. Identical means the app wrote it — no prompt.
-Different means something real changed — prompt. This needs no registry, no call-site threading, and
-is correct in the case an ignore-window gets wrong (both the app _and_ a remote device wrote: the
-content differs, so it prompts, which is right).
+This is worth more than one filter line:
 
-The cost is a file read per change event, which is nothing next to the reads already done at load.
+- It removes most of the noise problem. No large binary write events, and none of the chunked churn
+  from a cloud client pulling down a video — the main unknown in the noise question below.
+- It collapses the write paths back to one. With binaries out of scope, everything the watcher sees
+  arrived through `atomic_write_bytes`.
+
+### Self-writes: still compare content, but for a narrower reason
+
+An earlier draft argued against an ignore-window partly because media imports bypass
+`atomic_write_bytes` and use `fs::copy` directly, so the hook would need threading through unrelated
+call sites. **That argument is void** once binaries are out of scope — there is a single funnel
+again.
+
+The remaining objection stands on its own, and is the one that decides it: an ignore-window is racy
+in the direction that matters. If the app writes a file and a remote change to that same file lands
+inside the window, the window swallows it and the operator is never told. Failing toward "say
+nothing" is the wrong bias for the exact problem this feature exists to solve.
+
+**Decide by content, not provenance.** On a watcher event, re-read the changed file and compare
+against what the store already holds. Identical means the app wrote it — no prompt. Different means
+something real changed — prompt. Correct in precisely the case an ignore-window gets wrong: when the
+app and a remote device both wrote, the content differs, so it prompts.
+
+With only small JSON files in scope, the cost is negligible.
 
 ### Reusing the conflict model: no, they are different problems
 
@@ -132,12 +148,15 @@ Confirmed — `PresentationView.vue` uses **no stores at all**. It is driven pur
 (`LiveSlideContent`), so it reads none of the affected state and has nothing to refresh. The watcher
 event should be handled only in the operator window.
 
-### OneDrive noise: still needs measuring, but one filter is already known
+### Cloud-client noise: much smaller now, still worth measuring
 
-Cannot be settled without running against a real library. One concrete thing already known: this
-app's own atomic writes create `.{file_name}.{uuid}.tmp` beside the target
-(`atomic_write_bytes`) — dot-prefixed, `.tmp`-suffixed — so those must be filtered regardless of what
-OneDrive's client adds. Tune the debounce against a real observation rather than a guess.
+Restricting the watch to `*.json` removes the worst of it — the big, chunked, long-running writes
+were all binaries. What remains is small metadata files, written rarely.
+
+One filter is known regardless: this app's own atomic writes create `.{file_name}.{uuid}.tmp` beside
+the target (`atomic_write_bytes`) — dot-prefixed, `.tmp`-suffixed — so those must be excluded
+whatever else the cloud client adds. Still tune the debounce against a real observation, but it is
+no longer a design risk.
 
 ## Refinement to the prompt (2026-08-26)
 
