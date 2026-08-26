@@ -31,7 +31,7 @@
  * "Add Another Device" (LibrarySyncSection.vue) is this flow's other end: the connect code a
  * second device pastes here, or scans as that URL, to skip typing its app key/client ID by hand.
  */
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import App from '@/App.vue'
 import { getAdapter, isTauri, setAdapterInstance } from '@/adapters'
 import { createMockAdapter } from '@/adapters/mock'
@@ -54,6 +54,13 @@ import {
   type CloudProviderId,
   type PendingCloudAuth,
 } from '@/utils/cloudOAuthRedirect'
+import * as onedriveAuth from '@/adapters/tablet/providers/onedriveAuth'
+import {
+  listChildFolders,
+  listLibraryFolderChoices,
+  looksLikeLibrary,
+  type OneDriveFolderEntry,
+} from '@/adapters/tablet/providers/onedriveLibraryRoot'
 import { suggestDeviceName } from '@/utils/deviceName'
 import logoDark from '@/assets/logo-dark.png'
 
@@ -66,6 +73,7 @@ type Phase =
   | 'show-connect-code'
   | 'cloud-connect'
   | 'connecting-cloud'
+  | 'choose-folder'
   | 'initial-sync'
   | 'ready'
 
@@ -116,12 +124,17 @@ async function finishTabletBoot(
   provider: CloudProviderId,
   clientId: string,
   libraryFolderPath: string,
+  /** OneDrive's picked folder. Absent for Dropbox, and for OneDrive connections made before the
+   *  picker existed — those still resolve by path. */
+  picked?: { driveId: string; itemId: string },
   tabletMediaMaxCachedFileSizeMb?: number,
 ) {
   const adapter = await createTabletAdapter({
     provider,
     clientId,
     libraryFolderPath,
+    libraryDriveId: picked?.driveId,
+    libraryItemId: picked?.itemId,
     tabletMediaMaxCachedFileSizeMb,
   })
   const machineSettings = await adapter.settings.getMachineSettings()
@@ -137,6 +150,8 @@ async function finishTabletBoot(
     tabletCloudProvider: provider,
     tabletCloudClientId: clientId,
     tabletCloudLibraryFolderPath: libraryFolderPath,
+    tabletCloudLibraryDriveId: picked?.driveId,
+    tabletCloudLibraryItemId: picked?.itemId,
     // A tablet joins (or occasionally sets up) a shared cloud library, not a per-device blank
     // slate — App.vue's own first-run redirect otherwise fires here every time based on this
     // device's own never-used-before state, which is meaningless for a device joining a library
@@ -200,6 +215,97 @@ async function beginCloudConnect() {
   }
 }
 
+/** Folder picker, shown after a OneDrive sign-in. Replaces asking anyone to type a path: a shared
+ *  library sits at a different path for every person it is shared with, so there is no single
+ *  correct string to type — and picking yields the drive/item ids the provider actually addresses
+ *  by, which survive the folder being renamed or moved. */
+const pendingClientId = ref('')
+const folderChoices = ref<OneDriveFolderEntry[]>([])
+const folderTrail = ref<OneDriveFolderEntry[]>([])
+const loadingFolders = ref(false)
+const openingFolder = ref(false)
+const folderPickerWarning = ref('')
+
+async function withGraphToken<T>(run: (token: string) => Promise<T>): Promise<T | undefined> {
+  const token = await onedriveAuth.getValidAccessToken(pendingClientId.value)
+  if (!token) {
+    errorText.value = 'The OneDrive sign-in expired before a folder was chosen. Please try again.'
+    phase.value = 'chooser'
+    return undefined
+  }
+  return run(token)
+}
+
+async function openFolderPicker() {
+  phase.value = 'choose-folder'
+  errorText.value = ''
+  folderPickerWarning.value = ''
+  folderTrail.value = []
+  await loadFolderChoices()
+}
+
+async function loadFolderChoices() {
+  loadingFolders.value = true
+  try {
+    const current = folderTrail.value[folderTrail.value.length - 1]
+    const entries = await withGraphToken((token) =>
+      current
+        ? listChildFolders(token, current.driveId, current.itemId)
+        : listLibraryFolderChoices(token),
+    )
+    folderChoices.value = entries ?? []
+  } catch (error) {
+    errorText.value =
+      error instanceof Error ? error.message : "Couldn't list your OneDrive folders."
+    folderChoices.value = []
+  } finally {
+    loadingFolders.value = false
+  }
+}
+
+async function openFolder(entry: OneDriveFolderEntry) {
+  folderTrail.value.push(entry)
+  folderPickerWarning.value = ''
+  await loadFolderChoices()
+}
+
+async function goUpFolder(index: number) {
+  folderTrail.value = folderTrail.value.slice(0, index)
+  folderPickerWarning.value = ''
+  await loadFolderChoices()
+}
+
+/** Confirms the folder the operator is standing in. Warns rather than blocks when it holds no
+ *  library — the same call the Setup Wizard makes, and for the same reason: a folder mid-sync can
+ *  legitimately look empty, but the likelier cause is the wrong folder. */
+async function useCurrentFolder(confirmedEmpty = false) {
+  const current = folderTrail.value[folderTrail.value.length - 1]
+  if (!current) return
+  openingFolder.value = true
+  try {
+    if (!confirmedEmpty) {
+      const isLibrary = await withGraphToken((token) =>
+        looksLikeLibrary(token, current.driveId, current.itemId),
+      )
+      if (isLibrary === false) {
+        folderPickerWarning.value = `"${current.name}" doesn't look like a Worship Studio library — there's no library-settings.json in it. Choose a different folder, or continue to start a new library here.`
+        return
+      }
+    }
+    await finishTabletBoot('onedrive', pendingClientId.value, folderPathLabel.value, {
+      driveId: current.driveId,
+      itemId: current.itemId,
+    })
+  } catch (error) {
+    errorText.value = error instanceof Error ? error.message : "Couldn't open that folder."
+  } finally {
+    openingFolder.value = false
+  }
+}
+
+/** Only for display and for the legacy path field — addressing uses the ids. */
+const folderPathLabel = computed(() => folderTrail.value.map((entry) => entry.name).join('/'))
+
 async function handleCloudRedirect(params: URLSearchParams) {
   phase.value = 'connecting-cloud'
   const code = params.get('code') ?? ''
@@ -230,6 +336,15 @@ async function handleCloudRedirect(params: URLSearchParams) {
       code,
       codeVerifier: pending.codeVerifier,
     })
+    // OneDrive picks its folder *after* sign-in — the account has to be known before its folders
+    // can be listed, and a shared library has no path that is meaningful to type anyway (it sits
+    // somewhere different for every person it is shared with). Dropbox still uses the path from
+    // the connect form, since its shared folders mount inside the member's own tree.
+    if (pending.provider === 'onedrive') {
+      pendingClientId.value = pending.clientId
+      await openFolderPicker()
+      return
+    }
     await finishTabletBoot(pending.provider, pending.clientId, pending.libraryFolderPath)
   } catch (error) {
     errorText.value = error instanceof Error ? error.message : "Couldn't finish connecting."
@@ -350,10 +465,13 @@ onMounted(async () => {
       .isConnected()
       .catch(() => false)
     if (alreadyConnected) {
+      const driveId = cachedMachineSettings?.tabletCloudLibraryDriveId
+      const itemId = cachedMachineSettings?.tabletCloudLibraryItemId
       await finishTabletBoot(
         cachedProvider,
         cachedClientId,
         cachedMachineSettings?.tabletCloudLibraryFolderPath ?? '',
+        driveId && itemId ? { driveId, itemId } : undefined,
         cachedMachineSettings?.tabletMediaMaxCachedFileSizeMb,
       )
       return
@@ -577,7 +695,10 @@ const showAdvancedConnect = ref(false)
             persistent-hint
             class="mb-3"
           />
+          <!-- OneDrive picks its folder from a list after sign-in instead: a shared library sits at
+               a different path for every person, so there is no correct string to type here. -->
           <v-text-field
+            v-if="connectProvider !== 'onedrive'"
             v-model="cloudLibraryFolderPathInput"
             label="Library folder path (optional)"
             variant="outlined"
@@ -615,6 +736,69 @@ const showAdvancedConnect = ref(false)
 
         <template v-else-if="phase === 'connecting-cloud'">
           <p class="boot-status">Finishing sign-in…</p>
+        </template>
+
+        <template v-else-if="phase === 'choose-folder'">
+          <p class="boot-lead">
+            Choose your church's library folder. If someone shared it with you, it's listed under
+            their name's folder — open it to look inside.
+          </p>
+
+          <nav class="folder-crumbs" aria-label="Folder path">
+            <button type="button" :disabled="loadingFolders" @click="goUpFolder(0)">
+              OneDrive
+            </button>
+            <template v-for="(crumb, index) in folderTrail" :key="crumb.itemId">
+              <span aria-hidden="true">›</span>
+              <button
+                type="button"
+                :disabled="loadingFolders || index === folderTrail.length - 1"
+                @click="goUpFolder(index + 1)"
+              >
+                {{ crumb.name }}
+              </button>
+            </template>
+          </nav>
+
+          <v-alert v-if="folderPickerWarning" type="warning" variant="tonal" class="mb-3">
+            {{ folderPickerWarning }}
+          </v-alert>
+
+          <div v-if="loadingFolders" class="folder-loading">
+            <v-progress-circular indeterminate color="primary" size="26" />
+          </div>
+          <p v-else-if="!folderChoices.length" class="boot-note">
+            No folders here.{{ folderTrail.length ? ' Go back up to choose a different one.' : '' }}
+          </p>
+          <ul v-else class="folder-list">
+            <li v-for="entry in folderChoices" :key="entry.driveId + entry.itemId">
+              <button type="button" :disabled="openingFolder" @click="openFolder(entry)">
+                <v-icon
+                  :icon="entry.shared ? 'mdi-folder-account-outline' : 'mdi-folder-outline'"
+                  size="20"
+                />
+                <span>{{ entry.name }}</span>
+                <small v-if="entry.shared">Shared with you</small>
+                <v-icon icon="mdi-chevron-right" size="18" />
+              </button>
+            </li>
+          </ul>
+
+          <v-btn
+            v-if="folderTrail.length"
+            color="primary"
+            size="large"
+            block
+            class="mt-3"
+            :loading="openingFolder"
+            @click="useCurrentFolder(Boolean(folderPickerWarning))"
+          >
+            {{
+              folderPickerWarning
+                ? 'Use It Anyway'
+                : `Use "${folderTrail[folderTrail.length - 1]!.name}"`
+            }}
+          </v-btn>
         </template>
 
         <template v-else-if="phase === 'initial-sync'">
@@ -656,6 +840,87 @@ const showAdvancedConnect = ref(false)
   width: min(70%, 260px);
   height: auto;
   margin-bottom: 8px;
+}
+/* These are raw <button>s and nothing in this app resets them, so without this they render with
+   the browser's default grey button face — which read as chunky chips rather than list rows. */
+.folder-crumbs button,
+.folder-list button {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.folder-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 10px;
+  font-size: 0.76rem;
+}
+.folder-crumbs button {
+  padding: 2px 4px;
+  border-radius: 5px;
+  color: rgb(var(--v-theme-primary));
+}
+.folder-crumbs button:hover:not(:disabled) {
+  background: rgba(var(--v-theme-primary), 0.1);
+}
+.folder-crumbs button:disabled {
+  color: rgba(var(--v-theme-on-surface), 0.75);
+  cursor: default;
+}
+.folder-crumbs span {
+  color: rgba(var(--v-theme-on-surface), 0.4);
+}
+.folder-loading {
+  display: grid;
+  padding: 24px 0;
+  place-items: center;
+}
+.folder-list {
+  max-height: 40vh;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-radius: 10px;
+  list-style: none;
+}
+.folder-list li + li {
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+}
+.folder-list button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 12px;
+  text-align: left;
+}
+.folder-list button:hover:not(:disabled) {
+  background: rgba(var(--v-theme-primary), 0.08);
+}
+.folder-list button > span {
+  overflow: hidden;
+  flex: 1;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Muted and secondary — a folder's name is what someone scans for, not its origin. */
+.folder-list small {
+  flex-shrink: 0;
+  color: rgba(var(--v-theme-on-surface), 0.45);
+  font-size: 0.66rem;
+}
+.folder-list .v-icon:first-child {
+  color: rgba(var(--v-theme-on-surface), 0.55);
+}
+.folder-list .v-icon:last-child {
+  color: rgba(var(--v-theme-on-surface), 0.3);
 }
 .boot-lead {
   margin-bottom: 8px;

@@ -250,6 +250,18 @@ export interface MachineSettings {
    */
   tabletCloudLibraryFolderPath?: string
   /**
+   * Tablet-only, OneDrive-only. The library folder the operator picked from the list, identified by
+   * drive and item id rather than by path.
+   *
+   * Preferred over the path above wherever both exist. A path cannot identify a *shared* folder at
+   * all — the same folder sits at a different path for every person it is shared with, and none of
+   * them is the owner's — whereas these ids are the same for everyone and survive the folder being
+   * renamed or moved. Absent on connections made before the picker existed, which still resolve by
+   * path (see providers/onedriveLibraryRoot.ts).
+   */
+  tabletCloudLibraryDriveId?: string
+  tabletCloudLibraryItemId?: string
+  /**
    * Tablet-only. A device-local *cache* of the app key/client ID used to connect — not the
    * canonical value (that's LibraryCredentials.dropboxIntegration.appKey or
    * .oneDriveIntegration.clientId, synced church-wide). Needed purely to bootstrap: on a

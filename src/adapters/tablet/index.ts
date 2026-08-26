@@ -61,16 +61,29 @@ export interface TabletAdapterConfig {
   /** The provider's app key (Dropbox) or client ID (OneDrive) — see providers/dropbox.ts /
    *  providers/onedrive.ts for what each expects. */
   clientId: string
-  /** Path (relative to the connected account's root) where the library lives. */
+  /** Path (relative to the connected account's root) where the library lives. Still how Dropbox
+   *  addresses it, and the OneDrive fallback for connections predating the folder picker. */
   libraryFolderPath: string
+  /** OneDrive only: the folder the operator picked, identified by drive and item rather than path.
+   *  Preferred when present — see providers/onedrive.ts's config. */
+  libraryDriveId?: string
+  libraryItemId?: string
   tabletMediaMaxCachedFileSizeMb?: number
 }
 
 function createProvider(config: TabletAdapterConfig): CloudSyncProvider {
   if (config.provider === 'onedrive') {
-    return createOneDriveProvider({ clientId: config.clientId, libraryFolderPath: config.libraryFolderPath })
+    return createOneDriveProvider({
+      clientId: config.clientId,
+      libraryFolderPath: config.libraryFolderPath,
+      libraryDriveId: config.libraryDriveId,
+      libraryItemId: config.libraryItemId,
+    })
   }
-  return createDropboxProvider({ appKey: config.clientId, libraryFolderPath: config.libraryFolderPath })
+  return createDropboxProvider({
+    appKey: config.clientId,
+    libraryFolderPath: config.libraryFolderPath,
+  })
 }
 
 export async function createTabletAdapter(config: TabletAdapterConfig): Promise<StudioAdapter> {
@@ -101,7 +114,12 @@ export async function createTabletAdapter(config: TabletAdapterConfig): Promise<
   const serviceTemplates = createWebServiceTemplatesPort(trackedRoot)
   const services = createWebServicesPort(trackedRoot, settings, songs)
   const slides = createWebSlidesPort(trackedRoot, settings)
-  const media = createWebMediaPort(trackedRoot, settings, themes, createTabletLocalMediaRoot(rawRoot))
+  const media = createWebMediaPort(
+    trackedRoot,
+    settings,
+    themes,
+    createTabletLocalMediaRoot(rawRoot),
+  )
   const people = createWebPeoplePort(trackedRoot, settings)
   const announcements = createWebAnnouncementsPort(trackedRoot, settings)
   const externalApps = createWebExternalAppsPort(trackedRoot, settings)
