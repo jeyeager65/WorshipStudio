@@ -91,11 +91,57 @@ mentioned at all.
 - **Automatic merge.** Prompting is the decision; anything cleverer needs the conflict question above
   answered first.
 
-## Open questions
+## Open questions, worked through 2026-08-26
 
-- Does the self-write ignore-window hold up, or do the write commands need to report their own
-  writes explicitly?
-- How noisy is OneDrive's client in practice against a real library? Worth measuring before tuning
-  the debounce.
-- Should the presentation window (a second Tauri window) ignore these events entirely? Almost
-  certainly yes, but confirm it does not read the affected stores.
+### Self-writes: abandon the ignore-window, compare content instead
+
+There is no single write funnel. JSON goes through `domain/mod.rs`'s `write_json_file` →
+`atomic_write_bytes`, but **media imports bypass both and use `fs::copy` directly**
+(`domain/media.rs`). So an ignore-window would have to be threaded through at least two unrelated
+call sites, and stay threaded as new ones appear.
+
+Worse, it is _racy in the direction that matters_: a genuine remote change landing inside the same
+window is silently swallowed, and the operator is never told. Failing toward "say nothing" is the
+wrong bias for the exact problem this feature exists to solve.
+
+**Better: decide by content, not by provenance.** When the watcher fires, re-read the changed file
+and compare against what the store already holds. Identical means the app wrote it — no prompt.
+Different means something real changed — prompt. This needs no registry, no call-site threading, and
+is correct in the case an ignore-window gets wrong (both the app _and_ a remote device wrote: the
+content differs, so it prompts, which is right).
+
+The cost is a file read per change event, which is nothing next to the reads already done at load.
+
+### Reusing the conflict model: no, they are different problems
+
+Checked, and conflating them would be a mistake. The existing model (`adapters/web/sync.ts`'s
+`CONFLICT_PATTERN`, `detectConflicts`, `SyncConflictsView`) is about **conflicted-copy artifacts the
+cloud provider itself creates** when two devices wrote and it could not merge — detected by scanning
+for `… (conflicted copy …).json` filenames, with a real choice to make between two saved versions.
+
+This feature's case has no artifact and nothing to reconcile: someone else's write arrived cleanly,
+the remote version is simply correct, and the only problem is that the UI is showing something older.
+
+The two only touch when the operator has unsaved edits open _and_ the file changes underneath. Even
+then the local edit is in memory and unwritten, so the provider knows nothing and no artifact exists
+— the right handling is still "warn before discarding," not the conflicted-copy flow.
+
+### The presentation window: ignore these events entirely
+
+Confirmed — `PresentationView.vue` uses **no stores at all**. It is driven purely by IPC
+(`LiveSlideContent`), so it reads none of the affected state and has nothing to refresh. The watcher
+event should be handled only in the operator window.
+
+### OneDrive noise: still needs measuring, but one filter is already known
+
+Cannot be settled without running against a real library. One concrete thing already known: this
+app's own atomic writes create `.{file_name}.{uuid}.tmp` beside the target
+(`atomic_write_bytes`) — dot-prefixed, `.tmp`-suffixed — so those must be filtered regardless of what
+OneDrive's client adds. Tune the debounce against a real observation rather than a guess.
+
+## Refinement to the prompt (2026-08-26)
+
+Rather than one all-or-nothing Reload: refresh the stores that are _not_ backing a currently-dirty
+editor, and leave the banner up for the rest. Staleness confined to the one thing the operator is
+actively editing is the safest available failure, and it stops the prompt being a trap when there is
+half-finished work open.
