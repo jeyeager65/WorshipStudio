@@ -54,6 +54,7 @@ import {
   type CloudProviderId,
   type PendingCloudAuth,
 } from '@/utils/cloudOAuthRedirect'
+import { suggestDeviceName } from '@/utils/deviceName'
 import logoDark from '@/assets/logo-dark.png'
 
 const pwaInstall = usePwaInstall()
@@ -79,6 +80,35 @@ const cloudClientIdInput = ref('')
 const cloudLibraryFolderPathInput = ref('')
 const connectingCloud = ref(false)
 
+/** What this device stamps on everything it saves (`updatedByDevice`), and what
+ *  SyncConflictsView shows when two devices disagree. Desktop borrows the OS hostname; a browser
+ *  has no equivalent, so without asking here a tablet would stamp `''` forever — see
+ *  utils/deviceName.ts and notes/setup-wizard-join-plan.md.
+ *
+ *  Held across the provider's OAuth redirect in localStorage rather than in PendingCloudAuth: the
+ *  redirect returns to this same origin, and the scanned-QR path skips this form entirely and so
+ *  has no name to carry anyway. */
+const PENDING_DEVICE_NAME_KEY = 'worship-studio.pending-device-name'
+const deviceNameInput = ref(suggestDeviceName(navigator.userAgent))
+
+function stashPendingDeviceName(name: string) {
+  try {
+    localStorage.setItem(PENDING_DEVICE_NAME_KEY, name)
+  } catch {
+    // Private-mode storage failures just mean finishTabletBoot falls back to the suggestion.
+  }
+}
+
+function takePendingDeviceName(): string {
+  try {
+    const stored = localStorage.getItem(PENDING_DEVICE_NAME_KEY)
+    localStorage.removeItem(PENDING_DEVICE_NAME_KEY)
+    return stored?.trim() ?? ''
+  } catch {
+    return ''
+  }
+}
+
 /** Builds the tablet adapter, caches the provider/client ID/library path locally (MachineSettings
  *  — localStorage-backed, not OPFS, so this is instant and needs no cloud round trip) so a later
  *  reload on this device boots straight back in without asking again, then activates it. */
@@ -95,8 +125,15 @@ async function finishTabletBoot(
     tabletMediaMaxCachedFileSizeMb,
   })
   const machineSettings = await adapter.settings.getMachineSettings()
+  // Only ever fills a blank: a device that has connected before (or was named in Settings) keeps
+  // the name it already has, so a reconnect never silently renames it.
+  const thisComputerName =
+    machineSettings.thisComputerName.trim() ||
+    takePendingDeviceName() ||
+    suggestDeviceName(navigator.userAgent)
   await adapter.settings.saveMachineSettings({
     ...machineSettings,
+    thisComputerName,
     tabletCloudProvider: provider,
     tabletCloudClientId: clientId,
     tabletCloudLibraryFolderPath: libraryFolderPath,
@@ -150,6 +187,7 @@ async function beginCloudConnect() {
     return
   }
   connectingCloud.value = true
+  stashPendingDeviceName(deviceNameInput.value.trim())
   try {
     await beginCloudOAuthRedirect(
       connectProvider.value,
@@ -218,7 +256,8 @@ const connectCodeInput = ref('')
 async function submitConnectCode(): Promise<void> {
   const code = parseConnectCode(connectCodeInput.value)
   if (!code) {
-    errorText.value = "That doesn't look like a Worship Studio connect code. Check the paste and try again."
+    errorText.value =
+      "That doesn't look like a Worship Studio connect code. Check the paste and try again."
     return
   }
   errorText.value = ''
@@ -405,9 +444,9 @@ const showAdvancedConnect = ref(false)
             On a tablet or phone — join your church's library, already synced on another device.
           </p>
           <p class="boot-note">
-            On the already-connected device, go to Settings &gt; Library &amp; Sync &gt; Add
-            Another Device. Scan that QR code with your camera app (not this one) — it opens a
-            page with a Copy Code button — or just copy the code shown there directly.
+            On the already-connected device, go to Settings &gt; Library &amp; Sync &gt; Add Another
+            Device. Scan that QR code with your camera app (not this one) — it opens a page with a
+            Copy Code button — or just copy the code shown there directly.
           </p>
           <v-textarea
             v-model="connectCodeInput"
@@ -429,8 +468,8 @@ const showAdvancedConnect = ref(false)
             Connect
           </v-btn>
           <p v-if="!pwaInstall.isStandalone.value" class="boot-note">
-            For the smoothest experience, install this as an app first (below), then come back
-            and paste the code.
+            For the smoothest experience, install this as an app first (below), then come back and
+            paste the code.
           </p>
 
           <v-btn variant="text" size="large" block class="mt-2" @click="chooseDemo">
@@ -498,8 +537,8 @@ const showAdvancedConnect = ref(false)
         <template v-else-if="phase === 'show-connect-code'">
           <p class="boot-lead">
             Copy this connect code, then open Worship Studio — install it as an app first if you
-            haven't (Share &gt; Add to Home Screen) — and paste the code there to finish
-            connecting this device.
+            haven't (Share &gt; Add to Home Screen) — and paste the code there to finish connecting
+            this device.
           </p>
           <v-textarea
             :model-value="connectCodeToShow"
@@ -546,6 +585,17 @@ const showAdvancedConnect = ref(false)
             autocomplete="off"
             placeholder="/Church/WorshipStudio Library"
             hint="Leave blank if the library lives at the root of the account."
+            persistent-hint
+            class="mb-3"
+          />
+          <v-text-field
+            v-model="deviceNameInput"
+            label="Name for this device"
+            variant="outlined"
+            density="compact"
+            autocomplete="off"
+            placeholder="Sanctuary iPad"
+            hint="Shown when this device's changes conflict with another's. Give each device its own name."
             persistent-hint
             class="mb-3"
           />

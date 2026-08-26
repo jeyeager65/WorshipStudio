@@ -13,6 +13,7 @@
 
 import type { LibraryCredentials, LibrarySettings, MachineSettings } from '@/models/settings'
 import type { SettingsPort } from '@/adapters/types'
+import { suggestDeviceName } from '@/utils/deviceName'
 import { backupPath, readJsonFile, removeFile, writeJsonFile } from './fsaStorage'
 import { storeLibraryHandle } from './handlePersistence'
 
@@ -71,7 +72,12 @@ function defaultLibraryCredentials(): LibraryCredentials {
 
 function defaultMachineSettings(): MachineSettings {
   return {
-    thisComputerName: '',
+    // Not blank: this is the `updatedByDevice` stamp on every record saved here, and an empty one
+    // makes two devices indistinguishable in SyncConflictsView. The Tauri build borrows the OS
+    // hostname (paths.rs); a browser has no equivalent, so this is the closest honest guess.
+    // BootGate and the Setup Wizard both put it in front of a human to replace.
+    thisComputerName:
+      typeof navigator === 'undefined' ? 'Tablet' : suggestDeviceName(navigator.userAgent),
     darkMode: true,
     libraryPath: '',
     hasCompletedSetup: false,
@@ -106,7 +112,10 @@ export function createWebSettingsPort(root: FileSystemDirectoryHandle): Settings
     // adapters/web/roles.ts. A web-build library still carrying credentials nested inside
     // library-settings.json simply starts with empty credentials here.
     getLibraryCredentials: async () => {
-      return (await readJsonFile<LibraryCredentials>(root, CREDENTIALS_PATH)) ?? defaultLibraryCredentials()
+      return (
+        (await readJsonFile<LibraryCredentials>(root, CREDENTIALS_PATH)) ??
+        defaultLibraryCredentials()
+      )
     },
     saveLibraryCredentials: async (credentials) => {
       await writeJsonFile(root, CREDENTIALS_PATH, credentials)

@@ -38,7 +38,10 @@ describe('createWebSettingsPort', () => {
     const port = createWebSettingsPort(createFakeRoot())
     const settings = await port.getMachineSettings()
     expect(settings.hasCompletedSetup).toBe(false)
-    expect(settings.thisComputerName).toBe('')
+    // Deliberately never blank — this is the `updatedByDevice` stamp on every record saved from
+    // this device, and an empty one makes two devices indistinguishable in SyncConflictsView.
+    // Which name it lands on per platform is utils/__tests__/deviceName.spec.ts's concern.
+    expect(settings.thisComputerName).not.toBe('')
   })
 
   it('persists machine settings to localStorage, not the picked folder', async () => {
