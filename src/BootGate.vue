@@ -31,6 +31,7 @@
 import { computed, onMounted, ref } from 'vue'
 import App from '@/App.vue'
 import { getAdapter, isTauri, setAdapterInstance } from '@/adapters'
+import type { SyncProgress } from '@/adapters/types'
 import { createMockAdapter } from '@/adapters/mock'
 import { createWebAdapter } from '@/adapters/web'
 import {
@@ -43,6 +44,7 @@ import { getOpfsRoot } from '@/adapters/tablet/opfs'
 import { createWebSettingsPort } from '@/adapters/web/settings'
 import { usePwaInstall } from '@/composables/usePwaInstall'
 import { formatSyncProgressLabel } from '@/utils/syncProgress'
+import { estimateSecondsRemaining, formatSecondsRemaining, progressPercent } from '@/utils/syncEta'
 import {
   authFor,
   beginCloudOAuthRedirect,
@@ -77,6 +79,25 @@ const errorText = ref('')
 const pendingHandle = ref<FileSystemDirectoryHandle>()
 const fsaSupported = typeof window !== 'undefined' && 'showDirectoryPicker' in window
 const initialSyncLabel = ref('')
+// The raw progress, not just its label: the batch total is known upfront (see SyncProgress), so the
+// first pull can show real progress rather than an indeterminate spinner that says nothing about
+// whether 20 files remain or 2000.
+const initialSyncProgress = ref<SyncProgress>()
+const initialSyncStartedAt = ref(0)
+
+const initialSyncPercent = computed(() =>
+  progressPercent(initialSyncProgress.value?.completed ?? 0, initialSyncProgress.value?.total ?? 0),
+)
+const initialSyncRemaining = computed(() => {
+  const progress = initialSyncProgress.value
+  if (!progress || !initialSyncStartedAt.value) return ''
+  const seconds = estimateSecondsRemaining(
+    progress.completed,
+    progress.total,
+    Date.now() - initialSyncStartedAt.value,
+  )
+  return seconds === undefined ? '' : formatSecondsRemaining(seconds)
+})
 
 const connectProvider = ref<CloudProviderId>('dropbox')
 const cloudClientIdInput = ref('')
@@ -168,8 +189,12 @@ async function finishTabletBoot(
   if (!status.lastSyncedAt) {
     phase.value = 'initial-sync'
     initialSyncLabel.value = ''
+    initialSyncProgress.value = undefined
+    initialSyncStartedAt.value = Date.now()
     const pollHandle = window.setInterval(async () => {
-      initialSyncLabel.value = formatSyncProgressLabel(await adapter.sync.getProgress?.())
+      const progress = await adapter.sync.getProgress?.()
+      initialSyncProgress.value = progress
+      initialSyncLabel.value = formatSyncProgressLabel(progress)
     }, 400)
     try {
       await adapter.sync.runSync?.()
@@ -455,11 +480,6 @@ function showCloudConnectForm(provider: CloudProviderId) {
   connectProvider.value = provider
   phase.value = 'cloud-connect'
 }
-
-// "Connect Dropbox"/"Connect OneDrive" (typed app key/client ID) is now truly a one-time,
-// once-per-church setup step — every device after the first should use Scan to Connect instead,
-// so the manual form is demoted behind this disclosure rather than shown by default.
-const showAdvancedConnect = ref(false)
 </script>
 
 <template>
@@ -473,65 +493,24 @@ const showAdvancedConnect = ref(false)
           <p class="boot-status">Loading…</p>
         </template>
 
+        <!-- Two genuinely different first runs. A tablet has no folder to open — showDirectoryPicker
+             does not exist there — so rather than offering it disabled with an apology, that whole
+             route is hidden and connecting to the church's cloud library becomes the main event.
+             A desktop browser gets the folder first, with cloud connect alongside it. -->
         <template v-else-if="phase === 'chooser'">
-          <p class="boot-lead">
-            Open your church's library folder to prepare services, or try the demo with sample data.
-          </p>
-          <v-btn color="primary" size="large" block :disabled="!fsaSupported" @click="chooseFolder">
-            Open Your Library Folder
-          </v-btn>
-          <p v-if="!fsaSupported" class="boot-note">
-            This browser doesn't support opening a real folder — try Chrome or Edge. You can still
-            try the demo below.
-          </p>
-
-          <v-divider class="my-2" />
-
-          <p class="boot-lead">
-            On a tablet or phone — join your church's library, already synced on another device.
-          </p>
-          <p class="boot-note">
-            Choose your cloud provider below and paste your church's app ID. Anyone already set up
-            can find it under Settings &gt; Library &amp; Sync &gt; Add Another Device.
-          </p>
-          <p v-if="!pwaInstall.isStandalone.value" class="boot-note">
-            For the smoothest experience, install this as an app first (below), then come back and
-            connect.
-          </p>
-
-          <v-btn variant="text" size="large" block class="mt-2" @click="chooseDemo">
-            Try the Demo
-          </v-btn>
-
-          <v-btn
-            v-if="pwaInstall.canInstall.value"
-            variant="tonal"
-            size="small"
-            block
-            class="mt-3"
-            prepend-icon="mdi-cellphone-arrow-down"
-            @click="pwaInstall.promptInstall"
-          >
-            Install as an App
-          </v-btn>
-          <p v-else-if="pwaInstall.isIos.value" class="boot-note mt-3">
-            On an iPhone/iPad: tap Share, then "Add to Home Screen" to install this as an app.
-          </p>
-
-          <v-btn
-            variant="text"
-            size="small"
-            block
-            class="mt-3"
-            @click="showAdvancedConnect = !showAdvancedConnect"
-          >
-            {{ showAdvancedConnect ? 'Hide Advanced Options' : 'Advanced: First Device Setup' }}
-          </v-btn>
-          <template v-if="showAdvancedConnect">
-            <p class="boot-note">
-              Only needed once per church, to connect the very first device — every device after
-              that should use Scan to Connect above instead.
+          <template v-if="fsaSupported">
+            <p class="boot-lead">
+              Open your church's library folder to prepare services, or connect to it in the cloud.
             </p>
+            <v-btn color="primary" size="large" block @click="chooseFolder">
+              Open Your Library Folder
+            </v-btn>
+
+            <div class="boot-or"><span>or connect a cloud library</span></div>
+
+            <v-btn variant="outlined" size="large" block @click="showCloudConnectForm('onedrive')">
+              Connect OneDrive
+            </v-btn>
             <v-btn
               variant="outlined"
               size="large"
@@ -541,8 +520,47 @@ const showAdvancedConnect = ref(false)
             >
               Connect Dropbox
             </v-btn>
+          </template>
+
+          <template v-else>
+            <p class="boot-lead">Connect this device to your church's library.</p>
+
+            <!-- Install first, and say so before offering the connection: on iOS a browser tab and
+                 the installed app are separate storage, so connecting here and then installing
+                 means doing it twice. -->
+            <div v-if="!pwaInstall.isStandalone.value" class="boot-install-first">
+              <div class="boot-install-heading">
+                <v-icon icon="mdi-cellphone-arrow-down" size="20" />
+                <strong>Install the app first</strong>
+              </div>
+              <p v-if="pwaInstall.isIos.value">
+                Tap the Share button, then <strong>Add to Home Screen</strong>. Open Worship Studio
+                from your home screen and connect there — a browser tab and the installed app keep
+                separate data, so connecting here would only have to be done again.
+              </p>
+              <p v-else>
+                Install Worship Studio to your home screen, then open it from there and connect —
+                the installed app keeps its own data.
+              </p>
+              <v-btn
+                v-if="pwaInstall.canInstall.value"
+                variant="flat"
+                color="primary"
+                size="small"
+                class="mt-1"
+                prepend-icon="mdi-cellphone-arrow-down"
+                @click="pwaInstall.promptInstall"
+              >
+                Install as an App
+              </v-btn>
+            </div>
+
+            <p class="boot-note">
+              You'll need your church's app ID. Anyone already connected can find it under Settings
+              &gt; Library &amp; Sync &gt; Add Another Device.
+            </p>
             <v-btn
-              variant="outlined"
+              color="primary"
               size="large"
               block
               class="mt-2"
@@ -550,7 +568,34 @@ const showAdvancedConnect = ref(false)
             >
               Connect OneDrive
             </v-btn>
+            <v-btn
+              variant="outlined"
+              size="large"
+              block
+              class="mt-2"
+              @click="showCloudConnectForm('dropbox')"
+            >
+              Connect Dropbox
+            </v-btn>
           </template>
+
+          <v-divider class="my-3" />
+
+          <v-btn variant="text" size="large" block @click="chooseDemo"> Try the Demo </v-btn>
+
+          <!-- Already installed, or a desktop browser: the install affordance is either irrelevant
+               or a small convenience, so it sits at the bottom rather than leading. -->
+          <v-btn
+            v-if="pwaInstall.canInstall.value && fsaSupported"
+            variant="tonal"
+            size="small"
+            block
+            class="mt-3"
+            prepend-icon="mdi-cellphone-arrow-down"
+            @click="pwaInstall.promptInstall"
+          >
+            Install as an App
+          </v-btn>
         </template>
 
         <template v-else-if="phase === 'resuming'">
@@ -572,7 +617,7 @@ const showAdvancedConnect = ref(false)
             variant="outlined"
             density="compact"
             autocomplete="off"
-            hint="Needed once per church, not once per device — ask whoever registered the app, or (on any device that's already connected) go to Settings and use Add Another Device to skip typing this in."
+            hint="One per church, not one per device. Copy it from any connected device under Settings > Library &amp; Sync > Add Another Device, or from whoever registered the app."
             persistent-hint
             class="mb-3"
           />
@@ -585,8 +630,8 @@ const showAdvancedConnect = ref(false)
             variant="outlined"
             density="compact"
             autocomplete="off"
-            placeholder="/Church/WorshipStudio Library"
-            hint="Leave blank if the library lives at the root of the account."
+            placeholder="/Church/WorshipStudio/Library"
+            hint="The folder holding the library. Keep it a real folder rather than the account root, so it can be shared with other people later."
             persistent-hint
             class="mb-3"
           />
@@ -610,6 +655,9 @@ const showAdvancedConnect = ref(false)
           >
             Connect {{ connectProvider === 'onedrive' ? 'OneDrive' : 'Dropbox' }}
           </v-btn>
+          <p v-if="connectProvider === 'onedrive'" class="boot-note mt-2">
+            You'll sign in, then pick the library folder from a list — nothing else to type.
+          </p>
           <v-btn variant="text" size="large" block class="mt-2" @click="phase = 'chooser'">
             Back
           </v-btn>
@@ -621,8 +669,8 @@ const showAdvancedConnect = ref(false)
 
         <template v-else-if="phase === 'choose-folder'">
           <p class="boot-lead">
-            Choose your church's library folder. If someone shared it with you, it's listed under
-            their name's folder — open it to look inside.
+            Choose your church's library folder. One shared with you is listed by its own name and
+            marked "Shared with you" — open a folder to look inside it.
           </p>
 
           <nav class="folder-crumbs" aria-label="Folder path">
@@ -684,8 +732,26 @@ const showAdvancedConnect = ref(false)
 
         <template v-else-if="phase === 'initial-sync'">
           <p class="boot-status">Downloading your church's library…</p>
-          <v-progress-circular indeterminate color="primary" size="32" class="mb-2" />
+          <!-- Determinate as soon as the batch total is known — the spinner it replaced could not
+               distinguish 20 files left from 2000. Falls back to indeterminate for the moment
+               before the first poll returns, when there is genuinely nothing to report. -->
+          <v-progress-linear
+            v-if="initialSyncProgress?.total"
+            :model-value="initialSyncPercent"
+            color="primary"
+            height="8"
+            rounded
+            class="my-1"
+          />
+          <v-progress-circular
+            v-else
+            indeterminate
+            color="primary"
+            size="32"
+            class="boot-spinner mb-2"
+          />
           <p v-if="initialSyncLabel" class="boot-note">{{ initialSyncLabel }}</p>
+          <p v-if="initialSyncRemaining" class="boot-note">{{ initialSyncRemaining }}</p>
           <p class="boot-note">This only happens once on this device.</p>
         </template>
 
@@ -700,13 +766,61 @@ const showAdvancedConnect = ref(false)
   position: fixed;
   inset: 0;
   display: flex;
-  align-items: center;
   justify-content: center;
   padding: 16px;
+  /* Scrolls rather than clips. `align-items: center` would centre a card taller than the viewport
+     by overflowing it equally top and bottom, putting the top out of reach with no way to scroll
+     to it — reachable on a phone in landscape, and likelier now the tablet route carries install
+     guidance as well as two connect buttons. `margin: auto` on the child centres when there is
+     room and lets the container scroll when there is not. */
+  overflow-y: auto;
 }
 .boot-card {
   width: 100%;
   max-width: 420px;
+  margin: auto;
+}
+
+/* A labelled rule, so the cloud option reads as a genuine alternative rather than a lesser
+   afterthought — it is how the first device in a church gets set up. */
+.boot-or {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 2px;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-size: 0.74rem;
+}
+.boot-or::before,
+.boot-or::after {
+  flex: 1;
+  height: 1px;
+  background: rgba(var(--v-theme-on-surface), 0.16);
+  content: '';
+}
+
+/* Instructions, so left-aligned — the card centres everything else, which reads fine for a line or
+   two but badly for a sequence of steps. */
+.boot-install-first {
+  padding: 12px 14px;
+  border: 1px solid rgba(var(--v-theme-primary), 0.35);
+  border-radius: 10px;
+  background: rgba(var(--v-theme-primary), 0.08);
+  text-align: left;
+}
+.boot-install-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 5px;
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.85rem;
+}
+.boot-install-first p {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  opacity: 0.8;
 }
 .boot-card-content {
   display: flex;
@@ -809,6 +923,11 @@ const showAdvancedConnect = ref(false)
 }
 .boot-status {
   opacity: 0.7;
+}
+/* The card is a flex column, so `text-align: center` on it never moved this — a flex item with a
+   fixed size aligns to the start unless told otherwise. */
+.boot-spinner {
+  align-self: center;
 }
 .boot-note {
   margin-top: -4px;
