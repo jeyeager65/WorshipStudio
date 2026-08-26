@@ -20,8 +20,14 @@ import { useSlidesStore } from '@/stores/slides'
 import { useAnnouncementsStore } from '@/stores/announcements'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { clearStoredLibraryHandle } from '@/adapters/web/handlePersistence'
-import { disconnect as disconnectDropbox, isConnected as isDropboxConnected } from '@/adapters/tablet/providers/dropboxAuth'
-import { disconnect as disconnectOneDrive, isConnected as isOneDriveConnected } from '@/adapters/tablet/providers/onedriveAuth'
+import {
+  disconnect as disconnectDropbox,
+  isConnected as isDropboxConnected,
+} from '@/adapters/tablet/providers/dropboxAuth'
+import {
+  disconnect as disconnectOneDrive,
+  isConnected as isOneDriveConnected,
+} from '@/adapters/tablet/providers/onedriveAuth'
 import { generateQrCodeDataUrl } from '@/utils/qrCode'
 import { buildConnectCode } from '@/utils/connectCode'
 import { formatSyncProgressLabel } from '@/utils/syncProgress'
@@ -74,7 +80,9 @@ const props = defineProps<{ active?: boolean }>()
 const adapterKind = getAdapter().kind
 const isCloudConnected = adapterKind === 'tablet'
 const cloudProvider = computed(() => machineSettings.value?.tabletCloudProvider ?? 'dropbox')
-const cloudProviderLabel = computed(() => (cloudProvider.value === 'onedrive' ? 'OneDrive' : 'Dropbox'))
+const cloudProviderLabel = computed(() =>
+  cloudProvider.value === 'onedrive' ? 'OneDrive' : 'Dropbox',
+)
 
 const syncProgressLabel = computed(() => formatSyncProgressLabel(syncStore.progress))
 
@@ -83,7 +91,9 @@ const disconnectingCloud = ref(false)
 const cloudActionError = ref('')
 onMounted(async () => {
   if (!isCloudConnected) return
-  cloudConnected.value = await (cloudProvider.value === 'onedrive' ? isOneDriveConnected() : isDropboxConnected())
+  cloudConnected.value = await (cloudProvider.value === 'onedrive'
+    ? isOneDriveConnected()
+    : isDropboxConnected())
 })
 
 // Lazy, this page's own concern — see CloudSyncClientStatus's doc comment (adapters/types.ts)
@@ -126,7 +136,9 @@ async function switchConnectionMethod() {
   )
     return
   if (adapterKind === 'tablet') {
-    await (cloudProvider.value === 'onedrive' ? disconnectOneDrive() : disconnectDropbox()).catch(() => {})
+    await (cloudProvider.value === 'onedrive' ? disconnectOneDrive() : disconnectDropbox()).catch(
+      () => {},
+    )
   } else if (adapterKind === 'web') {
     await clearStoredLibraryHandle().catch(() => {})
   }
@@ -315,7 +327,8 @@ function selectAddDeviceCode(event: FocusEvent) {
 const tabletMediaMaxCachedFileSizeMb = computed<number | null>({
   get: () => machineSettings.value?.tabletMediaMaxCachedFileSizeMb ?? null,
   set: (value) => {
-    if (machineSettings.value) machineSettings.value.tabletMediaMaxCachedFileSizeMb = value ?? undefined
+    if (machineSettings.value)
+      machineSettings.value.tabletMediaMaxCachedFileSizeMb = value ?? undefined
   },
 })
 
@@ -511,13 +524,21 @@ async function loadSampleData() {
 // clearSettingsListBackups's own doc comment) — each remove() above only ever shrinks those
 // files, never deletes them, so their backup would otherwise keep holding the pre-clear content
 // indefinitely.
+/** The old wording said only "in this library," which reads as *this device's copy* — and said
+ *  nothing about the deletion travelling. It does: on a tablet each remove writes a tombstone the
+ *  next sync pushes to the cloud, and on a desktop whose library folder sits inside OneDrive or
+ *  Dropbox that provider's own client pushes it. In practically every real deployment this clears
+ *  the church's library on every device, which is the shape of a wipe this project has already
+ *  suffered once. Worth spelling out where the blast radius is actually large. */
+function clearExistingDataWarning(): string {
+  const base =
+    'This permanently deletes ALL songs, services, people, themes, media, service types, collections, role categories, and service templates in this library. This cannot be undone — make sure this library is not currently in use before doing this.'
+  if (!librarySyncsToOtherDevices.value) return base
+  return `${base}\n\nThis library is shared. Deleting here also deletes it on every other device that syncs it — including phones, tablets, and other computers — as soon as they sync.`
+}
+
 async function clearExistingData() {
-  if (
-    !(await confirmDestructiveAction(
-      'This permanently deletes ALL songs, services, people, themes, media, service types, collections, role categories, and service templates in this library. This cannot be undone — make sure this library is not currently in use before doing this.',
-      'Delete Everything',
-    ))
-  ) {
+  if (!(await confirmDestructiveAction(clearExistingDataWarning(), 'Delete Everything'))) {
     return
   }
   clearingData.value = true
@@ -534,6 +555,19 @@ async function clearExistingData() {
   }
 }
 
+/** Whether deleting content here would reach other people's devices.
+ *
+ *  Always true on a tablet, which is cloud-connected by definition. On desktop there is no way to
+ *  *know* — the app just sees a filesystem path and some other program does the syncing — so this
+ *  matches the folder names the common clients use. It will miss an unusual setup (a network share,
+ *  a less common client), which is why this only ever adds a warning: a false negative leaves the
+ *  original wording, and a false positive costs nothing but a more cautious sentence. */
+const CLOUD_SYNCED_FOLDER = /[\\/](?:onedrive|dropbox|google ?drive|icloud|box|pcloud|nextcloud)/i
+const librarySyncsToOtherDevices = computed(() => {
+  if (isCloudConnected) return true
+  return CLOUD_SYNCED_FOLDER.test(machineSettings.value?.libraryPath ?? '')
+})
+
 const pickingLibraryFolder = ref(false)
 const libraryPathIsRelative = computed(() => {
   const path = machineSettings.value?.libraryPath.trim() ?? ''
@@ -543,7 +577,7 @@ const libraryPathIsRelative = computed(() => {
 async function usePortableLibraryFolder() {
   if (
     !(await confirmDialog.confirm(
-      "Switch to a portable library folder? This replaces the path above with a relative " +
+      'Switch to a portable library folder? This replaces the path above with a relative ' +
         "'./Library' folder next to the Worship Studio executable — for running the app from a " +
         'USB drive or portable install with its own library, not a Dropbox/OneDrive-synced ' +
         "folder like the one currently set. You'll still need to click Save to apply it.",
@@ -645,9 +679,9 @@ async function saveDataLocationPath() {
           >
             Use Portable Folder
             <v-tooltip activator="parent" location="bottom" max-width="280">
-              For running Worship Studio from a USB drive or portable install with its own
-              library, not a Dropbox/OneDrive-synced folder. Sets a relative "./Library" path
-              next to the executable instead of the absolute path above.
+              For running Worship Studio from a USB drive or portable install with its own library,
+              not a Dropbox/OneDrive-synced folder. Sets a relative "./Library" path next to the
+              executable instead of the absolute path above.
             </v-tooltip>
           </v-btn>
         </div>
@@ -716,7 +750,9 @@ async function saveDataLocationPath() {
           <v-icon :icon="cloudConnected ? 'mdi-check-circle-outline' : 'mdi-link-off'" size="22" />
         </span>
         <div>
-          <strong>{{ cloudConnected ? `Connected to ${cloudProviderLabel}` : 'Not connected' }}</strong>
+          <strong>{{
+            cloudConnected ? `Connected to ${cloudProviderLabel}` : 'Not connected'
+          }}</strong>
           <small>OAuth tokens are stored only on this device.</small>
         </div>
         <v-btn
@@ -757,8 +793,8 @@ async function saveDataLocationPath() {
       <div class="mb-2">
         <strong class="text-body-2">Add Another Device</strong>
         <p class="text-caption text-medium-emphasis mb-2">
-          On the new device, scan this QR code with its regular camera app — it opens a page with
-          a Copy Code button (or just copy the code below directly) — then paste it into Worship
+          On the new device, scan this QR code with its regular camera app — it opens a page with a
+          Copy Code button (or just copy the code below directly) — then paste it into Worship
           Studio's setup screen there. It's the same {{ cloudProviderLabel }} connection as this
           device, no typing required.
         </p>
@@ -801,9 +837,8 @@ async function saveDataLocationPath() {
               class="add-device-qr-large"
             />
             <p class="text-body-2 text-medium-emphasis">
-              Scan this with the new device's regular camera app — it opens a page with a Copy
-              Code button — then paste it into Worship Studio's setup screen there. No typing
-              required.
+              Scan this with the new device's regular camera app — it opens a page with a Copy Code
+              button — then paste it into Worship Studio's setup screen there. No typing required.
             </p>
           </v-card-text>
           <v-card-actions>
@@ -835,7 +870,13 @@ async function saveDataLocationPath() {
         >
           Sync Now
         </v-btn>
-        <v-btn v-else variant="text" size="small" :loading="refreshingSync" @click="refreshSyncStatus">
+        <v-btn
+          v-else
+          variant="text"
+          size="small"
+          :loading="refreshingSync"
+          @click="refreshSyncStatus"
+        >
           Check Now
         </v-btn>
       </template>
@@ -870,7 +911,10 @@ async function saveDataLocationPath() {
           </div>
         </template>
         <template v-else>
-          <div v-if="syncStore.status.needsReconnect" class="d-flex align-center ga-2 mb-2 flex-wrap">
+          <div
+            v-if="syncStore.status.needsReconnect"
+            class="d-flex align-center ga-2 mb-2 flex-wrap"
+          >
             <v-icon icon="mdi-alert-circle" color="warning" size="small" />
             <span class="text-body-2"
               >This device needs to reconnect to {{ cloudProviderLabel }}.</span
@@ -945,8 +989,8 @@ async function saveDataLocationPath() {
           </v-btn>
           <p class="text-caption text-medium-emphasis mt-2 mb-4">
             Re-checks against {{ cloudProviderLabel }} for anything an ordinary sync might have
-            missed — including a file deleted elsewhere that's still showing here. Nothing local
-            is discarded; use this before reaching for Clear & Re-sync below.
+            missed — including a file deleted elsewhere that's still showing here. Nothing local is
+            discarded; use this before reaching for Clear & Re-sync below.
           </p>
           <v-btn
             variant="outlined"
@@ -1050,8 +1094,8 @@ async function saveDataLocationPath() {
         {{ stockBackgroundsError }}
       </v-alert>
       <div v-if="dataCleared" class="text-caption text-medium-emphasis mt-2">
-        All songs, services, people, themes, media, service types, collections, role categories,
-        and service templates have been deleted.
+        All songs, services, people, themes, media, service types, collections, role categories, and
+        service templates have been deleted.
       </div>
     </SettingsPanel>
   </div>
