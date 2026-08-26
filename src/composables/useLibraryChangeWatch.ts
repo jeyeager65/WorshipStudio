@@ -12,8 +12,13 @@
  *   staleness it fixes.
  * - **Say nothing while presenting.** The signal is held rather than dropped, so a change arriving
  *   mid-service is still offered once presenting stops.
- * - **A dirty editor is never refreshed.** Reloading the store behind unsaved work would discard
- *   it, so those stores are left alone and stay listed as still-pending.
+ *
+ * The note also called for skipping stores behind unsaved work. That turned out to guard against
+ * something that cannot happen: editors do not read from these stores. SongEditorView and
+ * ServiceWorkspaceView each fetch their record straight from the adapter into a private ref, so a
+ * store reload refreshes the *lists* and leaves an open editor's draft untouched. Skipping made
+ * Reload do nothing at all whenever anything was dirty, which is strictly worse than the risk it
+ * imagined.
  *
  * A no-op anywhere but the desktop build: only the Tauri backend has a filesystem to watch.
  */
@@ -22,7 +27,6 @@ import { storeToRefs } from 'pinia'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getAdapter } from '@/adapters'
 import { useLiveSessionStore } from '@/stores/liveSession'
-import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useSongsStore } from '@/stores/songs'
 import { useServicesStore } from '@/stores/services'
 import { usePeopleStore } from '@/stores/people'
@@ -53,7 +57,8 @@ export interface LibraryChangeWatch {
   hasChanges: ComputedRef<boolean>
   /** e.g. "Songs and services", for the banner. */
   summary: ComputedRef<string>
-  /** Reloads what changed, skipping any store behind unsaved work. */
+  /** Reloads the stores that changed. Safe with an editor open: editors hold their own copy of the
+   *  record they are editing, so this refreshes lists without touching unsaved work. */
   reload: () => Promise<void>
   /** Drops the pending changes without reloading — the operator chose to stay as they are. */
   dismiss: () => void
@@ -61,7 +66,6 @@ export interface LibraryChangeWatch {
 
 export function useLibraryChangeWatch(): LibraryChangeWatch {
   const liveSession = useLiveSessionStore()
-  const unsavedChanges = useUnsavedChangesStore()
   const { isPresenting } = storeToRefs(liveSession)
 
   const pending = ref<LibraryStoreName[]>([])
@@ -96,22 +100,19 @@ export function useLibraryChangeWatch(): LibraryChangeWatch {
   async function reload() {
     const stores = pending.value
     if (stores.length === 0) return
-    // Refreshing a store behind an editor with unsaved work would silently discard that work, so
-    // it is left stale on purpose — staleness confined to the one thing being actively edited is
-    // the safest available failure. It stays pending, so the banner keeps offering it.
-    const skipped = unsavedChanges.isDirty ? stores : []
-    const toReload = stores.filter((store) => !skipped.includes(store))
     const load = reloaders()
     await Promise.all(
-      toReload.map(async (store) => {
+      stores.map(async (store) => {
         try {
           await load[store]()
         } catch (error) {
+          // One store failing must not strand the rest, or the banner would keep offering a
+          // reload that can never fully succeed.
           logger.warn('sync', `Could not reload ${store} after an external library change`, error)
         }
       }),
     )
-    pending.value = skipped
+    pending.value = []
   }
 
   function dismiss() {

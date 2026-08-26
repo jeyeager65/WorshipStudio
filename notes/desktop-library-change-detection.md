@@ -191,3 +191,23 @@ half-finished work open.
 - **Confirm the dirty-editor path by hand.** Unit tests cover the mapping and the self-write
   detection, but "edit a song on the desktop, change it from a tablet, watch what the banner does"
   is the behaviour that matters and it has not been exercised end to end.
+
+## Correction: the unsaved-work protection was unnecessary (2026-08-26)
+
+The design above called for skipping stores behind a dirty editor. Built that way first, then
+checked the premise and found it false.
+
+**Editors do not read from these stores.** `SongEditorView` fetches its record with
+`getAdapter().songs.get(...)` into a private `ref`; `ServiceWorkspaceView` does the same. A store
+reload refreshes the _lists_ and leaves an open editor's draft entirely untouched, so there was
+never any unsaved work to lose.
+
+The protection was not merely redundant — it was harmful. `unsavedChanges.isDirty` is one app-wide
+flag, so with anything dirty, Reload skipped every store, left them all pending, and the banner
+stayed up: a control that visibly did nothing.
+
+Removed. Reload now refreshes everything that changed, unconditionally.
+
+Worth being clear about what this does _not_ change: if two people edit the same record and both
+save, the later save wins. That is pre-existing last-write-wins behaviour, unaffected by whether the
+list was refreshed, and out of scope here.

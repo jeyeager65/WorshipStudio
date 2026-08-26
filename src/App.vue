@@ -884,7 +884,8 @@ onUnmounted(() => {
     <!-- Held back entirely while presenting (hasChanges is false then, not merely hidden), so a
          change arriving mid-service is still offered once presenting stops rather than lost.
          Never reloads on its own: refreshing underneath an operator mid-edit is worse than the
-         staleness it fixes, which is also why Reload skips any store behind unsaved work. -->
+         staleness it fixes. Reload is safe with an editor open — editors hold their own copy of the
+         record being edited, so this refreshes lists without touching unsaved work. -->
     <v-snackbar
       :model-value="libraryChanges.hasChanges.value"
       color="info"
