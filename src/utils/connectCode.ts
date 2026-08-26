@@ -1,15 +1,24 @@
 /**
- * A short block of plain text (never a URL) that another already-connected device's Settings page
- * ("Add Another Device", LibrarySyncSection.vue) generates so a new device can join the same cloud
- * library without typing an app key by hand. Deliberately not a link: iOS has no way to route a
- * scanned link into an already-installed PWA (it always opens a plain Safari tab, with a
- * completely separate storage partition even if it could), and worse, in-app camera scanning of a
- * live video feed turned out to hit a real, unresolved WebKit bug in installed-PWA mode (video
- * never renders a frame — see bugs.webkit.org #252465). Plain, non-URL text sidesteps both: the
- * OS Camera app's QR reader offers a "Copy" affordance for text it doesn't recognize as a link
- * (no Safari detour), and copy/paste needs no camera API at all (no WebKit media bug to hit). The
- * operator scans with the ordinary OS camera app, copies the recognized text, and pastes it into
- * BootGate.vue's chooser screen.
+ * A short block of plain text that another already-connected device's Settings page ("Add Another
+ * Device", LibrarySyncSection.vue) generates so a new device can join the same cloud library
+ * without typing an app key by hand.
+ *
+ * The *code* is plain text, shown in a text field for copying with no camera involved. The *QR
+ * image* built from it is not: LibrarySyncSection.vue wraps this code in a real https:// URL
+ * (`?connectCode=…`) because encoding the plain text directly was tried on a real device and
+ * failed — iOS's camera just offers "Search the web for …", with no copy affordance at all. A real
+ * link is the one QR heuristic iOS handles reliably ("Open in Safari").
+ *
+ * In-app camera scanning would avoid the whole detour, but hits an unresolved WebKit bug in
+ * installed-PWA mode where the video element never renders a frame (bugs.webkit.org #252465), so
+ * the OS camera app plus copy/paste remains the only route that works.
+ *
+ * Where the scanned link lands differs by platform, which is why BootGate.vue branches on
+ * `isStandalone` rather than auto-connecting: iOS cannot route a scanned link into an installed
+ * PWA at all, so it opens a plain Safari tab whose storage partition the PWA will never see —
+ * BootGate only re-displays the code there with a Copy button, for the operator to paste into the
+ * PWA itself. Android's link capturing often opens the installed PWA directly, where there is no
+ * separate-partition risk and the code is applied on the spot.
  */
 const CONNECT_CODE_HEADER = 'WorshipStudioConnect/1'
 
