@@ -306,10 +306,10 @@ What shipped:
   root-cannot-be-shared constraint in section 1.
 - Scope widened to `Files.ReadWrite.All` (see 4b).
 
-Still unproven, and worth confirming before this is trusted with real data: **writes**. The pull path
-is exercised; upload, delete, and eTag conflict handling against another account's drive are not.
-They use the same anchor so they ought to follow, but "ought to" is what the 404 disproved last time.
-Make an edit in the app and confirm it appears in the pastor's folder.
+**Writes confirmed too (2026-08-26).** The pull path was verified first; a subsequent edit made in
+the app landed in the pastor's folder, so upload works against another account's drive on the same
+anchor. Delete and eTag-conflict handling have not been exercised deliberately, but they address
+through the identical helper, so the remaining risk is small rather than structural.
 
 **Deployment consequence:** the scope change means Microsoft will not hand back a broader grant than
 was originally consented, so **every currently-connected device must sign in again** once this
