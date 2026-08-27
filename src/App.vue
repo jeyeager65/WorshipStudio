@@ -7,6 +7,7 @@ import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { emit, listen } from '@tauri-apps/api/event'
 import { useRoute, useRouter } from 'vue-router'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import DemoIntroDialog from '@/components/DemoIntroDialog.vue'
 import SplashScreen from '@/components/SplashScreen.vue'
 import PresentationView from '@/views/PresentationView.vue'
 import IdentifyView from '@/views/IdentifyView.vue'
@@ -43,6 +44,11 @@ const settingsStore = useSettingsStore()
 const servicesStore = useServicesStore()
 const historyStore = useHistoryStore()
 const isTabletBuild = getAdapter().kind === 'tablet'
+// Opens on every demo launch, not once: sessions are short, the visitor is usually new, and "none
+// of this is a real library" is worth repeating. It also carries the reset, which is the only way
+// out of stale sample data kept by a previous visit — see DemoIntroDialog.
+const isDemoBuild = getAdapter().kind === 'mock'
+const demoIntroOpen = ref(isDemoBuild)
 const hasDesktopBackend = getAdapter().kind === 'tauri'
 
 // The app-bar sync icon is the only always-visible feedback that an automatic background sync
@@ -955,6 +961,7 @@ onUnmounted(() => {
     </v-snackbar>
 
     <ConfirmDialog />
+    <DemoIntroDialog v-if="isDemoBuild" v-model="demoIntroOpen" />
   </v-app>
 </template>
 
