@@ -152,15 +152,38 @@ function openPlan() {
           Plan
         </v-btn>
       </div>
-      <v-btn
-        icon="mdi-trash-can-outline"
-        variant="text"
-        color="error"
-        size="small"
-        class="row-remove"
-        aria-label="Delete service"
-        @click.stop.prevent="emit('delete')"
-      />
+      <!-- Same overflow menu the Song and People cards use (mdi-dots-horizontal, Edit above a
+           text-error Delete), rather than a delete icon of its own. Consistency is the main
+           reason; the other is that the icon it replaces was revealed on hover, which a touch
+           screen cannot do — see the hover rules in the style block below. "Open" is redundant
+           with tapping the card, and earns its place by making the menu say what the card does
+           instead of offering deletion as the only listed action. -->
+      <v-menu>
+        <template #activator="{ props: menuProps }">
+          <v-btn
+            v-bind="menuProps"
+            icon="mdi-dots-horizontal"
+            variant="text"
+            size="small"
+            class="row-actions"
+            aria-label="Service actions"
+            @click.stop
+          />
+        </template>
+        <v-list density="compact">
+          <v-list-item
+            prepend-icon="mdi-pencil-outline"
+            title="Open Service"
+            @click="openWorkspace"
+          />
+          <v-list-item
+            prepend-icon="mdi-delete-outline"
+            title="Delete Service"
+            class="text-error"
+            @click="emit('delete')"
+          />
+        </v-list>
+      </v-menu>
     </div>
   </v-card>
 </template>
@@ -172,11 +195,10 @@ function openPlan() {
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   border-left: 3px solid var(--date-color);
   background: rgba(var(--v-theme-background), 0.34);
-  /* Without this, iOS Safari treats the card's :hover rule below as a sign it needs a hover
-     state before a real click — the first tap only simulates :hover, and a second tap is needed
-     to actually fire the click handler. cursor: pointer is WebKit's documented signal that an
-     element is clickable, not hoverable-then-clickable, since this <v-card> renders as a plain
-     div rather than a native <a>/<button> that would already imply that on its own. */
+  /* Honest signal that this <v-card> — a plain div, not a native <a>/<button> — is clickable.
+     This was once also believed to fix iOS's double-tap on these cards; it does not, and the
+     real fix is the `@media (hover: hover)` gating below. Kept because it is correct on its own
+     terms, not because it solves that. */
   cursor: pointer;
   transition:
     border-color var(--ws-transition-fast),
@@ -184,12 +206,24 @@ function openPlan() {
     box-shadow var(--ws-transition-fast),
     transform var(--ws-transition-fast);
 }
-.service-card:hover,
+/* Every :hover rule for these cards is gated on a device that can actually hover. iOS applies
+   :hover on the first tap; where that paints something new under the finger — the remove button
+   below — WebKit treats the tap as a hover rather than a click and waits for a second one. That
+   is the two-taps-to-select bug, and no amount of `cursor: pointer` addresses it, because the
+   trigger is the content change, not the element's perceived clickability. */
 .service-card:focus-visible {
   border-color: color-mix(in srgb, var(--date-color) 38%, transparent);
   background: color-mix(in srgb, var(--date-color) 4.5%, rgba(var(--v-theme-background), 0.34));
   box-shadow: 0 9px 24px rgba(0, 0, 0, 0.1);
   transform: translateY(-1px);
+}
+@media (hover: hover) {
+  .service-card:hover {
+    border-color: color-mix(in srgb, var(--date-color) 38%, transparent);
+    background: color-mix(in srgb, var(--date-color) 4.5%, rgba(var(--v-theme-background), 0.34));
+    box-shadow: 0 9px 24px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+  }
 }
 .service-card--today {
   --date-color: rgb(var(--v-theme-amber));
@@ -339,11 +373,15 @@ function openPlan() {
 .service-actions :deep(.v-btn) {
   text-transform: none;
 }
-.row-remove {
-  opacity: 0;
+/* Always present, unlike the delete icon this replaced. A neutral overflow affordance can sit
+   there permanently without reading as clutter or inviting an accidental delete, which is what
+   made hover-reveal seem necessary in the first place — and hover-reveal is exactly what a touch
+   screen cannot do. */
+.row-actions {
+  opacity: 0.6;
 }
-.service-card:hover .row-remove,
-.row-remove:focus-visible {
+.row-actions:hover,
+.row-actions:focus-visible {
   opacity: 1;
 }
 @media (max-width: 760px) {
@@ -352,9 +390,6 @@ function openPlan() {
   }
   .service-counts {
     display: none;
-  }
-  .row-remove {
-    opacity: 0.75;
   }
 }
 @media (max-width: 480px) {

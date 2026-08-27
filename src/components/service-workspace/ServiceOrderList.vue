@@ -24,7 +24,11 @@ const confirmDialog = useConfirmDialogStore()
 // Off by default — accidental drags while just browsing/clicking the Service Order list would
 // be far more disruptive here than useful, so reordering is opt-in via the toggle next to the
 // header rather than always-on.
-const reorderMode = ref(false)
+// Drag handles and per-item Remove together, behind one toggle — the pattern iOS Mail and
+// Reminders use. Was reorder-only; Remove moved in when hover-reveal turned out to be
+// unreachable on a touch screen (see the row-remove rules in the style block), and an
+// always-visible delete on every row is both clutter and one stray tap from destruction.
+const editMode = ref(false)
 const selectedItem = computed(() => props.service.items[selectedItemIndex.value])
 // selectedItemIndex is a raw array position, not an id — capture the selected item's own id
 // before a drag starts so it can be re-found by id afterward, otherwise the "selected" item
@@ -128,11 +132,12 @@ async function removeServiceItem(index: number) {
         </div>
       </div>
       <v-btn
-        :icon="reorderMode ? 'mdi-check' : 'mdi-swap-vertical'"
+        :icon="editMode ? 'mdi-check' : 'mdi-pencil-outline'"
         variant="text"
         size="small"
-        :title="reorderMode ? 'Done reordering' : 'Reorder items'"
-        @click="reorderMode = !reorderMode"
+        :title="editMode ? 'Done editing' : 'Reorder or remove items'"
+        :aria-label="editMode ? 'Done editing' : 'Reorder or remove items'"
+        @click="editMode = !editMode"
       />
     </div>
     <v-menu location="bottom" :close-on-content-click="true">
@@ -160,7 +165,7 @@ async function removeServiceItem(index: number) {
     </v-menu>
     <div class="service-list flex-grow-1 overflow-y-auto">
       <VueDraggable
-        v-if="reorderMode"
+        v-if="editMode"
         v-model="serviceItems"
         handle=".service-item-drag-handle"
         :animation="150"
@@ -202,6 +207,14 @@ async function removeServiceItem(index: number) {
               {{ serviceOrderSecondaryLabel(item) }}
             </div>
           </div>
+          <v-btn
+            icon="mdi-trash-can-outline"
+            variant="text"
+            class="row-remove"
+            size="x-small"
+            title="Remove from service"
+            @click.stop="removeServiceItem(index)"
+          />
         </div>
       </VueDraggable>
       <template v-else>
@@ -240,20 +253,12 @@ async function removeServiceItem(index: number) {
               {{ serviceOrderSecondaryLabel(item) }}
             </div>
           </div>
-          <v-btn
-            icon="mdi-trash-can-outline"
-            variant="text"
-            class="row-remove"
-            size="x-small"
-            title="Remove from service"
-            @click.stop="removeServiceItem(index)"
-          />
         </div>
       </template>
     </div>
-    <div v-if="reorderMode" class="service-panel-footer">
+    <div v-if="editMode" class="service-panel-footer">
       <v-icon icon="mdi-drag-vertical" size="14" />
-      <span>Drag items into order</span>
+      <span>Drag items into order, or remove them</span>
     </div>
   </div>
 </template>
@@ -389,9 +394,13 @@ async function removeServiceItem(index: number) {
     box-shadow 130ms ease,
     transform 130ms ease;
 }
-.service-item:hover {
-  border-color: rgba(var(--v-theme-primary), 0.25);
-  background: rgba(var(--v-theme-primary), 0.08);
+/* Gated on a device that can hover — see the row-remove rules at the bottom of this block for
+   why every :hover here is. */
+@media (hover: hover) {
+  .service-item:hover {
+    border-color: rgba(var(--v-theme-primary), 0.25);
+    background: rgba(var(--v-theme-primary), 0.08);
+  }
 }
 /* A full-perimeter border + ring (not just a thin left accent) so "selected" reads as a
    genuinely focused card at a glance, distinct from "live" below rather than a subtly
@@ -477,29 +486,24 @@ async function removeServiceItem(index: number) {
   background: currentColor;
   box-shadow: 0 0 0 2px rgba(var(--v-theme-error), 0.15);
 }
+/* Rendered only in edit mode, so it is simply visible whenever it exists — no hover-reveal, and
+   so nothing for iOS to mistake for a hover on the first tap, which is what made selecting an
+   item take two taps. */
 .row-remove {
   position: absolute;
   z-index: 1;
   top: 50%;
   right: 5px;
   transform: translateY(-50%);
-  opacity: 0;
-  pointer-events: none;
   background: color-mix(in srgb, rgb(var(--v-theme-surface)) 88%, transparent);
   color: rgba(var(--v-theme-on-surface), 0.58);
-  transition:
-    opacity 120ms ease,
-    color 120ms ease;
+  transition: color 120ms ease;
 }
-.service-item:hover .service-item-copy,
-.service-item:focus-within .service-item-copy {
+/* Reserve the button's width on the rows that actually have one, rather than on every row —
+   :has keeps that tied to the button's presence instead of duplicating the edit-mode condition
+   in a second place that could drift from it. */
+.service-item:has(.row-remove) .service-item-copy {
   padding-right: 28px;
-}
-.service-item:hover .row-remove,
-.service-item:focus-within .row-remove,
-.row-remove:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
 }
 .row-remove:hover {
   color: rgb(var(--v-theme-error));

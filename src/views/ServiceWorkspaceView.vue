@@ -175,10 +175,19 @@ const workspaceLoadError = ref('')
 const notFound = ref(false)
 const documentHistory = useDocumentHistory(service, 'service')
 const selectedItemIndex = ref(0)
+// Song arrangement editing (add/remove blocks, "Reset to song default") is behind a toggle, so
+// the ordinary view of a song is just its blocks. Removing a block here deliberately has no
+// confirmation — confirming each one would make assembling an arrangement tedious, and "Reset to
+// song default" is the undo — which is precisely why those controls should not be permanently on
+// screen. It also means no hover-revealed delete icon, which a touch screen could never reach.
+const arrangementEditMode = ref(false)
 // Operator picked a different item while the order-list drawer was open — reveal the editor
 // they came for instead of leaving it covered.
 watch(selectedItemIndex, () => {
   if (openDrawer.value === 'order') openDrawer.value = null
+  // Editing is per-song, not a mode the workspace stays in — otherwise moving to the next song
+  // would silently arrive with its blocks already removable.
+  arrangementEditMode.value = false
 })
 
 const serviceDetailsDialogOpen = ref(false)
@@ -1694,16 +1703,29 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
           </div>
 
           <template v-if="selectedItem.type === 'song' && selectedSong">
-            <v-btn
-              variant="text"
-              size="small"
-              color="secondary"
-              prepend-icon="mdi-swap-horizontal"
-              class="mb-2"
-              @click="beginReplaceItem(selectedItem, selectedItemIndex)"
-            >
-              Change Song
-            </v-btn>
+            <div class="d-flex flex-wrap align-center ga-1 mb-2">
+              <v-btn
+                variant="text"
+                size="small"
+                color="secondary"
+                prepend-icon="mdi-swap-horizontal"
+                @click="beginReplaceItem(selectedItem, selectedItemIndex)"
+              >
+                Change Song
+              </v-btn>
+              <!-- "Arrangement", not "Song": the song's own lyrics are edited in the Song
+                   Library, and this only reorders/adds/removes blocks for this one service.
+                   Sitting next to "Change Song" makes that distinction worth spelling out. -->
+              <v-btn
+                variant="text"
+                size="small"
+                :color="arrangementEditMode ? 'primary' : 'secondary'"
+                :prepend-icon="arrangementEditMode ? 'mdi-check' : 'mdi-pencil-outline'"
+                @click="arrangementEditMode = !arrangementEditMode"
+              >
+                {{ arrangementEditMode ? 'Done' : 'Edit Arrangement' }}
+              </v-btn>
+            </div>
             <VueDraggable
               v-model="selectedItem.arrangement.sequence"
               handle=".drag-handle"
@@ -1742,6 +1764,7 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
                   </div>
                 </div>
                 <v-btn
+                  v-if="arrangementEditMode"
                   icon="mdi-trash-can-outline"
                   variant="flat"
                   color="error"
@@ -1752,7 +1775,15 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
               </div>
             </VueDraggable>
 
-            <div class="d-flex flex-wrap align-center ga-2 mt-3" style="max-width: 460px">
+            <!-- Building the arrangement is a deliberate act, so its controls live behind the
+                 same toggle the delete icons do — removing a block has no confirmation prompt
+                 here (on purpose: confirming every one would make assembling an arrangement
+                 tedious), which is exactly why they shouldn't be one stray tap away. -->
+            <div
+              v-if="arrangementEditMode"
+              class="d-flex flex-wrap align-center ga-2 mt-3"
+              style="max-width: 460px"
+            >
               <span class="text-caption font-weight-bold text-medium-emphasis mr-1">Add:</span>
               <v-chip
                 v-for="block in selectedSong.blocks"
@@ -3823,9 +3854,12 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
     background-color 130ms ease,
     border-color 130ms ease;
 }
-.slide-row:hover {
-  background: rgba(var(--v-theme-primary), 0.08);
-  border-color: rgba(var(--v-theme-primary), 0.18);
+/* Gated on a device that can hover — see .slide-row .row-remove below for why. */
+@media (hover: hover) {
+  .slide-row:hover {
+    background: rgba(var(--v-theme-primary), 0.08);
+    border-color: rgba(var(--v-theme-primary), 0.18);
+  }
 }
 .media-preview {
   max-width: 100%;
@@ -3862,15 +3896,19 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
 .sermon-flow-detail :deep(.v-field) {
   max-width: 520px;
 }
+/* Always visible, never revealed on hover. Two reasons, and they point the same way:
+ *
+ * iOS applies :hover on the first tap, and painting a button in under the finger makes WebKit
+ * treat that tap as a hover rather than a click — which is why selecting a row inside an item
+ * used to take two taps.
+ *
+ * And the sermon rows this covers (main passage, additional passages, flow entries, outline
+ * points) each confirm before deleting, so a visible delete costs nothing. The one row-remove
+ * without a confirmation — a song arrangement block — is instead rendered only in the
+ * arrangement's own edit mode, so it is not on screen to be tapped by accident. */
 .row-remove {
-  opacity: 0;
   color: rgba(var(--v-theme-on-surface), 0.58);
-  transition:
-    opacity 120ms ease,
-    color 120ms ease;
-}
-.slide-row:hover .row-remove {
-  opacity: 1;
+  transition: color 120ms ease;
 }
 /* Same visual language as ServiceOrderList's live badge, for the sub-item rows within a
    selected item's own editor (bible verse pages, song arrangement blocks, sermon outline). */
