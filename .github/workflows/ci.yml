@@ -121,7 +121,15 @@ jobs:
       # Assembles ./pages — the directory wrangler.jsonc publishes. Base paths default to the
       # root-served case, which is what this origin serves (unlike GitHub Pages, which nests
       # everything under /WorshipStudio/).
+      #
+      # WS_APP_URL repoints the help site's links to the app ("Try the Web Demo", and
+      # Installation's two) at this origin. Without it they stay absolute to production — correct
+      # for the GitHub Pages build and the copy bundled into the desktop app, and quietly wrong
+      # here: a tester following them would land on the very build they came to this URL to
+      # avoid. Cloud Setup keeps the production address deliberately; see docs/.vitepress/config.ts.
       - run: pnpm build:pages
+        env:
+          WS_APP_URL: https://worshipstudio.jeyeager.workers.dev/app/
 
       # `npx wrangler` rather than cloudflare/wrangler-action: the action installs wrangler with
       # whatever package manager the repo uses, and pnpm 10+ refuses to run a dependency's

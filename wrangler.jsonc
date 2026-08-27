@@ -22,6 +22,13 @@
     // per route, and SPA mode would rewrite every unmatched path to index.html, swallowing
     // VitePress's own 404 and masking genuinely broken links. The app itself routes on the hash
     // (#/...), so it never needs a rewrite to begin with.
-    "not_found_handling": "404-page"
+    "not_found_handling": "404-page",
+    // "none" turns off Cloudflare's default .html stripping, which 307-redirects /services.html
+    // to /services. VitePress cleanUrls is deliberately off here (see docs/.vitepress/config.ts:
+    // the Tauri help:// scheme serves files by exact name, and GitHub Pages has no rewrite
+    // rules), so every internal link in the help site ends in .html — the default put a redirect
+    // in front of every navigation and landed each one on a URL that does not exist in
+    // production. A dev deployment is only useful while it behaves like what it previews.
+    "html_handling": "none"
   }
 }
