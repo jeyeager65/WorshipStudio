@@ -142,12 +142,10 @@ describe('Documentation screenshots (capture, not a test)', () => {
     await navigateAndCapture('.song-card', '.song-editor-page', 'song-editor')
 
     await navigateAndCapture('a[href="#/library/slides"]', 'h1*=Slides', 'slides')
-    // Sample data seeds no presentations at all (unlike songs/themes/people/templates), so
-    // there's no '.presentation-card' to click here — opens a genuinely new, blank one instead
-    // (same "never written to disk unless Save is used" pattern as SongLibraryView's createSong,
-    // confirmed by that pattern's own comment there) via New Presentation, still showing the
-    // freeform canvas and its toolbar even without real content on it.
-    await navigateAndCapture('button*=New Presentation', 'div*=Slide Editor', 'slide-editor')
+    // Sample data now seeds a real pre-service announcement loop, so this opens that rather than
+    // the blank New Presentation it used to — the editor shot shows actual composed slides on the
+    // canvas instead of an empty one, which is the whole point of a screenshot of an editor.
+    await navigateAndCapture('.presentation-card', 'div*=Slide Editor', 'slide-editor')
 
     await navigateAndCapture('a[href="#/library/media"]', 'h1*=Media', 'media')
     await navigateAndCapture('.media-card', 'h2*=Media Details', 'media-details')
