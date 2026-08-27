@@ -1489,11 +1489,16 @@ export function buildSampleServices(referenceDate = new Date()): Service[] {
         arrangement: { sequence: ['v1', 'v2'] },
       },
       {
+        // The one reference-only item in the sample data, so the demo can actually show the
+        // wayfinding display (the reference large, with the neighbouring books fading away either
+        // side) rather than leaving a whole presentation mode invisible. Realistic here
+        // specifically: a midweek study is where a group reads along in their own Bibles, which is
+        // the case reference-only exists for. Sunday's readings stay full text.
         id: 'item-2',
         type: 'scripture',
         reference: 'Romans 8:28-39',
         translation: 'KJV',
-        displayMode: 'full',
+        displayMode: 'reference-only',
       },
       {
         id: 'item-sermon',
