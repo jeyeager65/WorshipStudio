@@ -11,6 +11,10 @@ on:
     branches: [main, dev]
 
 jobs:
+  # Every job reads the Node version from .nvmrc rather than repeating a literal. It was written
+  # out in five places across this file and release.yml, which is how a toolchain version quietly
+  # ends up differing between the job that tests a build and the job that ships it. nvm and fnm
+  # read the same file locally.
   frontend:
     runs-on: windows-latest
     steps:
@@ -20,7 +24,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 24.18.0
+          node-version-file: .nvmrc
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -59,7 +63,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 24.18.0
+          node-version-file: .nvmrc
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -109,7 +113,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 24.18.0
+          node-version-file: .nvmrc
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
