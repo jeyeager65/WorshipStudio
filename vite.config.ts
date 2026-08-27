@@ -56,6 +56,15 @@ export default defineConfig({
     },
   },
   server: {
+    // Dev-only. Testing on a real tablet needs an HTTPS origin — an iPad has no secure context
+    // over plain http://<LAN-IP>, and crypto.randomUUID (used in ~67 places, including the mock
+    // adapter's own id generator) is simply undefined there, so even the demo cannot create a
+    // record. A Cloudflare quick tunnel supplies that origin:
+    //   cloudflared tunnel --url http://localhost:5174
+    // Vite rejects requests whose Host header it does not recognise (its DNS-rebinding guard),
+    // and a tunnel hostname is exactly that, so it has to be allowed by name. Scoped to the
+    // tunnel domain rather than `true`, which would disable the guard outright.
+    allowedHosts: ['.trycloudflare.com'],
     watch: {
       // Rust build output — concurrent writes here (e.g. under `tauri dev`) can hit
       // Windows file locks (EBUSY) if Vite's watcher is also touching these files.
