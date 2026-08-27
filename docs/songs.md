@@ -26,6 +26,19 @@ service when you add the song.
 From [Service Plan](/services), **Choose Songs from Library** opens the Song Library in picker
 mode — click a song to add it to the service, and drag to reorder your selections.
 
+A song added to a service starts from its Default Arrangement, and you can vary it for that one
+service without touching the song itself. In the Service Workspace, select the song and click
+**Edit Arrangement**: blocks can then be dragged into a different order, removed, or added back
+from the chips below, and **Reset to song default** undoes the lot. Click **Done** when you're
+finished.
+
+::: tip Why it's behind a button
+Removing a block here doesn't ask you to confirm — being asked on every tap would make building
+an arrangement tedious, and Reset to song default is the safety net. That's exactly why the
+controls stay out of the way until you ask for them, and why an ordinary tap on a block never
+deletes anything.
+:::
+
 ## Import and housekeeping
 
 **Import from OpenSong** brings in songs from OpenSong XML files, available here and in the

@@ -113,6 +113,16 @@ describe('Documentation screenshots (capture, not a test)', () => {
     await serviceCard.click()
     const firstServiceItem = await $('.service-item')
     await firstServiceItem.waitForExist({ timeout: 10000 })
+    // Select the first *song* rather than whichever item happens to be first. A song shows its
+    // arrangement blocks, which says far more about what the workspace is for than a bulletin
+    // note or a slide deck does — and it stops this shot changing character with the sample
+    // data's date-relative ordering (which service is "first" depends on the day it runs).
+    // Matched on the song icon rather than a test-only attribute, so nothing is added to the
+    // app's markup for a screenshot's sake; if that icon ever changes this fails loudly on the
+    // missing element rather than quietly capturing the wrong item.
+    const firstSongItem = await $('.service-item:has(.mdi-music-note)')
+    await firstSongItem.waitForClickable({ timeout: 10000 })
+    await firstSongItem.click()
     await capture('service-workspace')
 
     // --- docs/roles.md: the role-category/role catalog management screen. Back out to Services

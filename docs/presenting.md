@@ -4,7 +4,7 @@ Running the service live happens in the same [Service Workspace](/services) you 
 there's no separate "presentation mode" to switch into and no export step. The order of worship
 you built *is* the running order.
 
-![Service Workspace, with a song's lyrics selected on the left and the live Presentation preview panel on the right](/screenshots/service-workspace.webp)
+![Service Workspace — the order of service on the left with its edit button, a selected song's arrangement blocks in the middle under Change Song and Edit Arrangement, and the live Presentation preview panel on the right](/screenshots/service-workspace.webp)
 
 ## Before you start
 
