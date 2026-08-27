@@ -77,7 +77,7 @@ function resetDemo() {
         </p>
       </v-card-text>
 
-      <v-card-actions>
+      <v-card-actions class="demo-actions">
         <v-btn variant="text" prepend-icon="mdi-refresh" :loading="resetting" @click="resetDemo">
           Reset Sample Data
         </v-btn>
@@ -158,5 +158,30 @@ function resetDemo() {
 .demo-note {
   font-size: 0.8rem;
   opacity: 0.7;
+}
+/* Two buttons and a spacer don't fit a phone's width, and v-btn won't wrap its own label — the
+   row simply overflowed the card and clipped "Reset Sample Data" mid-word. Stacked full-width
+   below, which is the only arrangement where both labels stay whole at this size.
+   column-reverse rather than reordering the markup: DOM order keeps the destructive action first
+   for keyboard and screen-reader users, while the primary one sits on top visually, where a
+   stacked dialog's main action belongs. */
+.demo-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (max-width: 480px) {
+  .demo-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  /* Vuetify spaces adjacent card actions with a start margin, which becomes a stray indent once
+     they're stacked — and the spacer has nothing left to push apart. */
+  .demo-actions :deep(.v-btn) {
+    margin-inline-start: 0;
+    width: 100%;
+  }
+  .demo-actions :deep(.v-spacer) {
+    display: none;
+  }
 }
 </style>
