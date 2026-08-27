@@ -25,9 +25,12 @@ The toggle sits with the item's other settings in the workspace.
 
 The verses appear on screen, with verse numbers as small chips so they stay readable at any size.
 
+![A full-text scripture slide — Romans 8:28-39 in the KJV, with verse number chips and a page indicator in the footer](/screenshots/scripture-full.webp)
+
 **Long passages split themselves across slides.** The split always lands on a verse boundary,
 never mid-verse, and the resulting pages are what Previous/Next steps through. You don't
-paginate anything by hand, and the footer shows which page you're on (`KJV (2/3)`).
+paginate anything by hand, and the footer shows which page you're on — `KJV (1/7)` above, those
+twelve verses having become seven slides.
 
 How much lands on each slide follows from the minimum font size in
 [Settings → Text Sizing](/settings): a smaller minimum fits more verses per slide, a larger one
@@ -36,7 +39,10 @@ splits sooner. Set that by what's readable from the back of your room and the sp
 ### Reference Only
 
 No verse text — just the reference, shown large, with the books either side of it fading out
-above and below, and a bar showing roughly how far through the whole Bible it falls.
+above and below, and a bar along the bottom marking where the passage falls in the whole Bible,
+Old Testament and New.
+
+![A reference-only scripture slide — Romans 8:28-39 shown large, with John and Acts above it and 1 and 2 Corinthians below, fading with distance, over an Old/New Testament progress bar](/screenshots/wayfinding.webp)
 
 This is for a congregation reading along in their own Bibles. The surrounding book names are the
 point: someone hunting for Habakkuk can see it sits between Nahum and Zephaniah and thumb toward

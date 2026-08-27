@@ -36,9 +36,24 @@ async function main() {
   for (const file of files) {
     const sourcePath = path.join(SOURCE_DIR, file)
     const input = await readFile(sourcePath)
+    // Captures from capture.js are always 1440x900 (its own setWindowSize), so this changes
+    // nothing for them. It exists for hand-captured shots: a real presentation screen grabbed off
+    // a 1920x1200 monitor arrived nearly twice the width of every other image on the page, for no
+    // benefit at the ~700px the docs actually render them at.
+    const resized = sharp(input).resize({ width: 1440, withoutEnlargement: true })
+    // Lossless suits a UI screenshot — flat color regions, small crisp text — but not a
+    // presentation slide, which is a photograph with display text over it. Lossless on those ran
+    // 1.3MB where quality 90 lands at 190KB with the lettering still sharp, so the codec follows
+    // the content: anything captured at the harness size is UI, anything larger is a slide.
+    //
     // sharp's re-encode strips metadata by default (no withMetadata() call) — nothing beyond
     // pixels carries over into the committed file.
-    const output = await sharp(input).webp({ lossless: true }).toBuffer()
+    const { width } = await sharp(input).metadata()
+    const isPhotographic = (width ?? 0) > 1440
+    const output = await (isPhotographic
+      ? resized.webp({ quality: 90 })
+      : resized.webp({ lossless: true })
+    ).toBuffer()
     const filename = file.replace(/\.png$/, '.webp')
     await writeFile(path.join(OUTPUT_DIR, filename), output)
     console.log(
