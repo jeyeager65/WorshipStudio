@@ -126,7 +126,21 @@ export function useLiveTransport(options: UseLiveTransportOptions) {
 
   function goLive(index: number) {
     isBlankScreen.value = false
-    liveSlideKey.value = flatSlides.value[index]?.key
+    const slide = flatSlides.value[index]
+    liveSlideKey.value = slide?.key
+    // The order list follows the live position. Every way of moving live lands here — Prev/Next,
+    // the left/right arrows, a slide row, the phone remote, the audience window's tap zones — so
+    // after any of them the operator is looking at the item now on screen instead of wherever
+    // they last clicked.
+    //
+    // The reverse is deliberately not true: selecting an item never changes what is live, so an
+    // operator can still go and work on a later item mid-service (adding a passage to the sermon
+    // while a song is up) without disturbing the presentation. Moving live is what re-syncs them.
+    //
+    // Auto-advance also routes through here, but only ever within the item already live — it
+    // stops at the item boundary by design (see the timer below) — so an unattended slide loop
+    // can never pull the operator off what they are editing.
+    if (slide) selectedItemIndex.value = slide.itemIndex
   }
 
   // Basic Remote Controls forwarding (spec section 12) is keyboard-only (see onKeydown below,
