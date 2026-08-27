@@ -2,8 +2,13 @@ name: CI
 
 on:
   pull_request:
+  # `dev` as well as `main`: day-to-day work is committed straight to dev (a feature branch per
+  # change is ceremony with no second reviewer), so without this every commit between releases
+  # would go unchecked until the dev -> main pull request — later and in a much larger batch than
+  # today's direct-to-main pushes are checked. main stays listed for the release merge and for
+  # anything a flyup puts there.
   push:
-    branches: [main]
+    branches: [main, dev]
 
 jobs:
   frontend:
