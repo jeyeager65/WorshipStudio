@@ -9,7 +9,39 @@ on:
       - 'v*'
 
 jobs:
+  # A tag push triggers this workflow from whatever commit it points at — tags are not scoped to a
+  # branch, so nothing about `on: push: tags` stops a tag cut on `dev` from publishing a release
+  # and republishing the public Pages site from unreleased code. Since releases now come from
+  # `main` by way of a pull request (see notes/release-process.md), that is worth enforcing rather
+  # than remembering.
+  #
+  # It checks ancestry, not which branch the tag was created on, so tagging a commit while it is
+  # still on `dev` and pushing the tag after the merge works fine — the merge makes that commit an
+  # ancestor of main. That only holds because dev is merged, not squashed: a squash would rewrite
+  # those commits and no tag made on dev could ever satisfy this.
+  verify-tag-on-main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history: --is-ancestor needs the commits between the tag and main, which a
+          # shallow clone does not have.
+          fetch-depth: 0
+
+      - name: Refuse a tag that is not on main
+        run: |
+          # Explicit refspec: checkout fetched the tag, so there is no origin/main tracking ref
+          # to compare against until one is created here.
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "$GITHUB_REF_NAME is on main — proceeding."
+          else
+            echo "::error::$GITHUB_REF_NAME points at a commit that is not on main. Releases build from main (see notes/release-process.md). If the dev -> main pull request is still open, merge it and push the tag again — tagging a commit on dev is fine, pushing the tag before it reaches main is not."
+            exit 1
+          fi
+
   build-tauri:
+    needs: verify-tag-on-main
     strategy:
       fail-fast: false
       matrix:
@@ -102,6 +134,7 @@ jobs:
           args: ${{ matrix.platform == 'windows-latest' && '--config windows-signing.json' || '' }}
 
   deploy-pages:
+    needs: verify-tag-on-main
     # The project's public GitHub Pages site, republished on every release: the VitePress help
     # site (docs/) as the landing page at the root, and the real web/tablet build (the same one
     # a browser or tablet installs as a PWA against a real synced library — "try the demo" is

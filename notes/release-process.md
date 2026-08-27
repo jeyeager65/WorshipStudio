@@ -102,19 +102,49 @@ without an explicit tap, since installing requires a full app restart. Checks (a
 itself) are suppressed entirely while presenting (`useLiveSessionStore().isPresenting`), so an
 update can't so much as tempt a tap mid-service.
 
+## Branches
+
+Adopted 2026-08-27, replacing direct-to-main commits. See
+[dev-workflow-plan.md](dev-workflow-plan.md) for the reasoning.
+
+| Branch | Role |
+| --- | --- |
+| `main` | What churches are running. Protected: pull request required, `frontend` and `rust` CI must pass, no force pushes. Tags are cut here. |
+| `dev` | Everyday work, committed to directly. A feature branch per change is ceremony with no second reviewer, so one is only worth cutting when a change is large or genuinely speculative. |
+| `flyup/*` | An urgent fix that cannot wait for whatever is sitting in `dev`. |
+
+`enforce_admins` is deliberately **off** on `main`: the protection is there to stop routine
+mistakes, not to lock the maintainer out of their own repository mid-service. Use the flyup path
+rather than the bypass whenever there is a choice.
+
+**Flyup.** Branch from `main`, pull request into `main`, tag, release — then **merge `main` back
+into `dev`**, or the fix is lost at the next release.
+
 ## Cutting a release
 
-1. Bump the version in `package.json` and `src-tauri/Cargo.toml` (keep both in sync).
+1. On `dev`, bump the version in `package.json` and `src-tauri/Cargo.toml` (keep both in sync).
    `src-tauri/tauri.conf.json`'s `version` field points at `../package.json` rather than
    carrying its own literal, so it follows automatically — confirmed by checking the generated
-   Windows resource file's FileVersion/ProductVersion after a build.
-2. Commit that change normally.
-3. Tag and push:
+   Windows resource file's FileVersion/ProductVersion after a build. The bump belongs to the
+   release, not to the work: doing it here rather than earlier keeps `dev` from carrying a
+   version it has not shipped.
+2. Commit that change and push `dev`.
+3. Open a pull request from `dev` into `main` and merge it once CI is green. Merge commit, not
+   squash — the individual commits explain their own reasoning and are what the release notes
+   are drawn from.
+4. Tag `main` and push the tag:
    ```sh
+   git checkout main && git pull
    git tag v0.2.0
    git push origin v0.2.0
    ```
-4. `release.yml` builds a signed Windows installer and republishes the GitHub Pages site (help
+   A tag is a pointer to a commit, not part of a branch or a pull request, and it is never pushed
+   by the commit push — which is why this is its own step, and why the tag push is what starts a
+   release. `release.yml` refuses a tag whose commit is not yet an ancestor of `main`, so pushing
+   one before the merge lands fails the run rather than publishing unreleased code. If that
+   happens: merge, then `git push origin :refs/tags/v0.2.0` and push the tag again, since
+   re-pushing an unchanged tag does not re-trigger anything.
+5. `release.yml` builds a signed Windows installer and republishes the GitHub Pages site (help
    site + demo, see "Static browser demo" below). macOS was dropped from the release matrix
    (no one currently runs live presentation from a Mac, and the web build already covers
    Mac-based prep work) — the Tauri config, signing rationale, and install instructions below
