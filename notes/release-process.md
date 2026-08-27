@@ -122,17 +122,32 @@ into `dev`**, or the fix is lost at the next release.
 
 ## Cutting a release
 
-1. On `dev`, bump the version in `package.json` and `src-tauri/Cargo.toml` (keep both in sync).
+1. **Run the end-to-end suite** (not in CI — see below):
+   ```sh
+   cd e2e
+   npm run build:app        # mandatory: the binary bundles the built frontend
+   npm test
+   ```
+   CI covers unit tests, both builds, clippy and the Rust tests, but nothing exercises the real
+   app, so this is the only thing that catches a spec drifting away from the UI it describes.
+   That drift is silent and accumulates: by 2026-08-27 five specs were failing against changes
+   made weeks earlier — a wizard that had gained a fork and a step, a tab renamed from "Plan
+   Ahead" to "Plan", and a form field inserted above three inputs a spec addressed by index.
+   Cutting a release is the natural checkpoint, being roughly the cadence a three-minute suite
+   can absorb. If it ever moves into CI, pull requests into `main` are the place — the same
+   moment, enforced.
+
+2. On `dev`, bump the version in `package.json` and `src-tauri/Cargo.toml` (keep both in sync).
    `src-tauri/tauri.conf.json`'s `version` field points at `../package.json` rather than
    carrying its own literal, so it follows automatically — confirmed by checking the generated
    Windows resource file's FileVersion/ProductVersion after a build. The bump belongs to the
    release, not to the work: doing it here rather than earlier keeps `dev` from carrying a
    version it has not shipped.
-2. Commit that change and push `dev`.
-3. Open a pull request from `dev` into `main` and merge it once CI is green. Merge commit, not
+3. Commit that change and push `dev`.
+4. Open a pull request from `dev` into `main` and merge it once CI is green. Merge commit, not
    squash — the individual commits explain their own reasoning and are what the release notes
    are drawn from.
-4. Tag `main` and push the tag:
+5. Tag `main` and push the tag:
    ```sh
    git checkout main && git pull
    git tag v0.2.0
@@ -144,7 +159,7 @@ into `dev`**, or the fix is lost at the next release.
    one before the merge lands fails the run rather than publishing unreleased code. If that
    happens: merge, then `git push origin :refs/tags/v0.2.0` and push the tag again, since
    re-pushing an unchanged tag does not re-trigger anything.
-5. `release.yml` builds a signed Windows installer and republishes the GitHub Pages site (help
+6. `release.yml` builds a signed Windows installer and republishes the GitHub Pages site (help
    site + demo, see "Static browser demo" below). macOS was dropped from the release matrix
    (no one currently runs live presentation from a Mac, and the web build already covers
    Mac-based prep work) — the Tauri config, signing rationale, and install instructions below
