@@ -16,8 +16,10 @@ export const MOCK_STORAGE_PREFIX = 'worship-studio:mock:'
  * Throws away everything the demo has stored, so the next load seeds fresh from fixtures.ts.
  *
  * Needed because these collections only consult their seed when nothing is stored: someone who
- * opened the demo once keeps that day's sample data forever, and every later improvement to it is
- * invisible to them. Without a way to reset, a returning visitor is looking at a fossil with no
+ * opened the demo once keeps that day's sample data forever. The seed is built relative to the day
+ * it runs — service dates, announcement events, unavailability windows — so what they keep is
+ * dated to their first visit and goes stale on its own, quite apart from any later improvement to
+ * the sample data. Without a way to reset, a returning visitor is looking at a fossil with no
  * indication anything has changed.
  *
  * Callers reload afterwards — the adapter and its collections were built from the old data and hold

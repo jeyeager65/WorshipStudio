@@ -8,13 +8,16 @@
  *
  * The reset button is the substantive half. The mock adapter persists to localStorage and only
  * consults its seed when nothing is stored, so anyone who opened the demo once keeps that day's
- * sample data indefinitely: every later improvement is invisible to them, with nothing on screen
- * suggesting they are looking at a fossil. This is how they get out of that, and it is also the
- * honest answer to "I changed things and want to start over".
+ * sample data indefinitely, with nothing on screen suggesting they are looking at a fossil. Dates
+ * are what rot first and worst: the services, announcement events and unavailability windows are
+ * all built relative to the day they were seeded, so a visitor returning a month later finds the
+ * "upcoming" service in the past — no new version of the app required. Improvements to the sample
+ * data since are the second reason, and "I changed things and want to start over" the third.
  */
 import { computed, ref } from 'vue'
 import { useTheme } from 'vuetify'
 import { clearMockStorage } from '@/adapters/mock/collection'
+import { markDemoReset } from '@/utils/demoReset'
 import logoDark from '@/assets/logo-dark.png'
 import logoLight from '@/assets/logo-light.png'
 
@@ -29,6 +32,9 @@ const resetting = ref(false)
 function resetDemo() {
   resetting.value = true
   clearMockStorage()
+  // Read back by App.vue after the reload, which is otherwise indistinguishable from any other
+  // demo launch — it keeps this dialog shut and confirms the reset instead.
+  markDemoReset()
   // A reload rather than re-seeding in place: the adapter and every store were built from the old
   // data and hold it in memory, so anything short of starting over would show a mixture.
   window.location.reload()
@@ -64,8 +70,10 @@ function resetDemo() {
         </div>
 
         <p class="demo-note">
-          Been here before? Your browser kept whatever you did last time, including sample data from
-          an older version of the app. Resetting brings back the current set.
+          Been here before? Your browser kept whatever you did last time. The sample services,
+          announcements and schedules are dated around the day you first opened the demo, so
+          resetting re-dates them around today — and picks up any changes to the sample data
+          since.
         </p>
       </v-card-text>
 

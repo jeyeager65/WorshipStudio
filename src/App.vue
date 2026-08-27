@@ -12,6 +12,7 @@ import SplashScreen from '@/components/SplashScreen.vue'
 import PresentationView from '@/views/PresentationView.vue'
 import IdentifyView from '@/views/IdentifyView.vue'
 import { getAdapter } from '@/adapters'
+import { consumeDemoReset } from '@/utils/demoReset'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
 import { useSyncStore } from '@/stores/sync'
@@ -48,7 +49,13 @@ const isTabletBuild = getAdapter().kind === 'tablet'
 // of this is a real library" is worth repeating. It also carries the reset, which is the only way
 // out of stale sample data kept by a previous visit — see DemoIntroDialog.
 const isDemoBuild = getAdapter().kind === 'mock'
-const demoIntroOpen = ref(isDemoBuild)
+// A reset clears the demo's data and reloads (see DemoIntroDialog), which otherwise looks like a
+// blink followed by the very dialog the visitor just used. On that one load the introduction stays
+// shut — they read it a moment ago, and asked for current data rather than for it again — and the
+// snackbar below stands in as the acknowledgement that anything happened at all.
+const demoWasReset = isDemoBuild && consumeDemoReset()
+const demoIntroOpen = ref(isDemoBuild && !demoWasReset)
+const demoResetConfirmed = ref(demoWasReset)
 const hasDesktopBackend = getAdapter().kind === 'tauri'
 
 // The app-bar sync icon is the only always-visible feedback that an automatic background sync
@@ -962,6 +969,9 @@ onUnmounted(() => {
 
     <ConfirmDialog />
     <DemoIntroDialog v-if="isDemoBuild" v-model="demoIntroOpen" />
+    <v-snackbar v-if="isDemoBuild" v-model="demoResetConfirmed" color="success" timeout="4000">
+      Sample data reset, with fresh dates.
+    </v-snackbar>
   </v-app>
 </template>
 
