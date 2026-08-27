@@ -26,7 +26,7 @@ export async function seedSampleData() {
   await confirmBtn.waitForClickable({ timeout: 10000 })
   await confirmBtn.click()
 
-  const sampleSuccess = await $('div*=Sample songs, services, people, and themes added')
+  const sampleSuccess = await $('div*=Sample songs, services, people')
   await sampleSuccess.waitForExist({ timeout: 45000 })
 
   const addStockBtn = await $('button*=Add Stock Backgrounds')

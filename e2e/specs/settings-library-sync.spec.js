@@ -45,7 +45,7 @@ describe('Settings — Library & Sync data tools', () => {
 
     // Loading sample data sequentially saves several dozen songs/people/themes/services, each
     // its own async Tauri IPC round trip — genuinely slower than a typical Settings action.
-    const successText = await $('div*=Sample songs, services, people, and themes added')
+    const successText = await $('div*=Sample songs, services, people')
     await successText.waitForExist({ timeout: 45000 })
     await expect(successText).toBeExisting()
 
@@ -226,7 +226,7 @@ describe('Settings — Library & Sync data tools', () => {
     await restoreConfirmBtn.waitForClickable({ timeout: 10000 })
     await restoreConfirmBtn.click()
 
-    const restoredText = await $('div*=Sample songs, services, people, and themes added')
+    const restoredText = await $('div*=Sample songs, services, people')
     await restoredText.waitForExist({ timeout: 45000 })
     await expect(restoredText).toBeExisting()
   })

@@ -1080,7 +1080,8 @@ async function saveDataLocationPath() {
         </v-btn>
       </div>
       <div v-if="sampleDataLoaded" class="text-caption text-medium-emphasis mt-2">
-        Sample songs, services, people, and themes added — check Home to see them.
+        Sample songs, services, people, announcements, slides, and themes added — check Home to
+        see them.
       </div>
       <div v-if="stockBackgroundsAdded" class="text-caption text-medium-emphasis mt-2">
         {{ stockBackgroundsAdded.mediaAdded }} background image{{
