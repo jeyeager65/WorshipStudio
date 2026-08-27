@@ -23,6 +23,27 @@
 import type { LivePresentationPort, LiveSlideContent } from '@/adapters/types'
 import { AUDIENCE_CHANNEL_NAME, type AudienceMessage } from './audienceChannel'
 
+/**
+ * A structured-clone-safe copy of the live content.
+ *
+ * BroadcastChannel.postMessage structured-clones its payload, which throws DataCloneError on a
+ * Proxy — and Vue's reactive stores hand out Proxies. `flattenService.ts` passes a library slide's
+ * `scene` straight through from the slides store, so going live on a slide item posted a Proxy and
+ * failed with "#<Object> could not be cloned", taking the whole presentation down.
+ *
+ * Normalising here rather than at each call site because the requirement belongs to this transport:
+ * the Tauri port JSON-serializes over IPC and never had the problem, so a caller has no way to know
+ * which rule applies. Anything reactive leaking into the payload later is covered too, and
+ * presentation is the worst possible place to discover a new one.
+ *
+ * A JSON round-trip rather than structuredClone(toRaw(...)): toRaw only unwraps the outermost
+ * proxy, and this content is plain JSON data throughout, so nothing is lost.
+ */
+function toCloneable(content: LiveSlideContent | null): LiveSlideContent | null {
+  if (!content) return null
+  return JSON.parse(JSON.stringify(content)) as LiveSlideContent
+}
+
 function buildAudienceUrl(): string {
   const url = new URL(window.location.href)
   url.hash = ''
@@ -86,7 +107,8 @@ export function createLiveAudienceWindowPort(): LivePresentationPort {
       liveIndex = Math.max(0, liveIndex - 1)
     },
     setLiveContent: async (content) => {
-      lastContent = content ?? null
+      // Normalised before it is stored, so the 'ready' replay above posts a cloneable copy too.
+      lastContent = toCloneable(content ?? null)
       const message: AudienceMessage = { type: 'content', content: lastContent }
       channel.postMessage(message)
     },
