@@ -30,6 +30,19 @@ export const config = {
     viteDevServer = await startDevServer()
   },
 
+  // Again before every spec file, not just once per run. onPrepare alone left all 32 specs
+  // sharing one app-data directory, so whatever each one created stayed for the rest — and specs
+  // that assume a clean library passed alone and failed in the suite, which reads as flakiness
+  // rather than the order dependency it is. Four specs were failing this way
+  // (external-apps, external-app-live, external-app-trigger-key, remote-control), each of them
+  // passing on its own.
+  //
+  // beforeSession runs before the app launches for that spec, which is the only moment the wipe
+  // is safe: the app reads this directory at startup and holds it open afterwards.
+  beforeSession: function () {
+    resetAppDataDir()
+  },
+
   services: [tauriServiceEntry()],
 
   capabilities: [tauriCapabilities],
