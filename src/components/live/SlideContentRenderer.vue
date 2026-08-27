@@ -155,6 +155,29 @@ const rootStyle = computed(() => {
   }
 })
 
+// The theme styling the header/footer inherit from .slide-root, restated on the labels themselves.
+//
+// Those two live on different clocks. A label's *text* is transitioned (out-in, keyed on the text),
+// but every visual property came from .slide-root and so changed the instant displayedContent
+// swapped — mid-fade, while the outgoing label was still on screen. You saw the current slide's
+// label abruptly re-render in the *next* slide's font, hold there, and only then change text.
+//
+// Setting them here instead pins them to the element rather than the ancestor. Vue stops patching
+// the outgoing label once it unmounts it, so its inline style freezes at the theme it was built
+// with and it fades out looking exactly as it did — the new label arrives already carrying the new
+// one. Font is what's visible enough to notice, but colour and text effect would drift the same way
+// between two themes that differ in them.
+const labelThemeStyle = computed(() => {
+  const theme = displayedContent.value?.presentationTheme
+  // Matches rootStyle's own condition: with no theme these stay unset and inherit, as before.
+  if (!theme) return {}
+  return {
+    fontFamily: theme.fontFamily,
+    color: theme.textColor,
+    textShadow: presentationTextShadow(theme.textEffect),
+  }
+})
+
 // Auto-fit sizing (spec section 1): flattenService already decided *how much content* goes on
 // this slide (verse-boundary-safe splitting for scripture, one block per slide for songs — see
 // utils/flattenService.ts); this is the real measurement pass, against this component's actual
@@ -227,17 +250,19 @@ function fitAutoSizedText() {
   // (as this used to) threw off the thumbnail's own reserved space just enough to sometimes pick
   // a different font size — and thus wrap differently — than the real presentation window
   // showing the exact same slide.
+  //
+  // Measured off the always-mounted label slots (see the template) rather than the labels
+  // themselves. An empty slot has no height, so `occupied` distinguishes "this slide has no such
+  // label" from "the label is there" without consulting the refs' existence — which, during a
+  // crossfade, says nothing about what is actually on screen.
   const breathingPx = root.clientHeight * 0.04
-  const topBoundPx = headerRef.value
-    ? (parseFloat(getComputedStyle(headerRef.value).top) || 0) +
-      headerRef.value.offsetHeight +
-      breathingPx
-    : breathingPx
-  const bottomBoundPx = footerRef.value
-    ? (parseFloat(getComputedStyle(footerRef.value).bottom) || 0) +
-      footerRef.value.offsetHeight +
-      breathingPx
-    : breathingPx
+  const occupied = (slot: HTMLElement | undefined, inset: 'top' | 'bottom'): number => {
+    const heightPx = slot?.offsetHeight ?? 0
+    if (!slot || heightPx === 0) return breathingPx
+    return (parseFloat(getComputedStyle(slot)[inset]) || 0) + heightPx + breathingPx
+  }
+  const topBoundPx = occupied(headerRef.value, 'top')
+  const bottomBoundPx = occupied(footerRef.value, 'bottom')
   const maxHeightPx = Math.max(0, root.clientHeight - topBoundPx - bottomBoundPx)
   // Matches .slide-content's max-width: 90cqw — the sandbox lives outside that container's own
   // box (see .measure-sandbox below), so it needs this set explicitly to measure wrapping the
@@ -419,6 +444,14 @@ onMounted(() => {
       measureWayfindingAvailableHeight()
     })
     resizeObserver.observe(rootRef.value)
+    // The label slots are watched too, so the fit re-runs whenever the space they occupy actually
+    // changes rather than only when the content does. The slots make the common case (a label
+    // whose text changes) measure correctly on the first pass, but a label that appears or
+    // disappears entirely settles a crossfade later, and the fit has no other way to hear about
+    // it. Sizing text is the only thing this recomputes, and that never feeds back into a slot's
+    // own height, so there is no loop to guard against.
+    if (headerRef.value) resizeObserver.observe(headerRef.value)
+    if (footerRef.value) resizeObserver.observe(footerRef.value)
   }
   document.fonts.addEventListener('loadingdone', onFontsLoadingDone)
 })
@@ -748,28 +781,49 @@ const progressSegments = computed(() => {
          fixed (configurable) size — unlike the auto-fit main text above, these never move or
          resize as that text shrinks/grows. Only for the plain text slide above; wayfinding/media
          have their own distinct designs. -->
-    <Transition :name="transition ? 'content-crossfade' : ''" mode="out-in">
-      <div
-        v-if="isTextSlide && displayedContent?.itemLabel"
-        ref="headerRef"
-        :key="displayedContent.itemLabel"
-        class="slide-header"
-        :style="{ fontSize: labelFontSize(displayedContent?.headerFontSizePx) }"
-      >
-        {{ displayedContent.itemLabel }}
-      </div>
-    </Transition>
-    <Transition :name="transition ? 'content-crossfade' : ''" mode="out-in">
-      <div
-        v-if="isTextSlide && footerDisplayText"
-        ref="footerRef"
-        :key="footerDisplayText"
-        class="slide-footer"
-        :style="{ fontSize: labelFontSize(displayedContent?.footerFontSizePx) }"
-      >
-        {{ footerDisplayText }}
-      </div>
-    </Transition>
+    <!-- The measured refs live on these always-mounted slots, never on the labels themselves.
+         `mode="out-in"` unmounts the outgoing label's vnode immediately and only defers its DOM
+         removal until the fade ends — and Vue nulls a template ref at unmount, not at removal. So
+         a ref on the label itself reads null for the whole crossfade, while the label is still
+         plainly visible on screen. fitAutoSizedText runs inside exactly that window, and with both
+         refs null it reserved only breathing room instead of the labels' real footprint: ~25% too
+         much height at 1080p, which it spent on a font size that then overran them. Nothing
+         re-ran the fit once the new labels mounted.
+
+         Whether it happened turned on whether the label *text* changed — that being what changes
+         the key — so moving to the first slide of an item broke and moving between slides within
+         one item did not. The slots stay mounted through the swap and always contain whichever
+         label is currently on screen, so their height is right at every moment of it. -->
+    <div ref="headerRef" class="slide-label-slot slide-header-slot">
+      <Transition :name="transition ? 'content-crossfade' : ''" mode="out-in">
+        <div
+          v-if="isTextSlide && displayedContent?.itemLabel"
+          :key="displayedContent.itemLabel"
+          class="slide-header"
+          :style="{
+            ...labelThemeStyle,
+            fontSize: labelFontSize(displayedContent?.headerFontSizePx),
+          }"
+        >
+          {{ displayedContent.itemLabel }}
+        </div>
+      </Transition>
+    </div>
+    <div ref="footerRef" class="slide-label-slot slide-footer-slot">
+      <Transition :name="transition ? 'content-crossfade' : ''" mode="out-in">
+        <div
+          v-if="isTextSlide && footerDisplayText"
+          :key="footerDisplayText"
+          class="slide-footer"
+          :style="{
+            ...labelThemeStyle,
+            fontSize: labelFontSize(displayedContent?.footerFontSizePx),
+          }"
+        >
+          {{ footerDisplayText }}
+        </div>
+      </Transition>
+    </div>
   </div>
 </template>
 
@@ -863,24 +917,33 @@ const progressSegments = computed(() => {
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
-.slide-header,
-.slide-footer {
+/* The positioning lives on the slot rather than the label, so fitAutoSizedText can read the inset
+   and the occupied height off one element that is always there (see the template). Empty when the
+   slide has no such label — zero height, nothing painted — which is what lets the measurement tell
+   "no label" from "label mid-crossfade" by height alone. */
+.slide-label-slot {
   position: absolute;
   z-index: 1;
   left: 0;
   right: 0;
+  /* Out of flow and only ever holding centered text; without this an empty slot would still sit
+     over the slide and swallow clicks meant for the content beneath it. */
+  pointer-events: none;
+}
+.slide-header-slot {
+  top: clamp(8px, 4cqh, 40px);
+}
+.slide-footer-slot {
+  bottom: clamp(8px, 4cqh, 40px);
+}
+.slide-header,
+.slide-footer {
   max-width: 90cqw;
   margin: 0 auto;
   text-align: center;
   opacity: 0.6;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-}
-.slide-header {
-  top: clamp(8px, 4cqh, 40px);
-}
-.slide-footer {
-  bottom: clamp(8px, 4cqh, 40px);
 }
 .slide-repeat-label {
   position: absolute;
