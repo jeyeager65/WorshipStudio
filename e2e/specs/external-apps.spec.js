@@ -19,21 +19,21 @@ describe('External App Hand-off', () => {
 
     // The profile editor is its own routed page (ExternalAppProfileEditorView.vue), not a
     // dialog — it outgrew what a modal could reasonably hold once Basic Remote Controls'
-    // key-commands list was added. Fields aren't individually id'd, so they're targeted
-    // positionally — same approach assignments.spec.js uses for its add-person dialog. With
-    // "Launch Automatically" selected by default (it is, out of the box), the order is Name,
-    // Launch Mode (a v-select — its own input is read-only/unfillable, hence skipping index 1),
-    // Executable, Parameter Format. Waiting for all 4 inputs (not just the page's existence) so
-    // navigation has actually finished before typing into it.
-    await browser.waitUntil(async () => (await $$('input')).length >= 4, { timeout: 10000 })
-    const pageInputs = await $$('input')
-    await pageInputs[0].setValue('Notepad E2E Test')
+    // key-commands list was added.
+    //
+    // Targeted by id, not position. These used to be indexes into $$('input'), which broke
+    // silently the moment a "Kind" select was added above them: index 2 became a v-select's own
+    // read-only input, and it surfaced as "element is not interactable" with nothing pointing at
+    // the cause. Ids cost three attributes and cannot drift when a field is added.
+    const nameField = await $('#external-app-name')
+    await nameField.waitForExist({ timeout: 10000 })
+    await nameField.setValue('Notepad E2E Test')
 
     // Filling the Executable field directly rather than clicking "Browse…" — that opens a
     // native OS file picker WebdriverIO can't drive, the same reasoning the rest of this
     // suite uses for skipping native dialogs.
-    await pageInputs[2].setValue('C:\\Windows\\System32\\notepad.exe')
-    await pageInputs[3].setValue('"{file}"')
+    await (await $('#external-app-executable')).setValue('C:\\Windows\\System32\\notepad.exe')
+    await (await $('#external-app-parameter-format')).setValue('"{file}"')
 
     const preview = await $('div*=Will run:')
     await preview.waitForExist({ timeout: 5000 })
@@ -111,8 +111,8 @@ describe('External App Hand-off', () => {
     // itself is clickable now (no separate edit icon).
     await savedProfile.click()
 
-    await browser.waitUntil(async () => (await $$('input')).length >= 4, { timeout: 10000 })
-    const reopenedExecInput = (await $$('input'))[2]
+    const reopenedExecInput = await $('#external-app-executable')
+    await reopenedExecInput.waitForExist({ timeout: 10000 })
     await expect(reopenedExecInput).toHaveValue('C:\\Windows\\System32\\notepad.exe')
 
     // The custom command (label, keyCombo, triggerKey) round-tripped through the same real
