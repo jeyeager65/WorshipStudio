@@ -86,3 +86,40 @@ jobs:
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
       - run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  # The dev deployment (notes/dev-workflow-plan.md): every push to `dev` publishes the combined
+  # static site — help site at the root, web/tablet app at /app/ — to its own Cloudflare Workers
+  # origin, so the build can be opened on a real tablet before it reaches anyone's church.
+  #
+  # `needs` the two check jobs on purpose: a dev URL serving a build that does not compile is
+  # worse than no dev URL, since the point of it is to trust what you are testing.
+  #
+  # Built here rather than by Cloudflare's own Git integration. The same build already runs in
+  # this file, on this runner, with this Node version — letting Cloudflare rebuild it from the
+  # dashboard would mean a second build configuration to keep in step, and a class of "works in
+  # CI, fails on their container" problems with nothing to gain.
+  deploy-dev:
+    needs: [frontend, rust]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Assembles ./pages — the directory wrangler.jsonc publishes. Base paths default to the
+      # root-served case, which is what this origin serves (unlike GitHub Pages, which nests
+      # everything under /WorshipStudio/).
+      - run: pnpm build:pages
+
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
