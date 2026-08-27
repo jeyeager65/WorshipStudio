@@ -1,0 +1,37 @@
+// Cloudflare Workers config for the dev deployment — see notes/dev-workflow-plan.md.
+//
+// A static-assets-only Worker: no `main` script, just the directory scripts/build-pages.mjs
+// assembles (the VitePress help site at the root, the web/tablet app at /app/). Cloudflare now
+// steers new Git-connected projects into Workers rather than Pages, and that path deploys with
+// `npx wrangler deploy`, which needs this file to know what to publish.
+//
+// This exists to give the *dev* build a separate origin from production. GitHub Pages serves
+// every project site of an account from one host, so a dev build hosted there would share
+// localStorage, IndexedDB and OPFS with the real app — including its OneDrive tokens and the
+// tablet's synced copy of the library. A distinct host is the only thing that actually separates
+// them. Production releases still deploy to GitHub Pages from release.yml; nothing here touches
+// that.
+// No "$schema" line: wrangler is not a dependency here — Cloudflare's build container fetches it
+// via npx — so the usual node_modules path would dangle in an editor.
+{
+  "name": "worshipstudio",
+  "compatibility_date": "2026-08-27",
+  "assets": {
+    "directory": "./pages",
+    // "404-page", not "single-page-application": the help site is real prerendered .html files
+    // per route, and SPA mode would rewrite every unmatched path to index.html, swallowing
+    // VitePress's own 404 and masking genuinely broken links. The app itself routes on the hash
+    // (#/...), so it never needs a rewrite to begin with.
+    "not_found_handling": "404-page"
+    // html_handling is left at its default ("auto-trailing-slash"), which 307-redirects
+    // /services.html to /services. That is cosmetic — every link still resolves — and it differs
+    // from production, where VitePress cleanUrls is deliberately off (the Tauri help:// scheme
+    // serves files by exact name and GitHub Pages has no rewrite rules), so every internal link
+    // ends in .html.
+    //
+    // "none" was tried to remove those redirects and is far worse: it disables *all* implicit
+    // resolution, directory indexes included, so / and /app/ both 404 and only explicit .html
+    // paths work. Measured on the live deployment, not guessed. There is no mode that serves
+    // .html untouched while still resolving a directory to its index, so the redirect stays.
+  }
+}

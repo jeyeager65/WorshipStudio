@@ -11,6 +11,10 @@ on:
     branches: [main, dev]
 
 jobs:
+  # Every job reads the Node version from .nvmrc rather than repeating a literal. It was written
+  # out in five places across this file and release.yml, which is how a toolchain version quietly
+  # ends up differing between the job that tests a build and the job that ships it. nvm and fnm
+  # read the same file locally.
   frontend:
     runs-on: windows-latest
     steps:
@@ -20,7 +24,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 24.18.0
+          node-version-file: .nvmrc
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -59,7 +63,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 24.18.0
+          node-version-file: .nvmrc
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -86,3 +90,54 @@ jobs:
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
       - run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  # The dev deployment (notes/dev-workflow-plan.md): every push to `dev` publishes the combined
+  # static site — help site at the root, web/tablet app at /app/ — to its own Cloudflare Workers
+  # origin, so the build can be opened on a real tablet before it reaches anyone's church.
+  #
+  # `needs` the two check jobs on purpose: a dev URL serving a build that does not compile is
+  # worse than no dev URL, since the point of it is to trust what you are testing.
+  #
+  # Built here rather than by Cloudflare's own Git integration. The same build already runs in
+  # this file, on this runner, with this Node version — letting Cloudflare rebuild it from the
+  # dashboard would mean a second build configuration to keep in step, and a class of "works in
+  # CI, fails on their container" problems with nothing to gain.
+  deploy-dev:
+    needs: [frontend, rust]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Assembles ./pages — the directory wrangler.jsonc publishes. Base paths default to the
+      # root-served case, which is what this origin serves (unlike GitHub Pages, which nests
+      # everything under /WorshipStudio/).
+      #
+      # WS_APP_URL repoints the help site's links to the app ("Try the Web Demo", and
+      # Installation's two) at this origin. Without it they stay absolute to production — correct
+      # for the GitHub Pages build and the copy bundled into the desktop app, and quietly wrong
+      # here: a tester following them would land on the very build they came to this URL to
+      # avoid. Cloud Setup keeps the production address deliberately; see docs/.vitepress/config.ts.
+      - run: pnpm build:pages
+        env:
+          WS_APP_URL: https://worshipstudio.jeyeager.workers.dev/app/
+
+      # `npx wrangler` rather than cloudflare/wrangler-action: the action installs wrangler with
+      # whatever package manager the repo uses, and pnpm 10+ refuses to run a dependency's
+      # postinstall without explicit approval — workerd has one, so the install exits 1 before
+      # wrangler ever runs. The action also pins a wrangler old enough to predate the `assets`
+      # config in wrangler.jsonc. npx sidesteps both, and pins the major version here.
+      - name: Deploy to Cloudflare
+        run: npx --yes wrangler@4 deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

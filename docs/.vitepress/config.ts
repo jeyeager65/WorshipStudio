@@ -6,6 +6,28 @@ import { defineConfig } from 'vitepress'
 // openHelp), and deployed to GitHub Pages as the project's public landing page (this same
 // index.md's hero, see docs/index.md) with the web/tablet app nested at /app/ underneath it —
 // see release.yml's deploy-pages job. This config only covers the site itself.
+// The app's canonical address, written out as a literal in the pages that link to it. Absolute
+// rather than relative because these same pages are bundled into the desktop app as offline help,
+// served through a `help://` scheme with no /app/ to resolve against — a relative link 404s there,
+// confirmed live (see docs/index.md's hero comment).
+//
+// Which is fine for the two builds that should point at production — GitHub Pages and the bundled
+// help — and wrong for the third. The Cloudflare dev deployment exists so a build can be opened on
+// a real tablet before anyone's church sees it; its copy of these docs linking to the *production*
+// app would send a tester quietly back to the very build they were trying to avoid.
+//
+// So WS_APP_URL redirects those links for that one build. Production stays a literal on purpose:
+// if it ever moves, the right fix is editing the markdown so the repo reads correctly, not setting
+// an environment variable somewhere a reader will never see. (If that ever needs overriding too,
+// it is one more `process.env.X ?? PRODUCTION_APP_URL` here.)
+const PRODUCTION_APP_URL = 'https://jeyeager65.github.io/WorshipStudio/app/'
+const APP_URL = process.env.WS_APP_URL ?? PRODUCTION_APP_URL
+
+// Cloud Setup is deliberately left alone: its two occurrences are the redirect URI to register
+// with Microsoft Entra, which is the production address no matter which copy of the docs you
+// happen to be reading. The dev origin needs its own entry there rather than replacing that one.
+const PAGES_KEEPING_PRODUCTION_URL = ['cloud-setup.md']
+
 export default defineConfig({
   title: 'Worship Studio Help',
   description: 'Help documentation for Worship Studio',
@@ -41,6 +63,9 @@ export default defineConfig({
     sidebar: [
       { text: 'Installation', link: '/installation' },
       { text: 'Getting Started', link: '/getting-started' },
+      // Top level, above the task groups: it is what someone opens after being told an update is
+      // available, and the update prompt links straight to it (see App.vue's openHelp call).
+      { text: "What's New", link: '/whats-new' },
       {
         // Its own group, directly after the two "start here" pages, because deciding how devices
         // reach the library is part of setting up rather than a settings detail — it sat under
@@ -93,5 +118,11 @@ export default defineConfig({
         ],
       },
     ],
+  },
+
+  transformHtml(code, _id, ctx) {
+    if (APP_URL === PRODUCTION_APP_URL) return code
+    if (PAGES_KEEPING_PRODUCTION_URL.includes(ctx.page)) return code
+    return code.replaceAll(PRODUCTION_APP_URL, APP_URL)
   },
 })

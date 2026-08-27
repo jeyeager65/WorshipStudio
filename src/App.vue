@@ -283,11 +283,14 @@ function handleSaveShortcut(event: KeyboardEvent) {
 // Resolves to whatever the current route declared (router/index.ts's meta.helpTopic), falling
 // back to the help site's own homepage for the rare route that doesn't have one yet.
 const helpTopic = computed(() => route.meta.helpTopic ?? 'index')
-function openHelp() {
-  const [slug, anchor] = helpTopic.value.split('#')
+// `topic` defaults to whatever the current route documents (the Help button / F1); the update
+// prompt passes 'whats-new' so it can open that page directly instead of wherever the operator
+// happens to be standing.
+function openHelp(topic: string = helpTopic.value) {
+  const [slug, anchor] = topic.split('#')
   if (hasDesktopBackend) {
     getAdapter()
-      .help.open?.(helpTopic.value)
+      .help.open?.(topic)
       .catch((error) => console.error('Failed to open help window:', error))
     return
   }
@@ -922,8 +925,13 @@ onUnmounted(() => {
       timeout="-1"
       location="bottom"
     >
+      <!-- No version number here, unlike the desktop prompt below. A waiting service worker is
+           the only signal the browser build gets; it carries no app version, and inventing a way
+           to learn one (stamping it into the worker and comparing) would be a lot of machinery to
+           name a number the What's New page already states at the top of its newest entry. -->
       A new version of Worship Studio is available.
       <template #actions>
+        <v-btn variant="text" @click="openHelp('whats-new')">What's New</v-btn>
         <v-btn variant="text" @click="pwaUpdate.applyUpdate">Update Now</v-btn>
       </template>
     </v-snackbar>
@@ -940,8 +948,16 @@ onUnmounted(() => {
       timeout="-1"
       location="bottom"
     >
-      A new version of Worship Studio is available.
+      {{
+        tauriUpdate.availableVersion
+          ? `Worship Studio ${tauriUpdate.availableVersion} is available.`
+          : 'A new version of Worship Studio is available.'
+      }}
       <template #actions>
+        <!-- Naming the version is only half of it: knowing whether an update is worth restarting
+             for needs to know what changed, and this is the one place most people will ever be
+             asked. The page is bundled with the app, so it opens offline. -->
+        <v-btn variant="text" @click="openHelp('whats-new')">What's New</v-btn>
         <v-btn variant="text" :loading="tauriUpdate.applying" @click="tauriUpdate.applyUpdate">
           Update Now
         </v-btn>

@@ -13,6 +13,16 @@ import { relaunch } from '@tauri-apps/plugin-process'
  */
 export const useTauriUpdateStore = defineStore('tauriUpdate', () => {
   const updateAvailable = ref(false)
+  // The version being offered. `check()` has always returned it; nothing read it, so both update
+  // prompts could only say that *an* update existed, never which one — leaving the operator to
+  // decide whether to restart mid-week with no idea what changed.
+  //
+  // Deliberately not `Update.body` alongside it. That is the GitHub release body, which opens
+  // with the code-signing certificate explanation and continues into an auto-generated commit
+  // list — accurate, and not what someone deciding whether to restart wants to read. The version
+  // plus a link to the curated What's New page is the better answer, and the page is bundled with
+  // the app so it works offline.
+  const availableVersion = ref<string>()
   const checking = ref(false)
   const applying = ref(false)
   const checkError = ref('')
@@ -29,6 +39,7 @@ export const useTauriUpdateStore = defineStore('tauriUpdate', () => {
     try {
       pendingUpdate = (await check()) ?? undefined
       updateAvailable.value = !!pendingUpdate
+      availableVersion.value = pendingUpdate?.version
       hasChecked.value = true
     } catch (error) {
       checkError.value = error instanceof Error ? error.message : 'Could not check for updates.'
@@ -56,6 +67,7 @@ export const useTauriUpdateStore = defineStore('tauriUpdate', () => {
 
   return {
     updateAvailable,
+    availableVersion,
     checking,
     applying,
     checkError,

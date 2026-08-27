@@ -166,7 +166,12 @@ async function exportDiagnosticBundle() {
         </v-btn>
       </div>
       <p v-if="tauriUpdateStore.updateAvailable" class="text-body-2 text-medium-emphasis mt-3">
-        A new version is available. Installing restarts Worship Studio.
+        {{
+          tauriUpdateStore.availableVersion
+            ? `Version ${tauriUpdateStore.availableVersion} is available.`
+            : 'A new version is available.'
+        }}
+        Installing restarts Worship Studio.
       </p>
       <p
         v-else-if="tauriUpdateStore.hasChecked && !tauriUpdateStore.checking && !tauriUpdateStore.checkError"

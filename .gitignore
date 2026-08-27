@@ -3,6 +3,9 @@ node_modules/
 dist/
 dist-ssr/
 dist-remote/
+# Combined static site assembled by scripts/build-pages.mjs (help site + app), built by the
+# hosting provider rather than committed.
+pages/
 coverage/
 *.local
 *.tsbuildinfo

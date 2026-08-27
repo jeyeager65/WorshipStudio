@@ -10,7 +10,17 @@ const config: TSESLint.FlatConfig.Config[] = defineConfigWithVueTs(
   },
   {
     name: 'app/files-to-ignore',
-    ignores: ['**/dist/**', '**/dist-ssr/**', '**/dist-remote/**', '**/coverage/**', '**/src-tauri/**'],
+    // '**/pages/**' is the combined static site scripts/build-pages.mjs assembles (help site +
+    // app) for the hosting provider — build output like the dist folders above, and linting the
+    // minified bundles in it fails on the minifier's own variable names.
+    ignores: [
+      '**/dist/**',
+      '**/dist-ssr/**',
+      '**/dist-remote/**',
+      '**/pages/**',
+      '**/coverage/**',
+      '**/src-tauri/**',
+    ],
   },
   pluginVue.configs['flat/essential'],
   vueTsConfigs.recommended,
