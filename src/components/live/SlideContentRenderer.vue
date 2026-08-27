@@ -244,7 +244,21 @@ function fitAutoSizedText() {
   // same way the real, visible content would reflow.
   const maxWidthPx = root.clientWidth * 0.9
   measureEl.style.width = `${maxWidthPx}px`
-  let lo = Math.floor(range.minPx)
+  // The search may go slightly below the configured minimum, but only when it has to.
+  //
+  // Pagination decides how much text lands on a slide by *estimating* wrapping against an assumed
+  // average glyph width (textAutoFit.ts), which cannot know the theme's actual font — a wide face
+  // like Montserrat fits noticeably fewer characters per line than the estimate assumes. When that
+  // estimate is optimistic, the page arrives here needing more room than the minimum size allows,
+  // and clamping at the minimum meant the text simply ran over the header and footer: illegible,
+  // and worse than being a little smaller than asked for.
+  //
+  // Because the search takes the largest size that fits, this floor is only ever reached when the
+  // minimum genuinely does not fit — no special case needed. Bounded to 10% below rather than
+  // unbounded, since text nobody at the back of the room can read is its own kind of broken; a
+  // passage too long even for that still overflows, which is now rare rather than routine.
+  const floorPx = Math.floor(range.minPx * 0.9)
+  let lo = floorPx
   let hi = Math.floor(range.maxPx)
   let best = lo
 
@@ -463,7 +477,10 @@ function measureWayfindingAvailableHeight() {
       wayfindingProgressRef.value.offsetHeight +
       breathingPx
     : breathingPx
-  wayfindingAvailableHeightPx.value = Math.max(0, root.clientHeight - breathingPx - bottomReservedPx)
+  wayfindingAvailableHeightPx.value = Math.max(
+    0,
+    root.clientHeight - breathingPx - bottomReservedPx,
+  )
 }
 
 function wayfindingNaturalBookSize(distance: number): number {
@@ -597,7 +614,11 @@ const progressSegments = computed(() => {
           {{ book.name }}
         </div>
       </div>
-      <div v-if="progressSegments" ref="wayfindingProgressRef" class="wayfinding-progress-container">
+      <div
+        v-if="progressSegments"
+        ref="wayfindingProgressRef"
+        class="wayfinding-progress-container"
+      >
         <div class="wayfinding-progress-labels">
           <span class="wayfinding-progress-label" style="color: #d4af37">Old Testament</span>
           <span class="wayfinding-progress-label" style="color: #4fa8d8">New Testament</span>
@@ -685,7 +706,10 @@ const progressSegments = computed(() => {
           }"
         >
           <template v-if="displayedContent.verseSegments">
-            <template v-for="(segment, segmentIndex) in displayedContent.verseSegments" :key="segmentIndex">
+            <template
+              v-for="(segment, segmentIndex) in displayedContent.verseSegments"
+              :key="segmentIndex"
+            >
               <span v-if="segment.type === 'number'" class="verse-number-chip">{{
                 segment.value
               }}</span>

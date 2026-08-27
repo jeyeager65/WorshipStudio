@@ -79,9 +79,7 @@ describe('wrapLineAtPunctuation', () => {
   })
 
   it('breaks at a period and a question mark too', () => {
-    expect(wrapLineAtPunctuation('This is one. This is two', 15, charWidth)[0]).toBe(
-      'This is one.',
-    )
+    expect(wrapLineAtPunctuation('This is one. This is two', 15, charWidth)[0]).toBe('This is one.')
     expect(wrapLineAtPunctuation('Who is this King? He is the Lord', 20, charWidth)[0]).toBe(
       'Who is this King?',
     )
@@ -91,9 +89,9 @@ describe('wrapLineAtPunctuation', () => {
     expect(wrapLineAtPunctuation('Remember this: God is faithful', 18, charWidth)[0]).toBe(
       'Remember this:',
     )
-    expect(wrapLineAtPunctuation('All I have needed— Thy hand hath provided', 22, charWidth)[0]).toBe(
-      'All I have needed—',
-    )
+    expect(
+      wrapLineAtPunctuation('All I have needed— Thy hand hath provided', 22, charWidth)[0],
+    ).toBe('All I have needed—')
   })
 
   it('never breaks at a plain hyphen inside a compound word', () => {
@@ -140,5 +138,27 @@ describe('wrapLineAtPunctuation', () => {
     const wrapped = wrapLineAtPunctuation(line, 30, charWidth)
     expect(wrapped[0]).toBe('“Great is Thy faithfulness!”')
     expect(wrapped.some((segment) => segment.trim() === '”')).toBe(false)
+  })
+})
+
+describe('pagination errs toward splitting sooner', () => {
+  // A real slide that overflowed: 1 Peter 1:3-9 in Montserrat at the 72px scripture minimum held
+  // ~36 characters per line, where the old 0.55 ratio predicted ~43 — so both verses were packed
+  // onto one page that could not fit, and the text ran over the header and footer.
+  const VERSE_3 =
+    '3 Blessed be the God and Father of our Lord Jesus Christ, which according to his abundant mercy hath begotten us again unto a lively hope by the resurrection of Jesus Christ from the dead,'
+  const VERSE_4 =
+    '4 To an inheritance incorruptible, and undefiled, and that fadeth not away, reserved in heaven for you,'
+
+  it('does not put both of these verses on one page at a 72px minimum', () => {
+    const pages = paginateTextUnits([VERSE_3, VERSE_4], { minPx: 72, maxPx: 120 })
+    expect(pages.length).toBeGreaterThan(1)
+  })
+
+  it('still fills a page rather than splitting every verse', () => {
+    // The correction must not swing so far that each verse gets its own slide regardless — short
+    // verses should still share.
+    const short = ['1 Jesus wept.', '2 God is love.', '3 Rejoice evermore.']
+    expect(paginateTextUnits(short, { minPx: 72, maxPx: 120 })).toHaveLength(1)
   })
 })

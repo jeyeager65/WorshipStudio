@@ -7,16 +7,26 @@ export interface FontSizeRange {
 // presentation area, not the actual audience display's real resolution (only known once a
 // specific monitor is live, per Display Setup — see design/feature-spec.md's aspect-ratio
 // note). This only decides *how many slides* a passage/block splits into; PresentationView
-// separately measures its own real container and shrinks-to-fit within the same font range,
-// so an imprecise estimate here only risks a slightly suboptimal split, never lost or
-// cut-off content.
+// separately measures its own real container and shrinks-to-fit.
+//
+// That shrink-to-fit is what absorbs an imprecise estimate here, but only down to a bound: it may
+// go 10% below the configured minimum and no further (SlideContentRenderer). An estimate optimistic
+// enough to push past that produces text overrunning the header and footer, so being wrong
+// generously here is not free — err toward splitting sooner.
 const REFERENCE_BOX_WIDTH_PX = 1728
 const REFERENCE_BOX_HEIGHT_PX = 800
 
-// Average glyph width as a fraction of font size, for a bold sans-serif — used to estimate
-// word-wrap without a real canvas/font-metrics call (this needs to run identically in tests
-// and in the app, and jsdom's canvas has no real text-measurement backend).
-const AVG_CHAR_WIDTH_RATIO = 0.55
+// Average glyph width as a fraction of font size — used to estimate word-wrap without a real
+// canvas/font-metrics call (this needs to run identically in tests and in the app, and jsdom's
+// canvas has no real text-measurement backend).
+//
+// Raised from 0.55, which was measurably optimistic for the wide geometric sans faces themes
+// actually use: a real 1 Peter 1:3-9 slide in Montserrat held ~36 characters per line where 0.55
+// predicted ~43, so pagination packed a page ~20% fuller than would fit and the text ran over the
+// header and footer. 0.62 sits between a narrow face and a wide one rather than tracking either
+// exactly — the estimate cannot know the theme's font, so the aim is to be wrong in the harmless
+// direction. Over-splitting costs one extra slide; under-splitting produces an unreadable one.
+const AVG_CHAR_WIDTH_RATIO = 0.62
 const LINE_HEIGHT_RATIO = 1.3
 
 function estimateWrappedLineCount(line: string, fontSizePx: number, maxWidthPx: number): number {
@@ -147,7 +157,8 @@ export function wrapLineAtPunctuation(
       break
     }
     let breakEnd = punctuationBreak + 1
-    while (breakEnd < remaining.length && TRAILING_CLOSER_CHARS.has(remaining[breakEnd]!)) breakEnd++
+    while (breakEnd < remaining.length && TRAILING_CLOSER_CHARS.has(remaining[breakEnd]!))
+      breakEnd++
     result.push(remaining.slice(0, breakEnd).trimEnd())
     remaining = remaining.slice(breakEnd).trimStart()
   }
