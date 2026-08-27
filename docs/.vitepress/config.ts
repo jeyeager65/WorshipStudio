@@ -42,9 +42,24 @@ export default defineConfig({
       { text: 'Installation', link: '/installation' },
       { text: 'Getting Started', link: '/getting-started' },
       {
+        // Its own group, directly after the two "start here" pages, because deciding how devices
+        // reach the library is part of setting up rather than a settings detail — it sat under
+        // "Reports & Settings" next to Reports, which shares nothing with it. Cloud Setup in
+        // particular is a mainstream choice, not a tablet-only workaround: any computer without a
+        // OneDrive/Dropbox client already running may well prefer it, so burying it cost real
+        // discoverability.
+        text: 'Sharing Your Library',
+        items: [
+          { text: 'Sync', link: '/sync' },
+          { text: 'Cloud Setup', link: '/cloud-setup' },
+        ],
+      },
+      {
         text: 'Running a Service',
         items: [
           { text: 'Services', link: '/services' },
+          { text: 'Scripture', link: '/scripture' },
+          { text: 'Presenting', link: '/presenting' },
           { text: 'Assignments', link: '/assignments' },
           { text: 'Bulletin', link: '/bulletin' },
           { text: 'Announcements', link: '/announcements' },
@@ -71,7 +86,8 @@ export default defineConfig({
         text: 'Reports & Settings',
         items: [
           { text: 'Reports', link: '/reports' },
-          { text: 'Sync', link: '/sync' },
+          // Library Health stays here rather than moving up with Sync: it is ongoing maintenance
+          // (and covers damaged-file recovery, which has nothing to do with sync), not setup.
           { text: 'Library Health', link: '/library-health' },
           { text: 'Settings', link: '/settings' },
         ],

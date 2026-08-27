@@ -32,7 +32,8 @@ media file, an unassigned role — with a click-through to fix it.
 
 When it's time to present, **Start Presenting** sends output to your audience display, and a
 transport bar steps through every slide in the service with Next/Previous, Blank Screen, and
-Background Only controls.
+Background Only controls — see [Presenting](/presenting) for running a service live, including
+the keyboard shortcuts and how to work in the plan without disturbing what's on screen.
 
 ![Service Workspace, with a song's lyrics selected on the left and the live Presentation preview panel on the right](/screenshots/service-workspace.webp)
 

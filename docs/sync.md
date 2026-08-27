@@ -26,9 +26,24 @@ is never synced by anything — see "Running without sync" below.
 
 A tablet has no real folder access, so it connects directly to your church's Dropbox or OneDrive
 account instead — **Settings → Library & Sync → Cloud connection**, an OAuth sign-in right in the
-app. The first tablet you set up signs in and picks the account's library folder; every
-additional device uses **Add Another Device**'s QR code or connect code from an already-connected
-device, so the app key doesn't need retyping by hand.
+app.
+
+::: warning OneDrive is the tested provider
+The Dropbox side of this is implemented but has never been run against the live Dropbox API. If
+you have the choice, use OneDrive on tablets for now. (Pointing a *desktop* at a Dropbox-synced
+folder, as above, is unaffected — that path doesn't use Dropbox's API at all.)
+:::
+
+Before any of that works, your church needs a one-time app registration on the provider's side,
+which produces an **app ID**. Every device needs that ID before it can talk to the provider's API
+at all — see **[Cloud Setup](/cloud-setup)** for how to create one. It only has to be done once
+for your whole church.
+
+With the ID in hand, each device is the same short routine: open Worship Studio, choose your
+provider, paste the ID, sign in, and pick the library folder from a list. Nothing else is typed by
+hand. **Settings → Library & Sync → Add Another Device** shows your church's ID with a **Copy**
+button so you can send it on — it isn't a secret (see [Cloud Setup](/cloud-setup) for why), so
+emailing or texting it is fine.
 
 Unlike desktop, there's no local-only fallback here — a tablet has nothing to read a library from
 except that cloud connection, so it always needs one, working, to do anything at all.
@@ -36,9 +51,27 @@ except that cloud connection, so it always needs one, working, to do anything at
 ## Web (browser)
 
 The browser build can go either way at first launch: open a folder directly (the same idea as
-desktop — works if that folder happens to be Dropbox/OneDrive-synced, same as desktop) or connect
-to Dropbox/OneDrive the same way a tablet does. **Connect Dropbox or OneDrive Instead** in
-Settings switches from one to the other later.
+desktop — works if that folder happens to be Dropbox/OneDrive-synced) or connect to
+Dropbox/OneDrive the same way a tablet does. **Connect Dropbox or OneDrive Instead** in Settings
+switches from one to the other later.
+
+### Which one should you pick?
+
+**Open a folder** if this computer already runs the OneDrive or Dropbox desktop app and syncs the
+library folder. It's the shorter setup: no app registration, and the files are right there on
+disk. It needs **Chrome or Edge** — the File System Access API it relies on isn't in Safari or
+Firefox — but that's true on Windows, macOS and Linux alike. A Mac on Chrome opens a folder
+exactly like a Windows machine does.
+
+**Connect Dropbox or OneDrive** if it doesn't. Nothing says you have to install a sync client
+just to use Worship Studio, and on a laptop used mainly for planning, signing in through the
+browser is usually less work than setting one up and waiting for it to pull down a copy of
+everything. The cost is the one-time [Cloud Setup](/cloud-setup) for your church — after which
+each device is just a sign-in.
+
+On an iPad or iPhone there's no decision to make: every browser there is required to use WebKit
+underneath, so none can offer a folder picker whatever its name. Those always use the cloud
+connection.
 
 ## Running without sync
 
