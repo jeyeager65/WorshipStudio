@@ -40,6 +40,8 @@ import {
   sampleServiceTemplates,
   sampleServiceTypes,
 } from '@/utils/sampleData'
+import { buildSampleAnnouncements } from '@/utils/sampleAnnouncements'
+import { buildSampleSlides } from '@/utils/sampleSlides'
 import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 
 const store = useSettingsStore()
@@ -396,6 +398,8 @@ async function deleteAllLibraryContent() {
     roleGroupsStore.load(),
     rolesStore.load(),
     serviceTemplatesStore.load(),
+    announcementsStore.load(),
+    slidesStore.load(),
   ])
   for (const song of songsStore.songs) await songsStore.remove(song.id)
   for (const service of servicesStore.services) await servicesStore.remove(service.id)
@@ -413,6 +417,12 @@ async function deleteAllLibraryContent() {
     await serviceTemplatesStore.remove(template.id)
   for (const role of rolesStore.roles) await rolesStore.remove(role.id)
   for (const group of roleGroupsStore.roleGroups) await roleGroupsStore.remove(group.id)
+  // Announcements are library content like everything above. They were left out originally, which
+  // meant a "clear everything" left them behind — visible the moment sample data started shipping
+  // announcements, and wrong for a real church clearing before going live too.
+  for (const announcement of announcementsStore.announcements)
+    await announcementsStore.remove(announcement.id)
+  for (const slide of slidesStore.slides) await slidesStore.remove(slide.id)
 }
 
 /** Real content worth protecting — deleteAllLibraryContent() also clears service types, but
@@ -494,6 +504,9 @@ async function loadSampleData() {
     for (const role of sampleRoles) await rolesStore.save(role)
     for (const template of sampleServiceTemplates) await serviceTemplatesStore.save(template)
     for (const service of buildSampleServices()) await servicesStore.save(service)
+    for (const announcement of buildSampleAnnouncements())
+      await announcementsStore.save(announcement)
+    for (const slide of buildSampleSlides()) await slidesStore.save(slide)
     // After deleteAllLibraryContent(), not before — it deletes every existing theme (including
     // any stock-background starter themes from an earlier import), so importing first would
     // just have them wiped out again a moment later.
@@ -526,7 +539,7 @@ async function loadSampleData() {
  *  suffered once. Worth spelling out where the blast radius is actually large. */
 function clearExistingDataWarning(): string {
   const base =
-    'This permanently deletes ALL songs, services, people, themes, media, service types, collections, role categories, and service templates in this library. This cannot be undone — make sure this library is not currently in use before doing this.'
+    'This permanently deletes ALL songs, services, people, themes, media, slides, announcements, service types, collections, role categories, and service templates in this library. This cannot be undone — make sure this library is not currently in use before doing this.'
   if (!librarySyncsToOtherDevices.value) return base
   return `${base}\n\nThis library is shared. Deleting here also deletes it on every other device that syncs it — including phones, tablets, and other computers — as soon as they sync.`
 }

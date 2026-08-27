@@ -8,6 +8,7 @@ import {
 } from '@/utils/sampleData'
 import { findRoleConflicts } from '@/utils/rosterConflicts'
 import { parseReference } from '@/utils/scriptureReference'
+import { buildSampleSlides } from '@/utils/sampleSlides'
 
 const songsById = new Map(sampleSongs.map((s) => [s.id, s]))
 const personIds = new Set(samplePeople.map((p) => p.id))
@@ -99,14 +100,136 @@ describe('sample data', () => {
   it('themes and role groups are internally consistent with the rosters/preferredRoleIds used above', () => {
     expect(sampleThemes.length).toBeGreaterThan(0)
     const availableRoleIds = new Set(sampleRoles.map((r) => r.id))
-    const usedRoleIds = new Set(
-      services.flatMap((s) => (s.assignments ?? []).map((r) => r.roleId)),
-    )
+    const usedRoleIds = new Set(services.flatMap((s) => (s.assignments ?? []).map((r) => r.roleId)))
     for (const roleId of usedRoleIds) {
-      expect(
-        availableRoleIds,
-        `roster uses role "${roleId}" not present in sampleRoles`,
-      ).toContain(roleId)
+      expect(availableRoleIds, `roster uses role "${roleId}" not present in sampleRoles`).toContain(
+        roleId,
+      )
+    }
+  })
+})
+
+describe('sample services follow the real templates', () => {
+  const sundays = services.filter((service) => service.serviceTemplateId)
+
+  it('uses the communion template on first Sundays and the ordinary one otherwise', () => {
+    // The church's own pattern: communion on the first Sunday of each month.
+    expect(sundays.length).toBeGreaterThan(4)
+    for (const service of sundays) {
+      const dayOfMonth = Number(service.date.split('-')[2])
+      const communion = service.serviceTemplateId === 'template-sample-sunday-communion'
+      expect(communion, `${service.date}`).toBe(dayOfMonth <= 7)
+      expect(service.serviceTypeId).toBe(
+        communion ? 'type-sample-sunday-communion' : 'type-sample-sunday-worship',
+      )
+    }
+  })
+
+  it('produces both kinds, so neither template is left undemonstrated', () => {
+    const kinds = new Set(sundays.map((service) => service.serviceTemplateId))
+    expect(kinds).toContain('template-sample-sunday-worship')
+    expect(kinds).toContain('template-sample-sunday-communion')
+  })
+
+  it('every templated service is on a Sunday', () => {
+    for (const service of sundays) {
+      // Parsed as local time deliberately — `new Date('yyyy-mm-dd')` is UTC and would shift the
+      // weekday for anyone west of Greenwich.
+      const [y, m, d] = service.date.split('-').map(Number)
+      expect(new Date(y!, m! - 1, d!).getDay(), service.date).toBe(0)
+    }
+  })
+
+  it('gives communion its extra songs — the table and the cup', () => {
+    const communion = sundays.find(
+      (service) => service.serviceTemplateId === 'template-sample-sunday-communion',
+    )!
+    const labels = communion.items.map((item) => item.bulletinLabel)
+    expect(labels).toContain("The Lord's Supper")
+    expect(labels).toContain('Tithes and Offerings')
+    expect(labels).toContain('Closing Song')
+  })
+
+  it('follows the ordinary template order, welcome through closing song', () => {
+    const worship = sundays.find(
+      (service) => service.serviceTemplateId === 'template-sample-sunday-worship',
+    )!
+    const labels = worship.items.map((item) => item.bulletinLabel).filter(Boolean)
+    expect(labels[0]).toBe('Welcome and Announcements')
+    expect(labels).toContain('Silent Preparation')
+    expect(labels).toContain('Scriptural Call to Worship')
+    expect(labels).toContain('Prayer of Praise and Confession')
+    expect(labels).toContain('Scripture Reading')
+    expect(labels).toContain('Prayer of Thanksgiving and Petition')
+    expect(labels[labels.length - 1]).toBe('Closing Song')
+  })
+
+  it('gives songs a usage history worth reporting on', () => {
+    // Four services clustered around today left every usage report empty, which made a real
+    // feature look broken in every screenshot.
+    const used = new Map<string, number>()
+    for (const service of services) {
+      for (const item of service.items) {
+        if (item.type === 'song') used.set(item.songId, (used.get(item.songId) ?? 0) + 1)
+      }
+    }
+    expect(used.size).toBeGreaterThanOrEqual(sampleSongs.length - 1)
+    expect(Math.max(...used.values())).toBeGreaterThan(3)
+  })
+})
+
+describe('the pre-service slide loop', () => {
+  const sundays = services.filter((service) => service.serviceTemplateId)
+
+  it('opens every templated Sunday', () => {
+    for (const service of sundays) {
+      expect(service.items[0]?.type, service.date).toBe('slide-ref')
+    }
+  })
+
+  it('carries no bulletin label, so it stays out of the printed order of worship', () => {
+    // orderOfWorship.ts filters out a slide item with no bulletinLabel — right for something that
+    // plays to an empty room before anyone is seated.
+    for (const service of sundays) {
+      const first = service.items[0]!
+      expect(first.bulletinLabel, service.date).toBeUndefined()
+    }
+  })
+
+  it('points at a slide item that actually exists', () => {
+    const slideIds = new Set(buildSampleSlides().map((item) => item.id))
+    for (const service of sundays) {
+      const first = service.items[0]!
+      if (first.type === 'slide-ref') expect(slideIds).toContain(first.slideId)
+    }
+  })
+})
+
+describe('seeded themes cover every presentation target exactly once', () => {
+  it('gives each content type its own background rather than sharing one', async () => {
+    // Songs, scripture, sermons and text slides should each render on their own image out of the
+    // box; a service can still override an individual item. Two themes claiming the same target is
+    // the collision importStockBackgrounds avoids, so it must not appear in seeded data either.
+    const { seedThemes } = await import('@/adapters/mock/fixtures')
+    const claims = seedThemes.flatMap((theme) =>
+      theme.useAsDefaultFor.map((target) => ({ target, theme: theme.id })),
+    )
+    const targets = claims.map((claim) => claim.target).sort()
+    expect(targets).toEqual(['scripture', 'sermon', 'songs', 'text-slides'])
+
+    // ...and each by a theme with its own distinct background.
+    const backgrounds = claims.map(
+      (claim) => seedThemes.find((theme) => theme.id === claim.theme)?.backgroundId,
+    )
+    expect(new Set(backgrounds).size).toBe(claims.length)
+    for (const background of backgrounds) expect(background).toBeTruthy()
+  })
+
+  it('every seeded theme background is a real seeded media item', async () => {
+    const { seedThemes, seedMedia } = await import('@/adapters/mock/fixtures')
+    const mediaIds = new Set(seedMedia.map((item) => item.id))
+    for (const theme of seedThemes) {
+      if (theme.backgroundId) expect(mediaIds, theme.id).toContain(theme.backgroundId)
     }
   })
 })

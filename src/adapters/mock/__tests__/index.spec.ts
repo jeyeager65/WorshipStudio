@@ -15,13 +15,11 @@ describe('mock adapter', () => {
     expect(songs[0].title).toBe('Amazing Grace')
   })
 
-  it('importStockBackgrounds adds every stock image and theme with a real resolvable preview', async () => {
+  it('seeds every stock image and theme with a real resolvable preview', async () => {
+    // The demo now ships these rather than offering them behind a button — an empty Media page and
+    // backgroundless themes demonstrated nothing (see fixtures.ts's seedMedia). Importing on top of
+    // that correctly adds nothing, which is what the idempotency test below covers.
     const adapter = createMockAdapter()
-    const summary = await adapter.media.importStockBackgrounds()
-    expect(summary).toEqual({
-      mediaAdded: stockBackgrounds.length,
-      themesAdded: stockThemes.length,
-    })
 
     const media = await adapter.media.list()
     for (const background of stockBackgrounds) {
@@ -39,8 +37,17 @@ describe('mock adapter', () => {
       const theme = themes.find((candidate) => candidate.id === stockTheme.id)
       expect(theme, stockTheme.id).toBeDefined()
       expect(theme?.backgroundId).toBe(stockTheme.backgroundMediaId)
-      expect(theme?.useAsDefaultFor).toEqual(stockTheme.intendedDefaults)
+      // Not the full intendedDefaults: the sample themes claim songs and scripture first, and
+      // fixtures applies the same avoidance the real import does rather than letting two themes
+      // default for the same content type.
+      for (const target of theme!.useAsDefaultFor) {
+        expect(stockTheme.intendedDefaults, target).toContain(target)
+      }
     }
+
+    // Between the sample and stock themes, every presentation target is claimed exactly once.
+    const claimed = themes.flatMap((theme) => theme.useAsDefaultFor)
+    expect([...claimed].sort()).toEqual(['scripture', 'sermon', 'songs', 'text-slides'])
   })
 
   it('importStockBackgrounds previews survive a fresh adapter instance (simulating a page reload)', async () => {
@@ -79,8 +86,20 @@ describe('mock adapter', () => {
     expect((await adapter.themes.list()).length).toBe(themeCountAfterFirst)
   })
 
+  it('importStockBackgrounds is a no-op once the stock content is already present', async () => {
+    const adapter = createMockAdapter()
+    await expect(adapter.media.importStockBackgrounds()).resolves.toEqual({
+      mediaAdded: 0,
+      themesAdded: 0,
+    })
+  })
+
   it('importStockBackgrounds never claims a content type an existing theme already defaults for', async () => {
     const adapter = createMockAdapter()
+    // The demo seeds themes, so the import below would otherwise have nothing to do. Clearing them
+    // all restores the situation this guards: a real library that already has one theme of its own
+    // when stock content is imported for the first time.
+    for (const existing of await adapter.themes.list()) await adapter.themes.delete(existing.id)
     await adapter.themes.save({
       id: 'theme-church-own',
       name: 'Church Theme',
@@ -167,9 +186,7 @@ describe('mock adapter', () => {
     })
 
     const song = await adapter.songs.get('song-usage-test')
-    expect(song?.usageDates).toEqual([
-      { serviceId: 'service-usage-test', date: '2026-01-15' },
-    ])
+    expect(song?.usageDates).toEqual([{ serviceId: 'service-usage-test', date: '2026-01-15' }])
   })
 
   it('incrementally updates usage instead of recomputing, so deleting the referencing service clears it again', async () => {
@@ -231,9 +248,7 @@ describe('mock adapter', () => {
     const song = await adapter.songs.get('song-usage-future')
     // The write side stores the entry regardless of date -- it's up to a reader (see
     // utils/songUsage.ts) to exclude future-dated entries from "last used"/"uses this year".
-    expect(song?.usageDates).toEqual([
-      { serviceId: 'service-usage-future', date: futureDateStr },
-    ])
+    expect(song?.usageDates).toEqual([{ serviceId: 'service-usage-future', date: futureDateStr }])
     const today = new Date().toISOString().slice(0, 10)
     expect(getLastUsedDate(song?.usageDates ?? [], today)).toBeUndefined()
     expect(getUsesInPastYear(song?.usageDates ?? [], today)).toBe(0)
@@ -265,8 +280,6 @@ describe('mock adapter', () => {
     })
 
     const song = await adapter.songs.get('song-usage-twice')
-    expect(song?.usageDates).toEqual([
-      { serviceId: 'service-usage-twice', date: '2026-01-15' },
-    ])
+    expect(song?.usageDates).toEqual([{ serviceId: 'service-usage-twice', date: '2026-01-15' }])
   })
 })

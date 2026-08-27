@@ -1,8 +1,6 @@
 import type {
   StudioAdapter,
   ScripturePassage,
-  DisplayInfo,
-  DisplayRole,
   RemoteDevice,
   SyncStatus,
   StagedMediaFile,
@@ -110,15 +108,6 @@ export function createMockAdapter(): StudioAdapter {
   // Real hardware enumeration would refresh id/name/resolution from the OS each time and
   // look up only the role from per-machine storage; the mock's "hardware" is fake and
   // stable either way, so persisting the whole record is equivalent and simpler.
-  const displays = new MockCollection<DisplayInfo>('displays', [
-    { id: 'display-1', name: 'Built-in Display', resolution: '1920x1080', role: 'operator' },
-    {
-      id: 'display-2',
-      name: 'Preview (simulated audience)',
-      resolution: '1920x1080',
-      role: 'audience',
-    },
-  ])
   const mockRemoteDevices: RemoteDevice[] = []
   // Staged-but-not-yet-committed File objects from pickFilesToImport, keyed by the synthetic
   // "path" handed back to the caller — there's no real filesystem path in the browser demo,
@@ -499,14 +488,10 @@ export function createMockAdapter(): StudioAdapter {
     // genuinely storage-independent, so there's no reason for the demo to fake this with a
     // no-op instead of showing the real feature working).
     live: createLiveAudienceWindowPort(),
-    displays: {
-      list: () => displays.list(),
-      assignRole: async (displayId, role: DisplayRole) => {
-        const display = await displays.get(displayId)
-        if (display) await displays.save({ ...display, role })
-      },
-      identify: async () => {},
-    },
+    // `displays` intentionally omitted, matching adapters/web/index.ts. This build presents into a
+    // browser window via BroadcastChannel, so it cannot target a monitor at all — the simulated
+    // "Built-in Display"/"Preview" entries that used to live here produced a Choose Audience
+    // Display picker whose choice changed nothing, and offered monitors that do not exist.
     // Profile CRUD (shared/synced data) works the same way here as on the web/tablet build —
     // only the per-machine executable path and actual launching are genuinely Tauri/Win32-only
     // (see ExternalAppPort's own doc comment), so those methods stay absent.
