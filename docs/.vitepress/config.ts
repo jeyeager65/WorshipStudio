@@ -63,6 +63,9 @@ export default defineConfig({
     sidebar: [
       { text: 'Installation', link: '/installation' },
       { text: 'Getting Started', link: '/getting-started' },
+      // Top level, above the task groups: it is what someone opens after being told an update is
+      // available, and the update prompt links straight to it (see App.vue's openHelp call).
+      { text: "What's New", link: '/whats-new' },
       {
         // Its own group, directly after the two "start here" pages, because deciding how devices
         // reach the library is part of setting up rather than a settings detail — it sat under
