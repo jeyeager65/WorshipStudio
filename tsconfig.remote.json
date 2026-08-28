@@ -10,7 +10,18 @@
     "src/adapters/types.ts",
     "src/plugins/themeTokens.ts"
   ],
-  "exclude": ["src/**/__tests__/*"],
+  "exclude": [
+    "src/**/__tests__/*",
+    // src/utils is included wholesale above because the mirror reuses several of them, but this
+    // one imports the full '@/adapters' barrel to dispatch on adapter kind and reach the help
+    // port, and '@/adapters' is aliased above to the mirror's own two-port adapter.
+    //
+    // Not a statement about phones: the full app running on a phone or tablet opens help through
+    // this very helper, which is how the Cloud Setup link in Library & Sync works there. This is
+    // only about the Remote Control mirror — a separate bundle of a mirror, transport buttons and
+    // two pickers, with no nav, no settings and nothing that could link to a help topic.
+    "src/utils/openHelpTopic.ts"
+  ],
   "compilerOptions": {
     "paths": {
       "@/adapters": ["./src-remote/adapters/remoteAdapter.ts"],
