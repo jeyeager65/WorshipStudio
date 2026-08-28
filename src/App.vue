@@ -12,6 +12,7 @@ import SplashScreen from '@/components/SplashScreen.vue'
 import PresentationView from '@/views/PresentationView.vue'
 import IdentifyView from '@/views/IdentifyView.vue'
 import { getAdapter } from '@/adapters'
+import { openHelpTopic } from '@/utils/openHelpTopic'
 import { consumeDemoReset } from '@/utils/demoReset'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
@@ -308,26 +309,21 @@ const helpTopic = computed(() => route.meta.helpTopic ?? 'index')
 // `topic` defaults to whatever the current route documents (the Help button / F1); the update
 // prompt passes 'whats-new' so it can open that page directly instead of wherever the operator
 // happens to be standing.
-function openHelp(topic: string = helpTopic.value) {
-  const [slug, anchor] = topic.split('#')
-  if (hasDesktopBackend) {
-    getAdapter()
-      .help.open?.(topic)
-      .catch((error) => console.error('Failed to open help window:', error))
-    return
-  }
-  // No native help window in the browser build — the help site isn't bundled here the way it
-  // is in the Tauri app. On the real GitHub Pages deploy the web/tablet app is served one level
-  // under the help site's own root (see release.yml's deploy-pages job), so a relative
-  // `../<topic>.html` reaches it correctly in a new tab; in plain local `pnpm dev` there's no
-  // sibling help build to reach at all, so this just 404s there (same accepted gap as the help
-  // site's own "Try the Web Demo" button, which only resolves for real once actually deployed).
-  window.open(`../${slug}.html${anchor ? `#${anchor}` : ''}`, '_blank', 'noopener')
+// Takes no arguments on purpose. This was briefly `openHelp(topic = helpTopic.value)`, serving
+// both the app bar and the What's New links — and a bare `@click="openHelp"` then handed Vue's
+// MouseEvent straight in as `topic`, so the Help button threw "topic.split is not a function"
+// while every explicit caller kept working. vue-tsc did not catch it either: a Vuetify
+// component's @click is loosely typed, so the mismatch never surfaced.
+//
+// Anything wanting a specific page calls openHelpTopic() directly instead. Nothing here has a
+// parameter for an event to land in.
+function openHelpForCurrentRoute() {
+  openHelpTopic(helpTopic.value)
 }
 function handleHelpShortcut(event: KeyboardEvent) {
   if (event.key !== 'F1') return
   event.preventDefault()
-  openHelp()
+  openHelpForCurrentRoute()
 }
 
 // Splash screen (feature-spec.md section "Splash screen") — see the `isSplashWindow` comment
@@ -868,7 +864,7 @@ onUnmounted(() => {
         title="Help (F1)"
         aria-label="Help"
         aria-keyshortcuts="F1"
-        @click="openHelp"
+        @click="openHelpForCurrentRoute"
       />
       <template v-if="hasDesktopBackend">
         <v-btn
@@ -958,7 +954,7 @@ onUnmounted(() => {
            name a number the What's New page already states at the top of its newest entry. -->
       A new version of Worship Studio is available.
       <template #actions>
-        <v-btn variant="text" @click="openHelp('whats-new')">What's New</v-btn>
+        <v-btn variant="text" @click="openHelpTopic('whats-new')">What's New</v-btn>
         <v-btn variant="text" @click="pwaUpdate.applyUpdate">Update Now</v-btn>
       </template>
     </v-snackbar>
@@ -984,7 +980,7 @@ onUnmounted(() => {
         <!-- Naming the version is only half of it: knowing whether an update is worth restarting
              for needs to know what changed, and this is the one place most people will ever be
              asked. The page is bundled with the app, so it opens offline. -->
-        <v-btn variant="text" @click="openHelp('whats-new')">What's New</v-btn>
+        <v-btn variant="text" @click="openHelpTopic('whats-new')">What's New</v-btn>
         <v-btn variant="text" :loading="tauriUpdate.applying" @click="tauriUpdate.applyUpdate">
           Update Now
         </v-btn>
