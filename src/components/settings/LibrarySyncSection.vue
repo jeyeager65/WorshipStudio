@@ -157,10 +157,13 @@ async function switchConnectionMethod() {
 async function reconnectCloud() {
   const clientId = machineSettings.value?.tabletCloudClientId
   if (!clientId) return
+  const driveId = machineSettings.value?.tabletCloudLibraryDriveId
+  const itemId = machineSettings.value?.tabletCloudLibraryItemId
   await syncStore.reconnectCloud(
     cloudProvider.value,
     clientId,
     machineSettings.value?.tabletCloudLibraryFolderPath ?? '',
+    driveId && itemId ? { driveId, itemId } : undefined,
   )
   if (syncStore.reconnectError) cloudActionError.value = syncStore.reconnectError
 }

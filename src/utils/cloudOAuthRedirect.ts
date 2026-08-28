@@ -21,6 +21,15 @@ export interface PendingCloudAuth {
   provider: CloudProviderId
   clientId: string
   libraryFolderPath: string
+  /** OneDrive's picked folder, carried across the redirect alongside the path.
+   *
+   *  A shared folder lives in someone else's drive, so a path alone cannot address it — that is
+   *  the whole reason these two exist. Reconnecting used to send only the path, so returning from
+   *  the provider left BootGate unable to resolve the library: it fell back to asking for a folder
+   *  again and, worse, wrote `undefined` over the stored ids on the way through. Invisible on a
+   *  folder in your own drive, where the path is enough; guaranteed on a shared one. */
+  libraryDriveId?: string
+  libraryItemId?: string
   redirectUri: string
 }
 
@@ -79,6 +88,7 @@ export async function beginCloudOAuthRedirect(
   provider: CloudProviderId,
   clientId: string,
   libraryFolderPath: string,
+  picked?: { driveId: string; itemId: string },
 ): Promise<void> {
   const auth = authFor(provider)
   const codeVerifier = auth.generateCodeVerifier()
@@ -94,6 +104,8 @@ export async function beginCloudOAuthRedirect(
     provider,
     clientId,
     libraryFolderPath,
+    libraryDriveId: picked?.driveId,
+    libraryItemId: picked?.itemId,
     redirectUri,
   }
   sessionStorage.setItem(CLOUD_OAUTH_PENDING_KEY, JSON.stringify(pending))
