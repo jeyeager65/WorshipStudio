@@ -115,6 +115,25 @@ const syncTooltipText = computed(() => {
 // (never auto-dismisses, hidden while presenting) so this is genuinely hard to miss without being
 // disruptive — reusing the same one-tap reconnectCloud() as LibrarySyncSection.vue (now shared
 // via useSyncStore) rather than a second copy of the redirect logic.
+// The app-bar menu called syncStore.runSync() bare, so a failed sync was silent: the spinner
+// stopped and nothing else changed. That matters most for the failure this is usually hiding —
+// expired auth needs two consecutive failures before the reconnect banner appears (deliberately;
+// a single one is ordinary noise, see cloudSync.ts), so the operator's first Sync Now looked like
+// it did nothing at all, and only tapping again produced any visible response.
+//
+// The threshold is right for a banner that must not flap on transient failures. It is wrong as a
+// reason to say nothing about a sync somebody just asked for. Settings > Library & Sync already
+// catches this for its own button (syncNow there); this is the same treatment for the menu.
+const manualSyncError = ref('')
+async function syncNowFromMenu() {
+  manualSyncError.value = ''
+  try {
+    await syncStore.runSync()
+  } catch (error) {
+    manualSyncError.value = error instanceof Error ? error.message : 'Sync failed.'
+  }
+}
+
 const reconnectBannerText = computed(() => {
   const count = syncStore.status?.pendingPushCount
   const provider =
@@ -126,10 +145,13 @@ function reconnectCloudFromBanner() {
   const machineSettings = settingsStore.machineSettings
   const clientId = machineSettings?.tabletCloudClientId
   if (!clientId) return
+  const driveId = machineSettings?.tabletCloudLibraryDriveId
+  const itemId = machineSettings?.tabletCloudLibraryItemId
   void syncStore.reconnectCloud(
     machineSettings?.tabletCloudProvider ?? 'dropbox',
     clientId,
     machineSettings?.tabletCloudLibraryFolderPath ?? '',
+    driveId && itemId ? { driveId, itemId } : undefined,
   )
 }
 
@@ -803,10 +825,15 @@ onUnmounted(() => {
               :loading="syncStore.syncing"
               :disabled="syncStore.syncing"
               prepend-icon="mdi-sync"
-              @click="syncStore.runSync()"
+              @click="syncNowFromMenu"
             >
               Sync Now
             </v-btn>
+            <!-- Kept inside the menu rather than raised as a banner: the operator opened this,
+                 so it is information on demand, not another thing interrupting a service. -->
+            <div v-if="manualSyncError" class="text-caption text-error mt-2">
+              {{ manualSyncError }}
+            </div>
           </v-card>
         </v-menu>
         <v-tooltip
