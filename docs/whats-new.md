@@ -14,6 +14,15 @@ full list of changes, down to the individual commit.
 
 The first public release, so this is an introduction rather than a list of changes.
 
+::: warning Still early
+Worship Studio is complete enough to plan and run a real service end to end, and still early
+enough that things may change between releases and rough edges are likely. Keep a backup of your
+library, as you would with anything holding work you can't easily redo.
+
+One known gap — the **Dropbox** side of the cloud connection is written but has never been tested
+against the live API. OneDrive is the path in real use. See [Cloud Setup](/cloud-setup).
+:::
+
 Worship Studio plans a service and presents it live from one place. You build the order of
 worship — songs, scripture, slides, media, announcements, the sermon — and the same screen
 runs it on Sunday, with Next/Previous stepping through every slide in order. No exporting, no
@@ -23,10 +32,16 @@ second program, no rebuilding the same service in two tools.
 
 - A **song library** with reusable lyric blocks, so an arrangement is chosen per service without
   copying the song.
-- **Scripture** in KJV out of the box, with ESV and NIV available by adding a key. Long passages
-  split themselves across slides at verse boundaries.
+- **Scripture** in KJV out of the box, needing no account or connection. The ESV is available
+  through Crossway's own API, and many other translations through api.bible — both free to sign
+  up for and free at the scale a church uses them. Long passages split themselves across slides
+  at verse boundaries.
 - **Slides** for announcements and anything else, including a pre-service loop that advances on a
   timer.
+- **Video plays inside the service**, as an ordinary item in the running order — no switching to
+  another program and no scrambling back afterwards. And when you do want another program,
+  **PowerPoint or anything else can be handed off to in place**: it launches at its point in the
+  order of worship and hands control back, rather than sitting outside the service entirely.
 - **People and roles**, so who is serving each week is planned alongside what is being sung, and a
   printed **bulletin** and **serving schedule** come out of the same service you already built.
 - **Presentation themes** — backgrounds and text styling applied by content type, so scripture and

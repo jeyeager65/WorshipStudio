@@ -1,7 +1,7 @@
 # Development workflow plan
 
-Three related changes, agreed 2026-08-27, to be done before or alongside 0.9.0 — the release
-that first puts Worship Studio in front of people other than the author:
+Three related changes, agreed and built on 2026-08-27, ahead of 0.9.0 — the release that first
+puts Worship Studio in front of people other than the author:
 
 1. **Release notes** — a user-facing account of what changed, which does not exist today.
 2. **Branching** — feature branches and pull requests, with `dev` as an integration branch.
@@ -12,8 +12,9 @@ They interlock. PR-based merges are what make GitHub's generated release notes u
 PR rather than a flat commit list), and the `dev` branch only earns its keep because something
 deploys from it.
 
-Nothing here is built yet. See [release-process.md](release-process.md) for how cutting a release
-works today, which none of this replaces.
+All three are in place; each section's own "Built" list records what was actually done, and the
+reasoning above it is kept because it is the part that would otherwise be lost. See
+[release-process.md](release-process.md) for the release flow these changed.
 
 ---
 
@@ -77,15 +78,16 @@ Nobody has seen 0.1 through 0.8, so "what changed since 0.8.65" means nothing to
 reader. **0.9.0 needs a launch note**: what the app is, what it does, how to install it, where the
 docs are. The running changelog starts at 0.9.1.
 
-### To build
+### Built
 
-- [ ] `docs/whats-new.md` + sidebar entry.
-- [ ] The 0.9.0 launch note (release body and the page's first entry).
-- [ ] Surface `Update.body` and `Update.version` in `tauriUpdate.ts` and the update prompt, with a
-      link to What's New. Small, and independently worth doing.
-- [ ] Decide whether `releaseBody` in the workflow should carry the entry, or whether it is pasted
-      into the draft by hand. Leaning: workflow keeps only the certificate boilerplate; the entry
-      is pasted into the draft, since it is written per release anyway.
+- [x] `docs/whats-new.md`, top-level in the sidebar — it is what someone opens after being told an
+      update exists.
+- [x] The 0.9.0 entry, written as an introduction rather than a changelog.
+- [x] The desktop update prompt names the version, and both prompts link to What's New.
+      `Update.body` is deliberately *not* shown: it is the GitHub release body, which opens with
+      the certificate explanation and continues into a generated commit list.
+- [x] `releaseBody` keeps only the certificate boilerplate; the per-release entry is pasted into
+      the draft by hand, since it is written per release anyway.
 
 ---
 
@@ -126,13 +128,18 @@ Not review — there is no second reviewer. It buys **branch protection making C
 a notification**: today a red build lands on `main` and is discovered afterwards. Plus a diff to
 read before merging, and PR-grouped release notes.
 
-### To build
+### Built
 
-- [ ] Create `dev` from `main`.
-- [ ] Branch protection on `main`: require CI, no direct pushes. Same on `dev` minus strictness.
-- ~~Check `ci.yml` triggers.~~ Already correct: it runs on `pull_request` as well as pushes to
-      `main`, so branch protection has something to gate on from day one. Nothing to change.
-- [ ] `notes/branching-strategy.md`, or fold this section into `release-process.md`.
+- [x] `dev` created from `main`.
+- [x] Branch protection on `main`: pull request required, `frontend` and `rust` must pass, no
+      force pushes. `enforce_admins` deliberately off — the protection is there to stop routine
+      mistakes, not to lock the maintainer out mid-service.
+- [x] `ci.yml` runs on pushes to `dev` as well, or every commit between releases would go
+      unchecked until the release pull request.
+- [x] `release.yml` refuses a tag that is not an ancestor of `main`. Tags are not branch-scoped,
+      so nothing else stopped a tag on `dev` publishing a release.
+- [x] Folded into [release-process.md](release-process.md) rather than a separate file — that is
+      where someone cutting a release already looks.
 
 ---
 
@@ -193,13 +200,21 @@ dev deployment worth building rather than a nicety.
   `/app/`. Simplest is for dev to mirror that exactly, so the only difference between environments
   is the origin.
 
-### To build
+### Built
 
-- [ ] Author creates the Cloudflare Pages project and connects the repo (cannot be done from
-      here).
-- [ ] Build config: build command, output directory, and the base-path env vars.
-- [ ] Point it at `dev`, confirm per-branch previews behave.
-- [ ] Add the redirect URI in Entra; create a throwaway library folder for dev to sync.
+Live at **https://worshipstudio.jeyeager.workers.dev** — help site at the root, app at `/app/`.
+
+- [x] Built and deployed by GitHub Actions rather than by Cloudflare's own Git integration: the
+      same build already runs in `ci.yml`, and a second build configuration would only be
+      something else to keep in step. `deploy-dev` needs both check jobs, so a dev URL never
+      serves a build that does not compile.
+- [x] `pnpm build:pages` (scripts/build-pages.mjs) assembles the combined site; `wrangler.jsonc`
+      declares a static-assets-only Worker over it.
+- [x] `WS_APP_URL` repoints the help site's links to the app at this origin, so a tester following
+      "Try the Web Demo" stays on the build they came to test. Rewritten before compilation —
+      doing it after rendering left the production URL in the page's JS chunk, and hydration put
+      it back.
+- [x] Redirect URI added in Entra, under the **SPA** platform.
 
 ---
 

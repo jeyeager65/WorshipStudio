@@ -122,13 +122,28 @@ jobs:
           # PRs yet) and gets richer (grouped by PR, New Contributors, etc.) automatically once
           # the project moves off direct-to-main commits post-1.0. releaseBody prepends to it.
           generateReleaseNotes: true
+          # Prepended above GitHub's generated notes, so it is the first thing on the page. What
+          # actually changed in a given release is written by hand into the draft above this —
+          # see notes/dev-workflow-plan.md. Ordered for a reader: the caveat that decides whether
+          # to install at all, then where to read what changed, then the install warnings they
+          # will meet on the way. The certificate explanation itself lives in the Installation
+          # guide rather than being restated on every release.
+          #
+          # Delete the warning block at 1.0.
           releaseBody: |
-            Windows builds are signed with a self-signed certificate. Expect a Microsoft Defender
-            SmartScreen prompt on every release (click "More info" then "Run anyway" -- this is
-            normal and unrelated to trusting the certificate) plus an "unrecognized publisher"
-            warning the first time on a given machine. See the Installation guide
-            (https://jeyeager65.github.io/WorshipStudio/installation.html) for the one-time
-            certificate-trust step.
+            > [!WARNING]
+            > **Pre-1.0 — not production ready.** Worship Studio is under active development.
+            > Features may be incomplete or change between releases, and file formats aren't
+            > frozen yet. Keep a backup of your library, and don't depend on this for a service
+            > you have no fallback for.
+
+            **[What's new in this release](https://jeyeager65.github.io/WorshipStudio/whats-new.html)**
+
+            Windows will warn about an unrecognised publisher, and Microsoft Defender SmartScreen
+            will prompt on every release — both expected for a free project signed with its own
+            certificate. The
+            [Installation guide](https://jeyeager65.github.io/WorshipStudio/installation.html#windows-desktop-app)
+            has the one-time step that clears the publisher warning for good.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.platform == 'windows-latest' && '--config windows-signing.json' || '' }}
