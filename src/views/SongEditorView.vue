@@ -153,8 +153,13 @@ async function removeCollection(index: number) {
   if (!song.value) return
   const removed = song.value.collections[index]
   if (!removed) return
-  if (!(await confirmDialog.confirm(`Remove "${removed.collectionId || 'collection'}"?`, 'Remove')))
-    return
+  // Resolved to the collection's name, the way the select above shows it. The stored value is an
+  // id, and confirming against a raw "collection-hymns-of-grace" asks the operator to recognise
+  // something the app never displays anywhere else.
+  const name =
+    songCollections.value.find((collection) => collection.id === removed.collectionId)?.name ??
+    'this collection'
+  if (!(await confirmDialog.confirm(`Remove "${name}" from this song?`, 'Remove'))) return
   song.value.collections.splice(index, 1)
 }
 
