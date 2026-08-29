@@ -287,6 +287,7 @@ async function save() {
 
           <div class="details-grid mb-4">
             <v-text-field
+              id="external-app-name"
               v-model="workingProfile.name"
               label="Name"
               variant="outlined"
@@ -331,6 +332,7 @@ async function save() {
 
           <template v-if="workingProfile.launchMode === 'launch-automatically'">
             <v-text-field
+              id="external-app-parameter-format"
               v-model="workingProfile.parameterFormat"
               label="Parameter Format"
               variant="outlined"
@@ -362,6 +364,7 @@ async function save() {
           </div>
 
           <v-text-field
+            id="external-app-executable"
             v-model="implementationExecutablePath"
             :label="workingProfile.launchMode === 'already-running' ? 'Process Name' : 'Executable'"
             variant="outlined"

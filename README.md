@@ -1,59 +1,85 @@
-# Worship Studio
+<div align="center">
 
-A church presentation/service-management desktop app. Plan a service, run it live, and keep your
-song/slide library organized — all from one app, with no server or database: your library lives
-as plain JSON files in a folder you already sync (Dropbox, OneDrive, or similar).
+<img src="docs/public/logo-light.png#gh-light-mode-only" alt="Worship Studio" width="360">
+<img src="docs/public/logo-dark.png#gh-dark-mode-only" alt="Worship Studio" width="360">
+
+**Plan a church service and present it live, from one place.**
+
+[Try the demo](https://jeyeager65.github.io/WorshipStudio/app/?demo=1) ·
+[Help site](https://jeyeager65.github.io/WorshipStudio/) ·
+[Download](https://github.com/jeyeager65/WorshipStudio/releases)
+
+</div>
+
+Your library is **plain JSON files in a folder you already sync** — Dropbox, OneDrive, whatever
+you use. There is no server, no database, and no account: nothing sits between your church and
+its own files, and nothing stops working if this project does. The same folder backs a Windows
+app, any browser, and a tablet.
+
+Build the order of worship — songs, scripture, slides, media, announcements, the sermon — and
+the same screen runs it on Sunday, stepping through every slide in order. No exporting, no second
+program, no rebuilding the same service in two tools.
 
 ![The Services screen — today's service and the next two weeks at a glance](docs/public/screenshots/services-schedule.webp)
 
-- **Try it**: [live web demo](https://jeyeager65.github.io/WorshipStudio/app/) (runs entirely in
-  your browser against sample data — nothing is saved) · [help
-  site](https://jeyeager65.github.io/WorshipStudio/) · [download the desktop
-  app](https://github.com/jeyeager65/WorshipStudio/releases)
+## What it does
 
-## Features
-
-- **Plan a full order of worship** — songs, scripture, sermon, media, and announcements — in one
-  workspace, using a reusable [service template](https://jeyeager65.github.io/WorshipStudio/service-templates.html)
-  so you're not rebuilding the structure every week.
-- **Run it live** on a second display, with per-item transport (Next/Previous, Blank Screen,
-  Background Only) and a readiness check that flags anything not ready to present.
-- **Song and slide libraries** you build once and reuse every week, including OpenSong XML
-  import and a Canva integration for slide design.
-- **Presentation themes** for consistent, on-brand styling of generated content (backgrounds,
-  fonts, text effects) without styling every song and scripture slide by hand.
-- **Assignments** — who's serving each week, with automatic double-booking and availability
-  conflict detection, and one-click roster sharing.
-- **Bulletins and reports** generated straight from your service plans — a printable order of
-  worship, song-usage reporting (CCLI number included when your songs have one), and multi-week
-  planning views — no separate documents to keep in sync.
-- **Multi-computer sync** over whatever file-sync tool you already use, with built-in detection
-  and recovery if two computers edit the same record at once.
-- **Remote control** a running service from a phone or tablet, and hand off to an external app
-  (like a video player) mid-service.
-- **One library, three ways in**: the full desktop app for Windows, a zero-install web build for
-  prep work from any browser (songs, slides, services, media, scripture, rosters — the same
-  synced folder, via the File System Access API), and an installable tablet PWA that keeps its
-  own local cache synced straight to Dropbox or OneDrive for volunteers on an iPad or Android
-  tablet.
+- **Plan and present from one workspace** — build the order of worship from a reusable
+  [service template](https://jeyeager65.github.io/WorshipStudio/service-templates.html), then run
+  it live with Next/Previous, Blank Screen and Background Only, and a readiness check that flags
+  anything not ready to present.
+- **Song and slide libraries** built once and reused weekly, with OpenSong import and Canva.
+- **Scripture** in KJV out of the box; ESV and NIV with a key. Long passages split themselves
+  across slides at verse boundaries.
+- **Presentation themes** applied per content type, so scripture and songs can look different
+  without styling either by hand.
+- **People and roles** — who is serving each week, with double-booking and availability conflicts
+  caught automatically.
+- **Bulletins and reports** generated from the same service you already planned — printable order
+  of worship, song usage with CCLI numbers, multi-week planning views.
+- **Remote control** from a phone or tablet, and hand-off to an external app mid-service.
+- **One library, three ways in** — the Windows app for the machine driving the screen, any
+  browser for planning, and an installable tablet PWA. All three work against the same synced
+  folder, and all three can present.
 
 See the [help site](https://jeyeager65.github.io/WorshipStudio/) for a full walkthrough of every
 area of the app.
 
-**Status:** the full v1 milestone roadmap is built and in real use — service planning, the song
-library, the main live-presentation workspace, scripture lookup, a slide library, settings, an
-undo mechanism, and this release pipeline. See
-[notes/architecture-plan.md](notes/architecture-plan.md) for the milestone-by-milestone
-breakdown. Four backends implement the same `StudioAdapter` interface
-(`src/adapters/types.ts` — the authoritative list of what each port does):
-`tauri` (the real desktop app), `web` (the File System Access build), `tablet` (the
-cloud-synced PWA), and `mock` (the browser demo and local dev fixtures). The desktop app checks
-for and prompts about updates automatically (see [Releases](#releases) below — only a *published*
-release is ever offered). Not yet in scope for 1.0: a native audio service-item player (the data
-model exists; live playback doesn't yet).
+## Status
 
-- **Technical architecture & build plan**: [notes/architecture-plan.md](notes/architecture-plan.md)
-- **Cutting a release / code-signing setup**: [notes/release-process.md](notes/release-process.md)
+Feature-complete for the v1 roadmap, and still pre-1.0: under active development, with
+interfaces and file formats not yet frozen between releases. See
+[notes/architecture-plan.md](notes/architecture-plan.md) for the milestone breakdown.
+
+One known gap: the **Dropbox** side of the cloud connection — the one a tablet or a Mac on
+Safari uses — is implemented but has never been exercised against the live API. OneDrive is the
+tested path.
+
+The desktop app checks for updates and prompts before installing anything. Only a *published*
+release is ever offered, so drafts stay invisible to installed machines.
+
+## Contributing
+
+**Pull requests aren't being accepted before 1.0** — there's enough to coordinate already. Please
+don't spend time on one that won't be merged.
+
+**Issues are very welcome**, especially from anyone actually running a service with it:
+[open one here](https://github.com/jeyeager65/WorshipStudio/issues). See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the longer version.
+
+## License
+
+[MIT](LICENSE) — your library is plain files on disk regardless, so nothing here can strand you.
+
+## For developers
+
+Four backends implement one `StudioAdapter` interface (`src/adapters/types.ts` — the authoritative
+list of what each port does): `tauri` (the desktop app), `web` (File System Access), `tablet`
+(the cloud-synced PWA), and `mock` (the browser demo and local dev fixtures). Adding a feature
+usually means adding to that interface and then to each backend that can support it.
+
+Design notes and decision records live in [notes/](notes/) — start with
+[notes/README.md](notes/README.md), which says which to read and in what order.
 
 ## Stack
 
@@ -62,8 +88,9 @@ doc for the full rationale, the adapter-based frontend/backend split, and the mi
 
 ## Requirements
 
-- Node.js ≥ 24.11.1 (Vuetify 4's floor) — this repo pins `24.18.0` in CI
-- pnpm (enable via `corepack enable && corepack prepare pnpm@11.17.0 --activate`, or install directly)
+- Node.js ≥ 24.11.1 (Vuetify 4's floor). The exact version is in [`.nvmrc`](.nvmrc), which CI and
+  `nvm`/`fnm` both read — no second place to keep in step.
+- pnpm — `corepack enable` picks up the version pinned in `package.json`'s `packageManager`
 - Rust stable + Cargo, for the desktop shell (`src-tauri/`)
 
 ## Getting started
@@ -91,6 +118,14 @@ pnpm tauri dev
 | `pnpm lint` | ESLint, auto-fixing |
 | `pnpm format` | Prettier, writes `src/` |
 | `pnpm test:unit` | Vitest — frontend unit tests |
+| `pnpm build:remote` | The Remote Control mirror's separate bundle (`src-remote/`), embedded into the Rust binary |
+| `pnpm build:pages` | Help site + app assembled into `pages/` — what the dev deployment publishes |
+| `pnpm docs:dev` / `docs:build` | The VitePress help site |
+
+End-to-end tests live in `e2e/` and are run by hand, not in CI (they need a real desktop session).
+From `e2e/`: `npm run build:app` — mandatory, the binary bundles the built frontend — then
+`npm test`. See [notes/release-process.md](notes/release-process.md), which makes this a release
+step.
 
 Rust side (`src-tauri/`): `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`
 — all three run in CI (`.github/workflows/ci.yml`) alongside the frontend checks above.
@@ -114,6 +149,10 @@ src/                    Vue app — shared between the Tauri build and the stati
   utils/                 Pure helper functions (scripture references, service flattening, ...)
   router/                vue-router routes + the unsaved-changes navigation guard
   plugins/               Vuetify setup (themes, icons)
+src-remote/              The Remote Control mirror's own small Vue bundle, served by the Rust
+                         HTTP server to a paired phone — built separately (build:remote)
+e2e/                     WebdriverIO suite driving the real desktop binary, plus the scripts that
+                         capture the help site's screenshots and the overview video
 src-tauri/               Rust backend
   src/commands/          Thin Tauri command wrappers (#[tauri::command])
   src/domain/            Pure logic the commands call into, unit-tested independent of Tauri
@@ -123,7 +162,8 @@ src-tauri/               Rust backend
 notes/                   Architecture and release-process planning docs
 docs/                    VitePress help site (in-app + GitHub Pages landing page) — see notes/help-system-plan.md
 scripts/release/         Windows code-signing certificate + one-time machine-trust script
-.github/workflows/       CI (every push/PR) and Release (on a vX.Y.Z tag push)
+.github/workflows/       CI (pushes to main/dev and every PR; also deploys dev to Cloudflare)
+                         and Release (on a vX.Y.Z tag push, refused unless the tag is on main)
 ```
 
 ## Releases

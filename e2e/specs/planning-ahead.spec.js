@@ -37,7 +37,10 @@ describe('Planning Ahead', () => {
     await homeLink.waitForClickable({ timeout: 10000 })
     await homeLink.click()
 
-    const planningAheadLink = await $('.v-tab*=Plan Ahead')
+    // The tab reads "Plan", not "Plan Ahead" — renamed in LandingView.vue because three full
+    // labels overflowed into a horizontal scroller on a phone. The toolbar heading below still
+    // says "Plan Ahead", which is what the rest of this spec asserts on.
+    const planningAheadLink = await $('.v-tab*=Plan')
     await planningAheadLink.waitForExist({ timeout: 10000 })
     await planningAheadLink.click()
 

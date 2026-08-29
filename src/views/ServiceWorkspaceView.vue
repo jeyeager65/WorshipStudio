@@ -1726,9 +1726,14 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
                 {{ arrangementEditMode ? 'Done' : 'Edit Arrangement' }}
               </v-btn>
             </div>
+            <!-- Reordering is part of editing the arrangement, not part of looking at it. Outside
+                 edit mode a stray drag on a touchscreen would silently change the order a song is
+                 sung in, with no confirmation and nothing on screen saying it happened — the same
+                 reason the per-block delete lives behind this toggle. -->
             <VueDraggable
               v-model="selectedItem.arrangement.sequence"
               handle=".drag-handle"
+              :disabled="!arrangementEditMode"
               :animation="150"
               class="d-flex flex-column ga-1"
             >
@@ -1742,7 +1747,10 @@ function updateRolePerson(roleId: string, personId: string | undefined) {
                 "
                 @click="goLive(slideFlatIndex(selectedItem.id, index))"
               >
+                <!-- Hidden rather than merely inert: a grab handle that does nothing is worse
+                     than no handle, since it invites the drag it then refuses. -->
                 <v-icon
+                  v-if="arrangementEditMode"
                   icon="mdi-drag-vertical"
                   class="drag-handle"
                   size="small"

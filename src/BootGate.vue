@@ -376,6 +376,20 @@ async function handleCloudRedirect(params: URLSearchParams) {
     // the connect form, since its shared folders mount inside the member's own tree.
     if (pending.provider === 'onedrive') {
       pendingClientId.value = pending.clientId
+      // A *reconnect* already knows which folder it is going back to, and asking again is both
+      // pointless and destructive: finishTabletBoot writes whatever it is given, so arriving here
+      // without the ids overwrote the stored ones with undefined. That only ever showed up on a
+      // shared folder — one in your own drive still resolves by path afterwards — which is
+      // exactly the setup this feature exists for.
+      //
+      // A first-time connection has no ids yet and still picks a folder, as before.
+      if (pending.libraryDriveId && pending.libraryItemId) {
+        await finishTabletBoot(pending.provider, pending.clientId, pending.libraryFolderPath, {
+          driveId: pending.libraryDriveId,
+          itemId: pending.libraryItemId,
+        })
+        return
+      }
       await openFolderPicker()
       return
     }

@@ -161,11 +161,15 @@ export const useSyncStore = defineStore('sync', () => {
     provider: CloudProviderId,
     clientId: string,
     libraryFolderPath: string,
+    /** OneDrive's picked folder. Must be passed for a shared folder — it lives in another
+     *  account's drive, which a path alone cannot address, so without these the reconnect
+     *  returns to a folder chooser instead of the library it just left. */
+    picked?: { driveId: string; itemId: string },
   ) {
     reconnectingCloud.value = true
     reconnectError.value = ''
     try {
-      await beginCloudOAuthRedirect(provider, clientId, libraryFolderPath)
+      await beginCloudOAuthRedirect(provider, clientId, libraryFolderPath, picked)
     } catch (error) {
       reconnectError.value = error instanceof Error ? error.message : "Couldn't start reconnecting."
       reconnectingCloud.value = false

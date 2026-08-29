@@ -18,6 +18,17 @@ async function continueWizard() {
   await button.click()
 }
 
+// Welcome is a fork before it is a step: Continue does nothing until the operator says whether
+// this device is starting a new library or joining one another device already set up. The two
+// paths then differ (join runs the library step first and skips the ones whose answers live in
+// the library it just joined), so a walkthrough has to pick one. 'new' is the longer path and
+// the one that visits every step below.
+async function chooseSetupMode(label) {
+  const card = await $(`.mode-card*=${label}`)
+  await card.waitForClickable({ timeout: 10000 })
+  await card.click()
+}
+
 async function assertLandingPage() {
   const heading = await $('.services-hero').then((el) => el.$('h1*=Services'))
   await heading.waitForExist({ timeout: 15000 })
@@ -43,18 +54,26 @@ describe('First-Time Setup Wizard', () => {
     await assertLandingPage()
   })
 
-  it('walks Welcome -> Church -> Displays -> Library -> Preferences -> Finish and returns to the landing page', async () => {
+  it('walks a new library through Welcome -> Church -> Device -> Displays -> Library -> Defaults -> Finish and returns to the landing page', async () => {
     await openWizardFromSettings()
 
     const welcome = await $('h1*=Set up Worship Studio')
     await welcome.waitForExist({ timeout: 10000 })
 
+    await chooseSetupMode('Set up a new library')
     await continueWizard()
     const church = await $('h1*=Make the workspace yours')
     await church.waitForExist({ timeout: 10000 })
     // Continue is blocked with a validation alert until a church name is entered.
     const churchNameInput = await $('#church-name')
     await churchNameInput.setValue('E2E Test Church')
+
+    // "This Device" sits between Church and Displays: a name for this particular machine, used
+    // to label who made a change when resolving a Library Health conflict. It is pre-filled from
+    // the device itself, so this step only has to be stepped through, not filled in.
+    await continueWizard()
+    const device = await $('h1*=Name this device')
+    await device.waitForExist({ timeout: 10000 })
 
     await continueWizard()
     const displays = await $('h1*=Choose what each screen shows')
@@ -88,6 +107,7 @@ describe('First-Time Setup Wizard', () => {
 
     const welcome = await $('h1*=Set up Worship Studio')
     await welcome.waitForExist({ timeout: 10000 })
+    await chooseSetupMode('Set up a new library')
     await continueWizard()
 
     const church = await $('h1*=Make the workspace yours')

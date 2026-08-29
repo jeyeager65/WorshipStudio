@@ -120,9 +120,41 @@ export default defineConfig({
     ],
   },
 
-  transformHtml(code, _id, ctx) {
-    if (APP_URL === PRODUCTION_APP_URL) return code
-    if (PAGES_KEEPING_PRODUCTION_URL.includes(ctx.page)) return code
-    return code.replaceAll(PRODUCTION_APP_URL, APP_URL)
+  // Rewritten before compilation, not after rendering.
+  //
+  // transformHtml alone looked right and was not: it only edits the emitted .html files, while
+  // VitePress also ships a compiled JS chunk per page. The page arrived with the dev URL, then
+  // hydration re-rendered from the chunk and put production back. Invisible to `curl`, which only
+  // ever sees the pre-hydration HTML — the artifact that happened to be correct.
+  //
+  // The two links come from different places and each needs its own hook: the hero button is
+  // frontmatter (page data), the rest are ordinary markdown links compiled into the page
+  // component. Together these cover both, and both agree with what is server-rendered.
+  transformPageData(pageData) {
+    if (APP_URL === PRODUCTION_APP_URL) return
+    if (PAGES_KEEPING_PRODUCTION_URL.includes(pageData.relativePath)) return
+    for (const action of pageData.frontmatter.hero?.actions ?? []) {
+      if (typeof action.link === 'string') {
+        action.link = action.link.replaceAll(PRODUCTION_APP_URL, APP_URL)
+      }
+    }
+  },
+
+  markdown: {
+    config(md) {
+      const renderLink = md.renderer.rules.link_open
+      md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+        if (APP_URL !== PRODUCTION_APP_URL) {
+          const href = tokens[idx].attrGet('href')
+          const page = env?.relativePath as string | undefined
+          if (href && !PAGES_KEEPING_PRODUCTION_URL.includes(page ?? '')) {
+            tokens[idx].attrSet('href', href.replaceAll(PRODUCTION_APP_URL, APP_URL))
+          }
+        }
+        return renderLink
+          ? renderLink(tokens, idx, options, env, self)
+          : self.renderToken(tokens, idx, options)
+      }
+    },
   },
 })

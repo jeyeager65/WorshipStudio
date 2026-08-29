@@ -157,10 +157,13 @@ async function switchConnectionMethod() {
 async function reconnectCloud() {
   const clientId = machineSettings.value?.tabletCloudClientId
   if (!clientId) return
+  const driveId = machineSettings.value?.tabletCloudLibraryDriveId
+  const itemId = machineSettings.value?.tabletCloudLibraryItemId
   await syncStore.reconnectCloud(
     cloudProvider.value,
     clientId,
     machineSettings.value?.tabletCloudLibraryFolderPath ?? '',
+    driveId && itemId ? { driveId, itemId } : undefined,
   )
   if (syncStore.reconnectError) cloudActionError.value = syncStore.reconnectError
 }
@@ -806,14 +809,34 @@ async function saveDataLocationPath() {
       title="Add Another Device"
       description="What a phone or tablet needs before it can join this library."
       icon="mdi-cellphone-link"
+      help-topic="cloud-setup"
     >
-      <p class="text-caption text-medium-emphasis mb-3">
-        On the new device, open Worship Studio, choose your cloud provider, and paste the matching
-        ID below. It then signs in and picks the library folder from a list — nothing else has to be
-        typed. The ID isn't a secret, so it's fine to email or text.
-      </p>
+      <!-- Same standing-explanation alert AboutSection and CanvaSection open with, rather than a
+           caption paragraph — this is the panel's instructions, and they read as an aside at
+           caption size. -->
+      <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+        <!-- Kept to what the screen itself cannot tell you: that one ID serves the whole church,
+             and that sending it around is safe. Everything else — creating the registration, and
+             what the new device does after signing in — is on the help page linked below, which
+             can explain it properly instead of compressing it into an alert. -->
+        <p class="mb-0">
+          Paste this ID into Worship Studio on the new device and sign in. One per church, not per
+          device — and it isn't a secret, so it's fine to email or text.
+        </p>
+      </v-alert>
 
-      <v-alert v-if="localAppIdToAdopt" type="info" variant="tonal" density="compact" class="mb-3">
+
+      <!-- Deliberately not `info` like the one above: with the explanation now wearing that
+           styling unconditionally, a second identical blue box would stop reading as "something
+           here needs you". This one is conditional and carries an action, which is what warning
+           is for. -->
+      <v-alert
+        v-if="localAppIdToAdopt"
+        type="warning"
+        variant="tonal"
+        density="compact"
+        class="mb-3"
+      >
         <div class="d-flex align-center ga-3 flex-wrap">
           <span
             >This device connected with an ID that isn't recorded here yet. Save it so other devices
@@ -863,10 +886,6 @@ async function saveDataLocationPath() {
         </v-btn>
       </div>
 
-      <p class="text-caption text-medium-emphasis mt-3">
-        These come from your church's own app registration with Microsoft or Dropbox — one per
-        church, not one per device.
-      </p>
     </SettingsPanel>
 
     <SettingsPanel
@@ -1178,7 +1197,16 @@ async function saveDataLocationPath() {
 .app-id-row .v-text-field {
   flex: 1;
 }
-@media (max-width: 700px) {
+
+/* Against the panel, not the viewport. This was a `@media (max-width: 700px)`, which misses the
+   case that actually bites: the settings pane is a column inside a wider layout, so a panel can be
+   narrow while the window is not — and there the row stayed side by side and ran "Use Portable
+   Folder" off the edge. Every element styled here sits inside a SettingsPanel, which declares
+   `container-type: inline-size`, so this resolves against that.
+
+   640px rather than 700: the field's own 280px minimum plus Browse and Use Portable Folder need
+   roughly 600px before anything is cut off. */
+@container (max-width: 640px) {
   .path-setting {
     align-items: stretch;
     grid-template-columns: 1fr;

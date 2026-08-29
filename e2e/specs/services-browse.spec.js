@@ -31,6 +31,15 @@ describe('Services — Browse tab', () => {
     )
 
     try {
+      // Reload before touching the UI. The fixture above is written straight to disk while the
+      // app is already running, and the services store reads that directory once — so whether
+      // this file is seen at all comes down to whether the write landed before that read. It
+      // used to win by accident (earlier specs had already created and settled the Library
+      // directory); with the app-data wipe now running per spec, the app is creating that same
+      // directory as this test writes into it, and the race became visible — failing about two
+      // runs in three. A reload makes the ordering explicit instead of lucky.
+      await browser.refresh()
+
       const skipLink = await $('button*=Skip setup')
       if (await skipLink.isExisting()) await skipLink.click()
 

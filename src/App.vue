@@ -12,6 +12,7 @@ import SplashScreen from '@/components/SplashScreen.vue'
 import PresentationView from '@/views/PresentationView.vue'
 import IdentifyView from '@/views/IdentifyView.vue'
 import { getAdapter } from '@/adapters'
+import { openHelpTopic } from '@/utils/openHelpTopic'
 import { consumeDemoReset } from '@/utils/demoReset'
 import { useLiveSessionStore } from '@/stores/liveSession'
 import { useUnsavedChangesStore } from '@/stores/unsavedChanges'
@@ -115,6 +116,25 @@ const syncTooltipText = computed(() => {
 // (never auto-dismisses, hidden while presenting) so this is genuinely hard to miss without being
 // disruptive — reusing the same one-tap reconnectCloud() as LibrarySyncSection.vue (now shared
 // via useSyncStore) rather than a second copy of the redirect logic.
+// The app-bar menu called syncStore.runSync() bare, so a failed sync was silent: the spinner
+// stopped and nothing else changed. That matters most for the failure this is usually hiding —
+// expired auth needs two consecutive failures before the reconnect banner appears (deliberately;
+// a single one is ordinary noise, see cloudSync.ts), so the operator's first Sync Now looked like
+// it did nothing at all, and only tapping again produced any visible response.
+//
+// The threshold is right for a banner that must not flap on transient failures. It is wrong as a
+// reason to say nothing about a sync somebody just asked for. Settings > Library & Sync already
+// catches this for its own button (syncNow there); this is the same treatment for the menu.
+const manualSyncError = ref('')
+async function syncNowFromMenu() {
+  manualSyncError.value = ''
+  try {
+    await syncStore.runSync()
+  } catch (error) {
+    manualSyncError.value = error instanceof Error ? error.message : 'Sync failed.'
+  }
+}
+
 const reconnectBannerText = computed(() => {
   const count = syncStore.status?.pendingPushCount
   const provider =
@@ -126,10 +146,13 @@ function reconnectCloudFromBanner() {
   const machineSettings = settingsStore.machineSettings
   const clientId = machineSettings?.tabletCloudClientId
   if (!clientId) return
+  const driveId = machineSettings?.tabletCloudLibraryDriveId
+  const itemId = machineSettings?.tabletCloudLibraryItemId
   void syncStore.reconnectCloud(
     machineSettings?.tabletCloudProvider ?? 'dropbox',
     clientId,
     machineSettings?.tabletCloudLibraryFolderPath ?? '',
+    driveId && itemId ? { driveId, itemId } : undefined,
   )
 }
 
@@ -286,26 +309,21 @@ const helpTopic = computed(() => route.meta.helpTopic ?? 'index')
 // `topic` defaults to whatever the current route documents (the Help button / F1); the update
 // prompt passes 'whats-new' so it can open that page directly instead of wherever the operator
 // happens to be standing.
-function openHelp(topic: string = helpTopic.value) {
-  const [slug, anchor] = topic.split('#')
-  if (hasDesktopBackend) {
-    getAdapter()
-      .help.open?.(topic)
-      .catch((error) => console.error('Failed to open help window:', error))
-    return
-  }
-  // No native help window in the browser build — the help site isn't bundled here the way it
-  // is in the Tauri app. On the real GitHub Pages deploy the web/tablet app is served one level
-  // under the help site's own root (see release.yml's deploy-pages job), so a relative
-  // `../<topic>.html` reaches it correctly in a new tab; in plain local `pnpm dev` there's no
-  // sibling help build to reach at all, so this just 404s there (same accepted gap as the help
-  // site's own "Try the Web Demo" button, which only resolves for real once actually deployed).
-  window.open(`../${slug}.html${anchor ? `#${anchor}` : ''}`, '_blank', 'noopener')
+// Takes no arguments on purpose. This was briefly `openHelp(topic = helpTopic.value)`, serving
+// both the app bar and the What's New links — and a bare `@click="openHelp"` then handed Vue's
+// MouseEvent straight in as `topic`, so the Help button threw "topic.split is not a function"
+// while every explicit caller kept working. vue-tsc did not catch it either: a Vuetify
+// component's @click is loosely typed, so the mismatch never surfaced.
+//
+// Anything wanting a specific page calls openHelpTopic() directly instead. Nothing here has a
+// parameter for an event to land in.
+function openHelpForCurrentRoute() {
+  openHelpTopic(helpTopic.value)
 }
 function handleHelpShortcut(event: KeyboardEvent) {
   if (event.key !== 'F1') return
   event.preventDefault()
-  openHelp()
+  openHelpForCurrentRoute()
 }
 
 // Splash screen (feature-spec.md section "Splash screen") — see the `isSplashWindow` comment
@@ -803,10 +821,15 @@ onUnmounted(() => {
               :loading="syncStore.syncing"
               :disabled="syncStore.syncing"
               prepend-icon="mdi-sync"
-              @click="syncStore.runSync()"
+              @click="syncNowFromMenu"
             >
               Sync Now
             </v-btn>
+            <!-- Kept inside the menu rather than raised as a banner: the operator opened this,
+                 so it is information on demand, not another thing interrupting a service. -->
+            <div v-if="manualSyncError" class="text-caption text-error mt-2">
+              {{ manualSyncError }}
+            </div>
           </v-card>
         </v-menu>
         <v-tooltip
@@ -841,7 +864,7 @@ onUnmounted(() => {
         title="Help (F1)"
         aria-label="Help"
         aria-keyshortcuts="F1"
-        @click="openHelp"
+        @click="openHelpForCurrentRoute"
       />
       <template v-if="hasDesktopBackend">
         <v-btn
@@ -931,7 +954,7 @@ onUnmounted(() => {
            name a number the What's New page already states at the top of its newest entry. -->
       A new version of Worship Studio is available.
       <template #actions>
-        <v-btn variant="text" @click="openHelp('whats-new')">What's New</v-btn>
+        <v-btn variant="text" @click="openHelpTopic('whats-new')">What's New</v-btn>
         <v-btn variant="text" @click="pwaUpdate.applyUpdate">Update Now</v-btn>
       </template>
     </v-snackbar>
@@ -957,7 +980,7 @@ onUnmounted(() => {
         <!-- Naming the version is only half of it: knowing whether an update is worth restarting
              for needs to know what changed, and this is the one place most people will ever be
              asked. The page is bundled with the app, so it opens offline. -->
-        <v-btn variant="text" @click="openHelp('whats-new')">What's New</v-btn>
+        <v-btn variant="text" @click="openHelpTopic('whats-new')">What's New</v-btn>
         <v-btn variant="text" :loading="tauriUpdate.applying" @click="tauriUpdate.applyUpdate">
           Update Now
         </v-btn>
